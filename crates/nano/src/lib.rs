@@ -6,8 +6,10 @@
 //! to provide sovereign pair-programming workflows without external API dependencies or GPU requirements.
 
 pub mod analysis;
+pub mod coder;
 pub mod model;
 pub mod patch;
+pub mod synthesize;
 pub use model::Model;
 use nioxs_contracts::{
     ChatRequest, Execution, FunctionCall, Handoff, MODEL, Outcome, PROVIDER, SCHEMA_VERSION,
@@ -36,6 +38,13 @@ pub enum Intent {
     Plan(Vec<Intent>),
     AnalyzeFile(String),
     AnalyzeDir(String),
+    SymbolDef(String),
+    SymbolRefs(String),
+    RefactorPatch { file: String, old: String, new: String },
+    TddRefactor { file: String, old: String, new: String },
+    ScaffoldTest { file: String, function: String },
+    ReviewDiff,
+    SuggestCommit,
     Unsupported,
 }
 impl Intent {
@@ -58,6 +67,13 @@ impl Intent {
             Self::Plan(_) => "plan",
             Self::AnalyzeFile(_) => "analyze_file",
             Self::AnalyzeDir(_) => "analyze_dir",
+            Self::SymbolDef(_) => "search_code",
+            Self::SymbolRefs(_) => "search_code",
+            Self::RefactorPatch { .. } => "scaffold_template",
+            Self::TddRefactor { .. } => "run_checks",
+            Self::ScaffoldTest { .. } => "scaffold_template",
+            Self::ReviewDiff => "inspect_project",
+            Self::SuggestCommit => "inspect_project",
             Self::Unsupported => "unsupported",
         }
     }
@@ -265,6 +281,10 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         if is_web_url(clean) {
             return Intent::WebFetch(clean.to_string());
         }
+    }
+    let norm = normalize_prompt(prompt);
+    if let Some(coder_intent) = coder::parse_coder_intent(prompt).or_else(|| coder::parse_coder_intent(&norm)) {
+        return coder_intent;
     }
     let lower = prompt.to_ascii_lowercase();
     let query_prefix = [
@@ -941,23 +961,8 @@ pub fn decide_with_model(
                     Outcome::Completed,
                 ))
             } else {
-                let top = &report.passages[0];
-                let mut answer = format!("Based on findings for **{query}**:\n\n{}\n\n", top.excerpt.trim());
-                if report.passages.len() > 1 {
-                    answer.push_str("Key details from additional sources:\n");
-                    for p in &report.passages[1..] {
-                        let snippet = p.excerpt.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
-                        if !snippet.is_empty() {
-                            answer.push_str(&format!("• **{}**: {}\n", p.title, snippet));
-                        }
-                    }
-                    answer.push('\n');
-                }
-                answer.push_str("Sources:\n");
-                for (idx, passage) in report.passages.iter().enumerate() {
-                    answer.push_str(&format!("{}. [{}]({})\n", idx + 1, passage.title, passage.url));
-                }
-                Ok(w.end(excerpt(&answer, 8000), Outcome::Completed))
+                let synthesized = synthesize::synthesize_research_answer(&query, &report);
+                Ok(w.end(excerpt(&synthesized, 8000), Outcome::Completed))
             }
         }
         Intent::Wiki(query) => {
@@ -1063,6 +1068,72 @@ pub fn decide_with_model(
             };
             let report = analysis::format_directory_analysis(&dir, &filtered);
             Ok(w.end(report, Outcome::Completed))
+        }
+        Intent::SymbolDef(symbol) => {
+            let defs = coder::find_symbol_definitions(&symbol, ".");
+            if defs.is_empty() {
+                Ok(w.end(
+                    format!("No declaration or definition found for symbol `{symbol}` across project source files."),
+                    Outcome::Completed,
+                ))
+            } else {
+                let mut out = format!("### Symbol Definition: `{symbol}`\n\nFound {} declaration{}:\n\n", defs.len(), if defs.len() == 1 { "" } else { "s" });
+                for def in defs {
+                    out.push_str(&format!("• `{}:{}` ({})\n```\n{}\n```\n\n", def.file, def.line_number, def.kind, def.line_text));
+                }
+                Ok(w.end(out.trim().to_string(), Outcome::Completed))
+            }
+        }
+        Intent::SymbolRefs(symbol) => {
+            let refs = coder::find_symbol_references(&symbol, ".");
+            if refs.is_empty() {
+                Ok(w.end(
+                    format!("No call sites or usages found for symbol `{symbol}` across project source files."),
+                    Outcome::Completed,
+                ))
+            } else {
+                let mut out = format!("### Symbol Usages & Call Sites: `{symbol}`\n\nFound {} reference{}:\n\n", refs.len(), if refs.len() == 1 { "" } else { "s" });
+                for r in refs.iter().take(25) {
+                    out.push_str(&format!("• `{}:{}`\n```\n{}\n```\n", r.file, r.line_number, r.line_text));
+                }
+                if refs.len() > 25 {
+                    out.push_str(&format!("\n*(Showing first 25 of {} references)*", refs.len()));
+                }
+                Ok(w.end(out.trim().to_string(), Outcome::Completed))
+            }
+        }
+        Intent::RefactorPatch { file, old, new } => {
+            match coder::refactor_file(&file, &old, &new) {
+                Ok(report) => Ok(w.end(report, Outcome::Completed)),
+                Err(err) => Ok(w.end(format!("Refactoring failed: {err}"), Outcome::Completed)),
+            }
+        }
+        Intent::TddRefactor { file, old, new } => {
+            match coder::tdd_refactor_and_test(&file, &old, &new) {
+                Ok(report) => Ok(w.end(report, Outcome::Completed)),
+                Err(err) => Ok(w.end(err, Outcome::Completed)),
+            }
+        }
+        Intent::ScaffoldTest { file, function } => {
+            match coder::scaffold_test_for_function(&file, &function) {
+                Ok(code) => Ok(w.end(
+                    format!("### Generated Test Scaffold for `{function}` (`{file}`):\n\n```\n{code}```"),
+                    Outcome::Completed,
+                )),
+                Err(err) => Ok(w.end(format!("Test scaffolding error: {err}"), Outcome::Completed)),
+            }
+        }
+        Intent::ReviewDiff => {
+            match coder::review_git_diff() {
+                Ok(report) => Ok(w.end(report, Outcome::Completed)),
+                Err(err) => Ok(w.end(format!("Diff review failed: {err}"), Outcome::Completed)),
+            }
+        }
+        Intent::SuggestCommit => {
+            match coder::suggest_commit_message() {
+                Ok(msg) => Ok(w.end(msg, Outcome::Completed)),
+                Err(err) => Ok(w.end(format!("Commit generation failed: {err}"), Outcome::Completed)),
+            }
         }
         Intent::Plan(steps) => {
             let mut summary = format!("Decomposed and executing {} task steps:\n\n", steps.len());
@@ -1318,6 +1389,57 @@ mod tests {
         assert_eq!(
             parse(&model, "how is the code quality?"),
             Intent::AnalyzeDir(".".into())
+        );
+    }
+    #[test]
+    fn test_phase3_to_phase6_coding_engine() {
+        let model = Model::embedded().unwrap();
+
+        // Phase 3: Semantic Symbol Navigation
+        assert_eq!(
+            parse(&model, "where is parse_atomic defined?"),
+            Intent::SymbolDef("parse_atomic".into())
+        );
+        assert_eq!(
+            parse(&model, "who calls apply_patch_to_string?"),
+            Intent::SymbolRefs("apply_patch_to_string".into())
+        );
+
+        // Phase 4: Deterministic Code Refactoring
+        assert_eq!(
+            parse(&model, "replace 'old_fn' with 'new_fn' in src/lib.rs"),
+            Intent::RefactorPatch {
+                file: "src/lib.rs".into(),
+                old: "old_fn".into(),
+                new: "new_fn".into(),
+            }
+        );
+
+        // Phase 5: Autonomous Edit-and-Test Loop (TDD)
+        assert_eq!(
+            parse(&model, "replace 'old_fn' with 'new_fn' in src/lib.rs and run tests"),
+            Intent::TddRefactor {
+                file: "src/lib.rs".into(),
+                old: "old_fn".into(),
+                new: "new_fn".into(),
+            }
+        );
+
+        // Phase 6: Dynamic Test Generator & Git Diff Reviewer
+        assert_eq!(
+            parse(&model, "write test for calculate_tax in src/math.rs"),
+            Intent::ScaffoldTest {
+                file: "src/math.rs".into(),
+                function: "calculate_tax".into(),
+            }
+        );
+        assert_eq!(
+            parse(&model, "review git diff"),
+            Intent::ReviewDiff
+        );
+        assert_eq!(
+            parse(&model, "suggest commit message"),
+            Intent::SuggestCommit
         );
     }
 }

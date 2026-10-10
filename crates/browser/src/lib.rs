@@ -22,6 +22,7 @@ pub struct ResearchPassage {
     pub url: String,
     pub title: String,
     pub excerpt: String,
+    pub snippet: String,
     pub score: usize,
 }
 
@@ -78,15 +79,79 @@ pub fn classify(text: &str) -> PageStatus {
 }
 
 pub fn decode_entities(text: &str) -> String {
-    text.replace("&quot;", "\"")
-        .replace("&#34;", "\"")
-        .replace("&apos;", "'")
-        .replace("&#39;", "'")
-        .replace("&#x27;", "'")
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&nbsp;", " ")
+    let mut s = text.to_string();
+    for _ in 0..3 {
+        let prev = s.clone();
+        s = s
+            .replace("&quot;", "\"")
+            .replace("&#34;", "\"")
+            .replace("&apos;", "'")
+            .replace("&#39;", "'")
+            .replace("&#x27;", "'")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&nbsp;", " ")
+            .replace("&#8217;", "'")
+            .replace("&#8216;", "'")
+            .replace("&#8220;", "\"")
+            .replace("&#8221;", "\"")
+            .replace("&#8211;", "-")
+            .replace("&#8212;", "—");
+        if s == prev {
+            break;
+        }
+    }
+    s
+}
+
+pub fn clean_title(raw: &str) -> String {
+    let decoded = decode_entities(raw);
+    let trimmed = decoded.trim();
+    if let Some((head, _tail)) = trimmed.rsplit_once(" - ") {
+        let tail_lower = _tail.trim().to_ascii_lowercase();
+        if tail_lower.contains(".com")
+            || tail_lower.contains(".org")
+            || tail_lower.contains(".net")
+            || tail_lower == "reddit"
+            || tail_lower == "wikipedia"
+            || tail_lower == "github"
+        {
+            return head.trim().to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
+pub fn is_boilerplate_or_spam(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let spam_indicators = [
+        "infinite loading",
+        "click here reload",
+        "enable javascript",
+        "log into your account",
+        "privacy policy",
+        "terms and conditions",
+        "terms of service",
+        "all rights reserved",
+        "sign in",
+        "editorial policies",
+        "skip to content",
+        "cookie preferences",
+        "feel free to watch! infinite loading",
+    ];
+    let count = spam_indicators.iter().filter(|s| lower.contains(*s)).count();
+    if count >= 2 || lower.contains("infinite loading") {
+        return true;
+    }
+    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    if lines.len() > 6 {
+        let short_lines = lines.iter().filter(|l| l.split_whitespace().count() <= 3).count();
+        if (short_lines as f32) / (lines.len() as f32) > 0.65 {
+            return true;
+        }
+    }
+    false
 }
 
 pub fn extract_title(html: &str) -> Option<String> {
@@ -141,8 +206,14 @@ pub fn extract_text(html: &str) -> String {
                 } else if !skip_content
                     && matches!(
                         tag_name,
-                        "p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "li" | "tr" | "br"
+                        "p" | "article" | "section" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
                     )
+                    && !last_was_space
+                {
+                    out.push_str("\n\n");
+                    last_was_space = true;
+                } else if !skip_content
+                    && matches!(tag_name, "div" | "li" | "tr" | "br")
                     && !last_was_space
                 {
                     out.push('\n');
@@ -169,12 +240,22 @@ pub fn extract_text(html: &str) -> String {
         i += 1;
     }
 
-    decode_entities(&out)
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
+    let decoded = decode_entities(&out);
+    let mut cleaned_lines = Vec::new();
+    let mut was_blank = true;
+    for line in decoded.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if !was_blank {
+                cleaned_lines.push("");
+                was_blank = true;
+            }
+        } else {
+            cleaned_lines.push(trimmed);
+            was_blank = false;
+        }
+    }
+    cleaned_lines.join("\n")
 }
 
 pub fn parse_ddg_lite_results(html: &str) -> Vec<SearchResult> {
@@ -505,7 +586,7 @@ pub fn extract_passages(text: &str, query: &str) -> Vec<(usize, String)> {
 
     for p in paragraphs {
         let cleaned = p.trim();
-        if cleaned.len() < 40 {
+        if cleaned.len() < 40 || is_boilerplate_or_spam(cleaned) {
             continue;
         }
         let lower = cleaned.to_ascii_lowercase();
@@ -514,7 +595,7 @@ pub fn extract_passages(text: &str, query: &str) -> Vec<(usize, String)> {
             score += lower.matches(t).count();
         }
         if score > 0 {
-            let excerpt: String = cleaned.chars().take(600).collect();
+            let excerpt: String = cleaned.chars().take(800).collect();
             scored.push((score, excerpt));
         }
     }
@@ -546,17 +627,47 @@ pub async fn research(query: &str, max_pages: usize) -> Result<ResearchReport, S
         .await;
 
     let mut passages = Vec::new();
+    let terms: Vec<String> = query
+        .to_ascii_lowercase()
+        .split_whitespace()
+        .filter(|t| t.len() > 2)
+        .map(|t| t.to_string())
+        .collect();
+
     for (item, maybe_text) in fetched_pages {
+        let mut added_body_passage = false;
+        let cleaned_title = clean_title(&item.title);
+        let cleaned_snippet = decode_entities(&item.snippet);
+
         if let Some(text) = maybe_text {
             let top_passages = extract_passages(&text, query);
             for (score, excerpt) in top_passages.into_iter().take(2) {
-                passages.push(ResearchPassage {
-                    url: item.url.clone(),
-                    title: item.title.clone(),
-                    excerpt,
-                    score,
-                });
+                if !is_boilerplate_or_spam(&excerpt) {
+                    passages.push(ResearchPassage {
+                        url: item.url.clone(),
+                        title: cleaned_title.clone(),
+                        snippet: cleaned_snippet.clone(),
+                        excerpt,
+                        score: score * 2,
+                    });
+                    added_body_passage = true;
+                }
             }
+        }
+        // If the fetched page was SPA, blocked, or pure boilerplate, use the search snippet!
+        if !added_body_passage && !cleaned_snippet.trim().is_empty() && !is_boilerplate_or_spam(&cleaned_snippet) {
+            let snip_lower = cleaned_snippet.to_ascii_lowercase();
+            let mut score = 1;
+            for t in &terms {
+                score += snip_lower.matches(t).count();
+            }
+            passages.push(ResearchPassage {
+                url: item.url.clone(),
+                title: cleaned_title,
+                snippet: cleaned_snippet.clone(),
+                excerpt: cleaned_snippet,
+                score,
+            });
         }
     }
 
@@ -642,5 +753,17 @@ mod tests {
         assert_eq!(res[0].title, "Rust Language");
         assert_eq!(res[0].url, "https://example.org/rust");
         assert!(res[0].snippet.contains("Modern systems language"));
+    }
+
+    #[test]
+    fn test_clean_title_and_entities() {
+        assert_eq!(
+            clean_title("What Is Kisskh? Is It Legal? A Simple Breakdown - iemlabs.com"),
+            "What Is Kisskh? Is It Legal? A Simple Breakdown"
+        );
+        assert_eq!(
+            decode_entities("kisskh | Asian Dramas &amp; Movies"),
+            "kisskh | Asian Dramas & Movies"
+        );
     }
 }
