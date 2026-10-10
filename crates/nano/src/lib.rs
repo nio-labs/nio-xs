@@ -139,11 +139,15 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
         "web search for ",
         "web search ",
         "research ",
+        "what is ",
+        "what's ",
+        "who is ",
+        "tell me about ",
     ]
     .iter()
     .find_map(|p| {
         if lower.starts_with(p) {
-            Some(prompt[p.len()..].trim())
+            Some(prompt[p.len()..].trim().trim_end_matches('?').trim())
         } else {
             None
         }
@@ -846,6 +850,10 @@ mod tests {
         assert_eq!(
             parse(model, "scaffold gitignore"),
             Intent::Scaffold("gitignore".into())
+        );
+        assert_eq!(
+            parse(model, "what is Jev?"),
+            Intent::Research("Jev".into())
         );
     }
 }
