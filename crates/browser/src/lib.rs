@@ -352,6 +352,75 @@ pub async fn fetch_github_repo(repo: &str) -> Result<String, String> {
     Ok(format!("GitHub repository ({clean_repo}):\n\n{text}"))
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PackageMetadata {
+    pub ecosystem: String,
+    pub name: String,
+    pub latest_version: String,
+    pub description: String,
+    pub license: Option<String>,
+    pub homepage: Option<String>,
+    pub repository: Option<String>,
+    pub documentation: Option<String>,
+}
+
+pub async fn fetch_crate_info(crate_name: &str) -> Result<PackageMetadata, String> {
+    let clean = crate_name.trim().trim_matches(|c: char| "`\"',;!?".contains(c));
+    let url = format!("https://crates.io/api/v1/crates/{clean}");
+    let json_text = fetch_url(&url).await?;
+    let value: serde_json::Value =
+        serde_json::from_str(&json_text).map_err(|e| format!("invalid crates.io response: {e}"))?;
+
+    let krate = &value["crate"];
+    if krate.is_null() {
+        return Err(format!("crate '{clean}' not found on crates.io"));
+    }
+
+    Ok(PackageMetadata {
+        ecosystem: "cargo".into(),
+        name: krate["name"].as_str().unwrap_or(clean).to_string(),
+        latest_version: krate["max_stable_version"]
+            .as_str()
+            .or_else(|| krate["max_version"].as_str())
+            .unwrap_or("unknown")
+            .to_string(),
+        description: krate["description"].as_str().unwrap_or("").to_string(),
+        license: None,
+        homepage: krate["homepage"].as_str().map(str::to_string),
+        repository: krate["repository"].as_str().map(str::to_string),
+        documentation: krate["documentation"].as_str().map(str::to_string),
+    })
+}
+
+pub async fn fetch_npm_info(pkg_name: &str) -> Result<PackageMetadata, String> {
+    let clean = pkg_name.trim().trim_matches(|c: char| "`\"',;!?".contains(c));
+    let url = format!("https://registry.npmjs.org/{clean}");
+    let json_text = fetch_url(&url).await?;
+    let value: serde_json::Value =
+        serde_json::from_str(&json_text).map_err(|e| format!("invalid npm response: {e}"))?;
+
+    let name = value["name"].as_str().unwrap_or(clean).to_string();
+    let latest_version = value["dist-tags"]["latest"]
+        .as_str()
+        .unwrap_or("unknown")
+        .to_string();
+    let description = value["description"].as_str().unwrap_or("").to_string();
+    let license = value["license"].as_str().map(str::to_string);
+    let homepage = value["homepage"].as_str().map(str::to_string);
+
+    Ok(PackageMetadata {
+        ecosystem: "npm".into(),
+        name,
+        latest_version,
+        description,
+        license,
+        homepage,
+        repository: None,
+        documentation: None,
+    })
+}
+
+
 pub async fn fetch_url(url: &str) -> Result<String, String> {
     if !url.starts_with("https://") && !url.starts_with("http://") {
         return Err("fetch only accepts HTTP/HTTPS URLs".into());

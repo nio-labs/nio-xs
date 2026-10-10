@@ -18,6 +18,7 @@ pub enum Intent {
     Research(String),
     Wiki(String),
     Github(String),
+    Package(String),
     Clarify(String),
     Unsupported,
 }
@@ -33,6 +34,7 @@ impl Intent {
             Self::Research(_) => "research_sources",
             Self::Wiki(_) => "wiki_search",
             Self::Github(_) => "github_repo",
+            Self::Package(_) => "package_info",
             Self::Clarify(_) => "clarify",
             Self::Unsupported => "unsupported",
         }
@@ -196,6 +198,18 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
         };
         if !target.is_empty() && target.contains('/') {
             return Intent::Github(target.to_string());
+        }
+    }
+    if lower.starts_with("package ") || lower.starts_with("crate ") || lower.starts_with("npm ") {
+        let pkg = if lower.starts_with("package ") {
+            prompt[8..].trim()
+        } else if lower.starts_with("crate ") {
+            prompt[6..].trim()
+        } else {
+            prompt[4..].trim()
+        };
+        if !pkg.is_empty() && !pkg.contains(' ') {
+            return Intent::Package(pkg.to_string());
         }
     }
     let candidates = paths(prompt);
@@ -663,6 +677,30 @@ if limited{report.push_str("File inventory incomplete.\n");}Ok(w.end(excerpt(&re
                 .map_err(|e| format!("github fetch error: {e}"))?;
             Ok(w.end(excerpt(&content, 8000), Outcome::Completed))
         }
+        Intent::Package(pkg) => {
+            // Check crates.io first; if not found, check npm registry
+            let metadata = match run_async(nioxs_browser::fetch_crate_info(&pkg)) {
+                Ok(meta) => meta,
+                Err(_) => match run_async(nioxs_browser::fetch_npm_info(&pkg)) {
+                    Ok(meta) => meta,
+                    Err(e) => return Ok(w.end(format!("Package '{pkg}' not found: {e}"), Outcome::Completed)),
+                },
+            };
+            let mut report = format!(
+                "Package {} ({})\nVersion: {}\nDescription: {}\n",
+                metadata.name, metadata.ecosystem, metadata.latest_version, metadata.description
+            );
+            if let Some(homepage) = metadata.homepage {
+                report.push_str(&format!("Homepage: {homepage}\n"));
+            }
+            if let Some(repo) = metadata.repository {
+                report.push_str(&format!("Repository: {repo}\n"));
+            }
+            if let Some(doc) = metadata.documentation {
+                report.push_str(&format!("Documentation: {doc}\n"));
+            }
+            Ok(w.end(report, Outcome::Completed))
+        }
     }
 }
 #[cfg(test)]
@@ -768,5 +806,14 @@ mod tests {
             parse(model, "github tokio-rs/tokio"),
             Intent::Github("tokio-rs/tokio".into())
         );
+        assert_eq!(
+            parse(model, "crate tokio"),
+            Intent::Package("tokio".into())
+        );
+        assert_eq!(
+            parse(model, "npm express"),
+            Intent::Package("express".into())
+        );
     }
 }
+
