@@ -613,6 +613,7 @@ dependencies = [
 name = "nioxs-browser"
 version = "0.1.0-alpha.2"
 dependencies = [
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -631,9 +632,11 @@ dependencies = [
 name = "nioxs-nano"
 version = "0.1.0-alpha.2"
 dependencies = [
+ "nioxs-browser",
  "nioxs-contracts",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

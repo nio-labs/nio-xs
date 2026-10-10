@@ -1,8 +1,7 @@
-use serde::Serialize;
-use std::{path::Path, process::Stdio, time::Duration};
-use tokio::{io::AsyncReadExt, process::Command};
+use serde::{Deserialize, Serialize};
+use std::{path::Path, time::Duration};
 
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum PageStatus {
     Readable,
@@ -11,75 +10,374 @@ pub enum PageStatus {
     Empty,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SearchResult {
+    pub title: String,
+    pub url: String,
+    pub snippet: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ResearchPassage {
+    pub url: String,
+    pub title: String,
+    pub excerpt: String,
+    pub score: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ResearchReport {
+    pub query: String,
+    pub passages: Vec<ResearchPassage>,
+    pub sources_visited: Vec<String>,
+}
+
 pub fn classify(text: &str) -> PageStatus {
-    let lower = text.to_lowercase();
-    if [
-        "g-recaptcha",
-        "hcaptcha",
-        "cf-chl-",
+    if text.trim().is_empty() {
+        return PageStatus::Empty;
+    }
+    let visible = extract_text(text);
+    let lower = visible.to_lowercase();
+    let raw_lower = text.to_lowercase();
+
+    let is_challenge = [
         "verify you are human",
         "unusual traffic from your computer",
         "our systems have detected unusual traffic",
-        "captcha",
+        "unfortunately, bots use duckduckgo",
+        "select all squares containing",
+        "confirm this search was made by a human",
+        "security check to access",
+        "cf-browser-verification",
     ]
     .iter()
     .any(|s| lower.contains(s))
-    {
+        || raw_lower.contains("class='g-recaptcha'")
+        || raw_lower.contains("class=\"g-recaptcha\"")
+        || raw_lower.contains("data-sitekey=")
+        || raw_lower.contains("cf-chl-")
+        || (lower.contains("captcha")
+            && (lower.contains("verify") || lower.contains("enter the characters")));
+
+    if is_challenge {
         PageStatus::Challenge
-    } else if ["access denied", "403 forbidden", "sign in to continue"]
-        .iter()
-        .any(|s| lower.contains(s))
+    } else if [
+        "access denied",
+        "403 forbidden",
+        "sign in to continue",
+        "401 unauthorized",
+    ]
+    .iter()
+    .any(|s| lower.contains(s))
+        && visible.len() < 1000
     {
         PageStatus::AccessDenied
-    } else if text.trim().is_empty() {
-        PageStatus::Empty
     } else {
         PageStatus::Readable
     }
 }
 
-/// CLI feasibility reader, not the Phase 3 crawler. No alternative browser path.
-pub async fn fetch(binary: &Path, url: &str) -> Result<String, String> {
-    if !url.starts_with("https://") {
-        return Err("probe only accepts HTTPS URLs".into());
+pub fn decode_entities(text: &str) -> String {
+    text.replace("&quot;", "\"")
+        .replace("&#34;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&nbsp;", " ")
+}
+
+pub fn extract_title(html: &str) -> Option<String> {
+    let lower = html.to_ascii_lowercase();
+    let start = lower.find("<title")?;
+    let tag_end = lower[start..].find('>')? + start;
+    let end = lower[tag_end..].find("</title>")? + tag_end;
+    let title = &html[tag_end + 1..end];
+    let cleaned = decode_entities(title).trim().to_string();
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned)
     }
-    let mut child = Command::new(binary)
-        .args(["fetch", url, "--dump", "html", "--timeout", "12", "--quiet"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|_| "cannot start Obscura")?;
-    let stdout = child.stdout.take().ok_or("Obscura stdout unavailable")?;
-    let result = tokio::time::timeout(Duration::from_secs(18), async {
-        let mut bytes = Vec::new();
-        stdout
-            .take(1024 * 1024 + 1)
-            .read_to_end(&mut bytes)
-            .await
-            .map_err(|_| "cannot read Obscura output")?;
-        if bytes.len() > 1024 * 1024 {
-            return Err("Obscura output exceeded 1 MiB".into());
+}
+
+pub fn extract_text(html: &str) -> String {
+    let mut out = String::with_capacity(html.len() / 2);
+    let mut in_tag = false;
+    let mut tag_buf = String::with_capacity(32);
+    let mut skip_content = false;
+    let mut skip_tag = String::new();
+    let mut last_was_space = true;
+
+    let chars: Vec<char> = html.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if in_tag {
+            if c == '>' {
+                in_tag = false;
+                let tag_lower = tag_buf.trim().to_ascii_lowercase();
+                let tag_name = tag_lower
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .trim_start_matches('/');
+
+                if !skip_content
+                    && (tag_name == "script"
+                        || tag_name == "style"
+                        || tag_name == "noscript"
+                        || tag_name == "svg")
+                {
+                    if !tag_buf.starts_with('/') && !tag_buf.ends_with('/') {
+                        skip_content = true;
+                        skip_tag = tag_name.to_string();
+                    }
+                } else if skip_content && tag_buf.starts_with('/') && tag_name == skip_tag {
+                    skip_content = false;
+                    skip_tag.clear();
+                } else if !skip_content
+                    && matches!(
+                        tag_name,
+                        "p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "li" | "tr" | "br"
+                    )
+                    && !last_was_space
+                {
+                    out.push('\n');
+                    last_was_space = true;
+                }
+                tag_buf.clear();
+            } else {
+                tag_buf.push(c);
+            }
+        } else if c == '<' {
+            in_tag = true;
+            tag_buf.clear();
+        } else if !skip_content {
+            if c.is_whitespace() {
+                if !last_was_space {
+                    out.push(' ');
+                    last_was_space = true;
+                }
+            } else {
+                out.push(c);
+                last_was_space = false;
+            }
         }
-        let status = child.wait().await.map_err(|_| "cannot reap Obscura")?;
-        if !status.success() {
-            return Err("Obscura navigation failed".into());
+        i += 1;
+    }
+
+    decode_entities(&out)
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn parse_ddg_lite_results(html: &str) -> Vec<SearchResult> {
+    let mut results = Vec::new();
+    let mut cursor = 0;
+
+    while let Some(link_pos) = html[cursor..].find("class='result-link'") {
+        let abs_pos = cursor + link_pos;
+        let href_marker = "href=\"";
+        let Some(rel_href_start) = html[..abs_pos].rfind(href_marker) else {
+            cursor = abs_pos + 18;
+            continue;
+        };
+        let href_start = rel_href_start + href_marker.len();
+        let Some(href_len) = html[href_start..].find('"') else {
+            cursor = abs_pos + 18;
+            continue;
+        };
+        let url = &html[href_start..href_start + href_len];
+
+        let Some(tag_end) = html[abs_pos..].find('>') else {
+            cursor = abs_pos + 18;
+            continue;
+        };
+        let text_start = abs_pos + tag_end + 1;
+        let Some(text_end) = html[text_start..].find("</a>") else {
+            cursor = abs_pos + 18;
+            continue;
+        };
+        let title_raw = &html[text_start..text_start + text_end];
+        let title = extract_text(title_raw);
+
+        let snippet = if let Some(snip_pos) = html[abs_pos..].find("class='result-snippet'") {
+            let snip_abs = abs_pos + snip_pos;
+            if let Some(snip_tag_end) = html[snip_abs..].find('>') {
+                let snip_text_start = snip_abs + snip_tag_end + 1;
+                if let Some(snip_text_end) = html[snip_text_start..].find("</td>") {
+                    extract_text(&html[snip_text_start..snip_text_start + snip_text_end])
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        if url.starts_with("http") && !url.contains("duckduckgo.com") && !title.is_empty() {
+            results.push(SearchResult {
+                title,
+                url: url.to_string(),
+                snippet,
+            });
         }
-        String::from_utf8(bytes).map_err(|_| "Obscura returned invalid UTF-8".into())
+
+        cursor = abs_pos + 18;
+        if results.len() >= 10 {
+            break;
+        }
+    }
+
+    results
+}
+
+pub const USER_AGENT: &str = "NioNano/0.1.0 (https://github.com/nio-labs/nio-xs; contact@nio.ai)";
+
+pub async fn fetch_url(url: &str) -> Result<String, String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("fetch only accepts HTTP/HTTPS URLs".into());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| format!("cannot build HTTP client: {e}"))?;
+
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("request failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!("HTTP error {}", response.status()));
+    }
+
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("failed reading response: {e}"))?;
+
+    if text.len() > 2 * 1024 * 1024 {
+        return Err("page exceeds 2 MiB limit".into());
+    }
+
+    Ok(text)
+}
+
+/// Backward compatible fetch wrapper that replaces the external Obscura binary with native HTTP.
+pub async fn fetch(_legacy_binary: &Path, url: &str) -> Result<String, String> {
+    fetch_url(url).await
+}
+
+pub async fn search(query: &str, limit: usize) -> Result<Vec<SearchResult>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+        .build()
+        .map_err(|e| format!("cannot build HTTP client: {e}"))?;
+
+    let response = client
+        .post("https://lite.duckduckgo.com/lite/")
+        .form(&[("q", query)])
+        .send()
+        .await
+        .map_err(|e| format!("search request failed: {e}"))?;
+
+    let html = response
+        .text()
+        .await
+        .map_err(|e| format!("failed reading search results: {e}"))?;
+
+    let status = classify(&html);
+    if status == PageStatus::Challenge || status == PageStatus::AccessDenied {
+        return Err("search engine challenge encountered".into());
+    }
+
+    let mut results = parse_ddg_lite_results(&html);
+    results.truncate(limit);
+    Ok(results)
+}
+
+pub fn extract_passages(text: &str, query: &str) -> Vec<(usize, String)> {
+    let terms: Vec<String> = query
+        .to_ascii_lowercase()
+        .split_whitespace()
+        .filter(|t| t.len() > 2)
+        .map(|t| t.to_string())
+        .collect();
+
+    let paragraphs: Vec<&str> = text.split("\n\n").collect();
+    let mut scored: Vec<(usize, String)> = Vec::new();
+
+    for p in paragraphs {
+        let cleaned = p.trim();
+        if cleaned.len() < 40 {
+            continue;
+        }
+        let lower = cleaned.to_ascii_lowercase();
+        let mut score = 0;
+        for t in &terms {
+            score += lower.matches(t).count();
+        }
+        if score > 0 {
+            let excerpt: String = cleaned.chars().take(600).collect();
+            scored.push((score, excerpt));
+        }
+    }
+
+    scored.sort_by_key(|a| std::cmp::Reverse(a.0));
+    scored
+}
+
+pub async fn research(query: &str, max_pages: usize) -> Result<ResearchReport, String> {
+    let candidates = search(query, max_pages.max(1)).await?;
+    let mut passages = Vec::new();
+    let mut sources_visited = Vec::new();
+
+    for item in candidates.into_iter().take(max_pages) {
+        sources_visited.push(item.url.clone());
+        if let Ok(raw_html) = fetch_url(&item.url).await {
+            if classify(&raw_html) != PageStatus::Readable {
+                continue;
+            }
+            let text = extract_text(&raw_html);
+            let top_passages = extract_passages(&text, query);
+            for (score, excerpt) in top_passages.into_iter().take(2) {
+                passages.push(ResearchPassage {
+                    url: item.url.clone(),
+                    title: item.title.clone(),
+                    excerpt,
+                    score,
+                });
+            }
+        }
+    }
+
+    passages.sort_by_key(|a| std::cmp::Reverse(a.score));
+
+    Ok(ResearchReport {
+        query: query.to_string(),
+        passages,
+        sources_visited,
     })
-    .await;
-    match result {
-        Ok(result) => result,
-        Err(_) => {
-            let _ = child.kill().await;
-            Err("Obscura deadline exceeded".into())
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn blocked_pages_are_not_evidence() {
         assert_eq!(
@@ -92,5 +390,47 @@ mod tests {
             classify("<h1>Project documentation</h1>"),
             PageStatus::Readable
         );
+    }
+
+    #[test]
+    fn html_extraction_strips_scripts_and_tags() {
+        let html = r#"
+            <html>
+                <head><title>Test Title</title></head>
+                <body>
+                    <script>var x = 10;</script>
+                    <h1>Header One</h1>
+                    <p>This is a <b>paragraph</b> with &amp; entity.</p>
+                </body>
+            </html>
+        "#;
+        assert_eq!(extract_title(html), Some("Test Title".to_string()));
+        let text = extract_text(html);
+        assert!(text.contains("Header One"));
+        assert!(text.contains("This is a paragraph with & entity."));
+        assert!(!text.contains("var x = 10"));
+    }
+
+    #[test]
+    fn ddg_lite_parser_finds_results() {
+        let sample = r#"
+            <table>
+                <tr>
+                    <td>
+                        <a rel="nofollow" href="https://example.org/rust" class='result-link'>Rust Language</a>
+                    </td>
+                </tr>
+                <tr>
+                    <td class='result-snippet'>
+                        Modern systems language focusing on safety.
+                    </td>
+                </tr>
+            </table>
+        "#;
+        let res = parse_ddg_lite_results(sample);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].title, "Rust Language");
+        assert_eq!(res[0].url, "https://example.org/rust");
+        assert!(res[0].snippet.contains("Modern systems language"));
     }
 }

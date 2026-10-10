@@ -7,5 +7,7 @@ publish.workspace = true
 license.workspace = true
 [dependencies]
 nioxs-contracts = { path = "../contracts" }
+nioxs-browser = { path = "../browser" }
 serde_json.workspace = true
 serde.workspace = true
+tokio.workspace = true

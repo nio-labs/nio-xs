@@ -14,6 +14,8 @@ pub enum Intent {
     Files(String),
     Search(String),
     Checks(String),
+    WebFetch(String),
+    Research(String),
     Clarify(String),
     Unsupported,
 }
@@ -25,6 +27,8 @@ impl Intent {
             Self::Files(_) => "find_files",
             Self::Search(_) => "search_code",
             Self::Checks(_) => "run_checks",
+            Self::WebFetch(_) => "web_fetch",
+            Self::Research(_) => "research_sources",
             Self::Clarify(_) => "clarify",
             Self::Unsupported => "unsupported",
         }
@@ -94,16 +98,57 @@ fn paths(prompt: &str) -> Vec<String> {
         })
         .collect()
 }
+pub fn is_web_url(s: &str) -> bool {
+    (s.starts_with("https://") || s.starts_with("http://"))
+        && s.len() <= 1024
+        && !s.contains(char::is_whitespace)
+}
+fn run_async<F: std::future::Future>(f: F) -> F::Output {
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        tokio::task::block_in_place(|| handle.block_on(f))
+    } else {
+        tokio::runtime::Runtime::new()
+            .expect("tokio runtime")
+            .block_on(f)
+    }
+}
 pub fn parse(model: &Model, prompt: &str) -> Intent {
-    if prompt.len() > 1024
-        || !prompt.is_ascii()
-        || model::features(prompt)
-            .iter()
-            .any(|f| f == "<unsupported-risk>")
+    if prompt.len() > 1024 || !prompt.is_ascii() {
+        return Intent::Unsupported;
+    }
+    for word in prompt.split_whitespace() {
+        let clean = word.trim_matches(|c: char| "`\"',;:!?<>".contains(c));
+        if is_web_url(clean) {
+            return Intent::WebFetch(clean.to_string());
+        }
+    }
+    let lower = prompt.to_ascii_lowercase();
+    let query_prefix = [
+        "search the web for ",
+        "search web for ",
+        "web search for ",
+        "web search ",
+        "research ",
+    ]
+    .iter()
+    .find_map(|p| {
+        if lower.starts_with(p) {
+            Some(prompt[p.len()..].trim())
+        } else {
+            None
+        }
+    });
+    if let Some(query) = query_prefix
+        && !query.is_empty()
+    {
+        return Intent::Research(query.to_string());
+    }
+    if model::features(prompt)
+        .iter()
+        .any(|f| f == "<unsupported-risk>")
     {
         return Intent::Unsupported;
     }
-    let lower = prompt.to_ascii_lowercase();
     if [" then ", " && ", " and "]
         .iter()
         .any(|s| lower.contains(s))
@@ -502,7 +547,46 @@ if limited{report.push_str("File inventory incomplete.\n");}Ok(w.end(excerpt(&re
  if package["scripts"][&kind].as_str().is_none(){return Ok(w.end(format!("package.json has no {kind} script."),Outcome::Clarification));}(format!("npm run {kind}"),"package.json scripts".into())
  }else{return Ok(w.end(format!("No supported {kind} command found{}; configure .nioxs.json.",if limited{" in incomplete inventory"}else{""}),Outcome::Clarification));};
  let result=tool!(w,"run_command",json!({"command":command}));Ok(w.end(format!("{kind} check completed with exit code 0.\nCommand: {command}\nConfiguration: {source}\n\n{}",excerpt(&result,6500)),Outcome::Completed))}
- }
+        Intent::WebFetch(url) => {
+            let text = if request.permits_tool("web_fetch") {
+                tool!(w, "web_fetch", json!({"url": url}))
+            } else {
+                run_async(nioxs_browser::fetch_url(&url))
+                    .map_err(|e| format!("web fetch error: {e}"))?
+            };
+            let clean = nioxs_browser::extract_text(&text);
+            Ok(w.end(
+                format!("Web content from {url}:\n\n{}", excerpt(&clean, 8000)),
+                Outcome::Completed,
+            ))
+        }
+        Intent::Research(query) => {
+            let report = run_async(nioxs_browser::research(&query, 3))
+                .map_err(|e| format!("web research error: {e}"))?;
+
+            if report.passages.is_empty() {
+                Ok(w.end(
+                    format!(
+                        "No cited passages found for '{query}'. Visited {} candidate sources.",
+                        report.sources_visited.len()
+                    ),
+                    Outcome::Completed,
+                ))
+            } else {
+                let mut report_text = format!("Research report for '{query}':\n\n");
+                for (idx, passage) in report.passages.iter().enumerate() {
+                    report_text.push_str(&format!(
+                        "### Source [{}] ({})\nTitle: {}\n\n{}\n\n",
+                        idx + 1,
+                        passage.url,
+                        passage.title,
+                        passage.excerpt
+                    ));
+                }
+                Ok(w.end(excerpt(&report_text, 8000), Outcome::Completed))
+            }
+        }
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -583,5 +667,21 @@ mod tests {
         );
         assert!(!safe_path("../outside.txt", false));
         assert!(!safe_path(".env", false));
+    }
+    #[test]
+    fn web_fetch_and_research_parsing() {
+        let model = embedded();
+        assert_eq!(
+            parse(model, "read https://example.com"),
+            Intent::WebFetch("https://example.com".into())
+        );
+        assert_eq!(
+            parse(model, "research Rust programming language"),
+            Intent::Research("Rust programming language".into())
+        );
+        assert_eq!(
+            parse(model, "search web for tokio broadcast"),
+            Intent::Research("tokio broadcast".into())
+        );
     }
 }

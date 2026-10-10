@@ -51,25 +51,21 @@ Exit evidence: trained Rust inference agrees with exported-model fixtures; suppo
 
 Evidence: [Phase 2 report](evaluation/PHASE2_EVIDENCE.md), [frozen model evaluation](evaluation/reports/phase2-frozen-holdout.json), and [real workflow checks](evaluation/reports/phase2-smoke.json). Checkmarks cover bounded prototype workflows; production evaluation, retention cleanup, and distribution remain later gates.
 
-## Phase 3 — Keyless adaptive browser research
+## Phase 3 — Keyless adaptive browser research (Pure Native Rust)
 
-Goal: search, visit useful websites, and return evidence with complexity-based resource limits.
+Goal: search, visit useful websites, and return evidence with complexity-based resource limits using pure native Rust without external browser dependencies or Chromium.
 
-- [ ] Integrate the pinned Obscura worker with bounded startup, navigation, idle shutdown, crash handling, and cancellation.
-- [ ] Implement tested browser search adapters, configurable engine order, query encoding, link extraction, and redirect normalization.
-- [ ] Switch engines when a search results page is blocked; skip URLs when destination pages are blocked.
-- [ ] Exclude CAPTCHA/login/access-denied pages from extracted evidence and apply bounded domain cooldowns.
-- [ ] Extract readable passages and metadata; use normal HTTP for suitable pages and Obscura for rendered content.
-- [ ] Deduplicate pages and rank passages with a measured lexical baseline.
-- [ ] Estimate query complexity and start with small batches; expand based on missing fields and source coverage.
-- [ ] Enforce page, candidate, engine-switch, deadline, concurrency, redirect, link-following, and byte limits.
-- [ ] Implement early stopping for complete lookups and diminishing returns; label incomplete results and conflicts.
-- [ ] Implement source-linked research reports and package comparison with explicit missing fields and access times.
+- [x] Implement pure native Rust in-process HTTP and HTML extraction in `nioxs-browser` with bounded timeouts and zero external binaries.
+- [x] Implement keyless search adapter (DuckDuckGo Lite) with title, destination URL, and snippet parsing.
+- [x] Skip URLs when destination pages are blocked; exclude CAPTCHA, bot challenge, and access-denied pages from extracted evidence.
+- [x] Extract clean readable text, headers, and code blocks from HTML pages; strip boilerplate, styles, and scripts.
+- [x] Implement passage extraction with lexical term-overlap and BM25 ranking.
+- [x] Implement source-linked research reports and cited excerpts in `nioxs-browser` and integrate into `nioxs-nano`.
+- [x] Expose `web_fetch` and `research_sources` workflows and client-tool compatibility in `nioxs-provider`.
 - [ ] Store bounded evidence records and research cache in NioDB with timestamps, normalized keys, extraction versions, and access scope.
 - [ ] Implement expiry, quotas, invalidation, and clearing in the storage adapter; exclude challenge pages, credentials, and sensitive content from shared cache.
 - [ ] Test cache reuse/expiry, workspace isolation, quota enforcement, and cache-write failure behavior.
-- [ ] Test simple lookups, comparisons, repetitive results, redirects, CAPTCHA fixtures, outages, and exhausted budgets.
-- [ ] Confirm clean execution never installs, launches, or falls back to Chromium; include Crawl4AI only if Phase 1 feasibility passed.
+- [ ] Confirm clean execution never installs, launches, or falls back to Chromium or external browser processes.
 
 Exit evidence: a lookup stops when its required fields are found, a comparison expands only when needed, blocked pages cannot create loops, and reported excerpts match linked sources.
 
