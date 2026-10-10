@@ -196,11 +196,18 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         "what is ",
         "what's ",
         "who is ",
+        "who's ",
+        "where is ",
+        "where's ",
+        "how is ",
+        "how does ",
         "tell me about ",
+        "explain ",
+        "why is ",
     ]
     .iter()
     .find_map(|p| {
-        if lower.starts_with(p) {
+        if lower.starts_with(p) && !lower.starts_with("where is symbol ") {
             Some(prompt[p.len()..].trim().trim_end_matches('?').trim())
         } else {
             None
@@ -429,7 +436,7 @@ impl Workflow<'_> {
             completed_action_ids: self.observed.iter().map(|o| o.call.id.clone()).collect(),
         });
         self.end(
-            format!("NioNano cannot complete this workflow: {reason}."),
+            reason.to_string(),
             Outcome::CapabilityLimitation,
         )
     }
@@ -654,42 +661,115 @@ pub fn decide_with_model(
         intent: intent.label().into(),
         observed: vec![],
     };
-    match intent{
- Intent::Unsupported=>Ok(w.limitation("unsupported request or low classifier confidence; automatic LLM continuation is planned for Phase 4",true)),
- Intent::Clarify(question)=>Ok(w.end(question,Outcome::Clarification)),
- Intent::Read(path)=>{let text=tool!(w,"read_file",json!({"path":path,"line_count":80}));Ok(w.end(format!("File excerpt from {path}:\n\n{}",excerpt(&text,8000)),Outcome::Completed))},
- Intent::Files(glob)=>{let text=tool!(w,"find_files",json!({"path":".","glob":glob,"limit":50}));let(paths,limited)=files(&text)?;Ok(w.end(format!("Files matching {glob}:\n{}\n{}",paths.iter().map(|p|format!("- {p}")).collect::<Vec<_>>().join("\n"),if limited{"Inventory incomplete; narrow the glob."}else if paths.is_empty(){"No matches returned."}else{""}),Outcome::Completed))},
- Intent::Search(query)=>{
- let text=tool!(w,"search_code",json!({"query":query,"path":".","regex":false,"context_lines":1,"limit":30}));let value:Value=serde_json::from_str(&text).map_err(|_|"invalid search result")?;
- let mut ranked:Vec<(usize,String)>=value["matches"].as_array().ok_or("missing matches")?.iter().map(|entry|{
- let path=entry["path"].as_str().filter(|p|safe_path(p,false)).ok_or("invalid search path")?;let line=entry["line"].as_u64().filter(|n|*n>0).ok_or("invalid search line")?;let snippet=entry["excerpt"].as_str().ok_or("missing excerpt")?;
- Ok((snippet.to_ascii_lowercase().matches(&query.to_ascii_lowercase()).count(),format!("{path}:{line}\n{snippet}"))) }).collect::<Result<Vec<_>,String>>()?;
- ranked.sort_by(|a,b|b.0.cmp(&a.0).then(a.1.cmp(&b.1)));let limited=value["scan_limited"]==true||!value["next_offset"].is_null();
- Ok(w.end(format!("Literal code matches for {query}:\n\n{}\n{}",ranked.iter().map(|(_,row)|row.as_str()).collect::<Vec<_>>().join("\n\n"),if limited{"Search coverage incomplete; narrow the query."}else if ranked.is_empty(){"No matches returned."}else{""}),Outcome::Completed))},
- Intent::Inspect=>{
- let text=tool!(w,"find_files",json!({"path":".","limit":50}));let(paths,limited)=files(&text)?;
- let manifests:Vec<&String>=paths.iter().filter(|p|["Cargo.toml","package.json","pyproject.toml","go.mod"].contains(&p.as_str())).take(3).collect();
- let mut report=format!("Project files (up to 50):\n{}\n",paths.iter().map(|p|format!("- {p}")).collect::<Vec<_>>().join("\n"));
- for path in &manifests{let content=tool!(w,"read_file",json!({"path":path,"line_count":200}));report.push_str(&format!("\nManifest evidence from {path}:\n{}\n",excerpt(&content,2200)));
- if path.as_str()=="package.json"&&let Ok(package)=serde_json::from_str::<Value>(payload(&content)){report.push_str(&format!("Package name: {}; version: {}.\n",package["name"].as_str().unwrap_or("not declared"),package["version"].as_str().unwrap_or("not declared")));if let Some(deps)=package["dependencies"].as_object(){report.push_str(&format!("Declared dependencies: {}.\n",deps.keys().take(20).cloned().collect::<Vec<_>>().join(", ")));}}}
- if manifests.is_empty(){report.push_str("No supported root manifest returned; project type unknown.\n");}
-if limited{report.push_str("File inventory incomplete.\n");}Ok(w.end(excerpt(&report,8000),Outcome::Completed))},
- Intent::Checks(kind)=>{
- if !request.permits_tool("run_command"){return Ok(w.limitation("commands require an offered run_command tool and Nio's Build-mode approval",false));}
- let text=tool!(w,"find_files",json!({"path":".","limit":50}));let(paths,limited)=files(&text)?;
- let(command,source):(String,String)=if paths.iter().any(|p|p==".nioxs.json"){
- let text=tool!(w,"read_file",json!({"path":".nioxs.json","line_count":200}));let config:Value=serde_json::from_str(payload(&text)).map_err(|_|"invalid or truncated .nioxs.json")?;
- if config["schema_version"]!=1{return Err("unsupported .nioxs.json schema".into());}
- let Some(command)=config["commands"][&kind].as_str()else{return Ok(w.end(format!("No {kind} command configured in .nioxs.json."),Outcome::Clarification));};
- let allowed=["cargo test --locked","cargo build --locked","cargo clippy --locked -- -D warnings","npm test","npm run test","npm run build","npm run lint","python3 -m unittest","python3 -m pytest","go test ./...","go build ./...","go vet ./..."];
- if !allowed.contains(&command){return Ok(w.limitation("configured command outside Nano's supported named-command set",false));}(command.into(),".nioxs.json".into())
- }else if paths.iter().any(|p|p=="Cargo.toml"){
- (match kind.as_str(){"test"=>"cargo test --locked","build"=>"cargo build --locked",_=>"cargo clippy --locked -- -D warnings"}.into(),"Cargo.toml (fixed Rust mapping)".into())
- }else if paths.iter().any(|p|p=="package.json"){
- let text=tool!(w,"read_file",json!({"path":"package.json","line_count":200}));let package:Value=serde_json::from_str(payload(&text)).map_err(|_|"invalid or truncated package.json")?;
- if package["scripts"][&kind].as_str().is_none(){return Ok(w.end(format!("package.json has no {kind} script."),Outcome::Clarification));}(format!("npm run {kind}"),"package.json scripts".into())
- }else{return Ok(w.end(format!("No supported {kind} command found{}; configure .nioxs.json.",if limited{" in incomplete inventory"}else{""}),Outcome::Clarification));};
- let result=tool!(w,"run_command",json!({"command":command}));Ok(w.end(format!("{kind} check completed with exit code 0.\nCommand: {command}\nConfiguration: {source}\n\n{}",excerpt(&result,6500)),Outcome::Completed))}
+    match intent {
+        Intent::Unsupported => Ok(w.limitation(
+            "I'm specialized in project code inspection, tests, builds, scaffolds, and web research. I couldn't identify a programming action for that request. Try asking 'help' to view available capabilities, or specify a file or symbol.",
+            false,
+        )),
+        Intent::Clarify(question) => Ok(w.end(question, Outcome::Clarification)),
+        Intent::Read(path) => {
+            let text = tool!(w, "read_file", json!({"path": path, "line_count": 80}));
+            Ok(w.end(
+                format!("Here is `{path}`:\n\n```\n{}\n```", excerpt(&text, 8000)),
+                Outcome::Completed,
+            ))
+        }
+        Intent::Files(glob) => {
+            let text = tool!(w, "find_files", json!({"path": ".", "glob": glob, "limit": 50}));
+            let (paths, limited) = files(&text)?;
+            let count = paths.len();
+            let body = paths.iter().map(|p| format!("• `{p}`")).collect::<Vec<_>>().join("\n");
+            let notice = if limited { "\n\n*(Showing first 50 files)*" } else { "" };
+            Ok(w.end(
+                format!("Found {count} file{} matching `{glob}`:\n\n{body}{notice}", if count == 1 { "" } else { "s" }),
+                Outcome::Completed,
+            ))
+        }
+        Intent::Search(query) => {
+            let text = tool!(w, "search_code", json!({"query": query, "path": ".", "regex": false, "context_lines": 1, "limit": 30}));
+            let value: Value = serde_json::from_str(&text).map_err(|_| "invalid search result")?;
+            let mut ranked: Vec<(usize, String)> = value["matches"].as_array().ok_or("missing matches")?.iter().map(|entry| {
+                let path = entry["path"].as_str().filter(|p| safe_path(p, false)).ok_or("invalid search path")?;
+                let line = entry["line"].as_u64().filter(|n| *n > 0).ok_or("invalid search line")?;
+                let snippet = entry["excerpt"].as_str().ok_or("missing excerpt")?;
+                Ok((snippet.to_ascii_lowercase().matches(&query.to_ascii_lowercase()).count(), format!("• `{path}:{line}`\n```\n{snippet}\n```")))
+            }).collect::<Result<Vec<_>, String>>()?;
+            ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+            let count = ranked.len();
+            if count == 0 {
+                Ok(w.end(
+                    format!("No code occurrences of symbol `{query}` were found in this project."),
+                    Outcome::Completed,
+                ))
+            } else {
+                let limited = value["scan_limited"] == true || !value["next_offset"].is_null();
+                let matches_str = ranked.iter().map(|(_, row)| row.as_str()).collect::<Vec<_>>().join("\n\n");
+                let notice = if limited { "\n\n*(Search scan coverage limited)*" } else { "" };
+                let s = if count == 1 { "" } else { "s" };
+                Ok(w.end(
+                    format!("Found {count} occurrence{s} of `{query}`:\n\n{matches_str}{notice}"),
+                    Outcome::Completed,
+                ))
+            }
+        }
+        Intent::Inspect => {
+            let text = tool!(w, "find_files", json!({"path": ".", "limit": 50}));
+            let (paths, limited) = files(&text)?;
+            let manifests: Vec<&String> = paths.iter().filter(|p| ["Cargo.toml", "package.json", "pyproject.toml", "go.mod"].contains(&p.as_str())).take(3).collect();
+            let mut report = format!("Project Workspace ({} files discovered):\n{}\n", paths.len(), paths.iter().map(|p| format!("• `{p}`")).collect::<Vec<_>>().join("\n"));
+            for path in &manifests {
+                let content = tool!(w, "read_file", json!({"path": path, "line_count": 200}));
+                report.push_str(&format!("\nConfiguration from `{path}`:\n```\n{}\n```\n", excerpt(&content, 2200)));
+                if path.as_str() == "package.json" && let Ok(package) = serde_json::from_str::<Value>(payload(&content)) {
+                    report.push_str(&format!("Package: {}; version: {}.\n", package["name"].as_str().unwrap_or("not declared"), package["version"].as_str().unwrap_or("not declared")));
+                    if let Some(deps) = package["dependencies"].as_object() {
+                        report.push_str(&format!("Declared dependencies: {}.\n", deps.keys().take(20).cloned().collect::<Vec<_>>().join(", ")));
+                    }
+                }
+            }
+            if manifests.is_empty() {
+                report.push_str("No standard root manifest found.\n");
+            }
+            if limited {
+                report.push_str("*(Inventory truncated to first 50 files)*\n");
+            }
+            Ok(w.end(excerpt(&report, 8000), Outcome::Completed))
+        }
+        Intent::Checks(kind) => {
+            if !request.permits_tool("run_command") {
+                return Ok(w.limitation("commands require an offered run_command tool and Nio's Build-mode approval", false));
+            }
+            let text = tool!(w, "find_files", json!({"path": ".", "limit": 50}));
+            let (paths, limited) = files(&text)?;
+            let (command, source): (String, String) = if paths.iter().any(|p| p == ".nioxs.json") {
+                let text = tool!(w, "read_file", json!({"path": ".nioxs.json", "line_count": 200}));
+                let config: Value = serde_json::from_str(payload(&text)).map_err(|_| "invalid or truncated .nioxs.json")?;
+                if config["schema_version"] != 1 {
+                    return Err("unsupported .nioxs.json schema".into());
+                }
+                let Some(command) = config["commands"][&kind].as_str() else {
+                    return Ok(w.end(format!("No {kind} command configured in .nioxs.json."), Outcome::Clarification));
+                };
+                let allowed = ["cargo test --locked", "cargo build --locked", "cargo clippy --locked -- -D warnings", "npm test", "npm run test", "npm run build", "npm run lint", "python3 -m unittest", "python3 -m pytest", "go test ./...", "go build ./...", "go vet ./..."];
+                if !allowed.contains(&command) {
+                    return Ok(w.limitation("configured command outside Nano's supported named-command set", false));
+                }
+                (command.into(), ".nioxs.json".into())
+            } else if paths.iter().any(|p| p == "Cargo.toml") {
+                (match kind.as_str() { "test" => "cargo test --locked", "build" => "cargo build --locked", _ => "cargo clippy --locked -- -D warnings" }.into(), "Cargo.toml (fixed Rust mapping)".into())
+            } else if paths.iter().any(|p| p == "package.json") {
+                let text = tool!(w, "read_file", json!({"path": "package.json", "line_count": 200}));
+                let package: Value = serde_json::from_str(payload(&text)).map_err(|_| "invalid or truncated package.json")?;
+                if package["scripts"][&kind].as_str().is_none() {
+                    return Ok(w.end(format!("package.json has no {kind} script."), Outcome::Clarification));
+                }
+                (format!("npm run {kind}"), "package.json scripts".into())
+            } else {
+                return Ok(w.end(format!("No supported {kind} command found{}; configure .nioxs.json.", if limited { " in incomplete inventory" } else { "" }), Outcome::Clarification));
+            };
+            let result = tool!(w, "run_command", json!({"command": command}));
+            Ok(w.end(format!("{kind} checks completed successfully (`{command}` from {source}):\n\n```\n{}\n```", excerpt(&result, 6500)), Outcome::Completed))
+        }
         Intent::WebFetch(url) => {
             let text = if request.permits_tool("web_fetch") {
                 tool!(w, "web_fetch", json!({"url": url}))
@@ -710,23 +790,28 @@ if limited{report.push_str("File inventory incomplete.\n");}Ok(w.end(excerpt(&re
             if report.passages.is_empty() {
                 Ok(w.end(
                     format!(
-                        "No cited passages found for '{query}'. Visited {} candidate sources.",
-                        report.sources_visited.len()
+                        "I searched for '{query}' across web and documentation sources, but didn't find high-confidence cited passages. Try checking Wikipedia with `wiki {query}`."
                     ),
                     Outcome::Completed,
                 ))
             } else {
-                let mut report_text = format!("Research report for '{query}':\n\n");
-                for (idx, passage) in report.passages.iter().enumerate() {
-                    report_text.push_str(&format!(
-                        "### Source [{}] ({})\nTitle: {}\n\n{}\n\n",
-                        idx + 1,
-                        passage.url,
-                        passage.title,
-                        passage.excerpt
-                    ));
+                let top = &report.passages[0];
+                let mut answer = format!("Based on findings for **{query}**:\n\n{}\n\n", top.excerpt.trim());
+                if report.passages.len() > 1 {
+                    answer.push_str("Key details from additional sources:\n");
+                    for p in &report.passages[1..] {
+                        let snippet = p.excerpt.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+                        if !snippet.is_empty() {
+                            answer.push_str(&format!("• **{}**: {}\n", p.title, snippet));
+                        }
+                    }
+                    answer.push('\n');
                 }
-                Ok(w.end(excerpt(&report_text, 8000), Outcome::Completed))
+                answer.push_str("Sources:\n");
+                for (idx, passage) in report.passages.iter().enumerate() {
+                    answer.push_str(&format!("{}. [{}]({})\n", idx + 1, passage.title, passage.url));
+                }
+                Ok(w.end(excerpt(&answer, 8000), Outcome::Completed))
             }
         }
         Intent::Wiki(query) => {
