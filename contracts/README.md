@@ -25,11 +25,13 @@ The server accepts at most 512 KiB request bodies, 200 messages, 64 tool definit
 
 If no read_file is offered, or tool_choice prevents automatic tools, Nano returns a limitation and no action. This is how Nio's no-tools/no-project-tools restriction reaches the provider. Tool/schema descriptions and source content are data; they do not select arbitrary commands or grant permissions.
 
-## Continuation and handoff
+## Continuation, Consult & Execute, and handoff
 
 The standard completion/stream shape is preserved. The additional `nioxs` object appears on the JSON completion or terminal SSE chunk, with schema_version, turn_id, provider, model, outcome, and optional handoff. Outcomes: tool_required, completed, capability_limitation, clarification, tool_failed, unknown_action.
 
-A limitation has an ordinary standard answer explaining the boundary. Nio-aware clients can inspect handoff.reason, continuation_required, and completed_action_ids. No new OpenAI finish_reason is invented. Automatic LLM switching is Phase 4; the Nio adapter does not yet consume this metadata for switching.
+In **Consult & Execute** (Phase 4), NioNano remains sovereign and requests advisory LLM assistance via a client tool `consult_llm`. Nio brokers the consultation call against the user's configured provider, returns the advice, and Nano safely parses, verifies, and executes bounded code edits and test checks (`run_checks`).
+
+In **Handoff**, a limitation has an ordinary standard answer explaining the boundary. Nio-aware clients can inspect handoff.reason, continuation_required, and completed_action_ids. No new OpenAI finish_reason is invented. Automatic LLM switching is Phase 4; the Nio adapter can consume this metadata for switching when complete delegation is desired.
 
 Clients execute tool_calls, append the assistant message and tool results, and submit the continued history. IDs and function arguments must match the Nano action. Actions are deterministic within their workflow turn and typed arguments. Unsupported requests abstain. Immutable claims/outcomes prevent automatic command replay; uncertain outcomes are unknown, not silently retried. This is not an exactly-once guarantee.
 

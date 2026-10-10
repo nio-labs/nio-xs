@@ -73,16 +73,20 @@ Goal: search, visit useful websites, and return evidence with complexity-based r
 
 Exit evidence: a lookup stops when its required fields are found, a comparison expands only when needed, blocked pages cannot create loops, and reported excerpts match linked sources.
 
-## Phase 4 — Automatic handoff, API compatibility, and local MCP
+## Phase 4 — Consult & Execute, automatic handoff, and API/MCP interoperability
 
-Goal: continue unsupported work on the configured LLM and support initial external integrations.
+Goal: empower NioNano as a small coding agent via LLM consultation ("Consult & Execute") while preserving sovereign execution, with handoff as an escape hatch, API compatibility, and local MCP.
 
-- [ ] Implement fallback policy and triggers: unsupported intent, abstention, broader reasoning needs, and repeated lack of useful progress.
+- [ ] Define the typed client tool contract for `consult_llm` (prompt, context excerpts, patch/instruction schema) executed via Nio's provider broker.
+- [ ] Implement NioNano's coding agent loop: inspect failure/code → assemble compact context → dispatch `consult_llm` → parse advisory patch.
+- [ ] Implement bounded, verified code modification: safe file editing (`edit_file` / `apply_patch`) validating against `safe_path` and project trust.
+- [ ] Implement the verification loop: run configured checks (`run_checks`) post-edit and iterate or terminate within the 8-action budget.
+- [ ] Implement fallback policy and handoff triggers: unsupported conversational tasks, classifier abstention, or exhausted budget after consultation.
 - [ ] Keep missing-input clarification separate from escalation; do not escalate just because a page is blocked or a tool fails once.
-- [ ] Persist handoff state and actual backend path in scoped NioDB run records while keeping credentials in Nio.
+- [ ] Persist consultation/handoff state and actual backend path in scoped NioDB run records while keeping credentials in Nio.
 - [ ] Add opt-in feedback records with retention and explicit export; no automatic prompt upload or retraining.
 - [ ] Assemble bounded handoff packets with request context, evidence, tool-call/result groups, completed side effects, gaps, and current permissions.
-- [ ] Implement the NioXS handoff extension and Nio's automatic continuation on the user-configured LLM provider.
+- [ ] Implement the NioXS handoff extension and Nio's automatic continuation on the user-configured LLM provider when full delegation is needed.
 - [ ] Keep user provider credentials in Nio; show NioNano → configured LLM with the reason and actual backend path.
 - [ ] Handle disabled/missing fallback, provider failures, cancellation, follow-up turns, and one-handoff-per-turn limits.
 - [ ] Verify no replayed edits/commands and no handoff after denied approvals or cancellation.
@@ -92,7 +96,7 @@ Goal: continue unsupported work on the configured LLM and support initial extern
 - [ ] Connect Nio's broker to one configured local MCP server; map known schemas to Nano workflows and abstain on unknown tools.
 - [ ] Test external API and MCP tool loops, cancellation, history continuity, and no-tools enforcement.
 
-Exit evidence: an unsupported request continues on the configured LLM without losing progress; a supported request stays on Nano; an external API client and both initial local MCP roles work under the documented scope.
+Exit evidence: coding requests successfully consult the LLM, apply bounded edits, and verify tests without losing Nano's execution sovereignty; unsupported conversational requests hand off cleanly; external API and MCP tools work under documented scope.
 
 ## Phase 5 — Packaging, evaluation, and v0.1.0 release
 

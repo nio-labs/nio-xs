@@ -172,11 +172,28 @@ Measure false acceptance of unsupported tasks, workflow success, fallback precis
 
 Feedback collection is optional and scoped to the deployment by default. For local deployments, there is no automatic upload of prompts, project files, or tool outputs. Hosted inference necessarily sends request context and client-executed tool results to the NioXS endpoint; that does not authorize retaining them as training data. Retraining and artifact publication are explicit maintainer workflows, not uncontrolled learning during every session.
 
-## 8. LLM handoff semantics
+## 8. LLM consultation and handoff semantics (Consult & Execute)
 
-Fallback triggers: unsupported capability, validated classifier abstention, required reasoning outside a workflow, or repeated lack of useful progress within the workflow budget. A single tool failure is not enough.
+NioNano acts as a sovereign, bounded agent controller. Rather than unconditionally yielding the entire conversation loop to an LLM upon hitting complex tasks, NioNano supports two complementary integration modes: **Consult & Execute** (primary) and **Full Handoff** (fallback escape hatch).
 
-Do not hand off to evade a denied approval, restricted project scope, user cancellation, or local-only policy. Distinguish missing user input from missing capability: clarify inputs rather than spending an LLM call unnecessarily. Network outages and CAPTCHA exhaustion can remain partial results.
+### Consult & Execute (Small Coding Agent loop)
+
+In Consult & Execute, NioNano remains in the driver's seat throughout the entire turn:
+1. **Context & Inspection**: Nano navigates the project, performs symbol search (`search_code`), file reads (`read_file`), and failure inspection (`run_checks`).
+2. **Consultation tool dispatch**: When synthesis, complex logic, or code modifications are required, Nano dispatches a typed client tool call: `consult_llm { "prompt": ..., "context": ..., "format": "patch" | "instruction" }`.
+3. **Client execution**: Nio executes the consultation against the user-configured LLM provider, ensuring all API credentials remain securely inside Nio.
+4. **Validation and execution**: Nano inspects the LLM's advisory output, verifies paths against `safe_path`, validates patch syntax, and dispatches bounded modification tools (`edit_file` / `apply_patch`).
+5. **Verification loop**: Nano immediately verifies changes by executing configured checks (`run_checks`), reporting verified outcomes or re-consulting if checks fail within the 8-action budget.
+
+This turns NioNano into a fast, transparent **Small Coding Agent**: deterministically bounded by budgets and permissions, with the LLM used strictly as a stateless reasoning and diff oracle rather than an unconstrained conversational agent.
+
+### Full Handoff (Fallback escape hatch)
+
+When an open-ended conversational task or non-workflow instruction cannot be bounded within Nano's execution budget, NioXS produces a structured handoff.
+
+Fallback triggers: unsupported capability outside coding/inspection, validated classifier abstention, or repeated lack of progress after consultation. A single tool failure is not enough.
+
+Do not hand off or consult to evade a denied approval, restricted project scope, user cancellation, or local-only policy. Distinguish missing user input from missing capability: clarify inputs rather than spending an LLM call unnecessarily. Network outages and CAPTCHA exhaustion remain partial results.
 
 Handoff packet:
 
@@ -186,7 +203,7 @@ Handoff packet:
 - Source-linked excerpts, extracted fields, and timestamps.
 - Explicit gaps and reason for escalation.
 
-Keep complete tool-call/result groups when converting to provider messages. Compact irrelevant output to Nio's existing context budget. Re-read current file state before an LLM proposes edits following earlier actions.
+Keep complete tool-call/result groups when converting to provider messages. Compact irrelevant output to Nio's existing context budget. Re-read current file state before proposing edits following earlier actions.
 
 Display `NioNano → <configured LLM>: <reason>` as a status event. Automatic means no extra confirmation for each handoff when fallback policy is enabled; existing edit and command approvals still apply. A remote fallback sends relevant context to that configured provider. Local-only users can disable it or choose a local LLM endpoint.
 
