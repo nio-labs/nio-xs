@@ -22,6 +22,8 @@ pub enum Intent {
     Github(String),
     Package(String),
     Scaffold(String),
+    Greeting,
+    Help,
     Clarify(String),
     Unsupported,
 }
@@ -39,6 +41,8 @@ impl Intent {
             Self::Github(_) => "github_repo",
             Self::Package(_) => "package_info",
             Self::Scaffold(_) => "scaffold_template",
+            Self::Greeting => "greeting",
+            Self::Help => "help",
             Self::Clarify(_) => "clarify",
             Self::Unsupported => "unsupported",
         }
@@ -232,6 +236,18 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
             return Intent::Scaffold(tpl.to_string());
         }
     }
+    let trimmed = lower.trim().trim_end_matches(|c: char| "!?. \t\r\n".contains(c));
+    if ["hey", "hello", "hi", "good morning", "good evening", "howdy", "sup", "yo"]
+        .contains(&trimmed)
+    {
+        return Intent::Greeting;
+    }
+    if ["help", "what can you do", "commands", "usage", "capabilities"].contains(&trimmed) {
+        return Intent::Help;
+    }
+    if ["search my codebase", "search the codebase", "search codebase", "search code"].contains(&trimmed) {
+        return Intent::Clarify("Which literal text or symbol should I search for in the codebase?".into());
+    }
     let candidates = paths(prompt);
     match model.predict(prompt).label.as_str() {
         "read_file" => {
@@ -293,11 +309,11 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
                 Some(q)
                     if !q.is_empty()
                         && q.len() <= 240
-                        && !["it", "that", "this", "the thing"].contains(&q.as_str()) =>
+                        && !["it", "that", "this", "the thing", "my codebase", "the codebase", "codebase"].contains(&q.as_str()) =>
                 {
                     Intent::Search(q)
                 }
-                _ => Intent::Clarify("Which literal text or symbol should I search for?".into()),
+                _ => Intent::Clarify("Which literal text or symbol should I search for in the codebase?".into()),
             }
         }
         "run_checks" => {
@@ -737,6 +753,18 @@ if limited{report.push_str("File inventory incomplete.\n");}Ok(w.end(excerpt(&re
                 }
             }
         }
+        Intent::Greeting => {
+            Ok(w.end(
+                "Hello! I'm NioNano, your sovereign pair programmer and MicroLM. I can inspect your project, search code, run test/build checks, scaffold templates, or research the web. What would you like to work on?".into(),
+                Outcome::Completed,
+            ))
+        }
+        Intent::Help => {
+            Ok(w.end(
+                "NioNano MicroLM Capabilities:\n\n• Code Inspection: `read <file>`, `find <glob>`, `inspect project`\n• Code Search: `search code for <symbol>`\n• Checks: `run test check`, `run build check`, `run lint check`\n• Web Research: `wiki <topic>`, `github <repo>`, `what is <term>?`\n• Package Registry: `crate <name>`, `npm <name>`\n• Templates: `scaffold gitignore`, `scaffold github-ci`, `scaffold license-mit`".into(),
+                Outcome::Completed,
+            ))
+        }
     }
 }
 #[cfg(test)]
@@ -854,6 +882,12 @@ mod tests {
         assert_eq!(
             parse(model, "what is Jev?"),
             Intent::Research("Jev".into())
+        );
+        assert_eq!(parse(model, "hey"), Intent::Greeting);
+        assert_eq!(parse(model, "help"), Intent::Help);
+        assert_eq!(
+            parse(model, "search my codebase"),
+            Intent::Clarify("Which literal text or symbol should I search for in the codebase?".into())
         );
     }
 }
