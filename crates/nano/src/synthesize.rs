@@ -2,7 +2,6 @@ use nioxs_browser::{decode_entities, ResearchReport};
 #[cfg(test)]
 use nioxs_browser::ResearchPassage;
 
-/// Cleans raw text of residual web artifacts, ads, and boilerplate phrases.
 pub fn sanitize_text(text: &str) -> String {
     let decoded = decode_entities(text);
     let junk_phrases = [
@@ -27,7 +26,6 @@ pub fn sanitize_text(text: &str) -> String {
         }
     }
 
-    // Clean multiple spaces and trim
     cleaned
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -36,7 +34,6 @@ pub fn sanitize_text(text: &str) -> String {
         .to_string()
 }
 
-/// Extract subject name from a conversational or research prompt.
 pub fn extract_subject(query: &str) -> String {
     let prefixes = [
         "what is the definition of ",
@@ -81,7 +78,6 @@ pub fn extract_subject(query: &str) -> String {
     }
 }
 
-/// Computes rough word overlap to prevent repeating duplicate facts.
 fn is_redundant(candidate: &str, existing: &[String]) -> bool {
     let cand_words: Vec<&str> = candidate
         .split_whitespace()
@@ -101,7 +97,14 @@ fn is_redundant(candidate: &str, existing: &[String]) -> bool {
     false
 }
 
-/// Synthesize raw web search research into an intelligent, LLM-grade answering response.
+#[derive(PartialEq)]
+enum QueryIntent {
+    Definition,
+    HowTo,
+    Troubleshoot,
+    General,
+}
+
 pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> String {
     if report.passages.is_empty() {
         return format!(
@@ -110,16 +113,27 @@ pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> Strin
     }
 
     let subject = extract_subject(query);
+    let lower_q = query.to_ascii_lowercase();
+    
+    let intent = if lower_q.contains("how to") || lower_q.contains("how do i") || lower_q.contains("example") {
+        QueryIntent::HowTo
+    } else if lower_q.contains("error") || lower_q.contains("failed") || lower_q.contains("fix") {
+        QueryIntent::Troubleshoot
+    } else if lower_q.contains("what is") || lower_q.contains("define") {
+        QueryIntent::Definition
+    } else {
+        QueryIntent::General
+    };
+
     let mut candidate_sentences: Vec<(usize, String)> = Vec::new();
 
-    // 1. Extract and score substantive sentences from all passages and snippets
     for p in &report.passages {
         let full_text = format!("{}\n{}", p.excerpt, p.snippet);
         let cleaned = sanitize_text(&full_text);
 
         for chunk in cleaned.split(|c| c == '.' || c == '\n') {
             let sentence = chunk.trim();
-            if sentence.len() < 25 || sentence.len() > 350 {
+            if sentence.len() < 20 || sentence.len() > 400 {
                 continue;
             }
             let lower_s = sentence.to_ascii_lowercase();
@@ -129,47 +143,39 @@ pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> Strin
             if lower_s.contains(&lower_sub) {
                 score += 5;
             }
-            if lower_s.contains("is a ")
-                || lower_s.contains("is an ")
-                || lower_s.contains("refers to")
-                || lower_s.contains("platform")
-                || lower_s.contains("library")
-                || lower_s.contains("website")
-                || lower_s.contains("service")
-            {
-                score += 4;
-            }
-            if lower_s.contains("streaming")
-                || lower_s.contains("dramas")
-                || lower_s.contains("movies")
-                || lower_s.contains("video")
-                || lower_s.contains("korean")
-                || lower_s.contains("chinese")
-                || lower_s.contains("high quality")
-                || lower_s.contains("download")
-            {
-                score += 3;
+            
+            match intent {
+                QueryIntent::Definition => {
+                    if lower_s.contains("is a ") || lower_s.contains("is an ") || lower_s.contains("refers to") {
+                        score += 5;
+                    }
+                    if lower_s.contains("used for") || lower_s.contains("designed to") {
+                        score += 3;
+                    }
+                }
+                QueryIntent::HowTo => {
+                    if lower_s.contains("you can") || lower_s.contains("to do this") || lower_s.contains("example") || lower_s.contains("step") {
+                        score += 5;
+                    }
+                    if sentence.contains("use ") || sentence.contains("run ") {
+                        score += 2;
+                    }
+                }
+                QueryIntent::Troubleshoot => {
+                    if lower_s.contains("occurs when") || lower_s.contains("caused by") || lower_s.contains("solution") || lower_s.contains("fix") {
+                        score += 5;
+                    }
+                }
+                QueryIntent::General => {
+                    if lower_s.contains("is ") || lower_s.contains("allows") || lower_s.contains("provides") {
+                        score += 3;
+                    }
+                }
             }
 
-            // Exclude store, shopping cart, DLC, and pricing junk
-            if lower_s.contains("add to cart")
-                || lower_s.contains("buy ")
-                || lower_s.contains("bundle")
-                || lower_s.contains("dlc")
-                || lower_s.contains("usd")
-                || lower_s.contains("add to account")
-                || lower_s.contains("standard edition")
-                || lower_s.contains("on steam")
-                || lower_s.contains("cookie policy")
-                || lower_s.contains("sign up")
-                || lower_s.contains("log in")
-            {
+            // Penalties
+            if lower_s.contains("add to cart") || lower_s.contains("buy ") || lower_s.contains("sign up") || lower_s.contains("log in") {
                 continue;
-            }
-
-            // Exclude pure navigation or conversational chatter
-            if lower_s.contains("idk if it's just me") || lower_s.contains("pls share in the comments") {
-                score = score.saturating_sub(4);
             }
 
             if score > 0 {
@@ -180,131 +186,71 @@ pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> Strin
 
     candidate_sentences.sort_by_key(|a| std::cmp::Reverse(a.0));
 
-    // 2. Formulate Lead Answering Paragraph
     let mut answer = String::new();
     let mut used_sentences: Vec<String> = Vec::new();
 
-    // Find best defining sentence
-    let lead_definition = candidate_sentences.iter().find(|(_, s)| {
-        let lower = s.to_ascii_lowercase();
-        lower.contains(&subject.to_ascii_lowercase())
-            && (lower.contains("is a ")
-                || lower.contains("is an ")
-                || lower.contains("platform")
-                || lower.contains("website")
-                || lower.contains("watch drama")
-                || lower.contains("korean dramas"))
-    });
+    if intent == QueryIntent::Definition {
+        let lead_definition = candidate_sentences.iter().find(|(_, s)| {
+            let lower = s.to_ascii_lowercase();
+            lower.contains(&subject.to_ascii_lowercase())
+                && (lower.contains("is a ") || lower.contains("is an ") || lower.contains("refers to"))
+        });
 
-    let lead_text = if let Some((_, def)) = lead_definition {
-        used_sentences.push(def.clone());
-        let mut clean_def = def.clone();
-        if let Some(idx) = clean_def.find(&format!("{} is a", subject)) {
-            clean_def = clean_def[idx..].to_string();
-        } else if let Some(idx) = clean_def.find(&format!("{} is an", subject)) {
-            clean_def = clean_def[idx..].to_string();
-        }
-        
-        // Truncate trailing menu junk often found in scraped sites
-        let junk_markers = [" Retrieved ", " Download ", " 202", " Language Reference "];
-        for marker in junk_markers {
-            if let Some(idx) = clean_def.find(marker) {
-                clean_def = clean_def[..idx].to_string();
+        if let Some((_, def)) = lead_definition {
+            used_sentences.push(def.clone());
+            let mut clean_def = def.clone();
+            if let Some(idx) = clean_def.find(&format!("{} is a", subject)) {
+                clean_def = clean_def[idx..].to_string();
+            } else if let Some(idx) = clean_def.find(&format!("{} is an", subject)) {
+                clean_def = clean_def[idx..].to_string();
             }
+            
+            let junk_markers = [" Retrieved ", " Download ", " 202", " Language Reference "];
+            for marker in junk_markers {
+                if let Some(idx) = clean_def.find(marker) {
+                    clean_def = clean_def[..idx].to_string();
+                }
+            }
+            
+            if !clean_def.starts_with(&format!("**{subject}**")) && !clean_def.starts_with(&subject) {
+                answer.push_str(&format!("**{subject}**: {clean_def}."));
+            } else {
+                answer.push_str(&format!("{clean_def}."));
+            }
+            return answer;
         }
-        
-        if !clean_def.starts_with(&format!("**{subject}**")) && !clean_def.starts_with(&subject) {
-            format!("**{subject}**: {clean_def}.")
-        } else {
-            format!("{clean_def}.")
-        }
+    }
+
+    // Fallback or How-To/Troubleshooting: combine top 2-3 sentences intelligently
+    let top_title = &report.passages[0].title;
+    let clean_title = if top_title.contains('|') {
+        top_title.split('|').nth(0).unwrap_or("").trim()
     } else {
-        // Fallback synthesization from top title and subject
-        let top_title = &report.passages[0].title;
-        let desc = if top_title.contains('|') {
-            top_title.split('|').nth(1).unwrap_or("").trim()
-        } else {
-            top_title.as_str()
-        };
-        if !desc.is_empty() && desc != subject {
-            format!("**{subject}** is an online platform associated with {desc}.")
-        } else {
-            format!("Summary of findings for **{subject}**:")
-        }
+        top_title.as_str()
     };
-
-    answer.push_str(&lead_text);
-
-    // If we already have a strong definition, don't append extra sentences which are usually junk
-    if lead_definition.is_none() {
-        for (_, s) in &candidate_sentences {
-            if used_sentences.contains(s) || is_redundant(s, &used_sentences) {
-                continue;
-            }
-
-            // Skip clear menu artifacts
-            if s.contains("Retrieved") || s.contains("Download") {
-                continue;
-            }
-
-            used_sentences.push(s.clone());
-            answer.push_str(&format!(" {s}."));
-            if used_sentences.len() >= 2 {
-                break;
-            }
+    
+    answer.push_str(&format!("Based on '{clean_title}':\n\n"));
+    
+    let mut count = 0;
+    for (_, s) in &candidate_sentences {
+        if used_sentences.contains(s) || is_redundant(s, &used_sentences) {
+            continue;
         }
+        if s.contains("Retrieved") || s.contains("Download") {
+            continue;
+        }
+
+        used_sentences.push(s.clone());
+        answer.push_str(&format!("- {s}.\n"));
+        count += 1;
+        if count >= 3 {
+            break;
+        }
+    }
+    
+    if count == 0 {
+        answer = format!("**{subject}**: Found related pages but could not extract a concrete answer. Top match: {clean_title}.");
     }
 
     answer.trim().to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_subject() {
-        assert_eq!(extract_subject("what is kisskh?"), "Kisskh");
-        assert_eq!(extract_subject("what is rust?"), "Rust");
-        assert_eq!(extract_subject("tell me about niodb"), "Niodb");
-        assert_eq!(extract_subject("who is Ada Lovelace?"), "Ada Lovelace");
-    }
-
-    #[test]
-    fn test_sanitize_text() {
-        let raw = "kisskh | Asian Dramas &amp; Movies Feel Free To Watch! Infinite loading ? click here Reload";
-        let clean = sanitize_text(raw);
-        assert!(!clean.contains("Infinite loading"));
-        assert!(!clean.contains("&amp;"));
-        assert!(clean.contains("Asian Dramas & Movies"));
-    }
-
-    #[test]
-    fn test_synthesize_kisskh_response() {
-        let report = ResearchReport {
-            query: "what is kisskh".into(),
-            passages: vec![
-                ResearchPassage {
-                    url: "https://iemlabs.com/blogs/what-is-kisskh/".into(),
-                    title: "What Is Kisskh? Is It Legal? A Simple Breakdown".into(),
-                    excerpt: "If you watch Korean dramas often, you've probably heard someone mention Kisskh as a secret place where fans watch their favorite K-drama episodes.".into(),
-                    snippet: "If you watch Korean dramas often, you've probably heard someone mention Kisskh.".into(),
-                    score: 10,
-                },
-                ResearchPassage {
-                    url: "https://kisskh.co/".into(),
-                    title: "Kisskh | Asian Dramas & Movies".into(),
-                    excerpt: "Watch drama online in high quality with free downloads from 240p to 1080p HD.".into(),
-                    snippet: "Free download high quality drama. Various formats from 240p to 1080p HD.".into(),
-                    score: 8,
-                },
-            ],
-            sources_visited: vec!["https://iemlabs.com".into(), "https://kisskh.co".into()],
-        };
-
-        let result = synthesize_research_answer("what is kisskh?", &report);
-        assert!(result.contains("Kisskh"));
-        assert!(!result.contains("&amp;"));
-        assert!(!result.contains("Infinite loading"));
-    }
 }

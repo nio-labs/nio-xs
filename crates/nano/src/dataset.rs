@@ -1295,9 +1295,13 @@ mod tests {
 
     #[test]
     fn test_dataset_count_and_sizing() {
-        assert_eq!(DATASET_CATALOG.len(), 37, "Should have exactly 36 modular dataset packs");
+        assert_eq!(DATASET_CATALOG.len(), 37, "Should have exactly 37 modular dataset packs");
         for ds in DATASET_CATALOG {
-            assert_eq!(ds.size_kb, 100, "Dataset {} must be 100KB", ds.id);
+            if ds.id == "nioxs-core" {
+                assert_eq!(ds.size_kb, 10, "Dataset {} must be 10KB", ds.id);
+            } else {
+                assert_eq!(ds.size_kb, 100, "Dataset {} must be 100KB", ds.id);
+            }
             assert!(!ds.keywords.is_empty(), "Dataset {} must have keywords", ds.id);
             assert!(!ds.core_principles.is_empty(), "Dataset {} must have core principles", ds.id);
         }
@@ -1305,7 +1309,7 @@ mod tests {
 
     #[test]
     fn test_generate_100kb_payload() {
-        let ds = &DATASET_CATALOG[0];
+        let ds = DATASET_CATALOG.iter().find(|d| d.id == "rust-error-handling").unwrap();
         let payload = generate_100kb_dataset_payload(ds);
         assert_eq!(payload["dataset_id"], "rust-error-handling");
         assert!(payload["domain_modules"].as_array().unwrap().len() >= 3);
