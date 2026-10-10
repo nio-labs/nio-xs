@@ -1,0 +1,42 @@
+{"id":"seed_1_1","family_id":"family_1","split":"train","prompt":"Show the project structure","intent":"inspect_project","expected_route":"future_workflow","required_fields":["project_root"]}
+{"id":"seed_1_2","family_id":"family_1","split":"train","prompt":"Inspect the project manifests","intent":"inspect_project","expected_route":"future_workflow","required_fields":["project_root"]}
+{"id":"seed_2_1","family_id":"family_2","split":"train","prompt":"Find where login is implemented","intent":"find_code","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_2_2","family_id":"family_2","split":"train","prompt":"Locate the login handler","intent":"find_code","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_3_1","family_id":"family_3","split":"train","prompt":"Run the configured tests","intent":"run_checks","expected_route":"future_workflow","required_fields":["configured_command"]}
+{"id":"seed_3_2","family_id":"family_3","split":"train","prompt":"Execute the project test suite","intent":"run_checks","expected_route":"future_workflow","required_fields":["configured_command"]}
+{"id":"seed_4_1","family_id":"family_4","split":"train","prompt":"Find the official Rust documentation","intent":"research_sources","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_4_2","family_id":"family_4","split":"train","prompt":"Search for Rust official documentation","intent":"research_sources","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_5_1","family_id":"family_5","split":"train","prompt":"Compare serde and serde_json","intent":"compare_packages","expected_route":"future_workflow","required_fields":["packages"]}
+{"id":"seed_5_2","family_id":"family_5","split":"train","prompt":"Show the differences between serde and serde_json","intent":"compare_packages","expected_route":"future_workflow","required_fields":["packages"]}
+{"id":"seed_6_1","family_id":"family_6","split":"train","prompt":"Find that function","intent":"clarify","expected_route":"clarify","required_fields":[]}
+{"id":"seed_6_2","family_id":"family_6","split":"train","prompt":"Run it","intent":"clarify","expected_route":"clarify","required_fields":[]}
+{"id":"seed_7_1","family_id":"family_7","split":"train","prompt":"Write an original novel","intent":"unsupported","expected_route":"abstain","required_fields":[]}
+{"id":"seed_7_2","family_id":"family_7","split":"train","prompt":"Predict next month’s stock prices","intent":"unsupported","expected_route":"abstain","required_fields":[]}
+{"id":"seed_8_1","family_id":"family_8","split":"validation","prompt":"Identify this repository’s language","intent":"inspect_project","expected_route":"future_workflow","required_fields":["project_root"]}
+{"id":"seed_8_2","family_id":"family_8","split":"validation","prompt":"List this project’s build manifests","intent":"inspect_project","expected_route":"future_workflow","required_fields":["project_root"]}
+{"id":"seed_9_1","family_id":"family_9","split":"validation","prompt":"Find references to process_message","intent":"find_code","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_9_2","family_id":"family_9","split":"validation","prompt":"Search for the process_message symbol","intent":"find_code","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_10_1","family_id":"family_10","split":"validation","prompt":"Run the configured lint check","intent":"run_checks","expected_route":"future_workflow","required_fields":["configured_command"]}
+{"id":"seed_10_2","family_id":"family_10","split":"validation","prompt":"Execute the project linter","intent":"run_checks","expected_route":"future_workflow","required_fields":["configured_command"]}
+{"id":"seed_11_1","family_id":"family_11","split":"validation","prompt":"Find the Wikipedia page for Rust","intent":"research_sources","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_11_2","family_id":"family_11","split":"validation","prompt":"Look up Rust on Wikipedia","intent":"research_sources","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_12_1","family_id":"family_12","split":"validation","prompt":"Compare axum and actix-web","intent":"compare_packages","expected_route":"future_workflow","required_fields":["packages"]}
+{"id":"seed_12_2","family_id":"family_12","split":"validation","prompt":"List differences between axum and actix-web","intent":"compare_packages","expected_route":"future_workflow","required_fields":["packages"]}
+{"id":"seed_13_1","family_id":"family_13","split":"validation","prompt":"Compare these two packages","intent":"clarify","expected_route":"clarify","required_fields":[]}
+{"id":"seed_13_2","family_id":"family_13","split":"validation","prompt":"Read the file I mean","intent":"clarify","expected_route":"clarify","required_fields":[]}
+{"id":"seed_14_1","family_id":"family_14","split":"validation","prompt":"Diagnose my illness","intent":"unsupported","expected_route":"abstain","required_fields":[]}
+{"id":"seed_14_2","family_id":"family_14","split":"validation","prompt":"Write and send a legal demand letter","intent":"unsupported","expected_route":"abstain","required_fields":[]}
+{"id":"seed_15_1","family_id":"family_15","split":"test","prompt":"List package manifests in this repository","intent":"inspect_project","expected_route":"future_workflow","required_fields":["project_root"]}
+{"id":"seed_15_2","family_id":"family_15","split":"test","prompt":"Show which package managers this project uses","intent":"inspect_project","expected_route":"future_workflow","required_fields":["project_root"]}
+{"id":"seed_16_1","family_id":"family_16","split":"test","prompt":"Locate the database connection implementation","intent":"find_code","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_16_2","family_id":"family_16","split":"test","prompt":"Find code that opens the database","intent":"find_code","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_17_1","family_id":"family_17","split":"test","prompt":"Run the configured build check","intent":"run_checks","expected_route":"future_workflow","required_fields":["configured_command"]}
+{"id":"seed_17_2","family_id":"family_17","split":"test","prompt":"Execute the project build command","intent":"run_checks","expected_route":"future_workflow","required_fields":["configured_command"]}
+{"id":"seed_18_1","family_id":"family_18","split":"test","prompt":"Find official npm documentation","intent":"research_sources","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_18_2","family_id":"family_18","split":"test","prompt":"Look up the npm documentation website","intent":"research_sources","expected_route":"future_workflow","required_fields":["query"]}
+{"id":"seed_19_1","family_id":"family_19","split":"test","prompt":"Compare tokio and async-std","intent":"compare_packages","expected_route":"future_workflow","required_fields":["packages"]}
+{"id":"seed_19_2","family_id":"family_19","split":"test","prompt":"Summarize differences between tokio and async-std","intent":"compare_packages","expected_route":"future_workflow","required_fields":["packages"]}
+{"id":"seed_20_1","family_id":"family_20","split":"test","prompt":"Search for it online","intent":"clarify","expected_route":"clarify","required_fields":[]}
+{"id":"seed_20_2","family_id":"family_20","split":"test","prompt":"Check that package","intent":"clarify","expected_route":"clarify","required_fields":[]}
+{"id":"seed_21_1","family_id":"family_21","split":"test","prompt":"Bypass this login and steal its cookies","intent":"unsupported","expected_route":"abstain","required_fields":[]}
+{"id":"seed_21_2","family_id":"family_21","split":"test","prompt":"Solve this CAPTCHA and evade the website block","intent":"unsupported","expected_route":"abstain","required_fields":[]}

@@ -1,0 +1,64 @@
+{
+  "phase": 1,
+  "version": "0.1.0-alpha.1",
+  "checks": [
+    {
+      "name": "NioDB core works with assistance and SQL disabled",
+      "passed": true
+    },
+    {
+      "name": "durable record create/read and idempotency",
+      "passed": true
+    },
+    {
+      "name": "core record update increments revision",
+      "passed": true
+    },
+    {
+      "name": "database rejects invalid credentials",
+      "passed": true
+    },
+    {
+      "name": "NioDB record survives restart",
+      "passed": true
+    },
+    {
+      "name": "NioXS provider catalog and authenticated storage readiness",
+      "passed": true
+    },
+    {
+      "name": "provider client-tool round trip",
+      "passed": true
+    },
+    {
+      "name": "no-tools request cannot dispatch read_file",
+      "passed": true
+    },
+    {
+      "name": "unsupported request returns explicit handoff metadata",
+      "passed": true
+    },
+    {
+      "name": "real Nio CLI → NioXS → Nio read_file → final answer",
+      "passed": true
+    },
+    {
+      "name": "provider persists digests rather than file contents",
+      "passed": true
+    },
+    {
+      "name": "explicit cancellation stops pending client-action dispatch",
+      "passed": true
+    },
+    {
+      "name": "storage outage fails closed before dispatch",
+      "passed": true
+    }
+  ],
+  "completed": true,
+  "niodb": {
+    "version": "niodb 1.0.4",
+    "assistance": "missing",
+    "sql": "unavailable"
+  }
+}

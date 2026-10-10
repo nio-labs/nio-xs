@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "rust_toolchain": "1.99.0",
+  "rust_dependencies": "Cargo.lock",
+  "niodb": {
+    "version": "1.0.4",
+    "tested_binary_sha256": "26b07380cea50a424396b39d4a8e748d8285e5797e4ea463f69765516ea8a30f",
+    "source_kind": "local development build",
+    "assistance_enabled": false,
+    "sql_enabled": false
+  },
+  "obscura": {
+    "version": "0.2.4",
+    "platform": "x86_64-linux",
+    "url": "https://github.com/h4ckf0r0day/obscura/releases/download/v0.2.4/obscura-x86_64-linux.tar.gz",
+    "archive_sha256": "757e7b597ba5cdd53af9fc701e0a9b80f0a8d788f545d4f82ec9ad32db77f000",
+    "release_digest_verified": true
+  },
+  "crawl4ai": {
+    "included": false,
+    "status": "optional runtime probe deferred"
+  },
+  "chromium": false,
+  "python_training": {
+    "release": "20261003",
+    "asset": "cpython-3.13.16+20261003-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261003/cpython-3.13.16%2B20261003-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+    "sha256": "4595c5589fff7bf0cb158d9a88a797e0d791fa33830770fcb7bf3f4b104feeae"
+  },
+  "nano": {
+    "version": "0.1.0-alpha.2",
+    "artifact": "models/nano.json",
+    "sha256": "f2ed1586e45c036053e5c399ecbe789471757be3ee65596d3a89bcf9f882582c",
+    "bytes": 52228,
+    "runtime": "Rust; Python offline only"
+  }
+}

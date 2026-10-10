@@ -1,0 +1,12 @@
+[package]
+name = "nioxs-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+[dependencies]
+nioxs-contracts = { path = "../contracts" }
+reqwest.workspace = true
+serde_json.workspace = true
+futures-util.workspace = true

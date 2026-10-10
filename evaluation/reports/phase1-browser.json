@@ -1,0 +1,126 @@
+{
+  "browser": "Obscura",
+  "version": "0.2.4",
+  "chromium": false,
+  "results": [
+    {
+      "source": "destination",
+      "url": "https://example.com",
+      "status": "readable",
+      "title": "Example Domain",
+      "text_bytes": 917,
+      "link_count": 1,
+      "destination_links": [
+        {
+          "title": "Learn more",
+          "url": "https://iana.org/help/example-domains"
+        }
+      ],
+      "elapsed_ms": 1046
+    },
+    {
+      "source": "destination",
+      "url": "https://en.wikipedia.org/wiki/Rust_(programming_language)",
+      "status": "readable",
+      "title": "Rust (programming language) - Wikipedia",
+      "text_bytes": 10000,
+      "link_count": 80,
+      "destination_links": [
+        {
+          "title": "Jump to content",
+          "url": "https://en.wikipedia.org/wiki/Rust_(programming_language)#bodyContent"
+        },
+        {
+          "title": "Main page",
+          "url": "https://en.wikipedia.org/wiki/Main_Page"
+        },
+        {
+          "title": "Contents",
+          "url": "https://en.wikipedia.org/wiki/Wikipedia:Contents"
+        },
+        {
+          "title": "Current events",
+          "url": "https://en.wikipedia.org/wiki/Portal:Current_events"
+        },
+        {
+          "title": "Random article",
+          "url": "https://en.wikipedia.org/wiki/Special:Random"
+        },
+        {
+          "title": "About Wikipedia",
+          "url": "https://en.wikipedia.org/wiki/Wikipedia:About"
+        }
+      ],
+      "elapsed_ms": 15096
+    },
+    {
+      "source": "google",
+      "url": "https://www.google.com/search?q=Rust+programming+language+official+documentation",
+      "status": "challenge",
+      "title": "https://www.google.com/search?q=Rust+programming+language+official+documentation&sei=jgXJarfIKpyw4-EP37WLoQk",
+      "text_bytes": 360,
+      "link_count": 3,
+      "destination_links": [
+        {
+          "title": "Learn more",
+          "url": "https://support.google.com/websearch/answer/86640"
+        }
+      ],
+      "elapsed_ms": 6171
+    },
+    {
+      "source": "duckduckgo",
+      "url": "https://duckduckgo.com/html/?q=Rust+programming+language+official+documentation",
+      "status": "readable",
+      "title": "Rust programming language official documentation at DuckDuckGo",
+      "text_bytes": 2973,
+      "link_count": 31,
+      "destination_links": [
+        {
+          "title": "Rust Documentation",
+          "url": "https://doc.rust-lang.org/"
+        },
+        {
+          "title": "doc.rust-lang.org",
+          "url": "https://doc.rust-lang.org/"
+        },
+        {
+          "title": "The Rust Programming Language Affectionately nicknamed \"the book,\" The Rust Programming Language will give you an overview of the language from first principles",
+          "url": "https://doc.rust-lang.org/"
+        },
+        {
+          "title": "Rust Programming Language",
+          "url": "https://rust-lang.org/"
+        },
+        {
+          "title": "rust-lang.org",
+          "url": "https://rust-lang.org/"
+        },
+        {
+          "title": "A language empowering everyone to build reliable and efficient software.",
+          "url": "https://rust-lang.org/"
+        }
+      ],
+      "official_destination": "https://doc.rust-lang.org/",
+      "elapsed_ms": 5484
+    },
+    {
+      "source": "bing",
+      "url": "https://www.bing.com/search?q=Rust+programming+language+official+documentation",
+      "status": "readable",
+      "title": "Rust programming language official documentation - Search",
+      "text_bytes": 2420,
+      "link_count": 40,
+      "destination_links": [],
+      "elapsed_ms": 5941
+    },
+    {
+      "source": "follow_search_result",
+      "search_engine": "duckduckgo",
+      "url": "https://doc.rust-lang.org/",
+      "status": "readable",
+      "text_bytes": 4356,
+      "excerpt": "Rust Documentation\n\nWelcome to an overview of the documentation provided by the Rust\nproject . This page contains links to various helpful references,\nmost of which are available offline (if opened with rustup doc). Many of these\nresources take the f"
+    }
+  ]
+}

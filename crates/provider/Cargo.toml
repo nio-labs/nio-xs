@@ -1,0 +1,20 @@
+[package]
+name = "nioxs-provider"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+[[bin]]
+name = "nioxs"
+path = "src/main.rs"
+[dependencies]
+nioxs-contracts = { path = "../contracts" }
+nioxs-nano = { path = "../nano" }
+nioxs-storage = { path = "../storage" }
+axum.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+futures-util.workspace = true
+[dev-dependencies]
+tower.workspace = true

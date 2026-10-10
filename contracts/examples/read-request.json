@@ -1,0 +1,10 @@
+{
+  "model": "nio-nano",
+  "messages": [{"role": "user", "content": "read README.md"}],
+  "tools": [{"type": "function", "function": {
+    "name": "read_file",
+    "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "line_count": {"type": "integer"}}, "required": ["path"]}
+  }}],
+  "tool_choice": "auto",
+  "stream": false
+}

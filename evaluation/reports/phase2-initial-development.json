@@ -1,0 +1,373 @@
+{
+  "model_version": "0.1.0-alpha.2",
+  "algorithm": "multinomial_naive_bayes",
+  "dataset_sha256": "108dff4e2d7b34a211dcad45d2976ea301524ef28e99130e5afd353c78b57fb4",
+  "artifact_sha256": "ce93a6bf92d1fa38e10514a0d406bf3c540ba9c736eee3909b330cc9930d36ec",
+  "train_records": 770,
+  "validation": {
+    "records": 200,
+    "macro_f1": 0.7959694678868752,
+    "unsupported_count": 80,
+    "unsupported_false_accepts": 24,
+    "unsupported_false_accept_rate": 0.3,
+    "classes": {
+      "read_file": {
+        "count": 20,
+        "f1": 1.0
+      },
+      "inspect_project": {
+        "count": 20,
+        "f1": 0.7017543859649122
+      },
+      "find_files": {
+        "count": 20,
+        "f1": 0.8333333333333334
+      },
+      "search_code": {
+        "count": 20,
+        "f1": 0.8333333333333334
+      },
+      "run_checks": {
+        "count": 20,
+        "f1": 0.9302325581395349
+      },
+      "clarify": {
+        "count": 20,
+        "f1": 0.46153846153846156
+      },
+      "unsupported": {
+        "count": 80,
+        "f1": 0.8115942028985508
+      }
+    },
+    "confusion": [
+      {
+        "actual": "clarify",
+        "predicted": "clarify",
+        "count": 6
+      },
+      {
+        "actual": "clarify",
+        "predicted": "inspect_project",
+        "count": 9
+      },
+      {
+        "actual": "clarify",
+        "predicted": "run_checks",
+        "count": 3
+      },
+      {
+        "actual": "clarify",
+        "predicted": "unsupported",
+        "count": 2
+      },
+      {
+        "actual": "find_files",
+        "predicted": "find_files",
+        "count": 20
+      },
+      {
+        "actual": "inspect_project",
+        "predicted": "inspect_project",
+        "count": 20
+      },
+      {
+        "actual": "read_file",
+        "predicted": "read_file",
+        "count": 20
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "run_checks",
+        "count": 20
+      },
+      {
+        "actual": "search_code",
+        "predicted": "search_code",
+        "count": 20
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "find_files",
+        "count": 8
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "inspect_project",
+        "count": 8
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "search_code",
+        "count": 8
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "unsupported",
+        "count": 56
+      }
+    ]
+  },
+  "test": {
+    "records": 300,
+    "macro_f1": 0.7189320046904457,
+    "unsupported_count": 130,
+    "unsupported_false_accepts": 55,
+    "unsupported_false_accept_rate": 0.4230769230769231,
+    "classes": {
+      "read_file": {
+        "count": 30,
+        "f1": 0.7407407407407407
+      },
+      "inspect_project": {
+        "count": 30,
+        "f1": 0.8108108108108109
+      },
+      "find_files": {
+        "count": 30,
+        "f1": 0.9090909090909091
+      },
+      "search_code": {
+        "count": 30,
+        "f1": 0.47619047619047616
+      },
+      "run_checks": {
+        "count": 30,
+        "f1": 0.8115942028985508
+      },
+      "clarify": {
+        "count": 20,
+        "f1": 0.6111111111111112
+      },
+      "unsupported": {
+        "count": 130,
+        "f1": 0.6729857819905213
+      }
+    },
+    "confusion": [
+      {
+        "actual": "clarify",
+        "predicted": "clarify",
+        "count": 11
+      },
+      {
+        "actual": "clarify",
+        "predicted": "inspect_project",
+        "count": 3
+      },
+      {
+        "actual": "clarify",
+        "predicted": "read_file",
+        "count": 2
+      },
+      {
+        "actual": "clarify",
+        "predicted": "search_code",
+        "count": 4
+      },
+      {
+        "actual": "find_files",
+        "predicted": "find_files",
+        "count": 30
+      },
+      {
+        "actual": "inspect_project",
+        "predicted": "inspect_project",
+        "count": 30
+      },
+      {
+        "actual": "read_file",
+        "predicted": "read_file",
+        "count": 30
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "clarify",
+        "count": 1
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "inspect_project",
+        "count": 1
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "run_checks",
+        "count": 28
+      },
+      {
+        "actual": "search_code",
+        "predicted": "read_file",
+        "count": 5
+      },
+      {
+        "actual": "search_code",
+        "predicted": "search_code",
+        "count": 15
+      },
+      {
+        "actual": "search_code",
+        "predicted": "unsupported",
+        "count": 10
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "clarify",
+        "count": 4
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "find_files",
+        "count": 6
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "inspect_project",
+        "count": 10
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "read_file",
+        "count": 14
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "run_checks",
+        "count": 11
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "search_code",
+        "count": 14
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "unsupported",
+        "count": 71
+      }
+    ]
+  },
+  "rule_baseline": {
+    "records": 300,
+    "macro_f1": 0.652947290516277,
+    "unsupported_count": 130,
+    "unsupported_false_accepts": 46,
+    "unsupported_false_accept_rate": 0.35384615384615387,
+    "classes": {
+      "read_file": {
+        "count": 30,
+        "f1": 0.6666666666666666
+      },
+      "inspect_project": {
+        "count": 30,
+        "f1": 1.0
+      },
+      "find_files": {
+        "count": 30,
+        "f1": 0.8333333333333334
+      },
+      "search_code": {
+        "count": 30,
+        "f1": 0.7017543859649122
+      },
+      "run_checks": {
+        "count": 30,
+        "f1": 0.6086956521739131
+      },
+      "clarify": {
+        "count": 20,
+        "f1": 0.0
+      },
+      "unsupported": {
+        "count": 130,
+        "f1": 0.7601809954751131
+      }
+    },
+    "confusion": [
+      {
+        "actual": "clarify",
+        "predicted": "read_file",
+        "count": 10
+      },
+      {
+        "actual": "clarify",
+        "predicted": "run_checks",
+        "count": 5
+      },
+      {
+        "actual": "clarify",
+        "predicted": "search_code",
+        "count": 5
+      },
+      {
+        "actual": "find_files",
+        "predicted": "find_files",
+        "count": 25
+      },
+      {
+        "actual": "find_files",
+        "predicted": "unsupported",
+        "count": 5
+      },
+      {
+        "actual": "inspect_project",
+        "predicted": "inspect_project",
+        "count": 30
+      },
+      {
+        "actual": "read_file",
+        "predicted": "read_file",
+        "count": 30
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "run_checks",
+        "count": 28
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "unsupported",
+        "count": 2
+      },
+      {
+        "actual": "search_code",
+        "predicted": "find_files",
+        "count": 5
+      },
+      {
+        "actual": "search_code",
+        "predicted": "read_file",
+        "count": 5
+      },
+      {
+        "actual": "search_code",
+        "predicted": "search_code",
+        "count": 20
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "read_file",
+        "count": 15
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "run_checks",
+        "count": 29
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "search_code",
+        "count": 2
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "unsupported",
+        "count": 84
+      }
+    ]
+  },
+  "threshold": 0.6,
+  "margin": 0.0,
+  "corpus_kind": "authored synthetic templates with family-separated splits; not real-world accuracy",
+  "acceptance_passed": false
+}

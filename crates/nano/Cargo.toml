@@ -1,0 +1,11 @@
+[package]
+name = "nioxs-nano"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+[dependencies]
+nioxs-contracts = { path = "../contracts" }
+serde_json.workspace = true
+serde.workspace = true

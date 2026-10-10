@@ -1,0 +1,199 @@
+{
+  "acceptance_passed": true,
+  "corpus_kind": "post-freeze authored synthetic corpus; not real-world accuracy",
+  "mismatches": [],
+  "model_version": "0.1.0-alpha.2",
+  "raw_classifier": {
+    "classes": [
+      {
+        "count": 25,
+        "f1": 0.9090909090909091,
+        "label": "read_file"
+      },
+      {
+        "count": 25,
+        "f1": 1.0,
+        "label": "inspect_project"
+      },
+      {
+        "count": 25,
+        "f1": 1.0,
+        "label": "find_files"
+      },
+      {
+        "count": 25,
+        "f1": 1.0,
+        "label": "search_code"
+      },
+      {
+        "count": 25,
+        "f1": 1.0,
+        "label": "run_checks"
+      },
+      {
+        "count": 25,
+        "f1": 0.8888888888888888,
+        "label": "clarify"
+      },
+      {
+        "count": 120,
+        "f1": 1.0,
+        "label": "unsupported"
+      }
+    ],
+    "macro_f1": 0.9711399711399711
+  },
+  "records": 270,
+  "typed_router": {
+    "classes": [
+      {
+        "count": 25,
+        "f1": 1.0,
+        "label": "read_file"
+      },
+      {
+        "count": 25,
+        "f1": 1.0,
+        "label": "inspect_project"
+      },
+      {
+        "count": 25,
+        "f1": 1.0,
+        "label": "find_files"
+      },
+      {
+        "count": 25,
+        "f1": 1.0,
+        "label": "search_code"
+      },
+      {
+        "count": 25,
+        "f1": 1.0,
+        "label": "run_checks"
+      },
+      {
+        "count": 25,
+        "f1": 1.0,
+        "label": "clarify"
+      },
+      {
+        "count": 120,
+        "f1": 1.0,
+        "label": "unsupported"
+      }
+    ],
+    "macro_f1": 1.0
+  },
+  "unsupported_count": 120,
+  "unsupported_false_accepts": 0,
+  "rule_baseline": {
+    "records": 270,
+    "macro_f1": 0.6853646353646354,
+    "unsupported_count": 120,
+    "unsupported_false_accepts": 21,
+    "unsupported_false_accept_rate": 0.175,
+    "classes": {
+      "read_file": {
+        "count": 25,
+        "f1": 0.6666666666666666
+      },
+      "inspect_project": {
+        "count": 25,
+        "f1": 0.75
+      },
+      "find_files": {
+        "count": 25,
+        "f1": 0.9090909090909091
+      },
+      "search_code": {
+        "count": 25,
+        "f1": 0.8333333333333334
+      },
+      "run_checks": {
+        "count": 25,
+        "f1": 0.7384615384615385
+      },
+      "clarify": {
+        "count": 25,
+        "f1": 0.0
+      },
+      "unsupported": {
+        "count": 120,
+        "f1": 0.9
+      }
+    },
+    "confusion": [
+      {
+        "actual": "clarify",
+        "predicted": "read_file",
+        "count": 10
+      },
+      {
+        "actual": "clarify",
+        "predicted": "run_checks",
+        "count": 5
+      },
+      {
+        "actual": "clarify",
+        "predicted": "search_code",
+        "count": 10
+      },
+      {
+        "actual": "find_files",
+        "predicted": "find_files",
+        "count": 25
+      },
+      {
+        "actual": "inspect_project",
+        "predicted": "find_files",
+        "count": 5
+      },
+      {
+        "actual": "inspect_project",
+        "predicted": "inspect_project",
+        "count": 15
+      },
+      {
+        "actual": "inspect_project",
+        "predicted": "read_file",
+        "count": 5
+      },
+      {
+        "actual": "read_file",
+        "predicted": "read_file",
+        "count": 25
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "run_checks",
+        "count": 24
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "unsupported",
+        "count": 1
+      },
+      {
+        "actual": "search_code",
+        "predicted": "search_code",
+        "count": 25
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "read_file",
+        "count": 10
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "run_checks",
+        "count": 11
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "unsupported",
+        "count": 99
+      }
+    ]
+  },
+  "artifact_sha256": "f2ed1586e45c036053e5c399ecbe789471757be3ee65596d3a89bcf9f882582c"
+}

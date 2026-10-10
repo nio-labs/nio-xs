@@ -1,0 +1,300 @@
+{
+  "model_version": "0.1.0-alpha.2",
+  "algorithm": "multinomial_naive_bayes",
+  "dataset_sha256": "108dff4e2d7b34a211dcad45d2976ea301524ef28e99130e5afd353c78b57fb4",
+  "artifact_sha256": "f2ed1586e45c036053e5c399ecbe789471757be3ee65596d3a89bcf9f882582c",
+  "train_records": 770,
+  "validation": {
+    "records": 200,
+    "macro_f1": 0.9386095901775343,
+    "unsupported_count": 80,
+    "unsupported_false_accepts": 0,
+    "unsupported_false_accept_rate": 0.0,
+    "classes": {
+      "read_file": {
+        "count": 20,
+        "f1": 1.0
+      },
+      "inspect_project": {
+        "count": 20,
+        "f1": 0.975609756097561
+      },
+      "find_files": {
+        "count": 20,
+        "f1": 1.0
+      },
+      "search_code": {
+        "count": 20,
+        "f1": 1.0
+      },
+      "run_checks": {
+        "count": 20,
+        "f1": 0.975609756097561
+      },
+      "clarify": {
+        "count": 20,
+        "f1": 0.6666666666666666
+      },
+      "unsupported": {
+        "count": 80,
+        "f1": 0.9523809523809523
+      }
+    },
+    "confusion": [
+      {
+        "actual": "clarify",
+        "predicted": "clarify",
+        "count": 10
+      },
+      {
+        "actual": "clarify",
+        "predicted": "inspect_project",
+        "count": 1
+      },
+      {
+        "actual": "clarify",
+        "predicted": "run_checks",
+        "count": 1
+      },
+      {
+        "actual": "clarify",
+        "predicted": "unsupported",
+        "count": 8
+      },
+      {
+        "actual": "find_files",
+        "predicted": "find_files",
+        "count": 20
+      },
+      {
+        "actual": "inspect_project",
+        "predicted": "inspect_project",
+        "count": 20
+      },
+      {
+        "actual": "read_file",
+        "predicted": "read_file",
+        "count": 20
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "run_checks",
+        "count": 20
+      },
+      {
+        "actual": "search_code",
+        "predicted": "search_code",
+        "count": 20
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "unsupported",
+        "count": 80
+      }
+    ]
+  },
+  "test": {
+    "records": 300,
+    "macro_f1": 0.9959641074623653,
+    "unsupported_count": 130,
+    "unsupported_false_accepts": 0,
+    "unsupported_false_accept_rate": 0.0,
+    "classes": {
+      "read_file": {
+        "count": 30,
+        "f1": 1.0
+      },
+      "inspect_project": {
+        "count": 30,
+        "f1": 1.0
+      },
+      "find_files": {
+        "count": 30,
+        "f1": 1.0
+      },
+      "search_code": {
+        "count": 30,
+        "f1": 1.0
+      },
+      "run_checks": {
+        "count": 30,
+        "f1": 1.0
+      },
+      "clarify": {
+        "count": 20,
+        "f1": 0.975609756097561
+      },
+      "unsupported": {
+        "count": 130,
+        "f1": 0.9961389961389961
+      }
+    },
+    "confusion": [
+      {
+        "actual": "clarify",
+        "predicted": "clarify",
+        "count": 20
+      },
+      {
+        "actual": "find_files",
+        "predicted": "find_files",
+        "count": 30
+      },
+      {
+        "actual": "inspect_project",
+        "predicted": "inspect_project",
+        "count": 30
+      },
+      {
+        "actual": "read_file",
+        "predicted": "read_file",
+        "count": 30
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "run_checks",
+        "count": 30
+      },
+      {
+        "actual": "search_code",
+        "predicted": "search_code",
+        "count": 30
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "clarify",
+        "count": 1
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "unsupported",
+        "count": 129
+      }
+    ]
+  },
+  "rule_baseline": {
+    "records": 300,
+    "macro_f1": 0.652947290516277,
+    "unsupported_count": 130,
+    "unsupported_false_accepts": 46,
+    "unsupported_false_accept_rate": 0.35384615384615387,
+    "classes": {
+      "read_file": {
+        "count": 30,
+        "f1": 0.6666666666666666
+      },
+      "inspect_project": {
+        "count": 30,
+        "f1": 1.0
+      },
+      "find_files": {
+        "count": 30,
+        "f1": 0.8333333333333334
+      },
+      "search_code": {
+        "count": 30,
+        "f1": 0.7017543859649122
+      },
+      "run_checks": {
+        "count": 30,
+        "f1": 0.6086956521739131
+      },
+      "clarify": {
+        "count": 20,
+        "f1": 0.0
+      },
+      "unsupported": {
+        "count": 130,
+        "f1": 0.7601809954751131
+      }
+    },
+    "confusion": [
+      {
+        "actual": "clarify",
+        "predicted": "read_file",
+        "count": 10
+      },
+      {
+        "actual": "clarify",
+        "predicted": "run_checks",
+        "count": 5
+      },
+      {
+        "actual": "clarify",
+        "predicted": "search_code",
+        "count": 5
+      },
+      {
+        "actual": "find_files",
+        "predicted": "find_files",
+        "count": 25
+      },
+      {
+        "actual": "find_files",
+        "predicted": "unsupported",
+        "count": 5
+      },
+      {
+        "actual": "inspect_project",
+        "predicted": "inspect_project",
+        "count": 30
+      },
+      {
+        "actual": "read_file",
+        "predicted": "read_file",
+        "count": 30
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "run_checks",
+        "count": 28
+      },
+      {
+        "actual": "run_checks",
+        "predicted": "unsupported",
+        "count": 2
+      },
+      {
+        "actual": "search_code",
+        "predicted": "find_files",
+        "count": 5
+      },
+      {
+        "actual": "search_code",
+        "predicted": "read_file",
+        "count": 5
+      },
+      {
+        "actual": "search_code",
+        "predicted": "search_code",
+        "count": 20
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "read_file",
+        "count": 15
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "run_checks",
+        "count": 29
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "search_code",
+        "count": 2
+      },
+      {
+        "actual": "unsupported",
+        "predicted": "unsupported",
+        "count": 84
+      }
+    ]
+  },
+  "threshold": 0.8,
+  "margin": 0.0,
+  "corpus_kind": "authored synthetic templates with family-separated splits; not real-world accuracy",
+  "acceptance_passed": true,
+  "development_test_used_for_feature_diagnosis": true,
+  "acceptance_report": "phase2-frozen-holdout.json"
+}

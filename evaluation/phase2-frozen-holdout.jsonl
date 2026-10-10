@@ -1,0 +1,270 @@
+{"id": "frozen_read_file_0_0", "family_id": "frozen_read_file_target_0", "split": "test", "prompt": "please let me read docs/runtime.rst", "intent": "read_file"}
+{"id": "frozen_read_file_0_1", "family_id": "frozen_read_file_target_1", "split": "test", "prompt": "please let me read src/protocol.c", "intent": "read_file"}
+{"id": "frozen_read_file_0_2", "family_id": "frozen_read_file_target_2", "split": "test", "prompt": "please let me read internal/router.go", "intent": "read_file"}
+{"id": "frozen_read_file_0_3", "family_id": "frozen_read_file_target_3", "split": "test", "prompt": "please let me read lib/encoder.cpp", "intent": "read_file"}
+{"id": "frozen_read_file_0_4", "family_id": "frozen_read_file_target_4", "split": "test", "prompt": "please let me read guide/install.txt", "intent": "read_file"}
+{"id": "frozen_read_file_1_0", "family_id": "frozen_read_file_target_0", "split": "test", "prompt": "can you display the file docs/runtime.rst", "intent": "read_file"}
+{"id": "frozen_read_file_1_1", "family_id": "frozen_read_file_target_1", "split": "test", "prompt": "can you display the file src/protocol.c", "intent": "read_file"}
+{"id": "frozen_read_file_1_2", "family_id": "frozen_read_file_target_2", "split": "test", "prompt": "can you display the file internal/router.go", "intent": "read_file"}
+{"id": "frozen_read_file_1_3", "family_id": "frozen_read_file_target_3", "split": "test", "prompt": "can you display the file lib/encoder.cpp", "intent": "read_file"}
+{"id": "frozen_read_file_1_4", "family_id": "frozen_read_file_target_4", "split": "test", "prompt": "can you display the file guide/install.txt", "intent": "read_file"}
+{"id": "frozen_read_file_2_0", "family_id": "frozen_read_file_target_0", "split": "test", "prompt": "now open the file docs/runtime.rst", "intent": "read_file"}
+{"id": "frozen_read_file_2_1", "family_id": "frozen_read_file_target_1", "split": "test", "prompt": "now open the file src/protocol.c", "intent": "read_file"}
+{"id": "frozen_read_file_2_2", "family_id": "frozen_read_file_target_2", "split": "test", "prompt": "now open the file internal/router.go", "intent": "read_file"}
+{"id": "frozen_read_file_2_3", "family_id": "frozen_read_file_target_3", "split": "test", "prompt": "now open the file lib/encoder.cpp", "intent": "read_file"}
+{"id": "frozen_read_file_2_4", "family_id": "frozen_read_file_target_4", "split": "test", "prompt": "now open the file guide/install.txt", "intent": "read_file"}
+{"id": "frozen_read_file_3_0", "family_id": "frozen_read_file_target_0", "split": "test", "prompt": "would you show me docs/runtime.rst", "intent": "read_file"}
+{"id": "frozen_read_file_3_1", "family_id": "frozen_read_file_target_1", "split": "test", "prompt": "would you show me src/protocol.c", "intent": "read_file"}
+{"id": "frozen_read_file_3_2", "family_id": "frozen_read_file_target_2", "split": "test", "prompt": "would you show me internal/router.go", "intent": "read_file"}
+{"id": "frozen_read_file_3_3", "family_id": "frozen_read_file_target_3", "split": "test", "prompt": "would you show me lib/encoder.cpp", "intent": "read_file"}
+{"id": "frozen_read_file_3_4", "family_id": "frozen_read_file_target_4", "split": "test", "prompt": "would you show me guide/install.txt", "intent": "read_file"}
+{"id": "frozen_read_file_4_0", "family_id": "frozen_read_file_target_0", "split": "test", "prompt": "read the contents of docs/runtime.rst", "intent": "read_file"}
+{"id": "frozen_read_file_4_1", "family_id": "frozen_read_file_target_1", "split": "test", "prompt": "read the contents of src/protocol.c", "intent": "read_file"}
+{"id": "frozen_read_file_4_2", "family_id": "frozen_read_file_target_2", "split": "test", "prompt": "read the contents of internal/router.go", "intent": "read_file"}
+{"id": "frozen_read_file_4_3", "family_id": "frozen_read_file_target_3", "split": "test", "prompt": "read the contents of lib/encoder.cpp", "intent": "read_file"}
+{"id": "frozen_read_file_4_4", "family_id": "frozen_read_file_target_4", "split": "test", "prompt": "read the contents of guide/install.txt", "intent": "read_file"}
+{"id": "frozen_inspect_project_0_0", "family_id": "frozen_inspect_project_target_0", "split": "test", "prompt": "please show the package managers for our selected checkout", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_0_1", "family_id": "frozen_inspect_project_target_1", "split": "test", "prompt": "please show the package managers in the workspace folder", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_0_2", "family_id": "frozen_inspect_project_target_2", "split": "test", "prompt": "please show the package managers for the repository root", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_0_3", "family_id": "frozen_inspect_project_target_3", "split": "test", "prompt": "please show the package managers in our application directory", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_0_4", "family_id": "frozen_inspect_project_target_4", "split": "test", "prompt": "please show the package managers for the checked-out source", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_1_0", "family_id": "frozen_inspect_project_target_0", "split": "test", "prompt": "can you list the manifest files for our selected checkout", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_1_1", "family_id": "frozen_inspect_project_target_1", "split": "test", "prompt": "can you list the manifest files in the workspace folder", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_1_2", "family_id": "frozen_inspect_project_target_2", "split": "test", "prompt": "can you list the manifest files for the repository root", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_1_3", "family_id": "frozen_inspect_project_target_3", "split": "test", "prompt": "can you list the manifest files in our application directory", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_1_4", "family_id": "frozen_inspect_project_target_4", "split": "test", "prompt": "can you list the manifest files for the checked-out source", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_2_0", "family_id": "frozen_inspect_project_target_0", "split": "test", "prompt": "now show project structure for our selected checkout", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_2_1", "family_id": "frozen_inspect_project_target_1", "split": "test", "prompt": "now show project structure in the workspace folder", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_2_2", "family_id": "frozen_inspect_project_target_2", "split": "test", "prompt": "now show project structure for the repository root", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_2_3", "family_id": "frozen_inspect_project_target_3", "split": "test", "prompt": "now show project structure in our application directory", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_2_4", "family_id": "frozen_inspect_project_target_4", "split": "test", "prompt": "now show project structure for the checked-out source", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_3_0", "family_id": "frozen_inspect_project_target_0", "split": "test", "prompt": "would you inspect package manifests for our selected checkout", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_3_1", "family_id": "frozen_inspect_project_target_1", "split": "test", "prompt": "would you inspect package manifests in the workspace folder", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_3_2", "family_id": "frozen_inspect_project_target_2", "split": "test", "prompt": "would you inspect package manifests for the repository root", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_3_3", "family_id": "frozen_inspect_project_target_3", "split": "test", "prompt": "would you inspect package manifests in our application directory", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_3_4", "family_id": "frozen_inspect_project_target_4", "split": "test", "prompt": "would you inspect package manifests for the checked-out source", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_4_0", "family_id": "frozen_inspect_project_target_0", "split": "test", "prompt": "show me the project manifests for our selected checkout", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_4_1", "family_id": "frozen_inspect_project_target_1", "split": "test", "prompt": "show me the project manifests in the workspace folder", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_4_2", "family_id": "frozen_inspect_project_target_2", "split": "test", "prompt": "show me the project manifests for the repository root", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_4_3", "family_id": "frozen_inspect_project_target_3", "split": "test", "prompt": "show me the project manifests in our application directory", "intent": "inspect_project"}
+{"id": "frozen_inspect_project_4_4", "family_id": "frozen_inspect_project_target_4", "split": "test", "prompt": "show me the project manifests for the checked-out source", "intent": "inspect_project"}
+{"id": "frozen_find_files_0_0", "family_id": "frozen_find_files_target_0", "split": "test", "prompt": "please find files matching src/*.proto", "intent": "find_files"}
+{"id": "frozen_find_files_0_1", "family_id": "frozen_find_files_target_1", "split": "test", "prompt": "please find files matching internal/**/*.go", "intent": "find_files"}
+{"id": "frozen_find_files_0_2", "family_id": "frozen_find_files_target_2", "split": "test", "prompt": "please find files matching data/*.csv", "intent": "find_files"}
+{"id": "frozen_find_files_0_3", "family_id": "frozen_find_files_target_3", "split": "test", "prompt": "please find files matching ui/*.vue", "intent": "find_files"}
+{"id": "frozen_find_files_0_4", "family_id": "frozen_find_files_target_4", "split": "test", "prompt": "please find files matching spec/*.rb", "intent": "find_files"}
+{"id": "frozen_find_files_1_0", "family_id": "frozen_find_files_target_0", "split": "test", "prompt": "can you show files matching src/*.proto", "intent": "find_files"}
+{"id": "frozen_find_files_1_1", "family_id": "frozen_find_files_target_1", "split": "test", "prompt": "can you show files matching internal/**/*.go", "intent": "find_files"}
+{"id": "frozen_find_files_1_2", "family_id": "frozen_find_files_target_2", "split": "test", "prompt": "can you show files matching data/*.csv", "intent": "find_files"}
+{"id": "frozen_find_files_1_3", "family_id": "frozen_find_files_target_3", "split": "test", "prompt": "can you show files matching ui/*.vue", "intent": "find_files"}
+{"id": "frozen_find_files_1_4", "family_id": "frozen_find_files_target_4", "split": "test", "prompt": "can you show files matching spec/*.rb", "intent": "find_files"}
+{"id": "frozen_find_files_2_0", "family_id": "frozen_find_files_target_0", "split": "test", "prompt": "now list filenames with glob src/*.proto", "intent": "find_files"}
+{"id": "frozen_find_files_2_1", "family_id": "frozen_find_files_target_1", "split": "test", "prompt": "now list filenames with glob internal/**/*.go", "intent": "find_files"}
+{"id": "frozen_find_files_2_2", "family_id": "frozen_find_files_target_2", "split": "test", "prompt": "now list filenames with glob data/*.csv", "intent": "find_files"}
+{"id": "frozen_find_files_2_3", "family_id": "frozen_find_files_target_3", "split": "test", "prompt": "now list filenames with glob ui/*.vue", "intent": "find_files"}
+{"id": "frozen_find_files_2_4", "family_id": "frozen_find_files_target_4", "split": "test", "prompt": "now list filenames with glob spec/*.rb", "intent": "find_files"}
+{"id": "frozen_find_files_3_0", "family_id": "frozen_find_files_target_0", "split": "test", "prompt": "would you locate files matching src/*.proto", "intent": "find_files"}
+{"id": "frozen_find_files_3_1", "family_id": "frozen_find_files_target_1", "split": "test", "prompt": "would you locate files matching internal/**/*.go", "intent": "find_files"}
+{"id": "frozen_find_files_3_2", "family_id": "frozen_find_files_target_2", "split": "test", "prompt": "would you locate files matching data/*.csv", "intent": "find_files"}
+{"id": "frozen_find_files_3_3", "family_id": "frozen_find_files_target_3", "split": "test", "prompt": "would you locate files matching ui/*.vue", "intent": "find_files"}
+{"id": "frozen_find_files_3_4", "family_id": "frozen_find_files_target_4", "split": "test", "prompt": "would you locate files matching spec/*.rb", "intent": "find_files"}
+{"id": "frozen_find_files_4_0", "family_id": "frozen_find_files_target_0", "split": "test", "prompt": "list project files src/*.proto", "intent": "find_files"}
+{"id": "frozen_find_files_4_1", "family_id": "frozen_find_files_target_1", "split": "test", "prompt": "list project files internal/**/*.go", "intent": "find_files"}
+{"id": "frozen_find_files_4_2", "family_id": "frozen_find_files_target_2", "split": "test", "prompt": "list project files data/*.csv", "intent": "find_files"}
+{"id": "frozen_find_files_4_3", "family_id": "frozen_find_files_target_3", "split": "test", "prompt": "list project files ui/*.vue", "intent": "find_files"}
+{"id": "frozen_find_files_4_4", "family_id": "frozen_find_files_target_4", "split": "test", "prompt": "list project files spec/*.rb", "intent": "find_files"}
+{"id": "frozen_search_code_0_0", "family_id": "frozen_search_code_target_0", "split": "test", "prompt": "please search code for calculate_budget", "intent": "search_code"}
+{"id": "frozen_search_code_0_1", "family_id": "frozen_search_code_target_1", "split": "test", "prompt": "please search code for reconcile_account", "intent": "search_code"}
+{"id": "frozen_search_code_0_2", "family_id": "frozen_search_code_target_2", "split": "test", "prompt": "please search code for load_protocol", "intent": "search_code"}
+{"id": "frozen_search_code_0_3", "family_id": "frozen_search_code_target_3", "split": "test", "prompt": "please search code for encode_response", "intent": "search_code"}
+{"id": "frozen_search_code_0_4", "family_id": "frozen_search_code_target_4", "split": "test", "prompt": "please search code for discard_evidence", "intent": "search_code"}
+{"id": "frozen_search_code_1_0", "family_id": "frozen_search_code_target_0", "split": "test", "prompt": "can you find references to calculate_budget", "intent": "search_code"}
+{"id": "frozen_search_code_1_1", "family_id": "frozen_search_code_target_1", "split": "test", "prompt": "can you find references to reconcile_account", "intent": "search_code"}
+{"id": "frozen_search_code_1_2", "family_id": "frozen_search_code_target_2", "split": "test", "prompt": "can you find references to load_protocol", "intent": "search_code"}
+{"id": "frozen_search_code_1_3", "family_id": "frozen_search_code_target_3", "split": "test", "prompt": "can you find references to encode_response", "intent": "search_code"}
+{"id": "frozen_search_code_1_4", "family_id": "frozen_search_code_target_4", "split": "test", "prompt": "can you find references to discard_evidence", "intent": "search_code"}
+{"id": "frozen_search_code_2_0", "family_id": "frozen_search_code_target_0", "split": "test", "prompt": "now locate symbol calculate_budget", "intent": "search_code"}
+{"id": "frozen_search_code_2_1", "family_id": "frozen_search_code_target_1", "split": "test", "prompt": "now locate symbol reconcile_account", "intent": "search_code"}
+{"id": "frozen_search_code_2_2", "family_id": "frozen_search_code_target_2", "split": "test", "prompt": "now locate symbol load_protocol", "intent": "search_code"}
+{"id": "frozen_search_code_2_3", "family_id": "frozen_search_code_target_3", "split": "test", "prompt": "now locate symbol encode_response", "intent": "search_code"}
+{"id": "frozen_search_code_2_4", "family_id": "frozen_search_code_target_4", "split": "test", "prompt": "now locate symbol discard_evidence", "intent": "search_code"}
+{"id": "frozen_search_code_3_0", "family_id": "frozen_search_code_target_0", "split": "test", "prompt": "would you search source for calculate_budget", "intent": "search_code"}
+{"id": "frozen_search_code_3_1", "family_id": "frozen_search_code_target_1", "split": "test", "prompt": "would you search source for reconcile_account", "intent": "search_code"}
+{"id": "frozen_search_code_3_2", "family_id": "frozen_search_code_target_2", "split": "test", "prompt": "would you search source for load_protocol", "intent": "search_code"}
+{"id": "frozen_search_code_3_3", "family_id": "frozen_search_code_target_3", "split": "test", "prompt": "would you search source for encode_response", "intent": "search_code"}
+{"id": "frozen_search_code_3_4", "family_id": "frozen_search_code_target_4", "split": "test", "prompt": "would you search source for discard_evidence", "intent": "search_code"}
+{"id": "frozen_search_code_4_0", "family_id": "frozen_search_code_target_0", "split": "test", "prompt": "find occurrences of calculate_budget", "intent": "search_code"}
+{"id": "frozen_search_code_4_1", "family_id": "frozen_search_code_target_1", "split": "test", "prompt": "find occurrences of reconcile_account", "intent": "search_code"}
+{"id": "frozen_search_code_4_2", "family_id": "frozen_search_code_target_2", "split": "test", "prompt": "find occurrences of load_protocol", "intent": "search_code"}
+{"id": "frozen_search_code_4_3", "family_id": "frozen_search_code_target_3", "split": "test", "prompt": "find occurrences of encode_response", "intent": "search_code"}
+{"id": "frozen_search_code_4_4", "family_id": "frozen_search_code_target_4", "split": "test", "prompt": "find occurrences of discard_evidence", "intent": "search_code"}
+{"id": "frozen_run_checks_0_0", "family_id": "frozen_run_checks_target_0", "split": "test", "prompt": "please run the configured tests", "intent": "run_checks"}
+{"id": "frozen_run_checks_0_1", "family_id": "frozen_run_checks_target_1", "split": "test", "prompt": "please run the configured build", "intent": "run_checks"}
+{"id": "frozen_run_checks_0_2", "family_id": "frozen_run_checks_target_2", "split": "test", "prompt": "please run the configured lint", "intent": "run_checks"}
+{"id": "frozen_run_checks_0_3", "family_id": "frozen_run_checks_target_3", "split": "test", "prompt": "please run the configured test suite", "intent": "run_checks"}
+{"id": "frozen_run_checks_0_4", "family_id": "frozen_run_checks_target_4", "split": "test", "prompt": "please run the configured lint check", "intent": "run_checks"}
+{"id": "frozen_run_checks_1_0", "family_id": "frozen_run_checks_target_0", "split": "test", "prompt": "can you execute project tests", "intent": "run_checks"}
+{"id": "frozen_run_checks_1_1", "family_id": "frozen_run_checks_target_1", "split": "test", "prompt": "can you execute project build", "intent": "run_checks"}
+{"id": "frozen_run_checks_1_2", "family_id": "frozen_run_checks_target_2", "split": "test", "prompt": "can you execute project lint", "intent": "run_checks"}
+{"id": "frozen_run_checks_1_3", "family_id": "frozen_run_checks_target_3", "split": "test", "prompt": "can you execute project test suite", "intent": "run_checks"}
+{"id": "frozen_run_checks_1_4", "family_id": "frozen_run_checks_target_4", "split": "test", "prompt": "can you execute project lint check", "intent": "run_checks"}
+{"id": "frozen_run_checks_2_0", "family_id": "frozen_run_checks_target_0", "split": "test", "prompt": "now perform the tests", "intent": "run_checks"}
+{"id": "frozen_run_checks_2_1", "family_id": "frozen_run_checks_target_1", "split": "test", "prompt": "now perform the build", "intent": "run_checks"}
+{"id": "frozen_run_checks_2_2", "family_id": "frozen_run_checks_target_2", "split": "test", "prompt": "now perform the lint", "intent": "run_checks"}
+{"id": "frozen_run_checks_2_3", "family_id": "frozen_run_checks_target_3", "split": "test", "prompt": "now perform the test suite", "intent": "run_checks"}
+{"id": "frozen_run_checks_2_4", "family_id": "frozen_run_checks_target_4", "split": "test", "prompt": "now perform the lint check", "intent": "run_checks"}
+{"id": "frozen_run_checks_3_0", "family_id": "frozen_run_checks_target_0", "split": "test", "prompt": "would you run project tests", "intent": "run_checks"}
+{"id": "frozen_run_checks_3_1", "family_id": "frozen_run_checks_target_1", "split": "test", "prompt": "would you run project build", "intent": "run_checks"}
+{"id": "frozen_run_checks_3_2", "family_id": "frozen_run_checks_target_2", "split": "test", "prompt": "would you run project lint", "intent": "run_checks"}
+{"id": "frozen_run_checks_3_3", "family_id": "frozen_run_checks_target_3", "split": "test", "prompt": "would you run project test suite", "intent": "run_checks"}
+{"id": "frozen_run_checks_3_4", "family_id": "frozen_run_checks_target_4", "split": "test", "prompt": "would you run project lint check", "intent": "run_checks"}
+{"id": "frozen_run_checks_4_0", "family_id": "frozen_run_checks_target_0", "split": "test", "prompt": "execute the configured tests", "intent": "run_checks"}
+{"id": "frozen_run_checks_4_1", "family_id": "frozen_run_checks_target_1", "split": "test", "prompt": "execute the configured build", "intent": "run_checks"}
+{"id": "frozen_run_checks_4_2", "family_id": "frozen_run_checks_target_2", "split": "test", "prompt": "execute the configured lint", "intent": "run_checks"}
+{"id": "frozen_run_checks_4_3", "family_id": "frozen_run_checks_target_3", "split": "test", "prompt": "execute the configured test suite", "intent": "run_checks"}
+{"id": "frozen_run_checks_4_4", "family_id": "frozen_run_checks_target_4", "split": "test", "prompt": "execute the configured lint check", "intent": "run_checks"}
+{"id": "frozen_clarify_0_0", "family_id": "frozen_clarify_target_0", "split": "test", "prompt": "could you read it for our folder", "intent": "clarify"}
+{"id": "frozen_clarify_0_1", "family_id": "frozen_clarify_target_1", "split": "test", "prompt": "could you read it for the active checkout", "intent": "clarify"}
+{"id": "frozen_clarify_0_2", "family_id": "frozen_clarify_target_2", "split": "test", "prompt": "could you read it for the repository", "intent": "clarify"}
+{"id": "frozen_clarify_0_3", "family_id": "frozen_clarify_target_3", "split": "test", "prompt": "could you read it", "intent": "clarify"}
+{"id": "frozen_clarify_0_4", "family_id": "frozen_clarify_target_4", "split": "test", "prompt": "could you read it please", "intent": "clarify"}
+{"id": "frozen_clarify_1_0", "family_id": "frozen_clarify_target_0", "split": "test", "prompt": "please find that for our folder", "intent": "clarify"}
+{"id": "frozen_clarify_1_1", "family_id": "frozen_clarify_target_1", "split": "test", "prompt": "please find that for the active checkout", "intent": "clarify"}
+{"id": "frozen_clarify_1_2", "family_id": "frozen_clarify_target_2", "split": "test", "prompt": "please find that for the repository", "intent": "clarify"}
+{"id": "frozen_clarify_1_3", "family_id": "frozen_clarify_target_3", "split": "test", "prompt": "please find that", "intent": "clarify"}
+{"id": "frozen_clarify_1_4", "family_id": "frozen_clarify_target_4", "split": "test", "prompt": "please find that please", "intent": "clarify"}
+{"id": "frozen_clarify_2_0", "family_id": "frozen_clarify_target_0", "split": "test", "prompt": "now run it for our folder", "intent": "clarify"}
+{"id": "frozen_clarify_2_1", "family_id": "frozen_clarify_target_1", "split": "test", "prompt": "now run it for the active checkout", "intent": "clarify"}
+{"id": "frozen_clarify_2_2", "family_id": "frozen_clarify_target_2", "split": "test", "prompt": "now run it for the repository", "intent": "clarify"}
+{"id": "frozen_clarify_2_3", "family_id": "frozen_clarify_target_3", "split": "test", "prompt": "now run it", "intent": "clarify"}
+{"id": "frozen_clarify_2_4", "family_id": "frozen_clarify_target_4", "split": "test", "prompt": "now run it please", "intent": "clarify"}
+{"id": "frozen_clarify_3_0", "family_id": "frozen_clarify_target_0", "split": "test", "prompt": "would you open the file for our folder", "intent": "clarify"}
+{"id": "frozen_clarify_3_1", "family_id": "frozen_clarify_target_1", "split": "test", "prompt": "would you open the file for the active checkout", "intent": "clarify"}
+{"id": "frozen_clarify_3_2", "family_id": "frozen_clarify_target_2", "split": "test", "prompt": "would you open the file for the repository", "intent": "clarify"}
+{"id": "frozen_clarify_3_3", "family_id": "frozen_clarify_target_3", "split": "test", "prompt": "would you open the file", "intent": "clarify"}
+{"id": "frozen_clarify_3_4", "family_id": "frozen_clarify_target_4", "split": "test", "prompt": "would you open the file please", "intent": "clarify"}
+{"id": "frozen_clarify_4_0", "family_id": "frozen_clarify_target_0", "split": "test", "prompt": "please search for it for our folder", "intent": "clarify"}
+{"id": "frozen_clarify_4_1", "family_id": "frozen_clarify_target_1", "split": "test", "prompt": "please search for it for the active checkout", "intent": "clarify"}
+{"id": "frozen_clarify_4_2", "family_id": "frozen_clarify_target_2", "split": "test", "prompt": "please search for it for the repository", "intent": "clarify"}
+{"id": "frozen_clarify_4_3", "family_id": "frozen_clarify_target_3", "split": "test", "prompt": "please search for it", "intent": "clarify"}
+{"id": "frozen_clarify_4_4", "family_id": "frozen_clarify_target_4", "split": "test", "prompt": "please search for it please", "intent": "clarify"}
+{"id": "frozen_unsupported_0_0", "family_id": "frozen_unsupported_template_0", "split": "test", "prompt": "please delete our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_0_1", "family_id": "frozen_unsupported_template_0", "split": "test", "prompt": "please delete the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_0_2", "family_id": "frozen_unsupported_template_0", "split": "test", "prompt": "please delete the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_0_3", "family_id": "frozen_unsupported_template_0", "split": "test", "prompt": "please delete the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_0_4", "family_id": "frozen_unsupported_template_0", "split": "test", "prompt": "please delete the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_0_5", "family_id": "frozen_unsupported_template_0", "split": "test", "prompt": "please delete the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_0_6", "family_id": "frozen_unsupported_template_0", "split": "test", "prompt": "please delete a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_0_7", "family_id": "frozen_unsupported_template_0", "split": "test", "prompt": "please delete an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_0_8", "family_id": "frozen_unsupported_template_0", "split": "test", "prompt": "please delete a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_0_9", "family_id": "frozen_unsupported_template_0", "split": "test", "prompt": "please delete the private logs", "intent": "unsupported"}
+{"id": "frozen_unsupported_1_0", "family_id": "frozen_unsupported_template_1", "split": "test", "prompt": "can you rewrite our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_1_1", "family_id": "frozen_unsupported_template_1", "split": "test", "prompt": "can you rewrite the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_1_2", "family_id": "frozen_unsupported_template_1", "split": "test", "prompt": "can you rewrite the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_1_3", "family_id": "frozen_unsupported_template_1", "split": "test", "prompt": "can you rewrite the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_1_4", "family_id": "frozen_unsupported_template_1", "split": "test", "prompt": "can you rewrite the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_1_5", "family_id": "frozen_unsupported_template_1", "split": "test", "prompt": "can you rewrite the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_1_6", "family_id": "frozen_unsupported_template_1", "split": "test", "prompt": "can you rewrite a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_1_7", "family_id": "frozen_unsupported_template_1", "split": "test", "prompt": "can you rewrite an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_1_8", "family_id": "frozen_unsupported_template_1", "split": "test", "prompt": "can you rewrite a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_1_9", "family_id": "frozen_unsupported_template_1", "split": "test", "prompt": "can you rewrite the private logs", "intent": "unsupported"}
+{"id": "frozen_unsupported_2_0", "family_id": "frozen_unsupported_template_2", "split": "test", "prompt": "now fix our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_2_1", "family_id": "frozen_unsupported_template_2", "split": "test", "prompt": "now fix the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_2_2", "family_id": "frozen_unsupported_template_2", "split": "test", "prompt": "now fix the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_2_3", "family_id": "frozen_unsupported_template_2", "split": "test", "prompt": "now fix the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_2_4", "family_id": "frozen_unsupported_template_2", "split": "test", "prompt": "now fix the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_2_5", "family_id": "frozen_unsupported_template_2", "split": "test", "prompt": "now fix the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_2_6", "family_id": "frozen_unsupported_template_2", "split": "test", "prompt": "now fix a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_2_7", "family_id": "frozen_unsupported_template_2", "split": "test", "prompt": "now fix an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_2_8", "family_id": "frozen_unsupported_template_2", "split": "test", "prompt": "now fix a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_2_9", "family_id": "frozen_unsupported_template_2", "split": "test", "prompt": "now fix the private logs", "intent": "unsupported"}
+{"id": "frozen_unsupported_3_0", "family_id": "frozen_unsupported_template_3", "split": "test", "prompt": "would you explain our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_3_1", "family_id": "frozen_unsupported_template_3", "split": "test", "prompt": "would you explain the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_3_2", "family_id": "frozen_unsupported_template_3", "split": "test", "prompt": "would you explain the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_3_3", "family_id": "frozen_unsupported_template_3", "split": "test", "prompt": "would you explain the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_3_4", "family_id": "frozen_unsupported_template_3", "split": "test", "prompt": "would you explain the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_3_5", "family_id": "frozen_unsupported_template_3", "split": "test", "prompt": "would you explain the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_3_6", "family_id": "frozen_unsupported_template_3", "split": "test", "prompt": "would you explain a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_3_7", "family_id": "frozen_unsupported_template_3", "split": "test", "prompt": "would you explain an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_3_8", "family_id": "frozen_unsupported_template_3", "split": "test", "prompt": "would you explain a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_3_9", "family_id": "frozen_unsupported_template_3", "split": "test", "prompt": "would you explain the private logs", "intent": "unsupported"}
+{"id": "frozen_unsupported_4_0", "family_id": "frozen_unsupported_template_4", "split": "test", "prompt": "please create our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_4_1", "family_id": "frozen_unsupported_template_4", "split": "test", "prompt": "please create the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_4_2", "family_id": "frozen_unsupported_template_4", "split": "test", "prompt": "please create the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_4_3", "family_id": "frozen_unsupported_template_4", "split": "test", "prompt": "please create the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_4_4", "family_id": "frozen_unsupported_template_4", "split": "test", "prompt": "please create the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_4_5", "family_id": "frozen_unsupported_template_4", "split": "test", "prompt": "please create the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_4_6", "family_id": "frozen_unsupported_template_4", "split": "test", "prompt": "please create a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_4_7", "family_id": "frozen_unsupported_template_4", "split": "test", "prompt": "please create an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_4_8", "family_id": "frozen_unsupported_template_4", "split": "test", "prompt": "please create a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_4_9", "family_id": "frozen_unsupported_template_4", "split": "test", "prompt": "please create the private logs", "intent": "unsupported"}
+{"id": "frozen_unsupported_5_0", "family_id": "frozen_unsupported_template_5", "split": "test", "prompt": "design a new our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_5_1", "family_id": "frozen_unsupported_template_5", "split": "test", "prompt": "design a new the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_5_2", "family_id": "frozen_unsupported_template_5", "split": "test", "prompt": "design a new the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_5_3", "family_id": "frozen_unsupported_template_5", "split": "test", "prompt": "design a new the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_5_4", "family_id": "frozen_unsupported_template_5", "split": "test", "prompt": "design a new the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_5_5", "family_id": "frozen_unsupported_template_5", "split": "test", "prompt": "design a new the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_5_6", "family_id": "frozen_unsupported_template_5", "split": "test", "prompt": "design a new a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_5_7", "family_id": "frozen_unsupported_template_5", "split": "test", "prompt": "design a new an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_5_8", "family_id": "frozen_unsupported_template_5", "split": "test", "prompt": "design a new a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_5_9", "family_id": "frozen_unsupported_template_5", "split": "test", "prompt": "design a new the private logs", "intent": "unsupported"}
+{"id": "frozen_unsupported_6_0", "family_id": "frozen_unsupported_template_6", "split": "test", "prompt": "write tests for our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_6_1", "family_id": "frozen_unsupported_template_6", "split": "test", "prompt": "write tests for the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_6_2", "family_id": "frozen_unsupported_template_6", "split": "test", "prompt": "write tests for the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_6_3", "family_id": "frozen_unsupported_template_6", "split": "test", "prompt": "write tests for the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_6_4", "family_id": "frozen_unsupported_template_6", "split": "test", "prompt": "write tests for the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_6_5", "family_id": "frozen_unsupported_template_6", "split": "test", "prompt": "write tests for the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_6_6", "family_id": "frozen_unsupported_template_6", "split": "test", "prompt": "write tests for a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_6_7", "family_id": "frozen_unsupported_template_6", "split": "test", "prompt": "write tests for an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_6_8", "family_id": "frozen_unsupported_template_6", "split": "test", "prompt": "write tests for a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_6_9", "family_id": "frozen_unsupported_template_6", "split": "test", "prompt": "write tests for the private logs", "intent": "unsupported"}
+{"id": "frozen_unsupported_7_0", "family_id": "frozen_unsupported_template_7", "split": "test", "prompt": "compare our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_7_1", "family_id": "frozen_unsupported_template_7", "split": "test", "prompt": "compare the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_7_2", "family_id": "frozen_unsupported_template_7", "split": "test", "prompt": "compare the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_7_3", "family_id": "frozen_unsupported_template_7", "split": "test", "prompt": "compare the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_7_4", "family_id": "frozen_unsupported_template_7", "split": "test", "prompt": "compare the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_7_5", "family_id": "frozen_unsupported_template_7", "split": "test", "prompt": "compare the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_7_6", "family_id": "frozen_unsupported_template_7", "split": "test", "prompt": "compare a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_7_7", "family_id": "frozen_unsupported_template_7", "split": "test", "prompt": "compare an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_7_8", "family_id": "frozen_unsupported_template_7", "split": "test", "prompt": "compare a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_7_9", "family_id": "frozen_unsupported_template_7", "split": "test", "prompt": "compare the private logs", "intent": "unsupported"}
+{"id": "frozen_unsupported_8_0", "family_id": "frozen_unsupported_template_8", "split": "test", "prompt": "search the web for our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_8_1", "family_id": "frozen_unsupported_template_8", "split": "test", "prompt": "search the web for the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_8_2", "family_id": "frozen_unsupported_template_8", "split": "test", "prompt": "search the web for the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_8_3", "family_id": "frozen_unsupported_template_8", "split": "test", "prompt": "search the web for the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_8_4", "family_id": "frozen_unsupported_template_8", "split": "test", "prompt": "search the web for the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_8_5", "family_id": "frozen_unsupported_template_8", "split": "test", "prompt": "search the web for the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_8_6", "family_id": "frozen_unsupported_template_8", "split": "test", "prompt": "search the web for a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_8_7", "family_id": "frozen_unsupported_template_8", "split": "test", "prompt": "search the web for an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_8_8", "family_id": "frozen_unsupported_template_8", "split": "test", "prompt": "search the web for a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_8_9", "family_id": "frozen_unsupported_template_8", "split": "test", "prompt": "search the web for the private logs", "intent": "unsupported"}
+{"id": "frozen_unsupported_9_0", "family_id": "frozen_unsupported_template_9", "split": "test", "prompt": "run tests then deploy our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_9_1", "family_id": "frozen_unsupported_template_9", "split": "test", "prompt": "run tests then deploy the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_9_2", "family_id": "frozen_unsupported_template_9", "split": "test", "prompt": "run tests then deploy the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_9_3", "family_id": "frozen_unsupported_template_9", "split": "test", "prompt": "run tests then deploy the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_9_4", "family_id": "frozen_unsupported_template_9", "split": "test", "prompt": "run tests then deploy the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_9_5", "family_id": "frozen_unsupported_template_9", "split": "test", "prompt": "run tests then deploy the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_9_6", "family_id": "frozen_unsupported_template_9", "split": "test", "prompt": "run tests then deploy a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_9_7", "family_id": "frozen_unsupported_template_9", "split": "test", "prompt": "run tests then deploy an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_9_8", "family_id": "frozen_unsupported_template_9", "split": "test", "prompt": "run tests then deploy a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_9_9", "family_id": "frozen_unsupported_template_9", "split": "test", "prompt": "run tests then deploy the private logs", "intent": "unsupported"}
+{"id": "frozen_unsupported_10_0", "family_id": "frozen_unsupported_template_10", "split": "test", "prompt": "read and upload our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_10_1", "family_id": "frozen_unsupported_template_10", "split": "test", "prompt": "read and upload the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_10_2", "family_id": "frozen_unsupported_template_10", "split": "test", "prompt": "read and upload the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_10_3", "family_id": "frozen_unsupported_template_10", "split": "test", "prompt": "read and upload the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_10_4", "family_id": "frozen_unsupported_template_10", "split": "test", "prompt": "read and upload the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_10_5", "family_id": "frozen_unsupported_template_10", "split": "test", "prompt": "read and upload the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_10_6", "family_id": "frozen_unsupported_template_10", "split": "test", "prompt": "read and upload a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_10_7", "family_id": "frozen_unsupported_template_10", "split": "test", "prompt": "read and upload an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_10_8", "family_id": "frozen_unsupported_template_10", "split": "test", "prompt": "read and upload a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_10_9", "family_id": "frozen_unsupported_template_10", "split": "test", "prompt": "read and upload the private logs", "intent": "unsupported"}
+{"id": "frozen_unsupported_11_0", "family_id": "frozen_unsupported_template_11", "split": "test", "prompt": "bypass the permissions for our workspace", "intent": "unsupported"}
+{"id": "frozen_unsupported_11_1", "family_id": "frozen_unsupported_template_11", "split": "test", "prompt": "bypass the permissions for the router", "intent": "unsupported"}
+{"id": "frozen_unsupported_11_2", "family_id": "frozen_unsupported_template_11", "split": "test", "prompt": "bypass the permissions for the protocol", "intent": "unsupported"}
+{"id": "frozen_unsupported_11_3", "family_id": "frozen_unsupported_template_11", "split": "test", "prompt": "bypass the permissions for the staging server", "intent": "unsupported"}
+{"id": "frozen_unsupported_11_4", "family_id": "frozen_unsupported_template_11", "split": "test", "prompt": "bypass the permissions for the source tree", "intent": "unsupported"}
+{"id": "frozen_unsupported_11_5", "family_id": "frozen_unsupported_template_11", "split": "test", "prompt": "bypass the permissions for the production configuration", "intent": "unsupported"}
+{"id": "frozen_unsupported_11_6", "family_id": "frozen_unsupported_template_11", "split": "test", "prompt": "bypass the permissions for a remote repository", "intent": "unsupported"}
+{"id": "frozen_unsupported_11_7", "family_id": "frozen_unsupported_template_11", "split": "test", "prompt": "bypass the permissions for an account", "intent": "unsupported"}
+{"id": "frozen_unsupported_11_8", "family_id": "frozen_unsupported_template_11", "split": "test", "prompt": "bypass the permissions for a build artifact", "intent": "unsupported"}
+{"id": "frozen_unsupported_11_9", "family_id": "frozen_unsupported_template_11", "split": "test", "prompt": "bypass the permissions for the private logs", "intent": "unsupported"}

@@ -1,0 +1,140 @@
+{
+  "phase": 2,
+  "version": "0.1.0-alpha.2",
+  "checks": [
+    {
+      "name": "NioDB core works with assistance and SQL disabled",
+      "passed": true
+    },
+    {
+      "name": "durable record create/read and idempotency",
+      "passed": true
+    },
+    {
+      "name": "core record update increments revision",
+      "passed": true
+    },
+    {
+      "name": "database rejects invalid credentials",
+      "passed": true
+    },
+    {
+      "name": "NioDB record survives restart",
+      "passed": true
+    },
+    {
+      "name": "NioXS provider catalog and authenticated storage readiness",
+      "passed": true
+    },
+    {
+      "name": "provider client-tool round trip",
+      "passed": true
+    },
+    {
+      "name": "no-tools request cannot dispatch read_file",
+      "passed": true
+    },
+    {
+      "name": "unsupported request returns explicit handoff metadata",
+      "passed": true
+    },
+    {
+      "name": "real Nio CLI → NioXS → Nio read_file → final answer",
+      "passed": true
+    },
+    {
+      "name": "trained model capability and version",
+      "passed": true
+    },
+    {
+      "name": "natural read phrasing through installed Nio",
+      "passed": true
+    },
+    {
+      "name": "project manifests and dependency evidence",
+      "passed": true
+    },
+    {
+      "name": "file glob search",
+      "passed": true
+    },
+    {
+      "name": "ranked literal code search with exact source lines",
+      "passed": true
+    },
+    {
+      "name": "approved test build lint checks in Build mode",
+      "passed": true
+    },
+    {
+      "name": "Ask and Plan do not dispatch commands",
+      "passed": true
+    },
+    {
+      "name": "command approval denial prevents execution",
+      "passed": true
+    },
+    {
+      "name": "no-tools and no-project-tools stay enforced",
+      "passed": true
+    },
+    {
+      "name": "untrusted folder cannot dispatch project tools",
+      "passed": true
+    },
+    {
+      "name": "missing arguments clarify without actions",
+      "passed": true
+    },
+    {
+      "name": "explicit supported command configuration",
+      "passed": true
+    },
+    {
+      "name": "unsupported configured commands abstain",
+      "passed": true
+    },
+    {
+      "name": "oversized client result rejected",
+      "passed": true
+    },
+    {
+      "name": "concurrent continuation dispatches one command",
+      "passed": true
+    },
+    {
+      "name": "provider restart marks uncertain command unknown without replay",
+      "passed": true
+    },
+    {
+      "name": "completed command survives restart without replay",
+      "passed": true
+    },
+    {
+      "name": "conflicting continuation result rejected",
+      "passed": true
+    },
+    {
+      "name": "unexpected durable record revision blocks dispatch",
+      "passed": true
+    },
+    {
+      "name": "provider persists digests rather than file contents",
+      "passed": true
+    },
+    {
+      "name": "explicit cancellation stops pending client-action dispatch",
+      "passed": true
+    },
+    {
+      "name": "storage outage fails closed before dispatch",
+      "passed": true
+    }
+  ],
+  "completed": true,
+  "niodb": {
+    "version": "niodb 1.0.4",
+    "assistance": "missing",
+    "sql": "unavailable"
+  }
+}

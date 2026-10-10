@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "illustrative_only": true,
+  "records": 42,
+  "families": 21,
+  "split_by_family": true,
+  "splits": {
+    "train": [
+      "seed_1_1",
+      "seed_1_2",
+      "seed_2_1",
+      "seed_2_2",
+      "seed_3_1",
+      "seed_3_2",
+      "seed_4_1",
+      "seed_4_2",
+      "seed_5_1",
+      "seed_5_2",
+      "seed_6_1",
+      "seed_6_2",
+      "seed_7_1",
+      "seed_7_2"
+    ],
+    "validation": [
+      "seed_8_1",
+      "seed_8_2",
+      "seed_9_1",
+      "seed_9_2",
+      "seed_10_1",
+      "seed_10_2",
+      "seed_11_1",
+      "seed_11_2",
+      "seed_12_1",
+      "seed_12_2",
+      "seed_13_1",
+      "seed_13_2",
+      "seed_14_1",
+      "seed_14_2"
+    ],
+    "test": [
+      "seed_15_1",
+      "seed_15_2",
+      "seed_16_1",
+      "seed_16_2",
+      "seed_17_1",
+      "seed_17_2",
+      "seed_18_1",
+      "seed_18_2",
+      "seed_19_1",
+      "seed_19_2",
+      "seed_20_1",
+      "seed_20_2",
+      "seed_21_1",
+      "seed_21_2"
+    ]
+  }
+}
