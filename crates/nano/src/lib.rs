@@ -1,4 +1,4 @@
-//! # NioNano — MicroLM (Symbol + LM)
+//! # NioNano — MicroLM (μLM)
 //!
 //! NioNano combines **Symbolic AI** (deterministic code search, unified patch engine,
 //! AST exploration, path sanitization, sandboxing) with a lightweight **Language Model (LM)**
@@ -805,13 +805,13 @@ if limited{report.push_str("File inventory incomplete.\n");}Ok(w.end(excerpt(&re
         }
         Intent::Greeting => {
             Ok(w.end(
-                "Hello! I'm NioNano, your sovereign pair programmer and MicroLM (symbol + LM). I can inspect your project, search code, run test/build checks, scaffold templates, or research the web. What would you like to work on?".into(),
+                "Hello! I'm NioNano, your sovereign pair programmer and MicroLM (μLM). I can inspect your project, search code, run test/build checks, scaffold templates, or research the web. What would you like to work on?".into(),
                 Outcome::Completed,
             ))
         }
         Intent::Help => {
             Ok(w.end(
-                "NioNano MicroLM (symbol + LM) Capabilities:\n\n• Code Inspection: `read <file>`, `find <glob>`, `inspect project`\n• Code Search: `search code for <symbol>`\n• Checks: `run test check`, `run build check`, `run lint check`\n• Web Research: `wiki <topic>`, `github <repo>`, `what is <term>?`\n• Package Registry: `crate <name>`, `npm <name>`\n• Templates: `scaffold gitignore`, `scaffold github-ci`, `scaffold license-mit`".into(),
+                "NioNano MicroLM (μLM) Capabilities:\n\n• Code Inspection: `read <file>`, `find <glob>`, `inspect project`\n• Code Search: `search code for <symbol>`\n• Checks: `run test check`, `run build check`, `run lint check`\n• Web Research: `wiki <topic>`, `github <repo>`, `what is <term>?`\n• Package Registry: `crate <name>`, `npm <name>`\n• Templates: `scaffold gitignore`, `scaffold github-ci`, `scaffold license-mit`".into(),
                 Outcome::Completed,
             ))
         }
