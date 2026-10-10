@@ -240,7 +240,117 @@ pub fn parse_ddg_lite_results(html: &str) -> Vec<SearchResult> {
     results
 }
 
+pub fn parse_wikipedia_results(html: &str) -> Vec<SearchResult> {
+    let mut results = Vec::new();
+    let mut cursor = 0;
+
+    while let Some(head_pos) = html[cursor..].find("class=\"mw-search-result-heading\"") {
+        let abs_pos = cursor + head_pos;
+        let href_marker = "href=\"";
+        let Some(rel_href_start) = html[abs_pos..].find(href_marker) else {
+            cursor = abs_pos + 30;
+            continue;
+        };
+        let href_start = abs_pos + rel_href_start + href_marker.len();
+        let Some(href_len) = html[href_start..].find('"') else {
+            cursor = abs_pos + 30;
+            continue;
+        };
+        let rel_url = &html[href_start..href_start + href_len];
+
+        let Some(tag_end) = html[abs_pos + rel_href_start..].find('>') else {
+            cursor = abs_pos + 30;
+            continue;
+        };
+        let text_start = abs_pos + rel_href_start + tag_end + 1;
+        let Some(text_end) = html[text_start..].find("</a>") else {
+            cursor = abs_pos + 30;
+            continue;
+        };
+        let title = extract_text(&html[text_start..text_start + text_end]);
+
+        let snippet = if let Some(snip_pos) = html[text_start..].find("class=\"searchresult\"") {
+            let snip_abs = text_start + snip_pos;
+            if let Some(snip_tag_end) = html[snip_abs..].find('>') {
+                let snip_text_start = snip_abs + snip_tag_end + 1;
+                if let Some(snip_text_end) = html[snip_text_start..].find("</div>") {
+                    extract_text(&html[snip_text_start..snip_text_start + snip_text_end])
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        let full_url = if rel_url.starts_with('/') {
+            format!("https://en.wikipedia.org{rel_url}")
+        } else {
+            rel_url.to_string()
+        };
+
+        if !title.is_empty() {
+            results.push(SearchResult {
+                title,
+                url: full_url,
+                snippet,
+            });
+        }
+
+        cursor = text_start + 10;
+        if results.len() >= 10 {
+            break;
+        }
+    }
+
+    results
+}
+
 pub const USER_AGENT: &str = "NioNano/0.1.0 (https://github.com/nio-labs/nio-xs; contact@nio.ai)";
+
+pub async fn search_wikipedia(query: &str, limit: usize) -> Result<Vec<SearchResult>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| format!("cannot build HTTP client: {e}"))?;
+
+    let response = client
+        .get("https://en.wikipedia.org/w/index.php")
+        .query(&[("search", query)])
+        .send()
+        .await
+        .map_err(|e| format!("wikipedia search request failed: {e}"))?;
+
+    let html = response
+        .text()
+        .await
+        .map_err(|e| format!("failed reading wikipedia response: {e}"))?;
+
+    let mut results = parse_wikipedia_results(&html);
+    results.truncate(limit);
+    Ok(results)
+}
+
+pub async fn fetch_github_repo(repo: &str) -> Result<String, String> {
+    let clean_repo = repo
+        .trim_matches(|c: char| "`\"',;!?/".contains(c))
+        .trim_start_matches("github.com/")
+        .trim_start_matches("https://github.com/");
+
+    let raw_readme_url = format!("https://raw.githubusercontent.com/{clean_repo}/HEAD/README.md");
+    if let Ok(text) = fetch_url(&raw_readme_url).await {
+        return Ok(format!(
+            "GitHub repository README ({clean_repo}):\n\n{text}"
+        ));
+    }
+    let repo_url = format!("https://github.com/{clean_repo}");
+    let html = fetch_url(&repo_url).await?;
+    let text = extract_text(&html);
+    Ok(format!("GitHub repository ({clean_repo}):\n\n{text}"))
+}
 
 pub async fn fetch_url(url: &str) -> Result<String, String> {
     if !url.starts_with("https://") && !url.starts_with("http://") {

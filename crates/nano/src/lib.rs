@@ -16,6 +16,8 @@ pub enum Intent {
     Checks(String),
     WebFetch(String),
     Research(String),
+    Wiki(String),
+    Github(String),
     Clarify(String),
     Unsupported,
 }
@@ -29,6 +31,8 @@ impl Intent {
             Self::Checks(_) => "run_checks",
             Self::WebFetch(_) => "web_fetch",
             Self::Research(_) => "research_sources",
+            Self::Wiki(_) => "wiki_search",
+            Self::Github(_) => "github_repo",
             Self::Clarify(_) => "clarify",
             Self::Unsupported => "unsupported",
         }
@@ -142,6 +146,26 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
         && !query.is_empty()
     {
         return Intent::Research(query.to_string());
+    }
+    if lower.starts_with("wiki ") || lower.starts_with("wikipedia ") {
+        let query = if lower.starts_with("wikipedia ") {
+            prompt[10..].trim()
+        } else {
+            prompt[5..].trim()
+        };
+        if !query.is_empty() {
+            return Intent::Wiki(query.to_string());
+        }
+    }
+    if lower.starts_with("github ") || lower.starts_with("git ") {
+        let target = if lower.starts_with("github ") {
+            prompt[7..].trim()
+        } else {
+            prompt[4..].trim()
+        };
+        if !target.is_empty() && target.contains('/') {
+            return Intent::Github(target.to_string());
+        }
     }
     if model::features(prompt)
         .iter()
@@ -586,6 +610,40 @@ if limited{report.push_str("File inventory incomplete.\n");}Ok(w.end(excerpt(&re
                 Ok(w.end(excerpt(&report_text, 8000), Outcome::Completed))
             }
         }
+        Intent::Wiki(query) => {
+            let results = run_async(nioxs_browser::search_wikipedia(&query, 3))
+                .map_err(|e| format!("wikipedia search error: {e}"))?;
+            if results.is_empty() {
+                Ok(w.end(
+                    format!("No Wikipedia articles found for '{query}'."),
+                    Outcome::Completed,
+                ))
+            } else {
+                let top = &results[0];
+                let article_text = match run_async(nioxs_browser::fetch_url(&top.url)) {
+                    Ok(html) => nioxs_browser::extract_text(&html),
+                    Err(_) => top.snippet.clone(),
+                };
+                let mut out = format!(
+                    "Wikipedia article: {} ({})\n\n{}",
+                    top.title,
+                    top.url,
+                    excerpt(&article_text, 5000)
+                );
+                if results.len() > 1 {
+                    out.push_str("\n\nRelated articles:\n");
+                    for r in &results[1..] {
+                        out.push_str(&format!("- {} ({})\n", r.title, r.url));
+                    }
+                }
+                Ok(w.end(out, Outcome::Completed))
+            }
+        }
+        Intent::Github(repo) => {
+            let content = run_async(nioxs_browser::fetch_github_repo(&repo))
+                .map_err(|e| format!("github fetch error: {e}"))?;
+            Ok(w.end(excerpt(&content, 8000), Outcome::Completed))
+        }
     }
 }
 #[cfg(test)]
@@ -682,6 +740,14 @@ mod tests {
         assert_eq!(
             parse(model, "search web for tokio broadcast"),
             Intent::Research("tokio broadcast".into())
+        );
+        assert_eq!(
+            parse(model, "wiki Rust language"),
+            Intent::Wiki("Rust language".into())
+        );
+        assert_eq!(
+            parse(model, "github tokio-rs/tokio"),
+            Intent::Github("tokio-rs/tokio".into())
         );
     }
 }
