@@ -127,18 +127,6 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
         }
     }
     let lower = prompt.to_ascii_lowercase();
-    if model::features(prompt)
-        .iter()
-        .any(|f| f == "<unsupported-risk>")
-    {
-        return Intent::Unsupported;
-    }
-    if [" then ", " && ", " and "]
-        .iter()
-        .any(|s| lower.contains(s))
-    {
-        return Intent::Unsupported;
-    }
     let query_prefix = [
         "search the web for ",
         "search web for ",
@@ -157,7 +145,38 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
     if let Some(query) = query_prefix
         && !query.is_empty()
     {
+        let internal_targets = [
+            "workspace",
+            "the router",
+            "the protocol",
+            "staging server",
+            "source tree",
+            "production",
+            "remote repository",
+            "an account",
+            "build artifact",
+            "private logs",
+        ];
+        let lower_q = query.to_ascii_lowercase();
+        if [" then ", " && ", " and "].iter().any(|s| lower_q.contains(s))
+            || model::features(query).iter().any(|f| f == "<unsupported-risk>")
+            || internal_targets.iter().any(|target| lower_q.contains(target))
+        {
+            return Intent::Unsupported;
+        }
         return Intent::Research(query.to_string());
+    }
+    if model::features(prompt)
+        .iter()
+        .any(|f| f == "<unsupported-risk>")
+    {
+        return Intent::Unsupported;
+    }
+    if [" then ", " && ", " and "]
+        .iter()
+        .any(|s| lower.contains(s))
+    {
+        return Intent::Unsupported;
     }
     if lower.starts_with("wiki ") || lower.starts_with("wikipedia ") {
         let query = if lower.starts_with("wikipedia ") {
