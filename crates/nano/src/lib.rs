@@ -387,7 +387,8 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         let is_explicit_web_search = lower.starts_with("search the web for")
             || lower.starts_with("search web for")
             || lower.starts_with("web search for")
-            || lower.starts_with("web search ");
+            || lower.starts_with("web search ")
+            || lower.starts_with("research ");
 
         if !is_explicit_web_search {
             if let Some(_matched) = dataset::route_prompt_to_dataset(prompt).or_else(|| dataset::route_prompt_to_dataset(query)) {

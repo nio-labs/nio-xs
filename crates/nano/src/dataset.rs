@@ -90,12 +90,12 @@ pub static DATASET_CATALOG: &[DatasetMeta] = &[
     },
     DatasetMeta {
         id: "rust-core",
-        title: "Rust Ownership, Lifetimes & Borrow Checker",
+        title: "Rust Language, Ownership, Lifetimes & Borrow Checker",
         category: "Languages & Idioms",
         description: "Zero-cost abstractions, non-lexical lifetimes, move semantics, and reference aliasing.",
         size_kb: 100,
-        keywords: &["lifetime", "borrow", "ownership", "move", "clone", "copy", "deref", "borrow checker", "aliasing"],
-        sample_prompts: &["explain rust borrow checker", "how rust ownership works", "aliasing xor mutability"],
+        keywords: &["rust", "rustlang", "rust language", "lifetime", "borrow", "ownership", "move", "clone", "copy", "deref", "borrow checker", "aliasing"],
+        sample_prompts: &["what is rust", "tell me about rust", "explain rust", "explain rust borrow checker", "how rust ownership works", "aliasing xor mutability"],
         core_principles: &[
             "Aliasing XOR Mutability: either multiple &T or exactly one &mut T.",
             "Prefer passing borrowed slices (&str, &[T]) over owned types (String, Vec<T>) in function signatures.",
@@ -103,6 +103,13 @@ pub static DATASET_CATALOG: &[DatasetMeta] = &[
         ],
         code_template: "fn process_slice(items: &[Item]) -> usize {\n    items.iter().filter(|i| i.is_active).count()\n}",
         entries: &[
+            DatasetEntry {
+                prompt: "What is Rust and why is it used for modern systems programming?",
+                prompt_variants: &["what is rust", "tell me about rust", "explain rust", "why use rust", "what is rust language", "what is rustlang"],
+                keywords: &["what is rust", "rust", "rustlang", "systems programming", "memory safety", "zero cost abstractions"],
+                response: "Rust is a modern, statically typed systems programming language empowering everyone to build reliable and efficient software. It delivers C/C++ level performance and bare-metal control with compile-time memory safety, concurrency guarantees, zero-cost abstractions, and fearless concurrency without requiring a garbage collector.",
+                code_example: Some("fn main() {\n    let sovereign = \"Hello from NioNano and Rust!\";\n    println!(\"{sovereign}\");\n}"),
+            },
             DatasetEntry {
                 prompt: "How do Rust borrowing and ownership rules prevent data races?",
                 prompt_variants: &["explain rust borrow checker", "how does rust prevent data races", "rules of references in rust"],

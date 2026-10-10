@@ -151,6 +151,22 @@ pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> Strin
                 score += 3;
             }
 
+            // Exclude store, shopping cart, DLC, and pricing junk
+            if lower_s.contains("add to cart")
+                || lower_s.contains("buy ")
+                || lower_s.contains("bundle")
+                || lower_s.contains("dlc")
+                || lower_s.contains("usd")
+                || lower_s.contains("add to account")
+                || lower_s.contains("standard edition")
+                || lower_s.contains("on steam")
+                || lower_s.contains("cookie policy")
+                || lower_s.contains("sign up")
+                || lower_s.contains("log in")
+            {
+                continue;
+            }
+
             // Exclude pure navigation or conversational chatter
             if lower_s.contains("idk if it's just me") || lower_s.contains("pls share in the comments") {
                 score = score.saturating_sub(4);
