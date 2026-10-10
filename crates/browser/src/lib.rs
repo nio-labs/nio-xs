@@ -452,17 +452,30 @@ pub fn extract_passages(text: &str, query: &str) -> Vec<(usize, String)> {
 }
 
 pub async fn research(query: &str, max_pages: usize) -> Result<ResearchReport, String> {
-    let candidates = search(query, max_pages.max(1)).await?;
-    let mut passages = Vec::new();
-    let mut sources_visited = Vec::new();
+    use futures_util::stream::{self, StreamExt};
 
-    for item in candidates.into_iter().take(max_pages) {
-        sources_visited.push(item.url.clone());
-        if let Ok(raw_html) = fetch_url(&item.url).await {
-            if classify(&raw_html) != PageStatus::Readable {
-                continue;
-            }
-            let text = extract_text(&raw_html);
+    let candidates = search(query, max_pages.max(1)).await?;
+    let targets: Vec<SearchResult> = candidates.into_iter().take(max_pages).collect();
+    let sources_visited: Vec<String> = targets.iter().map(|t| t.url.clone()).collect();
+
+    // Concurrently fetch candidate pages with a concurrency limit of 2 parallel requests
+    let fetched_pages: Vec<(SearchResult, Option<String>)> = stream::iter(targets)
+        .map(|item| async move {
+            let page_text = match fetch_url(&item.url).await {
+                Ok(raw_html) if classify(&raw_html) == PageStatus::Readable => {
+                    Some(extract_text(&raw_html))
+                }
+                _ => None,
+            };
+            (item, page_text)
+        })
+        .buffer_unordered(2)
+        .collect()
+        .await;
+
+    let mut passages = Vec::new();
+    for (item, maybe_text) in fetched_pages {
+        if let Some(text) = maybe_text {
             let top_passages = extract_passages(&text, query);
             for (score, excerpt) in top_passages.into_iter().take(2) {
                 passages.push(ResearchPassage {
@@ -483,6 +496,19 @@ pub async fn research(query: &str, max_pages: usize) -> Result<ResearchReport, S
         sources_visited,
     })
 }
+
+/// Run 2 research queries in parallel (e.g. comparing two packages or topics concurrently).
+pub async fn research_dual(
+    query_a: &str,
+    query_b: &str,
+    pages_per_query: usize,
+) -> (Result<ResearchReport, String>, Result<ResearchReport, String>) {
+    tokio::join!(
+        research(query_a, pages_per_query),
+        research(query_b, pages_per_query)
+    )
+}
+
 
 #[cfg(test)]
 mod tests {
