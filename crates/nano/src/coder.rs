@@ -475,6 +475,52 @@ pub fn parse_coder_intent(prompt: &str) -> Option<Intent> {
         return Some(Intent::SuggestCommit);
     }
 
+    // Proactive Project Suggestions
+    if [
+        "any suggestion",
+        "any suggestions",
+        "any suggestion?",
+        "any suggestions?",
+        "what should i work on",
+        "what should i work on?",
+        "what should we do next",
+        "what should we do next?",
+        "what to do next",
+        "what to do next?",
+        "suggest next steps",
+        "suggestions",
+        "recommendations",
+        "how to improve this project",
+        "how to improve this project?",
+        "project suggestions",
+    ]
+    .contains(&trimmed)
+    {
+        return Some(Intent::ProjectSuggestions);
+    }
+
+    // Structured Task Planning
+    for prefix in &[
+        "plan this task: ",
+        "plan task: ",
+        "plan this task ",
+        "plan task ",
+        "plan for ",
+        "plan how to ",
+        "steps to implement ",
+        "steps to build ",
+        "how to implement ",
+        "how to build ",
+        "plan ",
+    ] {
+        if lower.starts_with(prefix) {
+            let task = prompt[prefix.len()..].trim().trim_matches(|c: char| "`\"',;:!?".contains(c));
+            if !task.is_empty() && task.len() > 3 {
+                return Some(Intent::TaskPlan(task.to_string()));
+            }
+        }
+    }
+
     // Dynamic Test Scaffolding
     for prefix in &["write test for ", "generate test for ", "scaffold test for ", "create test for "] {
         if lower.starts_with(prefix) {
@@ -609,6 +655,100 @@ fn extract_refactor_intent(prompt: &str) -> Option<Intent> {
         }
     }
     None
+}
+
+/// Generate intelligent, project-aware engineering recommendations and next steps.
+pub fn generate_project_suggestions(root: &str) -> String {
+    let mut files = Vec::new();
+    collect_source_files(Path::new(root), &mut files);
+
+    let mut unwrap_count = 0;
+    let mut test_count = 0;
+    let mut has_readme = false;
+
+    for f in &files {
+        if f.contains("test") {
+            test_count += 1;
+        }
+        if let Ok(content) = fs::read_to_string(f) {
+            unwrap_count += content.matches(".unwrap()").count();
+            test_count += content.matches("#[test]").count();
+        }
+    }
+
+    if Path::new(root).join("README.md").exists() {
+        has_readme = true;
+    }
+
+    let diff_output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(root)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+    let uncommitted_files = diff_output.lines().count();
+
+    let mut out = String::new();
+    out.push_str("### 💡 NioNano Engineering Recommendations & Next Steps\n\n");
+    out.push_str(&format!("**Workspace Scan**: Found {} source files across project.\n\n", files.len()));
+
+    out.push_str("#### 🚀 Immediate Actionable Improvements:\n");
+    if unwrap_count > 0 {
+        out.push_str(&format!("• 🛡️ **Eliminate Panic Hazards**: Found ~{} `.unwrap()` calls. Replace with `?` error propagation or domain `Result<T, E>` types (`how do I eliminate unwrap in rust?`).\n", unwrap_count));
+    }
+    if test_count < 5 {
+        out.push_str("• 🧪 **Increase Test Coverage**: Add unit tests for critical functions using `write test for <fn> in <file>`.\n");
+    } else {
+        out.push_str(&format!("• 🧪 **Continuous Test Verification**: Verified {} test suites/functions. Run `run test check` to verify zero regressions.\n", test_count));
+    }
+    if uncommitted_files > 0 {
+        out.push_str(&format!("• 📝 **Review Pending Changes**: You have {} uncommitted file modification{}. Run `review git diff` or `suggest commit message`.\n", uncommitted_files, if uncommitted_files == 1 { "" } else { "s" }));
+    }
+    if !has_readme {
+        out.push_str("• 📖 **Documentation**: Scaffold project architecture docs with `scaffold readme`.\n");
+    }
+
+    out.push_str("\n#### 🏗️ Architecture & Planning Next Steps:\n");
+    out.push_str("• 📋 **Task Planning**: Plan any complex refactor or feature with `plan this task: <your objective>`.\n");
+    out.push_str("• 🔍 **Code Health Audit**: Run `analyze codebase` or `review <file>` for cyclomatic complexity and safety analysis.\n");
+    out.push_str("• 📦 **Domain Knowledge Packs**: Ask technical architecture questions naturally or run `list datasets`.\n");
+
+    out
+}
+
+/// Formulates a structured 5-phase engineering execution plan for any feature, bug fix, or refactor.
+pub fn generate_task_plan(task: &str) -> String {
+    let clean_task = task.trim().trim_matches(|c: char| "`\"',;:!?".contains(c));
+    let mut out = String::new();
+    out.push_str(&format!("### 📋 Engineering Execution Plan: `{clean_task}`\n\n"));
+    out.push_str("Autonomous task breakdown and verification phases:\n\n");
+
+    out.push_str("#### Phase 1: Architectural Analysis & Scope\n");
+    out.push_str(&format!("• Identify affected modules and declarations across the workspace for `{clean_task}`.\n"));
+    out.push_str("• Check existing invariants, dependencies, and interfaces to prevent breaking changes.\n");
+    out.push_str("• Command: `where is <symbol> defined?` / `inspect project`.\n\n");
+
+    out.push_str("#### Phase 2: Type Definitions & Contract Scaffolding\n");
+    out.push_str("• Define required structs, enums, error types, and trait interfaces.\n");
+    out.push_str("• Ensure explicit error handling (use `Result<T, E>`, avoid unwrap panics).\n");
+    out.push_str("• Command: `replace 'old_contract' with 'new_contract' in <file>`.\n\n");
+
+    out.push_str("#### Phase 3: Core Implementation & Deterministic Patching\n");
+    out.push_str(&format!("• Implement business logic for `{clean_task}` incrementally in designated files.\n"));
+    out.push_str("• Keep edits minimal, deterministic, and isolated.\n\n");
+
+    out.push_str("#### Phase 4: Autonomous TDD & Unit Testing\n");
+    out.push_str("• Scaffold unit tests and boundary test cases (empty inputs, error branches, overflow).\n");
+    out.push_str("• Command: `write test for <function> in <file>`.\n");
+    out.push_str("• Execute verification loop: `replace 'a' with 'b' in <file> and run tests`.\n\n");
+
+    out.push_str("#### Phase 5: Self-Verification, Security & Commit\n");
+    out.push_str("• Verify compiler checks: `run test check` and `run build check`.\n");
+    out.push_str("• Review staged diff: `review git diff`.\n");
+    out.push_str("• Generate semantic commit: `suggest commit message`.\n\n");
+    out.push_str("*Ready to begin? Start with Phase 1 by inspecting relevant source files or specifying your first edit!*");
+
+    out
 }
 
 #[cfg(test)]

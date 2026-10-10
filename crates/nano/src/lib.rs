@@ -49,6 +49,8 @@ pub enum Intent {
     ScaffoldTest { file: String, function: String },
     ReviewDiff,
     SuggestCommit,
+    ProjectSuggestions,
+    TaskPlan(String),
     DatasetList,
     DatasetDownload(String),
     DatasetAnswer(String),
@@ -81,6 +83,8 @@ impl Intent {
             Self::ScaffoldTest { .. } => "scaffold_template",
             Self::ReviewDiff => "inspect_project",
             Self::SuggestCommit => "inspect_project",
+            Self::ProjectSuggestions => "unsupported",
+            Self::TaskPlan(_) => "unsupported",
             Self::DatasetList => "unsupported",
             Self::DatasetDownload(_) => "unsupported",
             Self::DatasetAnswer(_) => "unsupported",
@@ -1242,6 +1246,14 @@ pub fn decide_with_model(
                 Err(err) => Ok(w.end(format!("Commit generation failed: {err}"), Outcome::Completed)),
             }
         }
+        Intent::ProjectSuggestions => {
+            let suggestions = coder::generate_project_suggestions(".");
+            Ok(w.end(suggestions, Outcome::Completed))
+        }
+        Intent::TaskPlan(task) => {
+            let plan = coder::generate_task_plan(&task);
+            Ok(w.end(plan, Outcome::Completed))
+        }
         Intent::DatasetList => {
             let catalog_text = dataset::format_catalog();
             Ok(w.end(catalog_text, Outcome::Completed))
@@ -1584,6 +1596,24 @@ mod tests {
         assert_eq!(
             parse(&model, "how do I eliminate unwrap in rust?"),
             Intent::DatasetAnswer("how do I eliminate unwrap in rust?".into())
+        );
+    }
+
+    #[test]
+    fn test_v0_8_8_suggestions_and_task_planning() {
+        let model = Model::embedded().unwrap();
+
+        assert_eq!(parse(&model, "any suggestion?"), Intent::ProjectSuggestions);
+        assert_eq!(parse(&model, "what should I work on?"), Intent::ProjectSuggestions);
+        assert_eq!(parse(&model, "suggest next steps"), Intent::ProjectSuggestions);
+
+        assert_eq!(
+            parse(&model, "plan this task: implement token bucket rate limiter"),
+            Intent::TaskPlan("implement token bucket rate limiter".into())
+        );
+        assert_eq!(
+            parse(&model, "plan refactor database queries"),
+            Intent::TaskPlan("refactor database queries".into())
         );
     }
 }
