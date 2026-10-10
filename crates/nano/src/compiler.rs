@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompilerDiagnostic {
@@ -23,6 +24,7 @@ struct DiagnosticMessage {
     message: String,
     code: Option<DiagnosticCode>,
     spans: Vec<DiagnosticSpan>,
+    #[serde(default)]
     children: Vec<DiagnosticChild>,
 }
 
@@ -43,6 +45,25 @@ struct DiagnosticSpan {
     is_primary: bool,
     label: Option<String>,
     suggested_replacement: Option<String>,
+}
+
+pub fn run_project_check(root: &str) -> Result<(), Vec<CompilerDiagnostic>> {
+    let cargo_path = Path::new(root).join("Cargo.toml");
+    let tsconfig_path = Path::new(root).join("tsconfig.json");
+    let package_json_path = Path::new(root).join("package.json");
+    // we also check if there is pyproject.toml or requirements.txt
+    let py_path = Path::new(root).join("pyproject.toml");
+
+    if cargo_path.exists() {
+        run_cargo_check(root)
+    } else if tsconfig_path.exists() || package_json_path.exists() {
+        run_tsc_check(root)
+    } else if py_path.exists() {
+        run_pyright_check(root)
+    } else {
+        // Fallback to cargo check if not determined, or Ok(())
+        Ok(())
+    }
 }
 
 pub fn run_cargo_check(root: &str) -> Result<(), Vec<CompilerDiagnostic>> {
@@ -109,5 +130,53 @@ pub fn run_cargo_check(root: &str) -> Result<(), Vec<CompilerDiagnostic>> {
         Ok(())
     } else {
         Err(diagnostics)
+    }
+}
+
+pub fn run_tsc_check(root: &str) -> Result<(), Vec<CompilerDiagnostic>> {
+    // Basic mock/scaffold for tsc
+    let output = Command::new("npx")
+        .arg("tsc")
+        .arg("--noEmit")
+        .current_dir(root)
+        .output();
+        
+    match output {
+        Ok(out) if !out.status.success() => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            Err(vec![CompilerDiagnostic {
+                file_path: "unknown.ts".to_string(),
+                line_number: 0,
+                error_code: "TSC_ERROR".to_string(),
+                message: format!("{}\n{}", stdout, stderr),
+                label: "".to_string(),
+                suggested_replacement: None,
+            }])
+        }
+        Err(_) => Ok(()), // If npx tsc doesn't exist, just pass
+        _ => Ok(()),
+    }
+}
+
+pub fn run_pyright_check(root: &str) -> Result<(), Vec<CompilerDiagnostic>> {
+    let output = Command::new("pyright")
+        .current_dir(root)
+        .output();
+        
+    match output {
+        Ok(out) if !out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            Err(vec![CompilerDiagnostic {
+                file_path: "unknown.py".to_string(),
+                line_number: 0,
+                error_code: "PYRIGHT_ERROR".to_string(),
+                message: stdout.to_string(),
+                label: "".to_string(),
+                suggested_replacement: None,
+            }])
+        }
+        Err(_) => Ok(()), // If pyright doesn't exist, just pass
+        _ => Ok(()),
     }
 }

@@ -243,7 +243,7 @@ pub fn tdd_refactor_and_test(
         .map_err(|e| format!("Failed to write patched file '{file_path}': {e}"))?;
 
     // Phase 1: Compiler-in-the-Loop Validation
-    if let Err(diagnostics) = crate::compiler::run_cargo_check(".") {
+    if let Err(diagnostics) = crate::compiler::run_project_check(".") {
         // Rollback patch on compilation failure
         let _ = fs::write(path, &original);
         let mut err_msg = format!("Compilation failed after patch. Rolled back changes.\n");
