@@ -14,6 +14,7 @@ pub mod patch;
 pub mod synthesize;
 pub mod dag;
 pub mod watcher;
+pub mod kilo;
 pub use model::Model;
 use nioxs_contracts::{
     ChatRequest, Execution, FunctionCall, Handoff, MODEL, Outcome, PROVIDER, SCHEMA_VERSION,
@@ -57,6 +58,7 @@ pub enum Intent {
     DatasetList,
     DatasetDownload(String),
     DatasetAnswer(String),
+    Consult(String),
     Unsupported,
 }
 impl Intent {
@@ -91,6 +93,7 @@ impl Intent {
             Self::DatasetList => "unsupported",
             Self::DatasetDownload(_) => "unsupported",
             Self::DatasetAnswer(_) => "unsupported",
+            Self::Consult(_) => "consult",
             Self::Unsupported => "unsupported",
         }
     }
@@ -626,7 +629,7 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             if let Some(_matched) = dataset::route_prompt_to_dataset(prompt).or_else(|| dataset::route_prompt_to_dataset(&norm)) {
                 Intent::DatasetAnswer(prompt.to_string())
             } else {
-                Intent::Unsupported
+                Intent::Consult(prompt.to_string())
             }
         }
     }
@@ -890,6 +893,10 @@ pub fn decide_with_model(
         observed: vec![],
     };
     match intent {
+        Intent::Consult(prompt) => {
+            let stream_result = run_async(crate::kilo::consult_kilo_stream(&prompt)).unwrap_or_else(|e| format!("Consulting failed: {e}"));
+            Ok(w.end(stream_result, Outcome::Completed))
+        },
         Intent::Unsupported => Ok(w.limitation(
             "I'm specialized in project code inspection, tests, builds, scaffolds, and web research. I couldn't identify a programming action for that request. Try asking 'help' to view available capabilities, or specify a file or symbol.",
             false,
