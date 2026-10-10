@@ -18,7 +18,10 @@ use nioxs_contracts::{
 };
 pub use patch::{apply_patch_to_string, scaffold_template};
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
+
+static GREETING_ROTATION: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Intent {
@@ -1115,14 +1118,43 @@ pub fn decide_with_model(
             }
         }
         Intent::Greeting => {
-            Ok(w.end(
-                "Hello! I'm NioNano, your sovereign pair programmer and MicroLM (μLM). I can inspect your project, search code, run test/build checks, scaffold templates, or research the web. What would you like to work on?".into(),
-                Outcome::Completed,
-            ))
+            let turn = GREETING_ROTATION.fetch_add(1, Ordering::Relaxed);
+            let greetings = [
+                "👋 **Hello! I'm NioNano**, your sovereign pair programmer and MicroLM (μLM).\n\nHere are a few quick ways we can collaborate:\n• 🔍 **Inspect Workspace**: `inspect project` or `what is my project build on?`\n• ⚡ **Code Health Audit**: `analyze codebase` or `review <file>`\n• 🧪 **Autonomous TDD**: `write test for <fn> in <file>` or `replace 'old' with 'new' in <file> and run tests`\n• 📚 **Modular Knowledge**: `list datasets` or ask technical questions naturally\n• 🌐 **Web & Doc Research**: `what is <term>?` or `wiki <topic>`\n\nWhat would you like to build or inspect today?",
+                "⚡ **Hey there! NioNano is ready.**\n\nEquipped with symbolic code search, unified patching, AST navigation, and NioDB on-demand knowledge:\n• 🔎 **Find Symbols**: `where is <symbol> defined?` or `who calls <symbol>?`\n• 🛠️ **Refactor Code**: `replace 'old_code' with 'new_code' in <file>`\n• ✅ **Run Checks**: `run test check` or `run build check`\n• 📝 **Git Operations**: `review git diff` or `suggest commit message`\n\nHow can I assist your coding session?",
+                "🧠 **Welcome! NioNano MicroLM (μLM)** at your service.\n\nConnected to local **NioDB** with 36 modular ~100KB domain datasets:\n• 🦀 **Rust Engineering**: `how do I eliminate unwrap in rust?` or `what is rust?`\n• 🏗️ **Distributed Architecture**: `how does the saga pattern work in microservices?`\n• 🔒 **Security & Auth**: `why is pkce required in oauth 2.1?` or `how to prevent sql injection`\n• 📦 **Datasets Hub**: `list datasets` to browse all 36 knowledge packs\n\nAsk any programming question or tell me which file to inspect!",
+                "🧪 **Greetings! NioNano test & validation engine ready.**\n\nLet's ensure zero regressions in your project:\n• 🎯 **Scaffold Tests**: `write test for <function> in <file>`\n• 🔄 **Edit & Test Loop**: `replace 'a' with 'b' in <file> and run tests`\n• 🔍 **Analyze Functions**: `analyze <file>` for unwrap risks, complexity, and safety\n• 📋 **File Discovery**: `find *.rs` or `find Cargo.toml`\n\nWhat shall we verify or test?",
+                "🚀 **Hi! How can I help you program today?**\n\nPopular prompts to try right now:\n• `what is my project build on?` — Get an instant stack breakdown\n• `search code for <keyword>` — Search occurrences across your project\n• `list datasets` — View available domain knowledge packs in NioDB\n• `scaffold gitignore` — Generate deterministic project templates\n\nJust type your request!",
+            ];
+            let msg = greetings[turn % greetings.len()];
+            Ok(w.end(msg.to_string(), Outcome::Completed))
         }
         Intent::Help => {
             Ok(w.end(
-                "NioNano MicroLM (μLM) Capabilities:\n\n• Code Inspection: `read <file>`, `find <glob>`, `inspect project`\n• Code Analysis: `analyze <file>`, `review <file>`, `analyze codebase`\n• Code Search: `search code for <symbol>`\n• Checks: `run test check`, `run build check`, `run lint check`\n• Web Research: `wiki <topic>`, `github <repo>`, `what is <term>?`\n• Package Registry: `crate <name>`, `npm <name>`\n• Templates: `scaffold gitignore`, `scaffold github-ci`, `scaffold license-mit`".into(),
+                "### NioNano MicroLM (μLM) — Core Capabilities & Usage\n\n\
+                #### 1. Project & Workspace Inspection\n\
+                • `what is my project build on?` — Executive tech stack summary\n\
+                • `inspect project` — Scan workspace manifests and dependencies\n\
+                • `read <file>` — Read project source file\n\
+                • `find <glob>` — Discover files (e.g. `find *.rs`)\n\n\
+                #### 2. Code Analysis & Symbol Navigation\n\
+                • `analyze codebase` / `code quality` — Full health audit\n\
+                • `analyze <file>` — Ast metrics, cyclomatic complexity & unwrap safety\n\
+                • `where is <symbol> defined?` — Locate declarations & structs\n\
+                • `who calls <symbol>?` — Find references & call sites\n\n\
+                #### 3. Sovereign Coding & Autonomous TDD Loop\n\
+                • `replace 'old' with 'new' in <file>` — Deterministic code patching\n\
+                • `replace 'old' with 'new' in <file> and run tests` — Autonomous TDD loop\n\
+                • `write test for <fn> in <file>` — Dynamic test scaffolder\n\
+                • `review git diff` / `suggest commit message` — Git workflow review\n\n\
+                #### 4. Modular Knowledge Hub (36 Datasets in NioDB)\n\
+                • `list datasets` — Browse all 36 domain packs (~100 KB each)\n\
+                • `download dataset <id>` — Download pack into local NioDB\n\
+                • Natural technical Q&A: `what is rust?`, `saga in microservices`, `token bucket algorithm`\n\n\
+                #### 5. Web & Registry Research\n\
+                • `what is <topic>?` / `wiki <topic>` — Synthesized research answer\n\
+                • `crate <name>` / `npm <name>` — Package registry lookups\n\
+                • `scaffold <template>` — Templates (`gitignore`, `github-ci`, `license-mit`)".into(),
                 Outcome::Completed,
             ))
         }
