@@ -181,6 +181,81 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
     parse_atomic(model, prompt)
 }
 
+pub fn normalize_prompt(prompt: &str) -> String {
+    let mut s = prompt.trim().to_ascii_lowercase();
+    let conversational_fillers = [
+        "could you please ",
+        "could you ",
+        "can you please ",
+        "can you ",
+        "would you please ",
+        "would you ",
+        "please ",
+        "i want you to ",
+        "i'd like you to ",
+        "i would like you to ",
+        "i want to ",
+        "i'd like to ",
+        "give me an ",
+        "give me a ",
+        "give me ",
+        "show me an ",
+        "show me a ",
+        "show me ",
+        "tell me about ",
+        "let's ",
+        "how about ",
+    ];
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for filler in &conversational_fillers {
+            if s.starts_with(filler) {
+                s = s[filler.len()..].trim().to_string();
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    let words: Vec<&str> = s.split_whitespace().collect();
+    let mut normalized_words = Vec::new();
+    for word in words {
+        let clean = word.trim_matches(|c: char| "`\"',:!?".contains(c));
+        let norm = match clean {
+            "analyse" | "analysing" | "analysed" | "analyzing" | "analyzed" | "analysis" => "analyze",
+            "analyst" => "analyze",
+            "eval" | "evaluation" | "evaluating" => "evaluate",
+            "auditing" | "audited" => "audit",
+            "reviewing" | "reviewed" => "review",
+            "inspecting" | "inspected" => "inspect",
+            "testing" | "tests" => "test",
+            _ => clean,
+        };
+        normalized_words.push(norm);
+    }
+
+    let mut joined = normalized_words.join(" ");
+    if joined.starts_with("analyze of ") {
+        joined = format!("analyze {}", &joined[11..]);
+    } else if joined.starts_with("review of ") {
+        joined = format!("review {}", &joined[10..]);
+    } else if joined.starts_with("audit of ") {
+        joined = format!("audit {}", &joined[9..]);
+    }
+
+    if joined == "check code health"
+        || joined == "how is the code quality"
+        || joined == "how is code quality"
+        || joined == "check code quality"
+        || joined == "code quality"
+        || joined == "code health"
+    {
+        return "analyze codebase".to_string();
+    }
+    joined
+}
+
 pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     if prompt.len() > 1024 || !prompt.is_ascii() {
         return Intent::Unsupported;
@@ -234,6 +309,14 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             "private logs",
         ];
         let lower_q = query.to_ascii_lowercase();
+        if lower_q.contains("code quality")
+            || lower_q.contains("code health")
+            || lower_q == "the code"
+            || lower_q == "code"
+            || lower_q == "codebase"
+        {
+            return Intent::AnalyzeDir(".".into());
+        }
         if [" then ", " && ", " and "]
             .iter()
             .any(|s| lower_q.contains(s))
@@ -298,16 +381,23 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             return Intent::Scaffold(tpl.to_string());
         }
     }
+    let norm = normalize_prompt(prompt);
     let trimmed = lower.trim().trim_end_matches(|c: char| "!?. \t\r\n".contains(c));
     if ["hey", "hello", "hi", "good morning", "good evening", "howdy", "sup", "yo"]
         .contains(&trimmed)
+        || ["hey", "hello", "hi", "good morning", "good evening", "howdy", "sup", "yo"]
+            .contains(&norm.as_str())
     {
         return Intent::Greeting;
     }
-    if ["help", "what can you do", "commands", "usage", "capabilities"].contains(&trimmed) {
+    if ["help", "what can you do", "commands", "usage", "capabilities"].contains(&trimmed)
+        || ["help", "what can you do", "commands", "usage", "capabilities"].contains(&norm.as_str())
+    {
         return Intent::Help;
     }
-    if ["search my codebase", "search the codebase", "search codebase", "search code"].contains(&trimmed) {
+    if ["search my codebase", "search the codebase", "search codebase", "search code"].contains(&trimmed)
+        || ["search my codebase", "search the codebase", "search codebase", "search code"].contains(&norm.as_str())
+    {
         return Intent::Clarify("Which literal text or symbol should I search for in the codebase?".into());
     }
     let analyze_prefixes = [
@@ -327,22 +417,38 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         "audit ",
     ];
     for prefix in &analyze_prefixes {
-        if lower.starts_with(prefix) {
-            let target = prompt[prefix.len()..].trim().trim_matches(|c: char| "`\"',:!?".contains(c));
+        let matched = if norm.starts_with(prefix) {
+            Some(&norm[prefix.len()..])
+        } else if lower.starts_with(prefix) {
+            Some(&prompt[prefix.len()..])
+        } else {
+            None
+        };
+        if let Some(raw_target) = matched {
+            let target = raw_target.trim().trim_matches(|c: char| "`\"',:!?".contains(c));
             let lower_t = target.to_ascii_lowercase();
             if ["codebase", "the codebase", "my codebase", "project", "the project", "my project", "code", "the code", "."].contains(&lower_t.as_str()) {
                 return Intent::AnalyzeDir(".".into());
             }
-            if safe_path(target, true) && !target.is_empty() {
-                if target.contains('.') && !target.ends_with('/') {
-                    return Intent::AnalyzeFile(target.to_string());
+            let canonical_target = match lower_t.as_str() {
+                "cargo.toml" => "Cargo.toml",
+                "readme" | "readme.md" => "README.md",
+                "makefile" => "Makefile",
+                "license" => "LICENSE",
+                _ => target,
+            };
+            if safe_path(canonical_target, true) && !canonical_target.is_empty() {
+                if canonical_target.contains('.') && !canonical_target.ends_with('/') {
+                    return Intent::AnalyzeFile(canonical_target.to_string());
                 } else {
-                    return Intent::AnalyzeDir(target.to_string());
+                    return Intent::AnalyzeDir(canonical_target.to_string());
                 }
             }
         }
     }
-    if ["analyze codebase", "review codebase", "audit codebase", "analyze project", "review project", "audit project", "analyze code", "code review", "code audit"].contains(&trimmed) {
+    if ["analyze codebase", "review codebase", "audit codebase", "analyze project", "review project", "audit project", "analyze code", "code review", "code audit"].contains(&trimmed)
+        || ["analyze codebase", "review codebase", "audit codebase", "analyze project", "review project", "audit project", "analyze code", "code review", "code audit"].contains(&norm.as_str())
+    {
         return Intent::AnalyzeDir(".".into());
     }
     let candidates = paths(prompt);
@@ -1194,5 +1300,24 @@ mod tests {
 
         let unsupported2 = parse(&model, "read and upload our workspace");
         assert_eq!(unsupported2, Intent::Unsupported);
+    }
+    #[test]
+    fn test_human_language_analysis_normalization() {
+        let model = Model::embedded().unwrap();
+        assert_eq!(parse(&model, "analyst code"), Intent::AnalyzeDir(".".into()));
+        assert_eq!(parse(&model, "analyse codebase"), Intent::AnalyzeDir(".".into()));
+        assert_eq!(parse(&model, "analyze codebase"), Intent::AnalyzeDir(".".into()));
+        assert_eq!(
+            parse(&model, "can you give me an analysis of the codebase?"),
+            Intent::AnalyzeDir(".".into())
+        );
+        assert_eq!(
+            parse(&model, "please review Cargo.toml"),
+            Intent::AnalyzeFile("Cargo.toml".into())
+        );
+        assert_eq!(
+            parse(&model, "how is the code quality?"),
+            Intent::AnalyzeDir(".".into())
+        );
     }
 }
