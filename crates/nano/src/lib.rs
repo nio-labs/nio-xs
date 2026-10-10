@@ -7,6 +7,7 @@
 
 pub mod analysis;
 pub mod coder;
+pub mod dataset;
 pub mod model;
 pub mod patch;
 pub mod synthesize;
@@ -45,6 +46,9 @@ pub enum Intent {
     ScaffoldTest { file: String, function: String },
     ReviewDiff,
     SuggestCommit,
+    DatasetList,
+    DatasetDownload(String),
+    DatasetAnswer(String),
     Unsupported,
 }
 impl Intent {
@@ -74,6 +78,9 @@ impl Intent {
             Self::ScaffoldTest { .. } => "scaffold_template",
             Self::ReviewDiff => "inspect_project",
             Self::SuggestCommit => "inspect_project",
+            Self::DatasetList => "unsupported",
+            Self::DatasetDownload(_) => "unsupported",
+            Self::DatasetAnswer(_) => "unsupported",
             Self::Unsupported => "unsupported",
         }
     }
@@ -286,6 +293,18 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     if let Some(coder_intent) = coder::parse_coder_intent(prompt).or_else(|| coder::parse_coder_intent(&norm)) {
         return coder_intent;
     }
+    let trimmed_norm = norm.trim().trim_end_matches(|c: char| "?!. \t\r\n".contains(c));
+    if ["list datasets", "show datasets", "available datasets", "datasets"].contains(&trimmed_norm) {
+        return Intent::DatasetList;
+    }
+    for prefix in &["download dataset ", "fetch dataset ", "install dataset "] {
+        if norm.starts_with(prefix) {
+            let id = norm[prefix.len()..].trim().trim_matches(|c: char| "`\"',;:!?".contains(c));
+            if !id.is_empty() {
+                return Intent::DatasetDownload(id.to_string());
+            }
+        }
+    }
     let lower = prompt.to_ascii_lowercase();
     let query_prefix = [
         "search the web for ",
@@ -348,6 +367,17 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
                 .any(|target| lower_q.contains(target))
         {
             return Intent::Unsupported;
+        }
+
+        let is_explicit_web_search = lower.starts_with("search the web for")
+            || lower.starts_with("search web for")
+            || lower.starts_with("web search for")
+            || lower.starts_with("web search ");
+
+        if !is_explicit_web_search {
+            if let Some(_matched) = dataset::route_prompt_to_dataset(prompt).or_else(|| dataset::route_prompt_to_dataset(query)) {
+                return Intent::DatasetAnswer(prompt.to_string());
+            }
         }
         return Intent::Research(query.to_string());
     }
@@ -566,7 +596,13 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             }
             .into(),
         ),
-        _ => Intent::Unsupported,
+        _ => {
+            if let Some(_matched) = dataset::route_prompt_to_dataset(prompt).or_else(|| dataset::route_prompt_to_dataset(&norm)) {
+                Intent::DatasetAnswer(prompt.to_string())
+            } else {
+                Intent::Unsupported
+            }
+        }
     }
 }
 struct Workflow<'a> {
@@ -1135,6 +1171,28 @@ pub fn decide_with_model(
                 Err(err) => Ok(w.end(format!("Commit generation failed: {err}"), Outcome::Completed)),
             }
         }
+        Intent::DatasetList => {
+            let catalog_text = dataset::format_catalog();
+            Ok(w.end(catalog_text, Outcome::Completed))
+        }
+        Intent::DatasetDownload(id) => {
+            let result = run_async(dataset::download_dataset_to_niodb(&id))
+                .unwrap_or_else(|e| format!("Download error: {e}"));
+            Ok(w.end(result, Outcome::Completed))
+        }
+        Intent::DatasetAnswer(prompt) => {
+            if let Some(m) = dataset::route_prompt_to_dataset(&prompt) {
+                // Opportunistic background auto-save to NioDB
+                let _ = run_async(dataset::download_dataset_to_niodb(m.dataset.id));
+                let response_text = dataset::format_routed_response(&m);
+                Ok(w.end(response_text, Outcome::Completed))
+            } else {
+                Ok(w.end(
+                    "No matching domain dataset found for that question. Try `list datasets` to view available packs.".into(),
+                    Outcome::Completed,
+                ))
+            }
+        }
         Intent::Plan(steps) => {
             let mut summary = format!("Decomposed and executing {} task steps:\n\n", steps.len());
             for (idx, step) in steps.iter().enumerate() {
@@ -1440,6 +1498,21 @@ mod tests {
         assert_eq!(
             parse(&model, "suggest commit message"),
             Intent::SuggestCommit
+        );
+    }
+
+    #[test]
+    fn test_v0_8_1_dataset_hub_and_router() {
+        let model = Model::embedded().unwrap();
+
+        assert_eq!(parse(&model, "list datasets"), Intent::DatasetList);
+        assert_eq!(
+            parse(&model, "download dataset rust-error-handling"),
+            Intent::DatasetDownload("rust-error-handling".into())
+        );
+        assert_eq!(
+            parse(&model, "how do I eliminate unwrap in rust?"),
+            Intent::DatasetAnswer("how do I eliminate unwrap in rust?".into())
         );
     }
 }

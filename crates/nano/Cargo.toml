@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 nioxs-contracts = { path = "../contracts" }
 nioxs-browser = { path = "../browser" }
+nioxs-storage = { path = "../storage" }
 serde_json.workspace = true
 serde.workspace = true
 tokio.workspace = true

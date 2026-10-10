@@ -635,6 +635,7 @@ version = "0.1.0-alpha.2"
 dependencies = [
  "nioxs-browser",
  "nioxs-contracts",
+ "nioxs-storage",
  "serde",
  "serde_json",
  "tokio",
