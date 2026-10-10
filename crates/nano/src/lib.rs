@@ -1,5 +1,7 @@
 pub mod model;
+pub mod patch;
 pub use model::Model;
+pub use patch::{apply_patch_to_string, scaffold_template};
 use nioxs_contracts::{
     ChatRequest, Execution, FunctionCall, Handoff, MODEL, Outcome, PROVIDER, SCHEMA_VERSION,
     ToolCall, digest,
@@ -19,6 +21,7 @@ pub enum Intent {
     Wiki(String),
     Github(String),
     Package(String),
+    Scaffold(String),
     Clarify(String),
     Unsupported,
 }
@@ -35,6 +38,7 @@ impl Intent {
             Self::Wiki(_) => "wiki_search",
             Self::Github(_) => "github_repo",
             Self::Package(_) => "package_info",
+            Self::Scaffold(_) => "scaffold_template",
             Self::Clarify(_) => "clarify",
             Self::Unsupported => "unsupported",
         }
@@ -210,6 +214,16 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
         };
         if !pkg.is_empty() && !pkg.contains(' ') {
             return Intent::Package(pkg.to_string());
+        }
+    }
+    if lower.starts_with("scaffold ") || lower.starts_with("template ") {
+        let tpl = if lower.starts_with("scaffold ") {
+            prompt[9..].trim()
+        } else {
+            prompt[9..].trim()
+        };
+        if !tpl.is_empty() {
+            return Intent::Scaffold(tpl.to_string());
         }
     }
     let candidates = paths(prompt);
@@ -701,6 +715,22 @@ if limited{report.push_str("File inventory incomplete.\n");}Ok(w.end(excerpt(&re
             }
             Ok(w.end(report, Outcome::Completed))
         }
+        Intent::Scaffold(template_name) => {
+            match scaffold_template(&template_name) {
+                Some((filename, content)) => {
+                    Ok(w.end(
+                        format!("Deterministic scaffold template for '{filename}':\n\n```\n{content}```"),
+                        Outcome::Completed,
+                    ))
+                }
+                None => {
+                    Ok(w.end(
+                        format!("Unknown scaffold template '{template_name}'. Available: gitignore, github-ci, license-mit"),
+                        Outcome::Clarification,
+                    ))
+                }
+            }
+        }
     }
 }
 #[cfg(test)]
@@ -813,6 +843,10 @@ mod tests {
         assert_eq!(
             parse(model, "npm express"),
             Intent::Package("express".into())
+        );
+        assert_eq!(
+            parse(model, "scaffold gitignore"),
+            Intent::Scaffold("gitignore".into())
         );
     }
 }
