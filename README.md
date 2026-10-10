@@ -1,47 +1,83 @@
-# NioXS
+# NioXS (Nio Axis)
 
-**The axis of Nio's non-LLM models.**
+**The AI Gateway & Sovereign Router for MicroLMs ($\mu$LMs) and Frontier Models.**
 
-AXIS = AI + XS: NioAI carries AI; NioXS carries XS.
+> **AXIS = AI + XS**: NioAI brings the intelligent agent interface; NioXS anchors the operational axis (gateway routing, state durability, safety guardrails, and tool dispatch).
 
-## Project identity
+```
+                      ┌────────────────────────────────────────┐
+                      │              NioAI (Agent)             │
+                      └───────────────────┬────────────────────┘
+                                          │
+                                          ▼
+                      ┌────────────────────────────────────────┐
+                      │           NioXS (The Gateway)          │
+                      │  • OpenAI-Compatible Proxy (/v1/chat)  │
+                      │  • Sovereign Tool & Policy Broker      │
+                      │  • NioDB Durability & State Journal    │
+                      └───────────────┬────────────────────────┘
+                                      │
+                 ┌────────────────────┴────────────────────┐
+                 ▼                                         ▼
+   ┌───────────────────────────┐             ┌───────────────────────────┐
+   │    NioNano (MicroLM)      │             │    Consulted Frontier     │
+   │  • Sub-megabyte model     │             │    LLMs (v1.0.0+)         │
+   │  • <1ms CPU inference     │             │  • DeepSeek / Claude /    │
+   │  • 100% deterministic     │             │    Ollama / OpenAI        │
+   │  • Pure native scraping   │             │  • Consult & Advise only  │
+   │  • Codebase inspection    │             │  • Zero tool execution    │
+   └───────────────────────────┘             └───────────────────────────┘
+```
 
-- Product: NioAI (nio).
-- Required model provider: NioXS (provider ID: nioxs).
-- First non-LLM model: NioNano (model ID: nio-nano).
-- Future family: NioMini, NioCore, NioMax, NioUltra.
-- Runtime and training implementation: closed source.
-- Persistence: NioDB through its core HTTP records API.
-- NioJS is outside v0.1.0; the provider and Nano runtime remain Rust.
+---
 
-## Planning documents
+## The Identity & Taxonomy
+
+- **The Product**: **NioAI** (`nio`) — Sovereign AI pair programmer and agent CLI.
+- **The Gateway**: **NioXS** (`nioxs`) — The high-performance, self-hosted gateway router (similar in interface to OpenRouter, but optimized for local-first tool execution and durable journal governance).
+- **The MicroLM ($\mu$LM)**: **NioNano** (`nio-nano`) — Not an LLM, but a hyper-compact, sub-megabyte **MicroLM** running deterministic calibrated inference on CPU in under 1ms.
+- **The Future Model Family**:
+  - `NioNano` ($\mu$LM): Sub-megabyte edge router for code search, read, check, and web research.
+  - `NioMini` / `NioCore` ($\mu$LM+): Enhanced local patch and template models.
+  - `NioMax` / `NioUltra`: Hybrid orchestrators.
+- **Persistence**: **NioDB** through authenticated REST storage contracts (`nano_events`, `nano_actions`, `nano_runs`, and `nano_cache`).
+
+---
+
+## Architectural Principles
+
+1. **MicroLM-First Autonomous Execution**:
+   NioNano handles codebase inspection, symbol searches, checks, and native internet research autonomously with zero GPU requirements and zero API costs.
+2. **Consult & Execute Paradigm (v1.0.0)**:
+   Rather than handing off entire sessions to third-party LLMs, NioXS will consult frontier models for advice or strategy, while execution stays sovereignly inside NioNano and NioXS.
+3. **Pure Rust Native Web Engine**:
+   Zero external browser binaries (no Chromium, no Obscura), zero search API keys. NioXS curls and scrapes DuckDuckGo Lite, Wikipedia, and GitHub directly with a built-in BM25 lexical ranker and bot-challenge defenses.
+4. **Durable & Idempotent**:
+   Every turn, action claim, and execution state is cryptographically journaled in NioDB to prevent duplicate tool dispatches.
+
+---
+
+## Milestone Roadmap
+
+- **v0.1.0 (Current)**: Rock-solid, non-LLM MicroLM foundation:
+  - Rust-native intent router and classifier (`nioxs-nano`).
+  - Read, find, search, check workflows.
+  - Pure native Rust scraping engine (`nioxs-browser`) for DuckDuckGo Lite, Wikipedia, and GitHub.
+  - NioDB durability and frozen holdout safety verification.
+- **v0.1.5 (Next)**: Sovereign Coding Engine:
+  - Deterministic Code Patch Engine (`patch_file`, `cargo fix`, `prettier`, template scaffolding).
+  - Package & Registry Inspector (crates.io and npm metadata scraping).
+  - Local MCP Stdio Server interface.
+  - NioDB Research Cache (`nano_cache`) with 24h TTL.
+- **v1.0.0**: Hybrid Gateway & Frontier LLM Consultation:
+  - NioXS routes high-ambiguity planning queries to external LLMs while keeping tool execution strictly governed by MicroLM policies.
+
+---
+
+## Planning & Documentation
 
 - [Full design and flows](NIOXS_PLAN.md)
 - [Five-phase roadmap and acceptance gates](NIOXS_ROADMAP.md)
-- [v0.1.0 task checklist](TODO_V0.1.0.md)
-
-## Execution flow
-
-NioAI → NioXS provider → NioNano → supported workflows and tools.
-
-Planned Phase 4 behavior: when a task exceeds Nano's capability, NioXS returns a handoff and Nio continues on the user's configured LLM provider. File and command execution remain under Nio's permission broker.
-
-## Core decisions
-
-- NioXS is mandatory for access to NioNano, hosted or self-hosted.
-- Obscura is the only browser engine; no Chromium.
-- Browser search needs no search API key; blocked pages and CAPTCHAs are skipped.
-- Research starts with a small page batch and expands according to complexity and coverage.
-- NioDB stores bounded workflow records, research cache, and optional feedback; its Nio/LLM assistance is not used by Nano.
-- Binaries and model artifacts are distributed through R2 or S3.
-- OpenAI-compatible provider API first, MCP support follows the roadmap.
-
-## Current status
-
-Nio now defaults to `nioxs::nio-nano` in the development build. Kilo remains built in as another provider. Start the local NioDB and NioXS services before testing Nano; use `:provider` to customize the endpoint.
-
-Phase 2 core implementation is available at `0.1.0-alpha.2`: a trained non-LLM intent classifier with Rust inference, file reading, project inspection, filename/code search, and approved configured checks. Natural prompts such as “now read readme.md” work. NioDB journals actions and prevents automatic replay of uncertain commands. Automatic LLM switching, chat browser research, and MCP remain later phases. The optional Crawl4AI probe is deferred.
-
 - [Local development and startup](docs/DEVELOPMENT.md)
 - [Provider contracts](contracts/README.md)
 - [Storage contract](contracts/storage.md)
