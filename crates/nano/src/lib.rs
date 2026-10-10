@@ -127,6 +127,18 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
         }
     }
     let lower = prompt.to_ascii_lowercase();
+    if model::features(prompt)
+        .iter()
+        .any(|f| f == "<unsupported-risk>")
+    {
+        return Intent::Unsupported;
+    }
+    if [" then ", " && ", " and "]
+        .iter()
+        .any(|s| lower.contains(s))
+    {
+        return Intent::Unsupported;
+    }
     let query_prefix = [
         "search the web for ",
         "search web for ",
@@ -166,18 +178,6 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
         if !target.is_empty() && target.contains('/') {
             return Intent::Github(target.to_string());
         }
-    }
-    if model::features(prompt)
-        .iter()
-        .any(|f| f == "<unsupported-risk>")
-    {
-        return Intent::Unsupported;
-    }
-    if [" then ", " && ", " and "]
-        .iter()
-        .any(|s| lower.contains(s))
-    {
-        return Intent::Unsupported;
     }
     let candidates = paths(prompt);
     match model.predict(prompt).label.as_str() {
