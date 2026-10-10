@@ -732,37 +732,18 @@ pub fn generate_project_suggestions(root: &str) -> String {
 
 /// Formulates a structured 5-phase engineering execution plan for any feature, bug fix, or refactor.
 pub fn generate_task_plan(task: &str) -> String {
+    use crate::dag::{ExecutionDag, DagNode, DagState};
+    
     let clean_task = task.trim().trim_matches(|c: char| "`\"',;:!?".contains(c));
-    let mut out = String::new();
-    out.push_str(&format!("### 📋 Engineering Execution Plan: `{clean_task}`\n\n"));
-    out.push_str("Autonomous task breakdown and verification phases:\n\n");
-
-    out.push_str("#### Phase 1: Architectural Analysis & Scope\n");
-    out.push_str(&format!("• Identify affected modules and declarations across the workspace for `{clean_task}`.\n"));
-    out.push_str("• Check existing invariants, dependencies, and interfaces to prevent breaking changes.\n");
-    out.push_str("• Command: `where is <symbol> defined?` / `inspect project`.\n\n");
-
-    out.push_str("#### Phase 2: Type Definitions & Contract Scaffolding\n");
-    out.push_str("• Define required structs, enums, error types, and trait interfaces.\n");
-    out.push_str("• Ensure explicit error handling (use `Result<T, E>`, avoid unwrap panics).\n");
-    out.push_str("• Command: `replace 'old_contract' with 'new_contract' in <file>`.\n\n");
-
-    out.push_str("#### Phase 3: Core Implementation & Deterministic Patching\n");
-    out.push_str(&format!("• Implement business logic for `{clean_task}` incrementally in designated files.\n"));
-    out.push_str("• Keep edits minimal, deterministic, and isolated.\n\n");
-
-    out.push_str("#### Phase 4: Autonomous TDD & Unit Testing\n");
-    out.push_str("• Scaffold unit tests and boundary test cases (empty inputs, error branches, overflow).\n");
-    out.push_str("• Command: `write test for <function> in <file>`.\n");
-    out.push_str("• Execute verification loop: `replace 'a' with 'b' in <file> and run tests`.\n\n");
-
-    out.push_str("#### Phase 5: Self-Verification, Security & Commit\n");
-    out.push_str("• Verify compiler checks: `run test check` and `run build check`.\n");
-    out.push_str("• Review staged diff: `review git diff`.\n");
-    out.push_str("• Generate semantic commit: `suggest commit message`.\n\n");
-    out.push_str("*Ready to begin? Start with Phase 1 by inspecting relevant source files or specifying your first edit!*");
-
-    out
+    let mut dag = ExecutionDag::new(clean_task);
+    
+    dag.add_node("phase1", "Architectural Analysis & Scope: Identify affected modules and declarations across the workspace. Check existing invariants to prevent breaking changes.", vec![]);
+    dag.add_node("phase2", "Type Definitions & Contract Scaffolding: Define required structs, enums, error types, and trait interfaces. Ensure explicit error handling.", vec!["phase1"]);
+    dag.add_node("phase3", "Core Implementation & Deterministic Patching: Implement business logic incrementally in designated files. Keep edits minimal and deterministic.", vec!["phase2"]);
+    dag.add_node("phase4", "Autonomous TDD & Unit Testing: Scaffold unit tests and boundary test cases. Execute verification loop.", vec!["phase3"]);
+    dag.add_node("phase5", "Self-Verification, Security & Commit: Verify compiler checks and generate semantic commit.", vec!["phase4"]);
+    
+    dag.render_plan()
 }
 
 #[cfg(test)]

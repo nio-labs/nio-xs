@@ -12,6 +12,8 @@ pub mod dataset;
 pub mod model;
 pub mod patch;
 pub mod synthesize;
+pub mod dag;
+pub mod watcher;
 pub use model::Model;
 use nioxs_contracts::{
     ChatRequest, Execution, FunctionCall, Handoff, MODEL, Outcome, PROVIDER, SCHEMA_VERSION,
