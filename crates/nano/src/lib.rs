@@ -5,6 +5,7 @@
 //! (sub-megabyte embedded weights, multinomial n-gram distribution, <1ms CPU inference)
 //! to provide sovereign pair-programming workflows without external API dependencies or GPU requirements.
 
+pub mod analysis;
 pub mod model;
 pub mod patch;
 pub use model::Model;
@@ -33,6 +34,8 @@ pub enum Intent {
     Help,
     Clarify(String),
     Plan(Vec<Intent>),
+    AnalyzeFile(String),
+    AnalyzeDir(String),
     Unsupported,
 }
 impl Intent {
@@ -53,6 +56,8 @@ impl Intent {
             Self::Help => "help",
             Self::Clarify(_) => "clarify",
             Self::Plan(_) => "plan",
+            Self::AnalyzeFile(_) => "analyze_file",
+            Self::AnalyzeDir(_) => "analyze_dir",
             Self::Unsupported => "unsupported",
         }
     }
@@ -304,6 +309,41 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     }
     if ["search my codebase", "search the codebase", "search codebase", "search code"].contains(&trimmed) {
         return Intent::Clarify("Which literal text or symbol should I search for in the codebase?".into());
+    }
+    let analyze_prefixes = [
+        "analyze file ",
+        "analyze folder ",
+        "analyze dir ",
+        "analyze directory ",
+        "analyze ",
+        "review file ",
+        "review folder ",
+        "review dir ",
+        "review directory ",
+        "review ",
+        "audit file ",
+        "audit folder ",
+        "audit dir ",
+        "audit ",
+    ];
+    for prefix in &analyze_prefixes {
+        if lower.starts_with(prefix) {
+            let target = prompt[prefix.len()..].trim().trim_matches(|c: char| "`\"',:!?".contains(c));
+            let lower_t = target.to_ascii_lowercase();
+            if ["codebase", "the codebase", "my codebase", "project", "the project", "my project", "code", "the code", "."].contains(&lower_t.as_str()) {
+                return Intent::AnalyzeDir(".".into());
+            }
+            if safe_path(target, true) && !target.is_empty() {
+                if target.contains('.') && !target.ends_with('/') {
+                    return Intent::AnalyzeFile(target.to_string());
+                } else {
+                    return Intent::AnalyzeDir(target.to_string());
+                }
+            }
+        }
+    }
+    if ["analyze codebase", "review codebase", "audit codebase", "analyze project", "review project", "audit project", "analyze code", "code review", "code audit"].contains(&trimmed) {
+        return Intent::AnalyzeDir(".".into());
     }
     let candidates = paths(prompt);
     match model.predict(prompt).label.as_str() {
@@ -896,9 +936,27 @@ pub fn decide_with_model(
         }
         Intent::Help => {
             Ok(w.end(
-                "NioNano MicroLM (μLM) Capabilities:\n\n• Code Inspection: `read <file>`, `find <glob>`, `inspect project`\n• Code Search: `search code for <symbol>`\n• Checks: `run test check`, `run build check`, `run lint check`\n• Web Research: `wiki <topic>`, `github <repo>`, `what is <term>?`\n• Package Registry: `crate <name>`, `npm <name>`\n• Templates: `scaffold gitignore`, `scaffold github-ci`, `scaffold license-mit`".into(),
+                "NioNano MicroLM (μLM) Capabilities:\n\n• Code Inspection: `read <file>`, `find <glob>`, `inspect project`\n• Code Analysis: `analyze <file>`, `review <file>`, `analyze codebase`\n• Code Search: `search code for <symbol>`\n• Checks: `run test check`, `run build check`, `run lint check`\n• Web Research: `wiki <topic>`, `github <repo>`, `what is <term>?`\n• Package Registry: `crate <name>`, `npm <name>`\n• Templates: `scaffold gitignore`, `scaffold github-ci`, `scaffold license-mit`".into(),
                 Outcome::Completed,
             ))
+        }
+        Intent::AnalyzeFile(path) => {
+            let text = tool!(w, "read_file", json!({"path": path, "line_count": 500}));
+            let payload_text = payload(&text);
+            let analysis = analysis::analyze_file_content(&path, payload_text);
+            let report = analysis::format_file_analysis(&analysis);
+            Ok(w.end(report, Outcome::Completed))
+        }
+        Intent::AnalyzeDir(dir) => {
+            let text = tool!(w, "find_files", json!({"path": ".", "limit": 100}));
+            let (paths, _) = files(&text)?;
+            let filtered: Vec<String> = if dir == "." {
+                paths
+            } else {
+                paths.into_iter().filter(|p| p.starts_with(&dir)).collect()
+            };
+            let report = analysis::format_directory_analysis(&dir, &filtered);
+            Ok(w.end(report, Outcome::Completed))
         }
         Intent::Plan(steps) => {
             let mut summary = format!("Decomposed and executing {} task steps:\n\n", steps.len());
@@ -926,6 +984,21 @@ pub fn decide_with_model(
                         let text = tool!(w, "find_files", json!({"path": ".", "limit": 50}));
                         let (paths, _) = files(&text)?;
                         summary.push_str(&format!("### Step {step_num}: Project Inspection\nFound {} project files.\n\n", paths.len()));
+                    }
+                    Intent::AnalyzeFile(path) => {
+                        let text = tool!(w, "read_file", json!({"path": path, "line_count": 500}));
+                        let analysis = analysis::analyze_file_content(path, payload(&text));
+                        summary.push_str(&format!("### Step {step_num}: Analysis of {path}\n{}\n\n", analysis::format_file_analysis(&analysis)));
+                    }
+                    Intent::AnalyzeDir(dir) => {
+                        let text = tool!(w, "find_files", json!({"path": ".", "limit": 100}));
+                        let (paths, _) = files(&text)?;
+                        let filtered: Vec<String> = if dir == "." {
+                            paths
+                        } else {
+                            paths.into_iter().filter(|p| p.starts_with(dir)).collect()
+                        };
+                        summary.push_str(&format!("### Step {step_num}: Codebase Analysis ({dir})\n{}\n\n", analysis::format_directory_analysis(dir, &filtered)));
                     }
                     Intent::Checks(kind) => {
                         if !request.permits_tool("run_command") {
