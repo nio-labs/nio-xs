@@ -19,12 +19,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs serve\nEnvironment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID, NIOXS_API_TOKEN_FILE (optional on loopback).\nPhase 2 trained project workflows; no automatic fallback yet."
+            "Usage: nioxs <serve|mcp>\nCommands:\n  serve   Start HTTP OpenAI-compatible AI gateway\n  mcp     Start Model Context Protocol (MCP) JSON-RPC stdio server\nEnvironment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID, NIOXS_API_TOKEN_FILE (optional on loopback)."
         );
         return Ok(());
     }
+    if arg.as_deref() == Some("mcp") {
+        return nioxs_provider::mcp::run_stdio_server().map_err(|e| e.into());
+    }
     if arg.as_deref() != Some("serve") {
-        return Err("expected serve; use --help".into());
+        return Err("expected serve or mcp; use --help".into());
     }
     let listen: std::net::SocketAddr = std::env::var("NIOXS_LISTEN")
         .unwrap_or_else(|_| "127.0.0.1:7460".into())

@@ -9,9 +9,17 @@ pub struct PatchOperation {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum PatchResult {
-    Success { file_path: String, replaced_count: usize },
-    NotFound { file_path: String },
-    Ambiguous { file_path: String, occurrences: usize },
+    Success {
+        file_path: String,
+        replaced_count: usize,
+    },
+    NotFound {
+        file_path: String,
+    },
+    Ambiguous {
+        file_path: String,
+        occurrences: usize,
+    },
     Error(String),
 }
 

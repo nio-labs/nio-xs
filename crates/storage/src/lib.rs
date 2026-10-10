@@ -213,7 +213,11 @@ impl NioDb {
     }
 
     /// Scan `nano_cache` or a collection and find IDs of records expired before `now_unix`.
-    pub async fn scan_expired(&self, collection: &str, now_unix: u64) -> Result<Vec<String>, String> {
+    pub async fn scan_expired(
+        &self,
+        collection: &str,
+        now_unix: u64,
+    ) -> Result<Vec<String>, String> {
         let mut expired_ids = Vec::new();
         for offset in (0..1000).step_by(50) {
             let page = self
@@ -230,10 +234,11 @@ impl NioDb {
             let items = page["items"].as_array().ok_or("invalid record page")?;
             for item in items {
                 let expires_at = item["data"]["expires_at_unix"].as_u64().unwrap_or(0);
-                if expires_at > 0 && expires_at <= now_unix {
-                    if let Some(id) = item["id"].as_str() {
-                        expired_ids.push(id.to_string());
-                    }
+                if expires_at > 0
+                    && expires_at <= now_unix
+                    && let Some(id) = item["id"].as_str()
+                {
+                    expired_ids.push(id.to_string());
                 }
             }
             if items.len() < 50 {
@@ -294,5 +299,3 @@ mod tests {
         assert!(expires_at <= check_at_25h);
     }
 }
-
-

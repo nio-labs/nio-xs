@@ -1,11 +1,11 @@
 pub mod model;
 pub mod patch;
 pub use model::Model;
-pub use patch::{apply_patch_to_string, scaffold_template};
 use nioxs_contracts::{
     ChatRequest, Execution, FunctionCall, Handoff, MODEL, Outcome, PROVIDER, SCHEMA_VERSION,
     ToolCall, digest,
 };
+pub use patch::{apply_patch_to_string, scaffold_template};
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
@@ -164,9 +164,15 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
             "private logs",
         ];
         let lower_q = query.to_ascii_lowercase();
-        if [" then ", " && ", " and "].iter().any(|s| lower_q.contains(s))
-            || model::features(query).iter().any(|f| f == "<unsupported-risk>")
-            || internal_targets.iter().any(|target| lower_q.contains(target))
+        if [" then ", " && ", " and "]
+            .iter()
+            .any(|s| lower_q.contains(s))
+            || model::features(query)
+                .iter()
+                .any(|f| f == "<unsupported-risk>")
+            || internal_targets
+                .iter()
+                .any(|target| lower_q.contains(target))
         {
             return Intent::Unsupported;
         }
@@ -217,11 +223,7 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
         }
     }
     if lower.starts_with("scaffold ") || lower.starts_with("template ") {
-        let tpl = if lower.starts_with("scaffold ") {
-            prompt[9..].trim()
-        } else {
-            prompt[9..].trim()
-        };
+        let tpl = prompt[9..].trim();
         if !tpl.is_empty() {
             return Intent::Scaffold(tpl.to_string());
         }
@@ -836,10 +838,7 @@ mod tests {
             parse(model, "github tokio-rs/tokio"),
             Intent::Github("tokio-rs/tokio".into())
         );
-        assert_eq!(
-            parse(model, "crate tokio"),
-            Intent::Package("tokio".into())
-        );
+        assert_eq!(parse(model, "crate tokio"), Intent::Package("tokio".into()));
         assert_eq!(
             parse(model, "npm express"),
             Intent::Package("express".into())
@@ -850,4 +849,3 @@ mod tests {
         );
     }
 }
-
