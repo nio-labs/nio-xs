@@ -667,6 +667,7 @@ dependencies = [
  "nioxs-browser",
  "nioxs-contracts",
  "nioxs-storage",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
