@@ -365,7 +365,9 @@ pub struct PackageMetadata {
 }
 
 pub async fn fetch_crate_info(crate_name: &str) -> Result<PackageMetadata, String> {
-    let clean = crate_name.trim().trim_matches(|c: char| "`\"',;!?".contains(c));
+    let clean = crate_name
+        .trim()
+        .trim_matches(|c: char| "`\"',;!?".contains(c));
     let url = format!("https://crates.io/api/v1/crates/{clean}");
     let json_text = fetch_url(&url).await?;
     let value: serde_json::Value =
@@ -393,7 +395,9 @@ pub async fn fetch_crate_info(crate_name: &str) -> Result<PackageMetadata, Strin
 }
 
 pub async fn fetch_npm_info(pkg_name: &str) -> Result<PackageMetadata, String> {
-    let clean = pkg_name.trim().trim_matches(|c: char| "`\"',;!?".contains(c));
+    let clean = pkg_name
+        .trim()
+        .trim_matches(|c: char| "`\"',;!?".contains(c));
     let url = format!("https://registry.npmjs.org/{clean}");
     let json_text = fetch_url(&url).await?;
     let value: serde_json::Value =
@@ -419,7 +423,6 @@ pub async fn fetch_npm_info(pkg_name: &str) -> Result<PackageMetadata, String> {
         documentation: None,
     })
 }
-
 
 pub async fn fetch_url(url: &str) -> Result<String, String> {
     if !url.starts_with("https://") && !url.starts_with("http://") {
@@ -571,13 +574,15 @@ pub async fn research_dual(
     query_a: &str,
     query_b: &str,
     pages_per_query: usize,
-) -> (Result<ResearchReport, String>, Result<ResearchReport, String>) {
+) -> (
+    Result<ResearchReport, String>,
+    Result<ResearchReport, String>,
+) {
     tokio::join!(
         research(query_a, pages_per_query),
         research(query_b, pages_per_query)
     )
 }
-
 
 #[cfg(test)]
 mod tests {

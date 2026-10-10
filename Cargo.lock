@@ -649,6 +649,7 @@ dependencies = [
  "nioxs-contracts",
  "nioxs-nano",
  "nioxs-storage",
+ "serde",
  "serde_json",
  "tokio",
  "tower",

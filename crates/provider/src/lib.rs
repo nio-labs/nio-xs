@@ -103,7 +103,7 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
             "provider authentication required",
         );
     }
-    Json(json!({"object":"list","data":[{"id":MODEL,"object":"model","created":0,"owned_by":PROVIDER,"name":"NioNano (trained project workflows)","type":"language","free":true}]})).into_response()
+    Json(json!({"object":"list","data":[{"id":MODEL,"object":"model","created":0,"owned_by":PROVIDER,"name":"NioNano MicroLM (symbol + LM)","type":"language","free":true}]})).into_response()
 }
 
 async fn capabilities(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {

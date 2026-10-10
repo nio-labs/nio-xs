@@ -1,3 +1,10 @@
+//! # NioNano — MicroLM (Symbol + LM)
+//!
+//! NioNano combines **Symbolic AI** (deterministic code search, unified patch engine,
+//! AST exploration, path sanitization, sandboxing) with a lightweight **Language Model (LM)**
+//! (sub-megabyte embedded weights, multinomial n-gram distribution, <1ms CPU inference)
+//! to provide sovereign pair-programming workflows without external API dependencies or GPU requirements.
+
 pub mod model;
 pub mod patch;
 pub use model::Model;
@@ -25,6 +32,7 @@ pub enum Intent {
     Greeting,
     Help,
     Clarify(String),
+    Plan(Vec<Intent>),
     Unsupported,
 }
 impl Intent {
@@ -44,6 +52,7 @@ impl Intent {
             Self::Greeting => "greeting",
             Self::Help => "help",
             Self::Clarify(_) => "clarify",
+            Self::Plan(_) => "plan",
             Self::Unsupported => "unsupported",
         }
     }
@@ -126,7 +135,48 @@ fn run_async<F: std::future::Future>(f: F) -> F::Output {
             .block_on(f)
     }
 }
+
+fn split_compound_prompt(prompt: &str) -> Option<Vec<&str>> {
+    let lower = prompt.to_ascii_lowercase();
+    for delim in &[" and then ", " then ", "; ", " after that "] {
+        if lower.contains(delim) {
+            let parts: Vec<&str> = prompt
+                .split(delim)
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if parts.len() >= 2 {
+                return Some(parts);
+            }
+        }
+    }
+    None
+}
+
 pub fn parse(model: &Model, prompt: &str) -> Intent {
+    if prompt.len() > 1024 || !prompt.is_ascii() {
+        return Intent::Unsupported;
+    }
+    if let Some(parts) = split_compound_prompt(prompt) {
+        let mut steps = Vec::new();
+        for part in parts {
+            if model::features(part).iter().any(|f| f == "<unsupported-risk>") {
+                return Intent::Unsupported;
+            }
+            let sub = parse_atomic(model, part);
+            if matches!(sub, Intent::Unsupported | Intent::Clarify(_)) {
+                return Intent::Unsupported;
+            }
+            steps.push(sub);
+        }
+        if steps.len() >= 2 {
+            return Intent::Plan(steps);
+        }
+    }
+    parse_atomic(model, prompt)
+}
+
+pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     if prompt.len() > 1024 || !prompt.is_ascii() {
         return Intent::Unsupported;
     }
@@ -755,15 +805,88 @@ if limited{report.push_str("File inventory incomplete.\n");}Ok(w.end(excerpt(&re
         }
         Intent::Greeting => {
             Ok(w.end(
-                "Hello! I'm NioNano, your sovereign pair programmer and MicroLM. I can inspect your project, search code, run test/build checks, scaffold templates, or research the web. What would you like to work on?".into(),
+                "Hello! I'm NioNano, your sovereign pair programmer and MicroLM (symbol + LM). I can inspect your project, search code, run test/build checks, scaffold templates, or research the web. What would you like to work on?".into(),
                 Outcome::Completed,
             ))
         }
         Intent::Help => {
             Ok(w.end(
-                "NioNano MicroLM Capabilities:\n\n• Code Inspection: `read <file>`, `find <glob>`, `inspect project`\n• Code Search: `search code for <symbol>`\n• Checks: `run test check`, `run build check`, `run lint check`\n• Web Research: `wiki <topic>`, `github <repo>`, `what is <term>?`\n• Package Registry: `crate <name>`, `npm <name>`\n• Templates: `scaffold gitignore`, `scaffold github-ci`, `scaffold license-mit`".into(),
+                "NioNano MicroLM (symbol + LM) Capabilities:\n\n• Code Inspection: `read <file>`, `find <glob>`, `inspect project`\n• Code Search: `search code for <symbol>`\n• Checks: `run test check`, `run build check`, `run lint check`\n• Web Research: `wiki <topic>`, `github <repo>`, `what is <term>?`\n• Package Registry: `crate <name>`, `npm <name>`\n• Templates: `scaffold gitignore`, `scaffold github-ci`, `scaffold license-mit`".into(),
                 Outcome::Completed,
             ))
+        }
+        Intent::Plan(steps) => {
+            let mut summary = format!("Decomposed and executing {} task steps:\n\n", steps.len());
+            for (idx, step) in steps.iter().enumerate() {
+                let step_num = idx + 1;
+                match step {
+                    Intent::Read(path) => {
+                        let text = tool!(w, "read_file", json!({"path": path, "line_count": 80}));
+                        summary.push_str(&format!("### Step {step_num}: Read {path}\n{}\n\n", excerpt(&text, 2000)));
+                    }
+                    Intent::Files(glob) => {
+                        let text = tool!(w, "find_files", json!({"path": ".", "glob": glob, "limit": 50}));
+                        let (paths, limited) = files(&text)?;
+                        summary.push_str(&format!(
+                            "### Step {step_num}: Files matching {glob}\n{}\n{}\n\n",
+                            paths.iter().map(|p| format!("- {p}")).collect::<Vec<_>>().join("\n"),
+                            if limited { "(Inventory incomplete)" } else { "" }
+                        ));
+                    }
+                    Intent::Search(query) => {
+                        let text = tool!(w, "search_code", json!({"query": query, "path": ".", "regex": false, "context_lines": 1, "limit": 20}));
+                        summary.push_str(&format!("### Step {step_num}: Search code for '{query}'\n{}\n\n", excerpt(&text, 2000)));
+                    }
+                    Intent::Inspect => {
+                        let text = tool!(w, "find_files", json!({"path": ".", "limit": 50}));
+                        let (paths, _) = files(&text)?;
+                        summary.push_str(&format!("### Step {step_num}: Project Inspection\nFound {} project files.\n\n", paths.len()));
+                    }
+                    Intent::Checks(kind) => {
+                        if !request.permits_tool("run_command") {
+                            summary.push_str(&format!("### Step {step_num}: {kind} check\n(Requires run_command permission)\n\n"));
+                        } else {
+                            let text = tool!(w, "find_files", json!({"path": ".", "limit": 50}));
+                            let (paths, _) = files(&text)?;
+                            let cmd = if paths.iter().any(|p| p == "Cargo.toml") {
+                                match kind.as_str() {
+                                    "test" => "cargo test --locked",
+                                    "build" => "cargo build --locked",
+                                    _ => "cargo clippy --locked -- -D warnings",
+                                }
+                            } else {
+                                "npm test"
+                            };
+                            let result = tool!(w, "run_command", json!({"command": cmd}));
+                            summary.push_str(&format!("### Step {step_num}: Run {cmd}\n{}\n\n", excerpt(&result, 2000)));
+                        }
+                    }
+                    Intent::Wiki(q) => {
+                        if let Ok(results) = run_async(nioxs_browser::search_wikipedia(q, 1)) {
+                            if let Some(first) = results.first() {
+                                summary.push_str(&format!("### Step {step_num}: Wikipedia: {}\n{}\n\n", first.title, first.snippet));
+                            }
+                        }
+                    }
+                    Intent::Package(p) => {
+                        if let Ok(meta) = run_async(nioxs_browser::fetch_crate_info(p)) {
+                            summary.push_str(&format!("### Step {step_num}: Crate {} v{}\n{}\n\n", meta.name, meta.latest_version, meta.description));
+                        }
+                    }
+                    Intent::Scaffold(tpl) => {
+                        if let Some((fname, content)) = scaffold_template(tpl) {
+                            summary.push_str(&format!("### Step {step_num}: Scaffolding {fname}\n```\n{}\n```\n\n", content));
+                        }
+                    }
+                    Intent::Research(q) => {
+                        if let Ok(rep) = run_async(nioxs_browser::research(q, 2)) {
+                            summary.push_str(&format!("### Step {step_num}: Web Research for '{q}'\nVisited {} sources, cited {} passages.\n\n", rep.sources_visited.len(), rep.passages.len()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Ok(w.end(summary.trim().to_string(), Outcome::Completed))
         }
     }
 }
@@ -889,5 +1012,29 @@ mod tests {
             parse(model, "search my codebase"),
             Intent::Clarify("Which literal text or symbol should I search for in the codebase?".into())
         );
+    }
+    #[test]
+    fn test_task_decomposition_planning() {
+        let model = Model::embedded().unwrap();
+        let plan = parse(&model, "inspect project and then run tests");
+        assert_eq!(
+            plan,
+            Intent::Plan(vec![Intent::Inspect, Intent::Checks("test".into())])
+        );
+
+        let plan2 = parse(&model, "scaffold gitignore then crate tokio");
+        assert_eq!(
+            plan2,
+            Intent::Plan(vec![
+                Intent::Scaffold("gitignore".into()),
+                Intent::Package("tokio".into())
+            ])
+        );
+
+        let unsupported = parse(&model, "run tests then deploy our workspace");
+        assert_eq!(unsupported, Intent::Unsupported);
+
+        let unsupported2 = parse(&model, "read and upload our workspace");
+        assert_eq!(unsupported2, Intent::Unsupported);
     }
 }
