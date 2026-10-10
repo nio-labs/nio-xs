@@ -1,8 +1,10 @@
 # NioXS + NioNano v0.1.0 TODO
 
-Status: Phase 2 core implemented and tested; optional Phase 1 Crawl4AI probe deferred. Target: v0.1.0. See [roadmap](NIOXS_ROADMAP.md) and [full design](NIOXS_PLAN.md).
+Status: Phases 1–2 complete with evidence; Phase 3 research engine implemented in-tree with its NioDB cache/quota/smoke gates still open; Phase 4 partial (a local MCP stdio server and a bounded edit/verify loop exist, but edit paths bypass the tool gate, and consult_llm, feedback records, and handoff continuation are missing); Phase 5 open. Optional Phase 1 Crawl4AI probe remains deferred. Target: v0.1.0. See [roadmap](NIOXS_ROADMAP.md) and [full design](NIOXS_PLAN.md).
 
 Check tasks only after their acceptance evidence exists. Each phase depends on the previous phase. Nano is the only model in this release.
+
+**Tracking sync 2026-10-10.** Work shipped after this checklist was written (coding engine v0.7.0, dataset hub v0.8.2, MCP stdio server, package registry inspector, code-health analysis, git review helpers, rotating responses) outpaced the roadmap. It is recorded below under "Delivered beyond the original v0.1.0 scope" instead of being silently folded into phase gates. Two invariant violations in that work must be fixed first — [Nano Phase A](NIOXS_NANO_PHASES.md): `coder.rs:208,242` `fs::write` and `coder.rs:254` direct command spawn bypass the Nio tool gate, and the classifier risk-word blocklist (`model.rs`) forces common prompts to unsupported. Capability metadata at `crates/provider/src/lib.rs` still advertises the original seven workflows and `mcp:false`; it is stale and must be regenerated from the real intent list before release.
 
 ## Phase 1 — Foundations, NioDB, and provider connection
 
@@ -62,7 +64,7 @@ Goal: search, visit useful websites, and return evidence with complexity-based r
 - [x] Implement passage extraction with lexical term-overlap and BM25 ranking.
 - [x] Implement source-linked research reports and cited excerpts in `nioxs-browser` and integrate into `nioxs-nano`.
 - [x] Expose `web_fetch` and `research_sources` workflows and client-tool compatibility in `nioxs-provider`.
-- [ ] Store bounded evidence records and research cache in NioDB with timestamps, normalized keys, extraction versions, and access scope.
+- [ ] Store bounded evidence records and research cache in NioDB with timestamps, normalized keys, extraction versions, and access scope. (Storage adapter primitives exist — `cache_get`/`cache_set`/`scan_expired` in `nioxs-storage` — but research workflows are not yet wired to them.)
 - [ ] Implement expiry, quotas, invalidation, and clearing in the storage adapter; exclude challenge pages, credentials, and sensitive content from shared cache.
 - [ ] Test cache reuse/expiry, workspace isolation, quota enforcement, and cache-write failure behavior.
 - [ ] Confirm clean execution never installs, launches, or falls back to Chromium or external browser processes.
@@ -75,8 +77,8 @@ Goal: empower NioNano as a small coding agent via LLM consultation ("Consult & E
 
 - [ ] Define the typed client tool contract for `consult_llm` (prompt, context excerpts, patch/instruction schema) executed via Nio's provider broker.
 - [ ] Implement NioNano's coding agent loop: inspect failure/code → assemble compact context → dispatch `consult_llm` → parse advisory patch.
-- [ ] Implement bounded, verified code modification: safe file editing (`edit_file` / `apply_patch`) validating against `safe_path` and project trust.
-- [ ] Implement the verification loop: run configured checks (`run_checks`) post-edit and iterate or terminate within the 8-action budget.
+- [ ] Implement bounded, verified code modification: safe file editing (`edit_file` / `apply_patch`) validating against `safe_path` and project trust. (An edit engine exists — `crates/nano/src/patch.rs` and the coder edit path — but `coder.rs:208,242` call `fs::write` directly, bypassing the tool gate; gated on Nano Phase A.)
+- [ ] Implement the verification loop: run configured checks (`run_checks`) post-edit and iterate or terminate within the 8-action budget. (An edit-and-test loop exists in `coder.rs` but runs on the ungated edit path and spawns commands directly; gated on Nano Phase A.)
 - [ ] Implement fallback policy and handoff triggers: unsupported conversational tasks, classifier abstention, or exhausted budget after consultation.
 - [ ] Keep missing-input clarification separate from escalation; do not escalate just because a page is blocked or a tool fails once.
 - [ ] Persist consultation/handoff state and actual backend path in scoped NioDB run records while keeping credentials in Nio.
@@ -88,7 +90,7 @@ Goal: empower NioNano as a small coding agent via LLM consultation ("Consult & E
 - [ ] Verify no replayed edits/commands and no handoff after denied approvals or cancellation.
 - [ ] Complete the documented text Chat Completions subset, SSE conformance, errors, model validation, and capability metadata.
 - [ ] Verify one external OpenAI-compatible client against the supported API subset and document unsupported parameters.
-- [ ] Expose basic local MCP stdio research/page-reading tools with the same resource and permission rules.
+- [x] Expose basic local MCP stdio research/page-reading tools with the same resource and permission rules. (Implemented as `nioxs mcp`, `crates/provider/src/mcp.rs`; tools share the browser worker.)
 - [ ] Connect Nio's broker to one configured local MCP server; map known schemas to Nano workflows and abstain on unknown tools.
 - [ ] Test external API and MCP tool loops, cancellation, history continuity, and no-tools enforcement.
 
@@ -126,14 +128,26 @@ Exit evidence: the released bundle installs on the supported platform, verified 
 - Vector retrieval and separately generated embeddings; NioDB assistance/SQL are not Nano prerequisites.
 - Richer document/data workflows and predefined repairs.
 
+## Delivered beyond the original v0.1.0 scope (sync 2026-10-10)
+
+Features shipped in-tree that this checklist never tracked. They exceed the v0.1.0 phase plan and carry no phase evidence; several are v0.1.5 roadmap items arriving early. Decision required before release: fold them into a re-baselined v0.1.5 scope with their own gates, or explicitly descope them so v0.1.0 claims stay honest.
+
+- Code-health analysis (`analyze file` / `analyze codebase` with complexity and safety findings) — `crates/nano/src/analysis.rs`.
+- Coding engine: symbol definition/reference navigation, `replace … in …` refactor, autonomous edit-and-test loop, test scaffolder, `git diff` review, commit-message suggestion — `crates/nano/src/coder.rs`.
+- Deterministic patch engine and scaffold templates — `crates/nano/src/patch.rs` plus `scaffold <template>`.
+- Dataset hub: 36 static knowledge packs (~100 KB payload target each), prompt router, and on-demand persistence into NioDB collection `nano_datasets` — `crates/nano/src/dataset.rs`. Primarily a v0.1.5 capability; no cache or evidence report accompanies it.
+- Natural-language prompt normalization and rich response formatting — `normalize_prompt` in `lib.rs`, `crates/nano/src/synthesize.rs`.
+- Local MCP stdio server (`nioxs mcp`) — `crates/provider/src/mcp.rs`.
+
 ## Tracking summary
 
 | Phase | Status |
 | --- | --- |
-| 1 — Foundations/NioDB/provider | Core checks passed; 14/15 tasks, optional Crawl4AI probe deferred |
-| 2 — Trained Nano/project workflows | Core implemented; model and real workflow checks passed |
-| 3 — Adaptive browser research | Not started |
-| 4 — Handoff/API/MCP | Not started |
-| 5 — Packaging/release | Not started |
+| 1 — Foundations/NioDB/provider | Complete with evidence; optional Crawl4AI probe deferred |
+| 2 — Trained Nano/project workflows | Complete with evidence |
+| 3 — Adaptive browser research | Engine implemented in-tree; NioDB cache/quota/pruning, live smoke tests, and an evidence report remain open |
+| 4 — Handoff/API/MCP | Partial: MCP stdio server and bounded edit/verify loop exist; edit gating, consult_llm, feedback, handoff continuation open |
+| 5 — Packaging/release | Open; stale capability metadata (`crates/provider/src/lib.rs`) must be fixed first |
+| Beyond scope | Coding engine, dataset hub, code analysis, git helpers, rotating responses — shipped, untracked, awaiting v0.1.5 scope decision |
 
 Update phase status and attach acceptance evidence as work is completed. Phase 1 checkmarks cover its limited foundation scope, not Phase 2–5 capabilities.

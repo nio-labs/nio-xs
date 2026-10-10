@@ -1,6 +1,6 @@
 # NioXS and NioNano roadmap
 
-Status: Phase 2 core implemented and tested; optional Crawl4AI probe deferred. Prepared 2026-10-09. Architecture and detailed flows: [NIOXS_PLAN.md](NIOXS_PLAN.md).
+Status: Phases 1–2 complete with evidence; Phase 3 research engine implemented in-tree with persistence/evidence gates open; Phase 4 partial; Phase 5 open. Reviewed and synced with the repository tree 2026-10-10. Architecture and detailed flows: [NIOXS_PLAN.md](NIOXS_PLAN.md).
 
 ## Product identity and scope
 
@@ -14,8 +14,8 @@ Status: Phase 2 core implemented and tested; optional Crawl4AI probe deferred. P
 - Future family: NioMini, NioCore, NioMax, NioUltra; names reserved in the design, with capabilities and resource tiers to be defined after Nano evaluation.
 - Selection: `nioxs::nio-nano`.
 - Default behavior: NioNano first, automatic continuation on an explicitly configured LLM when necessary.
-- Browser: Obscura only; no Chromium.
-- Search: browser-based, without search API keys; skip CAPTCHAs and blocked pages.
+- Browser: pure native Rust HTTP + HTML extraction in-process; no Chromium, no Obscura, no external browser processes (changed after the Phase 1 Obscura feasibility probe; the probe remains as historical evidence).
+- Search: keyless adapters (DuckDuck Lite, Wikipedia, GitHub) with no search API keys; skip CAPTCHAs and blocked pages.
 - Distribution: private implementation, downloadable binaries and artifacts on R2 or S3.
 - Persistence: NioDB core HTTP records API for workflow state, research cache, and optional feedback.
 - NioJS: excluded from v0.1.0.
@@ -59,32 +59,33 @@ Proposed private repository `nio-xs` contains the provider service, Nano runtime
 
 The existing public `nio` repository contains only provider integration, handoff handling, client tool enforcement, and user-facing configuration. Private model code and weights are not committed here. Documentation in this workspace describes the design; it is not a secret implementation.
 
-Suggested private structure, not created yet:
+Actual crate workspace (matches the structure proposed when this roadmap was written):
 
 ```text
 nio-xs/
   crates/
     provider/       HTTP API, catalogs, sessions, protocol adapters
     nano/           features, model inference, workflows, completion checks
-    browser/        Obscura integration and search adapters
+    browser/        search adapters and HTML extraction
     artifacts/      signed manifest and install/update logic
     storage/        NioDB HTTP adapter, record schemas, retention, recovery
+    contracts/      Rust schema types shared across crates
+  contracts/        design-level request, action, result, capability, handoff schemas
   training/         datasets, training, calibration, export
   evaluation/       fixtures, task corpus, live browser smoke tests
-  contracts/        request, action, result, capability, handoff schemas
 ```
 
 ## v0.1.0: five implementation phases
 
 The detailed task checklist is [TODO_V0.1.0.md](TODO_V0.1.0.md). All tasks are initially open. The architecture document defines the design; this roadmap defines release order and the checklist tracks implementation. No calendar estimates are committed before feasibility is measured.
 
-| Phase | Objective | NioXS deliverables | NioNano deliverables | Exit gate |
-| --- | --- | --- | --- | --- |
-| Phase 1 | Foundations and provider connection | Private structure, provider/storage contracts, NioDB connectivity, minimal API, Nio provider registration | Capability definitions, evaluation corpus, durable run/action schema | Nio selects nioxs::nio-nano, completes one client tool round trip, and handles cancellation; Obscura-only feasibility is demonstrated |
-| Phase 2 | First trained model and project workflows | Artifact loading, capability metadata, NioDB-backed workflow continuation and recovery | Python-trained classifier, Rust inference, argument validation, project inspection, file/code search, approved checks | Held-out supported and unsupported requests are evaluated; project workflows execute through Nio's broker without extra permissions |
-| Phase 3 | Adaptive browser research | Obscura worker, search adapters, NioDB-backed scoped cache and evidence records | Search-to-website flow, extraction, ranking, package comparison, complexity-based expansion | Small lookups stop early; broader requests expand; CAPTCHA and timeout handling remain bounded; no Chromium is installed |
-| Phase 4 | Consult & Execute, handoff, and interoperability | Consult-and-execute protocol, fallback continuation in Nio, streaming conformance, basic local MCP server/client support | Small coding agent loop (consult_llm, edit_file, verification), persisted consultation/handoff records, opt-in feedback, mapped MCP workflows | Consult & Execute verifies tests and edits without losing Nano sovereignty; handoff preserves completed actions; external API/MCP pass end-to-end checks |
-| Phase 5 | Packaging and v0.1.0 release | Signed artifacts, R2/S3 install/update, NioDB deployment/backup/recovery, default rollout | Evaluated and pinned trained model, measured footprint, published capability limits | Clean-machine acceptance passes and release blockers are closed before fresh-install default activation |
+| Phase | Objective | NioXS deliverables | NioNano deliverables | Exit gate | Status (2026-10-10) |
+| --- | --- | --- | --- | --- | --- |
+| Phase 1 | Foundations and provider connection | Private structure, provider/storage contracts, NioDB connectivity, minimal API, Nio provider registration | Capability definitions, evaluation corpus, durable run/action schema | Nio selects nioxs::nio-nano, completes one client tool round trip, and handles cancellation; Obscura-only feasibility is demonstrated | Complete with evidence |
+| Phase 2 | First trained model and project workflows | Artifact loading, capability metadata, NioDB-backed workflow continuation and recovery | Python-trained classifier, Rust inference, argument validation, project inspection, file/code search, approved checks | Held-out supported and unsupported requests are evaluated; project workflows execute through Nio's broker without extra permissions | Complete with evidence |
+| Phase 3 | Adaptive browser research | Keyless search adapters, pure-native HTML extraction, NioDB-backed scoped cache and evidence records | Search-to-website flow, extraction, ranking, package comparison, complexity-based expansion | Small lookups stop early; broader requests expand; CAPTCHA and timeout handling remain bounded; no external browser process is installed or spawned | Research engine implemented in-tree; cache/quota/pruning, live smoke, and evidence report open |
+| Phase 4 | Consult & Execute, handoff, and interoperability | Consult-and-execute protocol, fallback continuation in Nio, streaming conformance, basic local MCP server/client support | Small coding agent loop (consult_llm, edit_file, verification), persisted consultation/handoff records, opt-in feedback, mapped MCP workflows | Consult & Execute verifies tests and edits without losing Nano sovereignty; handoff preserves completed actions; external API/MCP pass end-to-end checks | Partial: MCP stdio server and an ungated edit/verify loop exist; consult_llm, feedback, edit gating, handoff continuation open |
+| Phase 5 | Packaging and v0.1.0 release | Signed artifacts, R2/S3 install/update, NioDB deployment/backup/recovery, default rollout | Evaluated and pinned trained model, measured footprint, published capability limits | Clean-machine acceptance passes and release blockers are closed before fresh-install default activation | Open |
 
 Dependencies: Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5. Establish browser feasibility in Phase 1 so an incompatible engine does not become a late surprise. Define the handoff schema in Phase 1, implement it in Phase 4.
 

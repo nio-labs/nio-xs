@@ -198,10 +198,16 @@ pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> Strin
 
     let lead_text = if let Some((_, def)) = lead_definition {
         used_sentences.push(def.clone());
-        if !def.starts_with(&format!("**{subject}**")) && !def.starts_with(&subject) {
-            format!("**{subject}**: {def}.")
+        let mut clean_def = def.clone();
+        if let Some(idx) = clean_def.find(&format!("{} is a", subject)) {
+            clean_def = clean_def[idx..].to_string();
+        } else if let Some(idx) = clean_def.find(&format!("{} is an", subject)) {
+            clean_def = clean_def[idx..].to_string();
+        }
+        if !clean_def.starts_with(&format!("**{subject}**")) && !clean_def.starts_with(&subject) {
+            format!("**{subject}**: {clean_def}.")
         } else {
-            format!("{def}.")
+            format!("{clean_def}.")
         }
     } else {
         // Fallback synthesization from top title and subject
@@ -219,75 +225,17 @@ pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> Strin
     };
 
     answer.push_str(&lead_text);
-    answer.push_str("\n\n");
 
-    // 3. Synthesize Key Details / Bullet Points
-    let mut bullet_points: Vec<(String, String)> = Vec::new();
-
+    // 3. Synthesize into one concrete answer
     for (_, s) in &candidate_sentences {
         if used_sentences.contains(s) || is_redundant(s, &used_sentences) {
             continue;
         }
 
-        let lower = s.to_ascii_lowercase();
-        let (category, formatted) = if lower.contains("drama")
-            || lower.contains("movies")
-            || lower.contains("korean")
-            || lower.contains("chinese")
-        {
-            ("Content & Library", format!("{s}."))
-        } else if lower.contains("quality")
-            || lower.contains("download")
-            || lower.contains("1080p")
-            || lower.contains("720p")
-            || lower.contains("streaming")
-        {
-            ("Streaming & Formats", format!("{s}."))
-        } else if lower.contains("legal")
-            || lower.contains("security")
-            || lower.contains("alternative")
-            || lower.contains("down")
-            || lower.contains("ad")
-        {
-            ("Platform Notes", format!("{s}."))
-        } else {
-            ("Overview", format!("{s}."))
-        };
-
         used_sentences.push(s.clone());
-        bullet_points.push((category.to_string(), formatted));
-        if bullet_points.len() >= 3 {
+        answer.push_str(&format!(" {s}."));
+        if used_sentences.len() >= 3 {
             break;
-        }
-    }
-
-    if !bullet_points.is_empty() {
-        answer.push_str("### Key Highlights\n");
-        for (cat, detail) in bullet_points {
-            answer.push_str(&format!("• **{cat}**: {detail}\n"));
-        }
-        answer.push('\n');
-    }
-
-    // 4. Clean, Deduplicated Sources List
-    answer.push_str("Sources:\n");
-    let mut seen_urls = std::collections::HashSet::new();
-    let mut source_idx = 1;
-
-    for passage in &report.passages {
-        if seen_urls.insert(passage.url.clone()) {
-            let clean_t = sanitize_text(&passage.title);
-            let display_title = if clean_t.is_empty() {
-                &passage.url
-            } else {
-                &clean_t
-            };
-            let clean_u = decode_entities(&passage.url);
-            answer.push_str(&format!("{}. [{}]({})\n", source_idx, display_title, clean_u));
-            source_idx += 1;
-            if source_idx > 4 {
-                break;
-            }
         }
     }
 
@@ -340,8 +288,6 @@ mod tests {
 
         let result = synthesize_research_answer("what is kisskh?", &report);
         assert!(result.contains("Kisskh"));
-        assert!(result.contains("Key Highlights"));
-        assert!(result.contains("Sources:"));
         assert!(!result.contains("&amp;"));
         assert!(!result.contains("Infinite loading"));
     }
