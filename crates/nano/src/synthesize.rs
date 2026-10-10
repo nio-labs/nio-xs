@@ -204,6 +204,15 @@ pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> Strin
         } else if let Some(idx) = clean_def.find(&format!("{} is an", subject)) {
             clean_def = clean_def[idx..].to_string();
         }
+        
+        // Truncate trailing menu junk often found in scraped sites
+        let junk_markers = [" Retrieved ", " Download ", " 202", " Language Reference "];
+        for marker in junk_markers {
+            if let Some(idx) = clean_def.find(marker) {
+                clean_def = clean_def[..idx].to_string();
+            }
+        }
+        
         if !clean_def.starts_with(&format!("**{subject}**")) && !clean_def.starts_with(&subject) {
             format!("**{subject}**: {clean_def}.")
         } else {
@@ -226,16 +235,23 @@ pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> Strin
 
     answer.push_str(&lead_text);
 
-    // 3. Synthesize into one concrete answer
-    for (_, s) in &candidate_sentences {
-        if used_sentences.contains(s) || is_redundant(s, &used_sentences) {
-            continue;
-        }
+    // If we already have a strong definition, don't append extra sentences which are usually junk
+    if lead_definition.is_none() {
+        for (_, s) in &candidate_sentences {
+            if used_sentences.contains(s) || is_redundant(s, &used_sentences) {
+                continue;
+            }
 
-        used_sentences.push(s.clone());
-        answer.push_str(&format!(" {s}."));
-        if used_sentences.len() >= 3 {
-            break;
+            // Skip clear menu artifacts
+            if s.contains("Retrieved") || s.contains("Download") {
+                continue;
+            }
+
+            used_sentences.push(s.clone());
+            answer.push_str(&format!(" {s}."));
+            if used_sentences.len() >= 2 {
+                break;
+            }
         }
     }
 

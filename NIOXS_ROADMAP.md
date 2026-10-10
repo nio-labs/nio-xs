@@ -99,6 +99,10 @@ The user requested Nano as the development default during Phase 1. The Nio devel
 
 Defer Mini/Core/Max/Ultra models, remote MCP transport, broader Responses API compatibility, multimodal generation, arbitrary autonomous repairs, additional platform expansion, and a public hosted launch until after v0.1.0.
 
+## v0.2.0 scope
+
+After v0.1.0 lands, the next milestone is the trained, measured MicroLM: real-phrasing corpus, hashed word+char-ngram logistic router (~20 hierarchical labels, ≤500 KB artifact), trained CRF argument extraction, calibrated abstention, and on-disk hash-pinned knowledge packs — with an explicit non-LLM constitution and cited external baselines instead of local mini-LLM runs. Full plan, workstreams, and exit gates: [NIOXS_V0.2.0.md](NIOXS_V0.2.0.md). Consult & execute, handoff, and frontier fallback remain v1.0.0 work.
+
 ## Initial task workflows
 
 1. **Inspect project:** identify files and manifests, detect project type, extract available commands, report direct evidence.
@@ -144,7 +148,7 @@ A follow-up to an already delegated coding task should retain task context and d
 
 First exported tools: research and webpage extraction. First consumed tools: explicitly configured, schema-mapped capabilities. Tool discovery does not make arbitrary tools understandable to Nano.
 
-Basic local stdio server/client support is in Phase 4 for v0.1.0; remote Streamable HTTP follows after v0.1.0 with deployment policy and negotiated protocol support. API and MCP reuse the same execution and permission logic. A hosted MCP endpoint can access only its authorized workspace, not arbitrary caller files.
+Basic local stdio server support landed early — `nioxs mcp` (`crates/provider/src/mcp.rs`) exports the research and webpage-extraction tools. Nio-side client consumption of a configured MCP server remains Phase 4 work. Remote Streamable HTTP follows after v0.1.0 with deployment policy and negotiated protocol support. API and MCP reuse the same execution and permission logic. A hosted MCP endpoint can access only its authorized workspace, not arbitrary caller files.
 
 ## Distribution flow
 
@@ -154,7 +158,7 @@ Private source + training data
     → Produce signed manifest + platform artifacts
     → Publish immutable version paths on R2/S3
     → Download and verify on deployment host
-    → Start NioXS API with Nano and Obscura
+     → Start NioXS API with Nano
     → Configure Nio's nioxs provider endpoint
 ```
 
@@ -170,17 +174,13 @@ Before Phase 1 ends, record the evaluation corpus and provisional quantitative t
 
 Track supported task completion, incorrect unsupported-task acceptance, abstention behavior, useful evidence coverage, fallback reasons, tool replay, blocked-page frequency, latency, peak memory, and artifact footprint. Report results by workflow rather than one flattering aggregate score.
 
-Release-blocking checks: permissions hold, cancellations stop work, handoff is explicit, sources match extracted facts, incomplete results are labeled, budgets are bounded, model/artifact versions are identifiable, rollback works, and no Chromium installation occurs. Use fixtures for reproducible tests and live smoke tests for browser compatibility.
+Release-blocking checks: permissions hold, cancellations stop work, handoff is explicit, sources match extracted facts, incomplete results are labeled, budgets are bounded, model/artifact versions are identifiable, rollback works, and no external browser process is installed or spawned. Use fixtures for reproducible tests and live smoke tests for browser compatibility.
 
-## Next concrete work
+## Next concrete work (2026-10-10)
 
-Start Phase 1 with three proofs:
-
-1. Search results to useful destination excerpts using Obscura only, across simple lookups and comparisons, including blocked-page fixtures.
-2. A documented NioXS request, client tool call, tool result, final response, and handoff example.
-3. A labeled intent/evaluation dataset specification distinguishing supported tasks, missing inputs, and tasks requiring LLM fallback.
-
-The first phase produces reviewable evidence and contracts. It does not require implementing the complete provider, training pipeline, MCP platform, or all future model tiers at once.
+1. Land the Nano Phase A correctness patch: route the edit workflows through `safe_path()` and the tool/permission journal (no provider-side `fs::write` or direct command spawns), fix the risk-word blocklist that forces common prompts to unsupported, and correct intent telemetry labels — [phases](NIOXS_NANO_PHASES.md).
+2. Build the Nano Phase B real-phrasing corpus (Stack Overflow and GitHub issue titles) with per-intent F1 reporting, so the model upgrade is judged against real phrasing rather than synthetic templates.
+3. Re-baseline the release: the coding engine, dataset hub, and MCP server already shipped ahead of their phase gates. Either scope them into the phase plan with evidence gates, or descope them; features without gates cannot be released on this roadmap's claims.
 
 ## Implementation checkpoint — 2026-10-09
 
@@ -189,3 +189,14 @@ Phase 1 core: Rust workspace, NioDB immutable-event adapter, provider contracts/
 ## Phase 2 checkpoint
 
 Trained artifact, Rust/Python parity, typed project workflows, immutable command journal, and real Nio permission/recovery checks are implemented. See [Phase 2 evidence](evaluation/PHASE2_EVIDENCE.md). Phase 3 browser workflows, Phase 4 handoff/MCP, and Phase 5 production evaluation/distribution remain open.
+
+## Checkpoints after Phase 2 (sync 2026-10-10)
+
+The following shipped in-tree after the Phase 2 evidence report, ahead of their roadmap gates and without accompanying evidence reports. The roadmap is updated to reflect the tree; acceptance gates remain open and are tracked in [TODO_V0.1.0.md](TODO_V0.1.0.md).
+
+- Research engine (Phase 3 scope): keyless DuckDuck Lite / Wikipedia / GitHub scraping plus crates.io and npm registry inspection, wired into read-only Nano workflows. No NioDB cache, quota, or live smoke evidence yet.
+- Browser engine change: the Phase 1 feasibility probe used Obscura; the shipped research worker is pure native Rust with no external browser process. The NioDB cache and challenge-page evidence items did not move with it.
+- Coding engine (Phase 4 scope, absent from the original plan): symbol navigation, refactor edits, autonomous edit-and-test loop, test scaffolds, diff review, and commit suggestions — `crates/nano/src/coder.rs`.
+- Invariant debt, fixed by [Nano Phase A](NIOXS_NANO_PHASES.md) before Phase 4 edit tasks can pass: provider-side `fs::write` and direct command spawns in `coder.rs`, the classifier risk-word blocklist in `model.rs` that forces common prompts to unsupported, and false intent telemetry labels in `lib.rs`.
+- Metadata debt: the capability response (`crates/provider/src/lib.rs`) still lists the original seven workflows and `mcp:false`; it must be regenerated from the shipped intent set.
+- Version debt: closed 2026-10-10. Commits carried interim feature labels (v0.6.7–v0.8.x) while the workspace stayed v0.1.0-alpha.2, and the dataset hub banner and test names echoed them. All in-tree claims now read v0.1.0. Git history keeps the old labels as a record, not as releases. Rule going forward: version strings and capability claims change only through the phase gates; no feature earns a version bump before its exit evidence exists.

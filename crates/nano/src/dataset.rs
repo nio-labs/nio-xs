@@ -30,6 +30,36 @@ pub struct DatasetMeta {
 
 /// 36 Modular Knowledge Packs (~100 KB each) covering specialized engineering domains.
 pub static DATASET_CATALOG: &[DatasetMeta] = &[
+    DatasetMeta {
+        id: "nioxs-core",
+        title: "NioXS & NioNano Core Knowledge",
+        category: "System Architecture",
+        description: "Definitions and information regarding NioXS and NioNano MicroLM.",
+        size_kb: 10,
+        keywords: &["nioxs", "nionano", "what is nioxs", "what is nionano", "microlm", "μlm"],
+        sample_prompts: &["What is NioNano?", "What is NioXS?", "NioXS?", "tell me about nioxs"],
+        core_principles: &[
+            "NioXS is a sovereign coding assistant with compiler-in-the-loop self-healing.",
+            "NioNano is an ultra-lightweight ~10MB MicroLM used inside NioXS.",
+        ],
+        code_template: "",
+        entries: &[
+            DatasetEntry {
+                prompt: "What is NioNano?",
+                prompt_variants: &["what is nionano", "tell me about nionano"],
+                keywords: &["nionano", "what is"],
+                response: "NioNano is an ultra-lightweight, lightning-fast ~10MB MicroLM (μLM) engine that acts as a fully sovereign and deterministic AI pair programmer.",
+                code_example: None,
+            },
+            DatasetEntry {
+                prompt: "What is NioXS?",
+                prompt_variants: &["what is nioxs", "nioxs?"],
+                keywords: &["nioxs", "what is"],
+                response: "NioXS is the sovereign coding assistant framework that encapsulates the NioNano MicroLM, local NioDB storage, and compiler-in-the-loop tools.",
+                code_example: None,
+            },
+        ],
+    },
     // -------------------------------------------------------------
     // Category 1: Languages & Idioms (10 packs)
     // -------------------------------------------------------------
@@ -895,7 +925,7 @@ pub static DATASET_CATALOG: &[DatasetMeta] = &[
                 prompt_variants: &["how to use git bisect", "git bisect tutorial", "find regression with git bisect"],
                 keywords: &["git bisect", "binary search", "regression", "automated testing"],
                 response: "`git bisect` uses binary search to find which commit in history introduced a bug. You mark a known bad commit and a known good commit, and `git bisect run <test_script>` automatically checks out commits and runs your test script until it identifies the offending commit.",
-                code_example: Some("$ git bisect start\n$ git bisect bad           # Current commit has the bug\n$ git bisect good v0.7.0   # Known working release\n$ git bisect run cargo test --test integration\n# Output: [commit_sha] is the first bad commit"),
+                code_example: Some("$ git bisect start\n$ git bisect bad           # Current commit has the bug\n$ git bisect good v0.1.0   # Known working release\n$ git bisect run cargo test --test integration\n# Output: [commit_sha] is the first bad commit"),
             },
         ],
     },
@@ -1193,7 +1223,7 @@ pub fn format_routed_response(matched: &RoutedDatasetMatch) -> String {
 /// Format the complete catalog of 36 modular 100KB datasets.
 pub fn format_catalog() -> String {
     let mut out = String::new();
-    out.push_str("### NioNano Modular Dataset Hub (v0.8.2)\n\n");
+    out.push_str("### NioNano Modular Dataset Hub (v0.1.0)\n\n");
     out.push_str(&format!(
         "Total Available Packs: **{}** specialized coding datasets (~100 KB each):\n\n",
         DATASET_CATALOG.len()
@@ -1265,7 +1295,7 @@ mod tests {
 
     #[test]
     fn test_dataset_count_and_sizing() {
-        assert_eq!(DATASET_CATALOG.len(), 36, "Should have exactly 36 modular dataset packs");
+        assert_eq!(DATASET_CATALOG.len(), 37, "Should have exactly 36 modular dataset packs");
         for ds in DATASET_CATALOG {
             assert_eq!(ds.size_kb, 100, "Dataset {} must be 100KB", ds.id);
             assert!(!ds.keywords.is_empty(), "Dataset {} must have keywords", ds.id);

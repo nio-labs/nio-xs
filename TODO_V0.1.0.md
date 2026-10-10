@@ -4,7 +4,7 @@ Status: Phases 1–2 complete with evidence; Phase 3 research engine implemented
 
 Check tasks only after their acceptance evidence exists. Each phase depends on the previous phase. Nano is the only model in this release.
 
-**Tracking sync 2026-10-10.** Work shipped after this checklist was written (coding engine v0.7.0, dataset hub v0.8.2, MCP stdio server, package registry inspector, code-health analysis, git review helpers, rotating responses) outpaced the roadmap. It is recorded below under "Delivered beyond the original v0.1.0 scope" instead of being silently folded into phase gates. Two invariant violations in that work must be fixed first — [Nano Phase A](NIOXS_NANO_PHASES.md): `coder.rs:208,242` `fs::write` and `coder.rs:254` direct command spawn bypass the Nio tool gate, and the classifier risk-word blocklist (`model.rs`) forces common prompts to unsupported. Capability metadata at `crates/provider/src/lib.rs` still advertises the original seven workflows and `mcp:false`; it is stale and must be regenerated from the real intent list before release.
+**Tracking sync 2026-10-10.** Work shipped after this checklist was written (coding engine, dataset hub, MCP stdio server, package registry inspector, code-health analysis, git review helpers, rotating responses) outpaced the roadmap. Interim feature labels (v0.7.x, v0.8.x) used in those commits were dropped 2026-10-10; the workspace is v0.1.0-alpha.2 and no 0.8.x release exists. The work is recorded below under "Delivered beyond the original v0.1.0 scope" instead of being silently folded into phase gates. Two invariant violations in that work must be fixed first — [Nano Phase A](NIOXS_NANO_PHASES.md): `coder.rs:208,242` `fs::write` and `coder.rs:254` direct command spawn bypass the Nio tool gate, and the classifier risk-word blocklist (`model.rs`) forces common prompts to unsupported. Capability metadata at `crates/provider/src/lib.rs` still advertises the original seven workflows and `mcp:false`; it is stale and must be regenerated from the real intent list before release.
 
 ## Phase 1 — Foundations, NioDB, and provider connection
 
@@ -137,6 +137,7 @@ Features shipped in-tree that this checklist never tracked. They exceed the v0.1
 - Deterministic patch engine and scaffold templates — `crates/nano/src/patch.rs` plus `scaffold <template>`.
 - Dataset hub: 36 static knowledge packs (~100 KB payload target each), prompt router, and on-demand persistence into NioDB collection `nano_datasets` — `crates/nano/src/dataset.rs`. Primarily a v0.1.5 capability; no cache or evidence report accompanies it.
 - Natural-language prompt normalization and rich response formatting — `normalize_prompt` in `lib.rs`, `crates/nano/src/synthesize.rs`.
+- Autonomous task planner and dynamic project suggestions — `TaskPlan` / `ProjectSuggestions` intents in `lib.rs` and their handlers in `coder.rs`.
 - Local MCP stdio server (`nioxs mcp`) — `crates/provider/src/mcp.rs`.
 
 ## Tracking summary

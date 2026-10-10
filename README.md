@@ -59,16 +59,19 @@
 
 ## Milestone Roadmap
 
-- **v0.1.0 (Current)**: Rock-solid, non-LLM MicroLM foundation:
+- **v0.1.0 (Current)**: Rock-solid, non-LLM MicroLM foundation — plus the Phase A correctness patch (gated edits, truthful telemetry, no risk-word blocklist):
   - Rust-native intent router and classifier (`nioxs-nano`).
   - Read, find, search, check workflows.
   - Pure native Rust scraping engine (`nioxs-browser`) for DuckDuckGo Lite, Wikipedia, and GitHub.
   - NioDB durability and frozen holdout safety verification.
-- **v0.1.5 (Next)**: Sovereign Coding Engine:
-  - Deterministic Code Patch Engine (`patch_file`, `cargo fix`, `prettier`, template scaffolding).
-  - Package & Registry Inspector (crates.io and npm metadata scraping).
-  - Local MCP Stdio Server interface.
-  - NioDB Research Cache (`nano_cache`) with 24h TTL.
+  - Note: the coding engine, dataset hub, and local MCP stdio server are in-tree ahead of their gates and are re-scoped by the v0.2.0 plan below.
+- **v0.2.0 (Next)**: The Measured MicroLM — [plan](NIOXS_V0.2.0.md):
+  - Real-phrasing corpus (Stack Overflow / GitHub issue titles) with frozen holdout and CI eval.
+  - Trained hashed word+char-ngram logistic router (~20 hierarchical labels, ≤500 KB artifact, <1 ms p99).
+  - Trained CRF argument extraction replacing string heuristics.
+  - Calibrated abstention: clarify as a guarantee, not a threshold guess.
+  - On-disk hash-pinned knowledge packs with BM25 + MMR citations, additive without recompiling.
+  - Still 100% non-LLM: no runtime LLM, no neural networks, no LLM-generated training data.
 - **v1.0.0**: Hybrid Gateway & Frontier LLM Consultation:
   - NioXS routes high-ambiguity planning queries to external LLMs while keeping tool execution strictly governed by MicroLM policies.
 
@@ -78,6 +81,7 @@
 
 - [Full design and flows](NIOXS_PLAN.md)
 - [Five-phase roadmap and acceptance gates](NIOXS_ROADMAP.md)
+- [v0.2.0 plan — The Measured MicroLM](NIOXS_V0.2.0.md)
 - [Local development and startup](docs/DEVELOPMENT.md)
 - [Provider contracts](contracts/README.md)
 - [Storage contract](contracts/storage.md)
