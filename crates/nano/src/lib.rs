@@ -348,6 +348,21 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             "private logs",
         ];
         let lower_q = query.to_ascii_lowercase();
+        if lower_q.contains("my project")
+            || lower_q.contains("this project")
+            || lower_q.contains("our project")
+            || lower_q.contains("the project")
+            || lower_q.contains("my codebase")
+            || lower_q.contains("this codebase")
+            || lower_q.contains("our codebase")
+            || lower_q.contains("my repo")
+            || lower_q.contains("this repo")
+            || lower_q.contains("our repo")
+            || lower_q.contains("project build on")
+            || lower_q.contains("project built on")
+        {
+            return Intent::Inspect;
+        }
         if lower_q.contains("code quality")
             || lower_q.contains("code health")
             || lower_q == "the code"
@@ -917,8 +932,29 @@ pub fn decide_with_model(
         Intent::Inspect => {
             let text = tool!(w, "find_files", json!({"path": ".", "limit": 50}));
             let (paths, limited) = files(&text)?;
-            let manifests: Vec<&String> = paths.iter().filter(|p| ["Cargo.toml", "package.json", "pyproject.toml", "go.mod"].contains(&p.as_str())).take(3).collect();
-            let mut report = format!("Project Workspace ({} files discovered):\n{}\n", paths.len(), paths.iter().map(|p| format!("• `{p}`")).collect::<Vec<_>>().join("\n"));
+            let manifests: Vec<&String> = paths.iter().filter(|p| ["Cargo.toml", "package.json", "pyproject.toml", "go.mod", "Makefile"].contains(&p.as_str())).take(4).collect();
+
+            let mut stack = Vec::new();
+            if paths.iter().any(|p| p.ends_with(".rs") || p == "Cargo.toml") {
+                stack.push("Rust (Cargo workspace / crates)");
+            }
+            if paths.iter().any(|p| p.ends_with(".ts") || p.ends_with(".js") || p == "package.json") {
+                stack.push("TypeScript / JavaScript (Node.js)");
+            }
+            if paths.iter().any(|p| p.ends_with(".py") || p == "pyproject.toml") {
+                stack.push("Python");
+            }
+            if paths.iter().any(|p| p.ends_with(".go") || p == "go.mod") {
+                stack.push("Go");
+            }
+
+            let mut report = String::new();
+            if !stack.is_empty() {
+                report.push_str(&format!("### Project Overview\n\n• **Technology Stack**: {}\n• **Workspace Size**: {} files discovered\n", stack.join(", "), paths.len()));
+            } else {
+                report.push_str(&format!("Project Workspace ({} files discovered):\n", paths.len()));
+            }
+
             for path in &manifests {
                 let content = tool!(w, "read_file", json!({"path": path, "line_count": 200}));
                 report.push_str(&format!("\nConfiguration from `{path}`:\n```\n{}\n```\n", excerpt(&content, 2200)));
@@ -930,7 +966,9 @@ pub fn decide_with_model(
                 }
             }
             if manifests.is_empty() {
-                report.push_str("No standard root manifest found.\n");
+                report.push_str("\nFiles:\n");
+                report.push_str(&paths.iter().map(|p| format!("• `{p}`")).collect::<Vec<_>>().join("\n"));
+                report.push('\n');
             }
             if limited {
                 report.push_str("*(Inventory truncated to first 50 files)*\n");
