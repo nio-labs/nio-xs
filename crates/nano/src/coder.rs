@@ -242,7 +242,21 @@ pub fn tdd_refactor_and_test(
     fs::write(path, &patched)
         .map_err(|e| format!("Failed to write patched file '{file_path}': {e}"))?;
 
-    // Execute test suite
+    // Phase 1: Compiler-in-the-Loop Validation
+    if let Err(diagnostics) = crate::compiler::run_cargo_check(".") {
+        // Rollback patch on compilation failure
+        let _ = fs::write(path, &original);
+        let mut err_msg = format!("Compilation failed after patch. Rolled back changes.\n");
+        for d in diagnostics {
+            err_msg.push_str(&format!("- [{}] {}:{}: {}\n", d.error_code, d.file_path, d.line_number, d.message));
+            if let Some(sug) = d.suggested_replacement {
+                err_msg.push_str(&format!("  Suggested Fix: `{sug}`\n"));
+            }
+        }
+        return Err(err_msg);
+    }
+
+    // Phase 2: Execute test suite
     let (cmd, args) = if Path::new("Cargo.toml").exists() {
         ("cargo", vec!["test", "--quiet"])
     } else if Path::new("package.json").exists() {

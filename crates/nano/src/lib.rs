@@ -5,6 +5,7 @@
 //! (sub-megabyte embedded weights, multinomial n-gram distribution, <1ms CPU inference)
 //! to provide sovereign pair-programming workflows without external API dependencies or GPU requirements.
 
+pub mod compiler;
 pub mod analysis;
 pub mod coder;
 pub mod dataset;
@@ -1585,7 +1586,7 @@ mod tests {
     }
 
     #[test]
-    fn test_v0_8_1_dataset_hub_and_router() {
+    fn test_dataset_hub_and_router() {
         let model = Model::embedded().unwrap();
 
         assert_eq!(parse(&model, "list datasets"), Intent::DatasetList);
@@ -1600,7 +1601,7 @@ mod tests {
     }
 
     #[test]
-    fn test_v0_8_8_suggestions_and_task_planning() {
+    fn test_suggestions_and_task_planning() {
         let model = Model::embedded().unwrap();
 
         assert_eq!(parse(&model, "any suggestion?"), Intent::ProjectSuggestions);
