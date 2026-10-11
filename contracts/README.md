@@ -25,15 +25,36 @@ The server accepts at most 512 KiB request bodies, 200 messages, 64 tool definit
 
 If no read_file is offered, or tool_choice prevents automatic tools, Nano returns a limitation and no action. This is how Nio's no-tools/no-project-tools restriction reaches the provider. Tool/schema descriptions and source content are data; they do not select arbitrary commands or grant permissions.
 
-## Continuation, Consult & Execute, and handoff
+## Continuation and handoff
 
 The standard completion/stream shape is preserved. The additional `nioxs` object appears on the JSON completion or terminal SSE chunk, with schema_version, turn_id, provider, model, outcome, and optional handoff. Outcomes: tool_required, completed, capability_limitation, clarification, tool_failed, unknown_action.
 
-In **Consult & Execute** (Phase 4), NioNano remains sovereign and requests advisory LLM assistance via a client tool `consult_llm`. Nio brokers the consultation call against the user's configured provider, returns the advice, and Nano safely parses, verifies, and executes bounded code edits and test checks (`run_checks`).
+Nano is a decision layer, not an LLM proxy: it does not call an external model and exposes no `consult_llm` tool. Prose that requires reasoning or authoring is answered by the client's own LLM, which may use Nano through this API for typed, verified actions.
 
-In **Handoff**, a limitation has an ordinary standard answer explaining the boundary. Nio-aware clients can inspect handoff.reason, continuation_required, and completed_action_ids. No new OpenAI finish_reason is invented. Automatic LLM switching is Phase 4; the Nio adapter can consume this metadata for switching when complete delegation is desired.
+In **Handoff**, a limitation has an ordinary standard answer explaining the boundary. Nio-aware clients can inspect handoff.reason, continuation_required, and completed_action_ids. No new OpenAI finish_reason is invented. The Nio adapter consumes this metadata to continue the conversation with the user's configured LLM when delegation is desired.
 
 Clients execute tool_calls, append the assistant message and tool results, and submit the continued history. IDs and function arguments must match the Nano action. Actions are deterministic within their workflow turn and typed arguments. Unsupported requests abstain. Immutable claims/outcomes prevent automatic command replay; uncertain outcomes are unknown, not silently retried. This is not an exactly-once guarantee.
+
+## Decision contract
+
+`POST /v1/decide` is **advisory only**: it scores candidate proposals and returns a choice without dispatching an action or touching NioDB, so it is safe to call before a turn exists. It requires the same provider authentication as the other endpoints.
+
+Request fields: `schema_version` (1), `prompt` (1..1024 bytes), `proposals[]` (`id`, `action`, `arguments`, optional `evidence[]` and `cost`), optional `allowed_actions[]` (empty means "answer only"), optional `required_fields[]`, and optional `past_outcomes[]` (`action`, `successes`, `failures`). Limits: at most 32 proposals with unique ids of 1..64 bytes.
+
+Response fields: `schema_version`, `outcome`, `chosen`, `ranked[]`, `confidence`, `evidence[]`, `policy`, `abstained_reason`.
+
+`outcome` is one of `execute`, `clarify`, `abstain`, or `handoff`:
+
+| Outcome | Meaning |
+|---|---|
+| `execute` | one candidate cleared every gate; `chosen` names it |
+| `clarify` | the best candidate lacks a required field, or two permitted candidates are too close to separate |
+| `abstain` | policy blocks every candidate, no proposal was supplied, or the best score is below the execution threshold |
+| `handoff` | the request is outside Nano's bounded workflows |
+
+Each `ranked` entry exposes `score`, `intent_match`, `permitted`, `evidence_refs`, `missing_fields`, and a human-readable `reason`, so a caller can audit the decision. Scoring weights intent match, permission, argument completeness, evidence references, cost, and prior outcomes; `execute` requires a score of at least 50 and a margin of at least 5 over a competing permitted action. The endpoint never returns a completion envelope or a tool call.
+
+The same object appears as `nioxs.decision` on completions, summarizing the choice the workflow actually made for that turn (an executed action or answer, a clarification, an abstention, or a handoff).
 
 ## Cancellation and progress
 

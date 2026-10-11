@@ -23,13 +23,13 @@ NIOXS_DB_URL=http://127.0.0.1:7432 NIOXS_DB_TOKEN_FILE=/private/path/db.token ca
 
 NIOXS_LISTEN defaults to 127.0.0.1:7460. NIOXS_DEPLOYMENT_ID defaults to local. Use NIOXS_API_TOKEN_FILE for provider authentication; it is mandatory for non-loopback listening. Do not put tokens in command arguments or source files. `/health` is process health; `/ready` checks authenticated database access.
 
-Nio now defaults to nioxs::nio-nano with a built-in endpoint of http://127.0.0.1:7460/v1. Kilo remains built in as another provider. Use :provider only to customize the NioXS endpoint or credentials. Existing saved model choices and explicit overrides take precedence; set `nio config set model nioxs::nio-nano` to change a saved choice. Start NioDB and NioXS, then run `read README.md` in a trusted project, or:
+Nio now defaults to nioxs::nio-nano with a built-in endpoint of http://127.0.0.1:7460/v1. Use :provider only to customize the NioXS endpoint or credentials. Existing saved model choices and explicit overrides take precedence; set `nio config set model nioxs::nio-nano` to change a saved choice. NioNano is a local decision layer, not a hosted LLM: it makes no outbound model calls, and an external LLM remains a separate client-side partner. Start NioDB and NioXS, then run `read README.md` in a trusted project, or:
 
 ```sh
 nio run --mode ask --trust-project "read README.md"
 ```
 
-Nano recognizes natural variants and supports read/inspect/find/search/configured-check workflows. It returns actual bounded evidence. It does not explain arbitrary code or automatically switch to an LLM yet.
+Nano recognizes natural variants and supports read/inspect/find/search/configured-check workflows, and it returns actual bounded evidence. It does not explain arbitrary code, and by design it never calls or switches to an external LLM.
 
 ## Reproducible isolated checks
 
@@ -37,6 +37,8 @@ Nano recognizes natural variants and supports read/inspect/find/search/configure
 node scripts/phase2-smoke.mjs --niodb /path/to/niodb --nio /path/to/nio --provider ./target/debug/nioxs --report ./evaluation/reports/local-smoke.json
 node scripts/browser-feasibility.mjs /path/to/obscura ./evaluation/reports/live-browser.json
 ```
+
+For iterative development, `./dev.sh` rebuilds the workspace and restarts the gateway (or reruns tests/checks) whenever sources change. It also resolves its own dependencies: it loads `.env`, finds the `niodb` binary (including `../nio-db/target/{release,debug}/niodb`), links the credentials it finds at `.runtime/db.token`, and reuses the `.runtime/local/niodb` store or starts one. Use `--niodb-bin PATH`, `--db-url URL`, `--token-file PATH`, or `--no-db` to override discovery; see `./dev.sh --help`.
 
 The smoke script creates isolated temporary database files, private credentials, provider configuration, and projects; it stops its child processes. It does not alter normal Nio configuration or existing NioDB data. Temporary credential files remain private; remove the temporary fixture directory when no longer needed. Report files contain results, not tokens. Live browser checks require internet access and do not solve CAPTCHAs.
 

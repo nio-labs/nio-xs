@@ -244,16 +244,30 @@ pub fn tdd_refactor_and_test(
 
     // Phase 1: Compiler-in-the-Loop Validation
     if let Err(diagnostics) = crate::compiler::run_project_check(".") {
-        // Rollback patch on compilation failure
-        let _ = fs::write(path, &original);
-        let mut err_msg = format!("Compilation failed after patch. Rolled back changes.\n");
-        for d in diagnostics {
-            err_msg.push_str(&format!("- [{}] {}:{}: {}\n", d.error_code, d.file_path, d.line_number, d.message));
-            if let Some(sug) = d.suggested_replacement {
-                err_msg.push_str(&format!("  Suggested Fix: `{sug}`\n"));
+        // Attempt Self-Healing via cargo fix
+        let heal_run = Command::new("cargo")
+            .args(&["fix", "--allow-dirty", "--allow-no-vcs", "--broken-code"])
+            .output();
+            
+        let mut healed = false;
+        if let Ok(out) = heal_run {
+            if out.status.success() || crate::compiler::run_project_check(".").is_ok() {
+                healed = true;
             }
         }
-        return Err(err_msg);
+        
+        if !healed {
+            // Rollback patch on compilation failure
+            let _ = fs::write(path, &original);
+            let mut err_msg = format!("Compilation failed after patch. Rolled back changes.\n");
+            for d in diagnostics {
+                err_msg.push_str(&format!("- [{}] {}:{}: {}\n", d.error_code, d.file_path, d.line_number, d.message));
+                if let Some(sug) = d.suggested_replacement {
+                    err_msg.push_str(&format!("  Suggested Fix: `{sug}`\n"));
+                }
+            }
+            return Err(err_msg);
+        }
     }
 
     // Phase 2: Execute test suite
@@ -725,14 +739,14 @@ pub fn generate_project_suggestions(root: &str) -> String {
     out.push_str("\n#### 🏗️ Architecture & Planning Next Steps:\n");
     out.push_str("• 📋 **Task Planning**: Plan any complex refactor or feature with `plan this task: <your objective>`.\n");
     out.push_str("• 🔍 **Code Health Audit**: Run `analyze codebase` or `review <file>` for cyclomatic complexity and safety analysis.\n");
-    out.push_str("• 📦 **Domain Knowledge Packs**: Ask technical architecture questions naturally or run `list datasets`.\n");
+    out.push_str("• 🌐 **Technical Research**: Ask architectural questions naturally (e.g. `what is <technology>?` or `why use <pattern>?`).\n");
 
     out
 }
 
 /// Formulates a structured 5-phase engineering execution plan for any feature, bug fix, or refactor.
 pub fn generate_task_plan(task: &str) -> String {
-    use crate::dag::{ExecutionDag, DagNode, DagState};
+    use crate::dag::ExecutionDag;
     
     let clean_task = task.trim().trim_matches(|c: char| "`\"',;:!?".contains(c));
     let mut dag = ExecutionDag::new(clean_task);

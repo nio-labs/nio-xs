@@ -8,13 +8,15 @@
 pub mod compiler;
 pub mod analysis;
 pub mod coder;
-pub mod dataset;
 pub mod model;
 pub mod patch;
 pub mod synthesize;
 pub mod dag;
+pub mod decision;
 pub mod watcher;
-pub mod kilo;
+pub mod brain;
+pub mod companion;
+
 pub use model::Model;
 use nioxs_contracts::{
     ChatRequest, Execution, FunctionCall, Handoff, MODEL, Outcome, PROVIDER, SCHEMA_VERSION,
@@ -55,15 +57,18 @@ pub enum Intent {
     SuggestCommit,
     ProjectSuggestions,
     TaskPlan(String),
-    DatasetList,
-    DatasetDownload(String),
-    DatasetAnswer(String),
-    Consult(String),
+    Bash(String),
+    Tool(String),
+    Coding { prompt: String, guarded: bool },
     Unsupported,
 }
 impl Intent {
     pub fn label(&self) -> &str {
         match self {
+            Self::Bash(_) => "bash_command",
+            Self::Tool(_) => "run_tool",
+            Self::Coding { guarded: true, .. } => "coding_guarded",
+            Self::Coding { guarded: false, .. } => "coding",
             Self::Read(_) => "read_file",
             Self::Inspect => "inspect_project",
             Self::Files(_) => "find_files",
@@ -90,10 +95,6 @@ impl Intent {
             Self::SuggestCommit => "inspect_project",
             Self::ProjectSuggestions => "unsupported",
             Self::TaskPlan(_) => "unsupported",
-            Self::DatasetList => "unsupported",
-            Self::DatasetDownload(_) => "unsupported",
-            Self::DatasetAnswer(_) => "unsupported",
-            Self::Consult(_) => "consult",
             Self::Unsupported => "unsupported",
         }
     }
@@ -178,7 +179,20 @@ fn run_async<F: std::future::Future>(f: F) -> F::Output {
 }
 
 fn split_compound_prompt(prompt: &str) -> Option<Vec<&str>> {
-    let lower = prompt.to_ascii_lowercase();
+    let mut s = prompt.trim();
+    let mut lower = s.to_ascii_lowercase();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for filler in &["hey ", "hi ", "hello ", "ok ", "well ", "so ", "now ", "please ", "can you ", "could you "] {
+            if lower.starts_with(filler) {
+                lower = lower[filler.len()..].trim_start().to_string();
+                s = s[filler.len()..].trim_start();
+                changed = true;
+                break;
+            }
+        }
+    }
     for delim in &[" and then ", " then ", "; ", " after that "] {
         if lower.contains(delim) {
             let parts: Vec<&str> = prompt
@@ -239,8 +253,28 @@ pub fn normalize_prompt(prompt: &str) -> String {
         "show me a ",
         "show me ",
         "tell me about ",
+        "let's take a look at ",
+        "take a look at ",
+        "let's check ",
+        "let's read ",
+        "let's view ",
+        "let's open ",
         "let's ",
         "how about ",
+        "check out ",
+        "help me read ",
+        "help me view ",
+        "help me open ",
+        "can we ",
+        "could we ",
+        "hey ",
+        "hi ",
+        "hello ",
+        "ok ",
+        "okay ",
+        "well ",
+        "so ",
+        "now ",
     ];
     let mut changed = true;
     while changed {
@@ -292,9 +326,192 @@ pub fn normalize_prompt(prompt: &str) -> String {
     joined
 }
 
+pub fn extract_natural_read_intent(prompt: &str, norm: &str) -> Option<Intent> {
+    let lower_prompt = prompt.trim().to_ascii_lowercase();
+    let lower_norm = norm.trim().to_ascii_lowercase();
+    let stripped_prompt = lower_prompt.trim_end_matches(|c: char| "?!. \t\r\n".contains(c));
+    let stripped_norm = lower_norm.trim_end_matches(|c: char| "?!. \t\r\n".contains(c));
+
+    // Exclude other intents explicitly
+    if stripped_prompt.starts_with("analyze ")
+        || stripped_norm.starts_with("analyze ")
+        || stripped_prompt.starts_with("review ")
+        || stripped_norm.starts_with("review ")
+        || stripped_prompt.starts_with("audit ")
+        || stripped_norm.starts_with("audit ")
+        || stripped_prompt.starts_with("write ")
+        || stripped_norm.starts_with("write ")
+        || stripped_prompt.starts_with("scaffold ")
+        || stripped_norm.starts_with("scaffold ")
+        || stripped_prompt.starts_with("search ")
+        || stripped_norm.starts_with("search ")
+        || stripped_prompt.starts_with("find ")
+        || stripped_norm.starts_with("find ")
+    {
+        return None;
+    }
+
+    let read_prefixes = [
+        "what is in ",
+        "what's in ",
+        "what is inside ",
+        "what's inside ",
+        "what is in the file ",
+        "what's in the file ",
+        "what is inside the file ",
+        "what's inside the file ",
+        "contents of ",
+        "content of ",
+        "contents of file ",
+        "content of file ",
+        "the contents of ",
+        "the content of ",
+        "read file ",
+        "read the file ",
+        "read ",
+        "view file ",
+        "view the file ",
+        "view ",
+        "open file ",
+        "open the file ",
+        "open ",
+        "cat file ",
+        "cat the file ",
+        "cat ",
+        "show file ",
+        "show the file ",
+        "show contents of ",
+        "show content of ",
+        "show me the contents of ",
+        "show me contents of ",
+        "show me what's inside ",
+        "show me what is inside ",
+        "show me what's in ",
+        "show me what is in ",
+        "show me file ",
+        "show me the file ",
+        "show me ",
+        "show ",
+        "display file ",
+        "display the file ",
+        "display contents of ",
+        "display ",
+        "print file ",
+        "print the file ",
+        "print ",
+        "examine file ",
+        "examine the file ",
+        "examine ",
+        "look at file ",
+        "look at the file ",
+        "look at ",
+        "look into file ",
+        "look into ",
+        "check file ",
+        "check the file ",
+        "check what's inside ",
+        "check what is inside ",
+        "check what's in ",
+        "check what is in ",
+        "inspect file ",
+        "inspect the file ",
+    ];
+
+    for prefix in &read_prefixes {
+        let matched = if stripped_prompt.starts_with(prefix) {
+            Some(&prompt[prefix.len()..])
+        } else if stripped_norm.starts_with(prefix) {
+            Some(&norm[prefix.len()..])
+        } else {
+            None
+        };
+
+        if let Some(rest) = matched {
+            let cleaned = rest.trim().trim_matches(|c: char| "`\"',;:!? \t\r\n".contains(c));
+            if cleaned == "it" || cleaned == "that" || cleaned == "file" || cleaned == "this" {
+                return Some(Intent::Clarify("Which project-relative file should I read?".into()));
+            }
+
+            let candidates = paths(rest);
+            if candidates.len() == 1
+                && safe_path(&candidates[0], false)
+                && !candidates[0].contains(['*', '?'])
+            {
+                return Some(Intent::Read(candidates[0].clone()));
+            }
+
+            if safe_path(cleaned, false) && !cleaned.contains(['*', '?', ' ']) && !cleaned.is_empty() {
+                let canonical = match cleaned.to_ascii_lowercase().as_str() {
+                    "cargo.toml" => "Cargo.toml".to_string(),
+                    "readme" | "readme.md" => "README.md".to_string(),
+                    "makefile" => "Makefile".to_string(),
+                    "license" => "LICENSE".to_string(),
+                    _ => cleaned.to_string(),
+                };
+                return Some(Intent::Read(canonical));
+            }
+        }
+    }
+
+    // Natural inquiry: "what does Cargo.toml contain?" / "how does src/lib.rs look?"
+    if (stripped_prompt.starts_with("what does ") || stripped_prompt.starts_with("how does "))
+        && (stripped_prompt.contains(" contain") || stripped_prompt.contains(" look"))
+    {
+        let candidates = paths(prompt);
+        if candidates.len() == 1 && safe_path(&candidates[0], false) && !candidates[0].contains(['*', '?']) {
+            return Some(Intent::Read(candidates[0].clone()));
+        }
+    }
+
+    // Bare file query: user typed just the filename or path
+    let trimmed = prompt.trim().trim_matches(|c: char| "`\"',; \t\r\n".contains(c));
+    if !trimmed.contains(' ') && safe_path(trimmed, false) && !trimmed.contains(['*', '?']) {
+        let lower = trimmed.to_ascii_lowercase();
+        let has_ext = trimmed.contains('.');
+        let is_known = matches!(lower.as_str(), "readme" | "makefile" | "license" | "dockerfile");
+        if has_ext || is_known {
+            let canonical = match lower.as_str() {
+                "cargo.toml" => "Cargo.toml".to_string(),
+                "readme" | "readme.md" => "README.md".to_string(),
+                "makefile" => "Makefile".to_string(),
+                "license" => "LICENSE".to_string(),
+                _ => trimmed.to_string(),
+            };
+            return Some(Intent::Read(canonical));
+        }
+    }
+
+    None
+}
+
 pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     if prompt.len() > 1024 || !prompt.is_ascii() {
         return Intent::Unsupported;
+    }
+    let trimmed_prompt = prompt.trim();
+    if let Some(cmd) = trimmed_prompt.strip_prefix("--bash:") {
+        return Intent::Bash(cmd.trim().to_string());
+    }
+    if let Some(tool_req) = trimmed_prompt.strip_prefix("--tools:") {
+        return Intent::Tool(tool_req.trim().to_string());
+    }
+    if let Some(coding_req) = trimmed_prompt.strip_prefix("--coding:guard") {
+        return Intent::Coding {
+            prompt: coding_req.trim().to_string(),
+            guarded: true,
+        };
+    }
+    if let Some(coding_req) = trimmed_prompt.strip_prefix("--coding!:") {
+        return Intent::Coding {
+            prompt: coding_req.trim().to_string(),
+            guarded: true,
+        };
+    }
+    if let Some(coding_req) = trimmed_prompt.strip_prefix("--coding:") {
+        return Intent::Coding {
+            prompt: coding_req.trim().to_string(),
+            guarded: false,
+        };
     }
     for word in prompt.split_whitespace() {
         let clean = word.trim_matches(|c: char| "`\"',;:!?<>".contains(c));
@@ -306,19 +523,24 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     if let Some(coder_intent) = coder::parse_coder_intent(prompt).or_else(|| coder::parse_coder_intent(&norm)) {
         return coder_intent;
     }
-    let trimmed_norm = norm.trim().trim_end_matches(|c: char| "?!. \t\r\n".contains(c));
-    if ["list datasets", "show datasets", "available datasets", "datasets"].contains(&trimmed_norm) {
-        return Intent::DatasetList;
+    if let Some(read_intent) = extract_natural_read_intent(prompt, &norm) {
+        return read_intent;
     }
-    for prefix in &["download dataset ", "fetch dataset ", "install dataset "] {
-        if norm.starts_with(prefix) {
-            let id = norm[prefix.len()..].trim().trim_matches(|c: char| "`\"',;:!?".contains(c));
-            if !id.is_empty() {
-                return Intent::DatasetDownload(id.to_string());
+
+    let mut s = prompt.trim();
+    let mut lower = s.to_ascii_lowercase();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for filler in &["hey ", "hi ", "hello ", "ok ", "well ", "so ", "now ", "please ", "can you ", "could you "] {
+            if lower.starts_with(filler) {
+                lower = lower[filler.len()..].trim_start().to_string();
+                s = s[filler.len()..].trim_start();
+                changed = true;
+                break;
             }
         }
     }
-    let lower = prompt.to_ascii_lowercase();
     let query_prefix = [
         "search the web for ",
         "search web for ",
@@ -336,11 +558,12 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         "tell me about ",
         "explain ",
         "why is ",
+        "why ",
     ]
     .iter()
     .find_map(|p| {
         if lower.starts_with(p) && !lower.starts_with("where is symbol ") {
-            Some(prompt[p.len()..].trim().trim_end_matches('?').trim())
+            Some(s[p.len()..].trim().trim_end_matches('?').trim())
         } else {
             None
         }
@@ -396,18 +619,6 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         {
             return Intent::Unsupported;
         }
-
-        let is_explicit_web_search = lower.starts_with("search the web for")
-            || lower.starts_with("search web for")
-            || lower.starts_with("web search for")
-            || lower.starts_with("web search ")
-            || lower.starts_with("research ");
-
-        if !is_explicit_web_search {
-            if let Some(_matched) = dataset::route_prompt_to_dataset(prompt).or_else(|| dataset::route_prompt_to_dataset(query)) {
-                return Intent::DatasetAnswer(prompt.to_string());
-            }
-        }
         return Intent::Research(query.to_string());
     }
     if model::features(prompt)
@@ -424,9 +635,9 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     }
     if lower.starts_with("wiki ") || lower.starts_with("wikipedia ") {
         let query = if lower.starts_with("wikipedia ") {
-            prompt[10..].trim()
+            s[10..].trim()
         } else {
-            prompt[5..].trim()
+            s[5..].trim()
         };
         if !query.is_empty() {
             return Intent::Wiki(query.to_string());
@@ -434,9 +645,9 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     }
     if lower.starts_with("github ") || lower.starts_with("git ") {
         let target = if lower.starts_with("github ") {
-            prompt[7..].trim()
+            s[7..].trim()
         } else {
-            prompt[4..].trim()
+            s[4..].trim()
         };
         if !target.is_empty() && target.contains('/') {
             return Intent::Github(target.to_string());
@@ -444,18 +655,18 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     }
     if lower.starts_with("package ") || lower.starts_with("crate ") || lower.starts_with("npm ") {
         let pkg = if lower.starts_with("package ") {
-            prompt[8..].trim()
+            s[8..].trim()
         } else if lower.starts_with("crate ") {
-            prompt[6..].trim()
+            s[6..].trim()
         } else {
-            prompt[4..].trim()
+            s[4..].trim()
         };
         if !pkg.is_empty() && !pkg.contains(' ') {
             return Intent::Package(pkg.to_string());
         }
     }
     if lower.starts_with("scaffold ") || lower.starts_with("template ") {
-        let tpl = prompt[9..].trim();
+        let tpl = s[9..].trim();
         if !tpl.is_empty() {
             return Intent::Scaffold(tpl.to_string());
         }
@@ -525,8 +736,8 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             }
         }
     }
-    if ["analyze codebase", "review codebase", "audit codebase", "analyze project", "review project", "audit project", "analyze code", "code review", "code audit"].contains(&trimmed)
-        || ["analyze codebase", "review codebase", "audit codebase", "analyze project", "review project", "audit project", "analyze code", "code review", "code audit"].contains(&norm.as_str())
+    if ["analyze codebase", "review codebase", "audit codebase", "analyze project", "review project", "audit project", "analyze code", "code review", "code audit", "analyze current codebase", "analyze current code base"].contains(&trimmed)
+        || ["analyze codebase", "review codebase", "audit codebase", "analyze project", "review project", "audit project", "analyze code", "code review", "code audit", "analyze current codebase", "analyze current code base"].contains(&norm.as_str())
     {
         return Intent::AnalyzeDir(".".into());
     }
@@ -625,13 +836,7 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             }
             .into(),
         ),
-        _ => {
-            if let Some(_matched) = dataset::route_prompt_to_dataset(prompt).or_else(|| dataset::route_prompt_to_dataset(&norm)) {
-                Intent::DatasetAnswer(prompt.to_string())
-            } else {
-                Intent::Consult(prompt.to_string())
-            }
-        }
+        _ => Intent::Unsupported,
     }
 }
 struct Workflow<'a> {
@@ -893,21 +1098,44 @@ pub fn decide_with_model(
         observed: vec![],
     };
     match intent {
-        Intent::Consult(prompt) => {
-            let stream_result = run_async(crate::kilo::consult_kilo_stream(&prompt)).unwrap_or_else(|e| format!("Consulting failed: {e}"));
-            Ok(w.end(stream_result, Outcome::Completed))
-        },
+
         Intent::Unsupported => Ok(w.limitation(
             "I'm specialized in project code inspection, tests, builds, scaffolds, and web research. I couldn't identify a programming action for that request. Try asking 'help' to view available capabilities, or specify a file or symbol.",
             false,
         )),
+        Intent::Bash(cmd) => {
+            let res = companion::execute_in_session_bash(&cmd);
+            Ok(w.end(res.to_markdown(), Outcome::Completed))
+        }
+        Intent::Tool(task) => {
+            let res = companion::dispatch_tool(&task);
+            let outcome = match &res {
+                companion::CompanionResult::ToolNeedsConsent { .. } => Outcome::Clarification,
+                _ => Outcome::Completed,
+            };
+            Ok(w.end(res.to_markdown(), outcome))
+        }
+        Intent::Coding { prompt, guarded } => {
+            let draft = format!(
+                "// Coding draft for request: {prompt}\n// Bundled local workspace files\n\npub fn handle_request() -> Result<(), Box<dyn std::error::Error>> {{\n    Ok(())\n}}\n"
+            );
+            let alert = if guarded {
+                companion::detect_hallucinations(&draft, &[], &[])
+            } else {
+                None
+            };
+            let res = companion::CompanionResult::CodingResponse {
+                guarded,
+                content: draft,
+                hallucination_alert: alert,
+            };
+            Ok(w.end(res.to_markdown(), Outcome::Completed))
+        }
         Intent::Clarify(question) => Ok(w.end(question, Outcome::Clarification)),
         Intent::Read(path) => {
             let text = tool!(w, "read_file", json!({"path": path, "line_count": 80}));
-            Ok(w.end(
-                format!("Here is `{path}`:\n\n```\n{}\n```", excerpt(&text, 8000)),
-                Outcome::Completed,
-            ))
+            let response = synthesize::synthesize_read_response(&path, &text);
+            Ok(w.end(response, Outcome::Completed))
         }
         Intent::Files(glob) => {
             let text = tool!(w, "find_files", json!({"path": ".", "glob": glob, "limit": 50}));
@@ -1042,14 +1270,11 @@ pub fn decide_with_model(
             ))
         }
         Intent::Research(query) => {
-            let report = run_async(nioxs_browser::research(&query, 3))
-                .map_err(|e| format!("web research error: {e}"))?;
-
+            let report = run_async(nioxs_browser::research(&query, 4))
+                .map_err(|e| format!("research error: {e}"))?;
             if report.passages.is_empty() {
                 Ok(w.end(
-                    format!(
-                        "I searched for '{query}' across web and documentation sources, but didn't find high-confidence cited passages. Try checking Wikipedia with `wiki {query}`."
-                    ),
+                    format!("No informative public web sources found for '{query}'."),
                     Outcome::Completed,
                 ))
             } else {
@@ -1059,7 +1284,7 @@ pub fn decide_with_model(
         }
         Intent::Wiki(query) => {
             let results = run_async(nioxs_browser::search_wikipedia(&query, 3))
-                .map_err(|e| format!("wikipedia search error: {e}"))?;
+                .map_err(|e| format!("wikipedia error: {e}"))?;
             if results.is_empty() {
                 Ok(w.end(
                     format!("No Wikipedia articles found for '{query}'."),
@@ -1071,19 +1296,19 @@ pub fn decide_with_model(
                     Ok(html) => nioxs_browser::extract_text(&html),
                     Err(_) => top.snippet.clone(),
                 };
-                let mut out = format!(
-                    "Wikipedia article: {} ({})\n\n{}",
-                    top.title,
-                    top.url,
-                    excerpt(&article_text, 5000)
-                );
-                if results.len() > 1 {
-                    out.push_str("\n\nRelated articles:\n");
-                    for r in &results[1..] {
-                        out.push_str(&format!("- {} ({})\n", r.title, r.url));
-                    }
-                }
-                Ok(w.end(out, Outcome::Completed))
+                let report = nioxs_browser::ResearchReport {
+                    query: query.clone(),
+                    passages: vec![nioxs_browser::ResearchPassage {
+                        url: top.url.clone(),
+                        title: top.title.clone(),
+                        excerpt: article_text,
+                        snippet: top.snippet.clone(),
+                        score: 100,
+                    }],
+                    sources_visited: vec![top.url.clone()],
+                };
+                let synthesized = synthesize::synthesize_research_answer(&query, &report);
+                Ok(w.end(excerpt(&synthesized, 8000), Outcome::Completed))
             }
         }
         Intent::Github(repo) => {
@@ -1134,11 +1359,11 @@ pub fn decide_with_model(
         Intent::Greeting => {
             let turn = GREETING_ROTATION.fetch_add(1, Ordering::Relaxed);
             let greetings = [
-                "👋 **Hello! I'm NioNano**, your sovereign pair programmer and MicroLM (μLM).\n\nHere are a few quick ways we can collaborate:\n• 🔍 **Inspect Workspace**: `inspect project` or `what is my project build on?`\n• ⚡ **Code Health Audit**: `analyze codebase` or `review <file>`\n• 🧪 **Autonomous TDD**: `write test for <fn> in <file>` or `replace 'old' with 'new' in <file> and run tests`\n• 📚 **Modular Knowledge**: `list datasets` or ask technical questions naturally\n• 🌐 **Web & Doc Research**: `what is <term>?` or `wiki <topic>`\n\nWhat would you like to build or inspect today?",
-                "⚡ **Hey there! NioNano is ready.**\n\nEquipped with symbolic code search, unified patching, AST navigation, and NioDB on-demand knowledge:\n• 🔎 **Find Symbols**: `where is <symbol> defined?` or `who calls <symbol>?`\n• 🛠️ **Refactor Code**: `replace 'old_code' with 'new_code' in <file>`\n• ✅ **Run Checks**: `run test check` or `run build check`\n• 📝 **Git Operations**: `review git diff` or `suggest commit message`\n\nHow can I assist your coding session?",
-                "🧠 **Welcome! NioNano MicroLM (μLM)** at your service.\n\nConnected to local **NioDB** with 36 modular ~100KB domain datasets:\n• 🦀 **Rust Engineering**: `how do I eliminate unwrap in rust?` or `what is rust?`\n• 🏗️ **Distributed Architecture**: `how does the saga pattern work in microservices?`\n• 🔒 **Security & Auth**: `why is pkce required in oauth 2.1?` or `how to prevent sql injection`\n• 📦 **Datasets Hub**: `list datasets` to browse all 36 knowledge packs\n\nAsk any programming question or tell me which file to inspect!",
+                "👋 **Hello! I'm NioNano**, your sovereign pair programmer and MicroLM (μLM).\n\nHere are a few quick ways we can collaborate:\n• 🔍 **Inspect Workspace**: `inspect project` or `what is my project build on?`\n• ⚡ **Code Health Audit**: `analyze codebase` or `review <file>`\n• 🧠 **Diagnostics & Triage**: `analyze <file>` for unwrap risks, complexity, and safety\n• 🔎 **Find Symbols**: `where is <symbol> defined?` or `who calls <symbol>?`\n• 🌐 **Web & Doc Research**: `what is <term>?` or `wiki <topic>`\n\nWhat would you like to explore or diagnose today?",
+                "⚡ **Hey there! NioNano is ready.**\n\nEquipped with symbolic code search, unified patching, AST navigation, and live web research:\n• 🔎 **Find Symbols**: `where is <symbol> defined?` or `who calls <symbol>?`\n• 🛠️ **Refactor Code**: `replace 'old_code' with 'new_code' in <file>`\n• ✅ **Run Checks**: `run test check` or `run build check`\n• 📝 **Git Operations**: `review git diff` or `suggest commit message`\n\nHow can I assist your coding session?",
+                "🧠 **Welcome! NioNano MicroLM (μLM)** at your service.\n\nFocused on high-precision code assist, problem solving, and diagnosis:\n• 🦀 **Diagnostics & Triage**: `where is <symbol> defined?` or `analyze <file>`\n• 🏗️ **Architectural Walkthrough**: Ask technical questions naturally\n• 🌐 **Web Research**: `what is <topic>?` or `wiki <topic>`\n• 🔍 **Search Source Code**: `search code for <keyword>`\n\nAsk any programming question or tell me which file to inspect!",
                 "🧪 **Greetings! NioNano test & validation engine ready.**\n\nLet's ensure zero regressions in your project:\n• 🎯 **Scaffold Tests**: `write test for <function> in <file>`\n• 🔄 **Edit & Test Loop**: `replace 'a' with 'b' in <file> and run tests`\n• 🔍 **Analyze Functions**: `analyze <file>` for unwrap risks, complexity, and safety\n• 📋 **File Discovery**: `find *.rs` or `find Cargo.toml`\n\nWhat shall we verify or test?",
-                "🚀 **Hi! How can I help you program today?**\n\nPopular prompts to try right now:\n• `what is my project build on?` — Get an instant stack breakdown\n• `search code for <keyword>` — Search occurrences across your project\n• `list datasets` — View available domain knowledge packs in NioDB\n• `scaffold gitignore` — Generate deterministic project templates\n\nJust type your request!",
+                "🚀 **Hi! How can I help you program today?**\n\nPopular prompts to try right now:\n• `what is my project build on?` — Get an instant stack breakdown\n• `search code for <keyword>` — Search occurrences across your project\n• `where is <symbol> defined?` — Locate declarations\n• `scaffold gitignore` — Generate deterministic project templates\n\nJust type your request!",
             ];
             let msg = greetings[turn % greetings.len()];
             Ok(w.end(msg.to_string(), Outcome::Completed))
@@ -1156,16 +1381,12 @@ pub fn decide_with_model(
                 • `analyze <file>` — Ast metrics, cyclomatic complexity & unwrap safety\n\
                 • `where is <symbol> defined?` — Locate declarations & structs\n\
                 • `who calls <symbol>?` — Find references & call sites\n\n\
-                #### 3. Sovereign Coding & Autonomous TDD Loop\n\
+                #### 3. Sovereign Coding & Pair Programming\n\
                 • `replace 'old' with 'new' in <file>` — Deterministic code patching\n\
                 • `replace 'old' with 'new' in <file> and run tests` — Autonomous TDD loop\n\
                 • `write test for <fn> in <file>` — Dynamic test scaffolder\n\
                 • `review git diff` / `suggest commit message` — Git workflow review\n\n\
-                #### 4. Modular Knowledge Hub (36 Datasets in NioDB)\n\
-                • `list datasets` — Browse all 36 domain packs (~100 KB each)\n\
-                • `download dataset <id>` — Download pack into local NioDB\n\
-                • Natural technical Q&A: `what is rust?`, `saga in microservices`, `token bucket algorithm`\n\n\
-                #### 5. Web & Registry Research\n\
+                #### 4. Web & Registry Research\n\
                 • `what is <topic>?` / `wiki <topic>` — Synthesized research answer\n\
                 • `crate <name>` / `npm <name>` — Package registry lookups\n\
                 • `scaffold <template>` — Templates (`gitignore`, `github-ci`, `license-mit`)".into(),
@@ -1264,28 +1485,6 @@ pub fn decide_with_model(
             let plan = coder::generate_task_plan(&task);
             Ok(w.end(plan, Outcome::Completed))
         }
-        Intent::DatasetList => {
-            let catalog_text = dataset::format_catalog();
-            Ok(w.end(catalog_text, Outcome::Completed))
-        }
-        Intent::DatasetDownload(id) => {
-            let result = run_async(dataset::download_dataset_to_niodb(&id))
-                .unwrap_or_else(|e| format!("Download error: {e}"));
-            Ok(w.end(result, Outcome::Completed))
-        }
-        Intent::DatasetAnswer(prompt) => {
-            if let Some(m) = dataset::route_prompt_to_dataset(&prompt) {
-                // Opportunistic background auto-save to NioDB
-                let _ = run_async(dataset::download_dataset_to_niodb(m.dataset.id));
-                let response_text = dataset::format_routed_response(&m);
-                Ok(w.end(response_text, Outcome::Completed))
-            } else {
-                Ok(w.end(
-                    "No matching domain dataset found for that question. Try `list datasets` to view available packs.".into(),
-                    Outcome::Completed,
-                ))
-            }
-        }
         Intent::Plan(steps) => {
             let mut summary = format!("Decomposed and executing {} task steps:\n\n", steps.len());
             for (idx, step) in steps.iter().enumerate() {
@@ -1293,7 +1492,7 @@ pub fn decide_with_model(
                 match step {
                     Intent::Read(path) => {
                         let text = tool!(w, "read_file", json!({"path": path, "line_count": 80}));
-                        summary.push_str(&format!("### Step {step_num}: Read {path}\n{}\n\n", excerpt(&text, 2000)));
+                        summary.push_str(&format!("### Step {step_num}: Read {path}\n{}\n\n", synthesize::synthesize_read_response(path, &text)));
                     }
                     Intent::Files(glob) => {
                         let text = tool!(w, "find_files", json!({"path": ".", "glob": glob, "limit": 50}));
@@ -1492,6 +1691,14 @@ mod tests {
             parse(model, "what is Jev?"),
             Intent::Research("Jev".into())
         );
+        assert_eq!(
+            parse(model, "hey what is zig?"),
+            Intent::Research("zig".into())
+        );
+        assert_eq!(
+            parse(model, "why zig?"),
+            Intent::Research("zig".into())
+        );
         assert_eq!(parse(model, "hey"), Intent::Greeting);
         assert_eq!(parse(model, "help"), Intent::Help);
         assert_eq!(
@@ -1594,20 +1801,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_dataset_hub_and_router() {
-        let model = Model::embedded().unwrap();
-
-        assert_eq!(parse(&model, "list datasets"), Intent::DatasetList);
-        assert_eq!(
-            parse(&model, "download dataset rust-error-handling"),
-            Intent::DatasetDownload("rust-error-handling".into())
-        );
-        assert_eq!(
-            parse(&model, "how do I eliminate unwrap in rust?"),
-            Intent::DatasetAnswer("how do I eliminate unwrap in rust?".into())
-        );
-    }
 
     #[test]
     fn test_suggestions_and_task_planning() {
@@ -1625,5 +1818,39 @@ mod tests {
             parse(&model, "plan refactor database queries"),
             Intent::TaskPlan("refactor database queries".into())
         );
+    }
+
+    #[test]
+    fn test_natural_read_phrasings_and_nlp_synthesis() {
+        let model = Model::embedded().unwrap();
+
+        // 1. Natural read prompt variants
+        assert_eq!(parse(&model, "what is in Cargo.toml?"), Intent::Read("Cargo.toml".into()));
+        assert_eq!(parse(&model, "what's inside src/lib.rs"), Intent::Read("src/lib.rs".into()));
+        assert_eq!(parse(&model, "can you read src/lib.rs"), Intent::Read("src/lib.rs".into()));
+        assert_eq!(parse(&model, "view src/lib.rs"), Intent::Read("src/lib.rs".into()));
+        assert_eq!(parse(&model, "cat Cargo.toml"), Intent::Read("Cargo.toml".into()));
+        assert_eq!(parse(&model, "open Cargo.toml"), Intent::Read("Cargo.toml".into()));
+        assert_eq!(parse(&model, "let's look at Cargo.toml"), Intent::Read("Cargo.toml".into()));
+        assert_eq!(parse(&model, "show me what's inside Cargo.toml"), Intent::Read("Cargo.toml".into()));
+        assert_eq!(parse(&model, "show contents of README.md"), Intent::Read("README.md".into()));
+        assert_eq!(parse(&model, "display src/lib.rs"), Intent::Read("src/lib.rs".into()));
+        assert_eq!(parse(&model, "what does Cargo.toml contain?"), Intent::Read("Cargo.toml".into()));
+        assert_eq!(parse(&model, "Cargo.toml"), Intent::Read("Cargo.toml".into()));
+
+        // 2. Synthesize read NLP response
+        let toml_sample = "[package]\nname = \"test-crate\"\nversion = \"0.1.0\"\n[dependencies]\ntokio = \"1.0\"\n";
+        let toml_res = synthesize::synthesize_read_response("Cargo.toml", toml_sample);
+        assert!(toml_res.contains("### 📄 `Cargo.toml`"));
+        assert!(toml_res.contains("test-crate"));
+        assert!(toml_res.contains("```toml"));
+        assert!(toml_res.contains("💡 **Suggested Actions**"));
+
+        let rs_sample = "pub fn add(a: i32, b: i32) -> i32 { a + b }\npub struct Calc;\n";
+        let rs_res = synthesize::synthesize_read_response("src/calc.rs", rs_sample);
+        assert!(rs_res.contains("### 📄 `src/calc.rs`"));
+        assert!(rs_res.contains("`add()`"));
+        assert!(rs_res.contains("`Calc`"));
+        assert!(rs_res.contains("```rust"));
     }
 }

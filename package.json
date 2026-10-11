@@ -1,0 +1,37 @@
+{
+  "name": "@nio-labs/nio-xs",
+  "version": "0.2.0-alpha.1",
+  "description": "NioXS: AI Gateway & Companion for Coding Agents with NioNano MicroLM",
+  "main": "bin/nioxs.js",
+  "bin": {
+    "nio-xs": "./bin/nioxs.js",
+    "nioxs": "./bin/nioxs.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "node ./bin/nioxs.js",
+    "test": "cargo test --workspace"
+  },
+  "keywords": [
+    "nioxs",
+    "nio-nano",
+    "ai-gateway",
+    "coding-agent",
+    "aider",
+    "cline",
+    "opencode",
+    "mcp",
+    "microlm"
+  ],
+  "author": "Nio Labs",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nio-labs/nio-xs.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

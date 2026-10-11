@@ -1,0 +1,7 @@
+target/
+.git/
+.freebuff/
+.runtime/
+evaluation/reports/
+training/
+*.log

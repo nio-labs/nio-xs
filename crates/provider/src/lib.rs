@@ -10,7 +10,8 @@ use axum::{
 };
 use futures_util::stream;
 use nioxs_contracts::{
-    ChatRequest, DurableEvent, MAX_REQUEST_BYTES, MODEL, PROVIDER, SCHEMA_VERSION,
+    ChatRequest, DecideRequest, DurableEvent, MAX_REQUEST_BYTES, MODEL, Outcome, PROVIDER,
+    SCHEMA_VERSION,
 };
 use nioxs_nano::{Model, decide_with_model};
 mod journal;
@@ -55,6 +56,7 @@ pub fn router(app: App) -> Router {
         .route("/v1/models", get(models))
         .route("/v1/capabilities", get(capabilities))
         .route("/v1/chat/completions", post(chat))
+        .route("/v1/decide", post(decide))
         .route("/v1/turns/:turn_id/cancel", post(cancel))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .with_state(Arc::new(app))
@@ -114,7 +116,7 @@ async fn capabilities(State(app): State<Arc<App>>, headers: HeaderMap) -> Respon
             "provider authentication required",
         );
     }
-    Json(json!({"schema_version":SCHEMA_VERSION,"provider":PROVIDER,"model":MODEL,"implementation":"trained_naive_bayes_and_typed_workflows","model_version":app.model.model_version,"trained":true,"confidence_threshold":app.model.threshold,"workflows":["read_file","inspect_project","find_files","search_code","run_checks","web_fetch","research_sources"],"client_tools":["read_file","find_files","search_code","run_command","web_fetch"],"server_tools":[],"streaming":true,"automatic_fallback":false,"browser_execution":true,"mcp":false,"storage":"niodb_immutable_action_journal"})).into_response()
+    Json(json!({"schema_version":SCHEMA_VERSION,"provider":PROVIDER,"model":MODEL,"implementation":"trained_naive_bayes_and_typed_workflows","model_version":app.model.model_version,"trained":true,"confidence_threshold":app.model.threshold,"workflows":["read_file","inspect_project","find_files","search_code","run_checks","web_fetch","research_sources"],"client_tools":["read_file","find_files","search_code","run_command","web_fetch"],"server_tools":[],"streaming":true,"automatic_fallback":false,"browser_execution":true,"mcp":false,"decision_contract":true,"storage":"niodb_immutable_action_journal"})).into_response()
 }
 
 async fn cancel(
@@ -147,6 +149,39 @@ async fn cancel(
             "turn is not active; no action was undone",
         ),
     }
+}
+
+/// Advisory decision modeling: score candidate proposals and return the choice.
+/// This endpoint never dispatches an action and never touches storage, so it is
+/// safe to call before a turn exists.
+///
+/// `async` because the handler must be a future for axum; the call is pure CPU.
+async fn decide(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    payload: Result<Json<DecideRequest>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    if !authorized(&app, &headers) {
+        return error(
+            StatusCode::UNAUTHORIZED,
+            "authentication_error",
+            "provider authentication required",
+        );
+    }
+    let request = match payload {
+        Ok(Json(request)) => request,
+        Err(_) => {
+            return error(
+                StatusCode::BAD_REQUEST,
+                "invalid_request_error",
+                "invalid or unsupported request fields",
+            );
+        }
+    };
+    if let Err(message) = request.validate() {
+        return error(StatusCode::BAD_REQUEST, "invalid_request_error", &message);
+    }
+    Json(nioxs_nano::decision::decide(&app.model, &request)).into_response()
 }
 
 async fn chat(
@@ -254,6 +289,39 @@ async fn chat(
         );
     }
     let id = format!("chatcmpl-{}", decision.execution.turn_id);
+    // Carry the turn's decision alongside execution metadata so a client can see
+    // what NioNano chose, and why it refused, without a second round trip.
+    let nioxs_value = {
+        let mut value = serde_json::to_value(&decision.execution).unwrap_or_else(|_| json!({}));
+        let dispatch = decision.call.as_ref().map(|call| {
+            (
+                call.function.name.as_str(),
+                call.function.arguments.as_str(),
+            )
+        });
+        let evidence: Vec<String> = decision
+            .observed
+            .iter()
+            .map(|observed| observed.result_digest.clone())
+            .collect();
+        let reason = decision
+            .execution
+            .handoff
+            .as_ref()
+            .map(|handoff| handoff.reason.clone())
+            .or_else(|| match decision.execution.outcome {
+                Outcome::Clarification | Outcome::ToolFailed => decision.content.clone(),
+                _ => None,
+            });
+        value["decision"] = json!(nioxs_nano::decision::summarize(
+            &decision.intent,
+            &decision.execution.outcome,
+            dispatch,
+            evidence,
+            reason,
+        ));
+        value
+    };
     let finish = if decision.call.is_some() {
         "tool_calls"
     } else {
@@ -264,7 +332,7 @@ async fn chat(
         message["tool_calls"] = json!([call]);
     }
     if !request.stream {
-        return Json(json!({"id":id,"object":"chat.completion","created":0,"model":MODEL,"choices":[{"index":0,"message":message,"finish_reason":finish}],"nioxs":decision.execution})).into_response();
+        return Json(json!({"id":id,"object":"chat.completion","created":0,"model":MODEL,"choices":[{"index":0,"message":message,"finish_reason":finish}],"nioxs":nioxs_value})).into_response();
     }
     let mut delta = message;
     if let Some(call) = &decision.call {
@@ -273,7 +341,7 @@ async fn chat(
     }
     let chunk = |delta: Value, finish: Value| json!({"id":id,"object":"chat.completion.chunk","created":0,"model":MODEL,"choices":[{"index":0,"delta":delta,"finish_reason":finish}]});
     let mut terminal = chunk(json!({}), json!(finish));
-    terminal["nioxs"] = json!(decision.execution);
+    terminal["nioxs"] = nioxs_value;
     let events = vec![
         Ok::<_, Infallible>(Event::default().data(chunk(delta, Value::Null).to_string())),
         Ok(Event::default().data(terminal.to_string())),
@@ -347,5 +415,126 @@ mod tests {
                 .status(),
             StatusCode::UNAUTHORIZED
         );
+    }
+    async fn post(path: &str, body: Value) -> (StatusCode, Value) {
+        let response = app()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 65536).await.unwrap();
+        let value = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null)
+        };
+        (status, value)
+    }
+
+    #[tokio::test]
+    async fn decide_endpoint_scores_proposals_without_executing_them() {
+        let (status, value) = post(
+            "/v1/decide",
+            json!({
+                "schema_version": 1,
+                "prompt": "read README.md",
+                "proposals": [
+                    {"id": "read", "action": "read_file", "arguments": {"path": "README.md"}},
+                    {"id": "answer", "action": "answer"}
+                ],
+                "allowed_actions": ["read_file"],
+                "required_fields": ["path"]
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(value["outcome"], "execute");
+        assert_eq!(value["chosen"]["action"], "read_file");
+        assert_eq!(value["chosen"]["id"], "read");
+        assert!(value["confidence"].as_f64().unwrap() >= 0.5);
+        assert!(value["abstained_reason"].is_null());
+        // Advisory only: no completion envelope and no dispatched action.
+        assert!(value.get("choices").is_none());
+        assert!(value.get("tool_calls").is_none());
+    }
+
+    #[tokio::test]
+    async fn decide_endpoint_abstains_on_policy_and_clarifies_missing_fields() {
+        let (status, blocked) = post(
+            "/v1/decide",
+            json!({
+                "schema_version": 1,
+                "prompt": "run tests",
+                "proposals": [{"id": "run", "action": "run_command", "arguments": {"command": "cargo test"}}],
+                "allowed_actions": ["read_file"]
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(blocked["outcome"], "abstain");
+        assert_eq!(blocked["policy"]["denied"][0], "run_command");
+        assert!(blocked["chosen"].is_null());
+
+        let (status, clarify) = post(
+            "/v1/decide",
+            json!({
+                "schema_version": 1,
+                "prompt": "read it",
+                "proposals": [{"id": "read", "action": "read_file", "arguments": {}}],
+                "allowed_actions": ["read_file"],
+                "required_fields": ["path"]
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(clarify["outcome"], "clarify");
+        assert!(clarify["chosen"].is_null());
+        assert!(
+            clarify["abstained_reason"]
+                .as_str()
+                .unwrap()
+                .contains("path")
+        );
+    }
+
+    #[tokio::test]
+    async fn decide_endpoint_rejects_invalid_requests_and_requires_auth() {
+        let (status, value) = post(
+            "/v1/decide",
+            json!({"schema_version": 2, "prompt": "read README.md"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(value["error"]["code"], "invalid_request_error");
+
+        let secure = router(App {
+            db: NioDb::new("http://127.0.0.1:9", "test".into()).unwrap(),
+            deployment: "test".into(),
+            api_token: Some("private".into()),
+            active: ActiveTurns::default(),
+            model: Arc::new(Model::embedded().unwrap()),
+            instance: "unit-test".into(),
+        });
+        let response = secure
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/decide")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"schema_version": 1, "prompt": "read README.md"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }

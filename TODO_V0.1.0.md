@@ -1,10 +1,10 @@
 # NioXS + NioNano v0.1.0 TODO
 
-Status: Phases 1–2 complete with evidence; Phase 3 research engine implemented in-tree with its NioDB cache/quota/smoke gates still open; Phase 4 partial (a local MCP stdio server and a bounded edit/verify loop exist, but edit paths bypass the tool gate, and consult_llm, feedback records, and handoff continuation are missing); Phase 5 open. Optional Phase 1 Crawl4AI probe remains deferred. Target: v0.1.0. See [roadmap](NIOXS_ROADMAP.md) and [full design](NIOXS_PLAN.md).
+Status: Phases 1–2 complete with evidence; Phase 3 research engine implemented in-tree with its NioDB cache/quota/smoke gates still open; Phase 4 partial (a local MCP stdio server and a bounded edit/verify loop exist, but edit paths bypass the tool gate, and feedback records and handoff continuation are missing; LLM consultation is retired); Phase 5 open. Optional Phase 1 Crawl4AI probe remains deferred. Target: v0.1.0. See [roadmap](NIOXS_ROADMAP.md) and [full design](NIOXS_PLAN.md).
 
 Check tasks only after their acceptance evidence exists. Each phase depends on the previous phase. Nano is the only model in this release.
 
-**Tracking sync 2026-10-10.** Work shipped after this checklist was written (coding engine, dataset hub, MCP stdio server, package registry inspector, code-health analysis, git review helpers, rotating responses) outpaced the roadmap. Interim feature labels (v0.7.x, v0.8.x) used in those commits were dropped 2026-10-10; the workspace is v0.1.0-alpha.2 and no 0.8.x release exists. The work is recorded below under "Delivered beyond the original v0.1.0 scope" instead of being silently folded into phase gates. Two invariant violations in that work must be fixed first — [Nano Phase A](NIOXS_NANO_PHASES.md): `coder.rs:208,242` `fs::write` and `coder.rs:254` direct command spawn bypass the Nio tool gate, and the classifier risk-word blocklist (`model.rs`) forces common prompts to unsupported. Capability metadata at `crates/provider/src/lib.rs` still advertises the original seven workflows and `mcp:false`; it is stale and must be regenerated from the real intent list before release.
+**Tracking sync 2026-10-11.** Workspace is at `v0.1.0-alpha.3`. The static dataset subsystem has been pruned in favor of pure dynamic web scraping via headless browser headers and the Code Assist Brain (`brain.rs`) with AST diagnostic parsing. The Decision Model (`decision.rs`) is repositioned as a safety, policy, and workflow arbiter. All workspace tests (contracts, browser, nano, provider, storage) pass and release binaries are verified. Target: v0.1.0 final and v0.2.0 roadmap.
 
 ## Phase 1 — Foundations, NioDB, and provider connection
 
@@ -71,17 +71,17 @@ Goal: search, visit useful websites, and return evidence with complexity-based r
 
 Exit evidence: a lookup stops when its required fields are found, a comparison expands only when needed, blocked pages cannot create loops, and reported excerpts match linked sources.
 
-## Phase 4 — Consult & Execute, automatic handoff, and API/MCP interoperability
+## Phase 4 — Bounded execution, handoff, and API/MCP interoperability
 
-Goal: empower NioNano as a small coding agent via LLM consultation ("Consult & Execute") while preserving sovereign execution, with handoff as an escape hatch, API compatibility, and local MCP.
+Goal: empower NioNano as a decision and execution layer while preserving sovereign execution, with handoff as an escape hatch, API compatibility, and local MCP.
 
-- [ ] Define the typed client tool contract for `consult_llm` (prompt, context excerpts, patch/instruction schema) executed via Nio's provider broker.
-- [ ] Implement NioNano's coding agent loop: inspect failure/code → assemble compact context → dispatch `consult_llm` → parse advisory patch.
+**Retired:** LLM consultation (`consult_llm`) and the Kilo Code integration are removed. Nano does not call an external LLM at runtime; reasoning and authoring stay with the client's LLM, while Nano decides, verifies, and executes. See [NIOXS_NEXT.md](NIOXS_NEXT.md).
+
 - [ ] Implement bounded, verified code modification: safe file editing (`edit_file` / `apply_patch`) validating against `safe_path` and project trust. (An edit engine exists — `crates/nano/src/patch.rs` and the coder edit path — but `coder.rs:208,242` call `fs::write` directly, bypassing the tool gate; gated on Nano Phase A.)
 - [ ] Implement the verification loop: run configured checks (`run_checks`) post-edit and iterate or terminate within the 8-action budget. (An edit-and-test loop exists in `coder.rs` but runs on the ungated edit path and spawns commands directly; gated on Nano Phase A.)
-- [ ] Implement fallback policy and handoff triggers: unsupported conversational tasks, classifier abstention, or exhausted budget after consultation.
+- [ ] Implement fallback policy and handoff triggers: unsupported conversational tasks, classifier abstention, or exhausted workflow budget.
 - [ ] Keep missing-input clarification separate from escalation; do not escalate just because a page is blocked or a tool fails once.
-- [ ] Persist consultation/handoff state and actual backend path in scoped NioDB run records while keeping credentials in Nio.
+- [ ] Persist handoff state and actual backend path in scoped NioDB run records while keeping credentials in Nio.
 - [ ] Add opt-in feedback records with retention and explicit export; no automatic prompt upload or retraining.
 - [ ] Assemble bounded handoff packets with request context, evidence, tool-call/result groups, completed side effects, gaps, and current permissions.
 - [ ] Implement the NioXS handoff extension and Nio's automatic continuation on the user-configured LLM provider when full delegation is needed.
@@ -94,7 +94,7 @@ Goal: empower NioNano as a small coding agent via LLM consultation ("Consult & E
 - [ ] Connect Nio's broker to one configured local MCP server; map known schemas to Nano workflows and abstain on unknown tools.
 - [ ] Test external API and MCP tool loops, cancellation, history continuity, and no-tools enforcement.
 
-Exit evidence: coding requests successfully consult the LLM, apply bounded edits, and verify tests without losing Nano's execution sovereignty; unsupported conversational requests hand off cleanly; external API and MCP tools work under documented scope.
+Exit evidence: coding requests apply bounded edits and verify tests without losing Nano's execution sovereignty; unsupported conversational requests hand off cleanly; external API and MCP tools work under documented scope.
 
 ## Phase 5 — Packaging, evaluation, and v0.1.0 release
 
@@ -147,7 +147,7 @@ Features shipped in-tree that this checklist never tracked. They exceed the v0.1
 | 1 — Foundations/NioDB/provider | Complete with evidence; optional Crawl4AI probe deferred |
 | 2 — Trained Nano/project workflows | Complete with evidence |
 | 3 — Adaptive browser research | Engine implemented in-tree; NioDB cache/quota/pruning, live smoke tests, and an evidence report remain open |
-| 4 — Handoff/API/MCP | Partial: MCP stdio server and bounded edit/verify loop exist; edit gating, consult_llm, feedback, handoff continuation open |
+| 4 — Handoff/API/MCP | Partial: MCP stdio server and bounded edit/verify loop exist; edit gating, feedback, handoff continuation open; LLM consultation retired |
 | 5 — Packaging/release | Open; stale capability metadata (`crates/provider/src/lib.rs`) must be fixed first |
 | Beyond scope | Coding engine, dataset hub, code analysis, git helpers, rotating responses — shipped, untracked, awaiting v0.1.5 scope decision |
 

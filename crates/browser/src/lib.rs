@@ -194,7 +194,11 @@ pub fn extract_text(html: &str) -> String {
                     && (tag_name == "script"
                         || tag_name == "style"
                         || tag_name == "noscript"
-                        || tag_name == "svg")
+                        || tag_name == "svg"
+                        || tag_name == "nav"
+                        || tag_name == "footer"
+                        || tag_name == "header"
+                        || tag_name == "aside")
                 {
                     if !tag_buf.starts_with('/') && !tag_buf.ends_with('/') {
                         skip_content = true;
@@ -318,6 +322,94 @@ pub fn parse_ddg_lite_results(html: &str) -> Vec<SearchResult> {
         }
     }
 
+    results
+}
+
+pub fn parse_ddg_html_results(html: &str) -> Vec<SearchResult> {
+    let mut results = Vec::new();
+    let blocks = html.split("<div class=\"result results_links results_links_deep");
+    for block in blocks.skip(1) {
+        let title = if let Some(a_pos) = block.find("class=\"result__a\"") {
+            let after_a = &block[a_pos..];
+            if let Some(tag_end) = after_a.find('>') {
+                let text_start = a_pos + tag_end + 1;
+                if let Some(text_end) = block[text_start..].find("</a>") {
+                    extract_text(&block[text_start..text_start + text_end])
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        let raw_url = if let Some(u_pos) = block.find("class=\"result__url\"") {
+            let after_u = &block[u_pos..];
+            if let Some(href_pos) = after_u.find("href=\"") {
+                let start = u_pos + href_pos + 6;
+                if let Some(end) = block[start..].find('"') {
+                    &block[start..start + end]
+                } else {
+                    ""
+                }
+            } else {
+                ""
+            }
+        } else {
+            ""
+        };
+
+        let final_url = if raw_url.contains("uddg=") {
+            let encoded = raw_url.split("uddg=").nth(1).unwrap_or("").split('&').next().unwrap_or("");
+            // Basic URL percent-decoding
+            let mut decoded = String::new();
+            let bytes = encoded.as_bytes();
+            let mut i = 0;
+            while i < bytes.len() {
+                if bytes[i] == b'%' && i + 2 < bytes.len() {
+                    if let Ok(b) = u8::from_str_radix(std::str::from_utf8(&bytes[i+1..i+3]).unwrap_or(""), 16) {
+                        decoded.push(b as char);
+                        i += 3;
+                        continue;
+                    }
+                }
+                decoded.push(bytes[i] as char);
+                i += 1;
+            }
+            decoded
+        } else {
+            raw_url.to_string()
+        };
+
+        let snippet = if let Some(s_pos) = block.find("class=\"result__snippet\"") {
+            let after_s = &block[s_pos..];
+            if let Some(tag_end) = after_s.find('>') {
+                let text_start = s_pos + tag_end + 1;
+                if let Some(text_end) = block[text_start..].find("</a>") {
+                    extract_text(&block[text_start..text_start + text_end])
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        if final_url.starts_with("http") && !title.is_empty() {
+            results.push(SearchResult {
+                title,
+                url: final_url,
+                snippet,
+            });
+        }
+        if results.len() >= 10 {
+            break;
+        }
+    }
     results
 }
 
@@ -547,30 +639,68 @@ pub async fn fetch(_legacy_binary: &Path, url: &str) -> Result<String, String> {
 pub async fn search(query: &str, limit: usize) -> Result<Vec<SearchResult>, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(8))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
         .build()
         .map_err(|e| format!("cannot build HTTP client: {e}"))?;
 
-    let response = client
-        .post("https://lite.duckduckgo.com/lite/")
-        .form(&[("q", query)])
+    // Primary: Query DuckDuckGo HTML endpoint using standard browser navigation headers
+    let ddg_html_res = client
+        .get("https://html.duckduckgo.com/html/")
+        .query(&[("q", query)])
+        .header("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+        .header("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+        .header("accept-language", "en-US,en;q=0.9")
+        .header("sec-ch-ua", "\"Not/A)Brand\";v=\"8\", \"Chromium\";v=\"126\", \"Google Chrome\";v=\"126\"")
+        .header("sec-ch-ua-mobile", "?0")
+        .header("sec-ch-ua-platform", "\"Windows\"")
+        .header("sec-fetch-dest", "document")
+        .header("sec-fetch-mode", "navigate")
+        .header("sec-fetch-site", "none")
+        .header("sec-fetch-user", "?1")
+        .header("upgrade-insecure-requests", "1")
         .send()
-        .await
-        .map_err(|e| format!("search request failed: {e}"))?;
+        .await;
 
-    let html = response
-        .text()
-        .await
-        .map_err(|e| format!("failed reading search results: {e}"))?;
-
-    let status = classify(&html);
-    if status == PageStatus::Challenge || status == PageStatus::AccessDenied {
-        return Err("search engine challenge encountered".into());
+    if let Ok(response) = ddg_html_res {
+        if let Ok(html) = response.text().await {
+            let status = classify(&html);
+            if status != PageStatus::Challenge && status != PageStatus::AccessDenied {
+                let mut results = parse_ddg_html_results(&html);
+                if !results.is_empty() {
+                    results.truncate(limit);
+                    return Ok(results);
+                }
+            }
+        }
     }
 
-    let mut results = parse_ddg_lite_results(&html);
-    results.truncate(limit);
-    Ok(results)
+    // Secondary: Query DDG Lite
+    let ddg_lite_res = client
+        .post("https://lite.duckduckgo.com/lite/")
+        .form(&[("q", query)])
+        .header("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+        .send()
+        .await;
+
+    if let Ok(response) = ddg_lite_res {
+        if let Ok(html) = response.text().await {
+            let status = classify(&html);
+            if status != PageStatus::Challenge && status != PageStatus::AccessDenied {
+                let mut results = parse_ddg_lite_results(&html);
+                if !results.is_empty() {
+                    results.truncate(limit);
+                    return Ok(results);
+                }
+            }
+        }
+    }
+
+    // Tertiary Fallback: Search Wikipedia directly
+    let wiki_res = search_wikipedia(query, limit).await;
+    if let Ok(results) = wiki_res && !results.is_empty() {
+        return Ok(results);
+    }
+
+    Err("search engine challenge encountered".into())
 }
 
 pub fn extract_passages(text: &str, query: &str) -> Vec<(usize, String)> {

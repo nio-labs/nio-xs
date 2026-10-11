@@ -1,52 +1,49 @@
 # NioXS and NioNano roadmap
 
-Status: Phases 1–2 complete with evidence; Phase 3 research engine implemented in-tree with persistence/evidence gates open; Phase 4 partial; Phase 5 open. Reviewed and synced with the repository tree 2026-10-10. Architecture and detailed flows: [NIOXS_PLAN.md](NIOXS_PLAN.md).
+Status: Re-architected as a **Pure Coding Assist Companion** (OpenAI-compatible drop-in for coding agents/TUIs) rather than an autonomous agent. Synced 2026-10-11. Architecture and detailed flows: [NIOXS_PLAN.md](NIOXS_PLAN.md).
 
-## Product identity and scope
+## Product identity and scope: Pure Coding Assist Companion
 
-**NioXS — the axis of Nio's non-LLM models.**
+**NioXS & NioNano — The Developer's In-TUI Coding Companion & Policy Arbiter.**
 
-**AXIS = AI + XS**: NioAI carries AI and NioXS carries XS. XS does not designate a model size; Nano through Ultra are model tiers.
+NioXS does not seek to be a blind, autonomous coding agent that silently edits codebases. Instead, NioXS is an **OpenAI-compatible assistant layer** that plugs directly into any coding agent or TUI (Aider, OpenCode, Cline, Continue, Roo Code, Cursor, Neovim) as a switchable model (`nio-nano`) or gateway. 
 
-- Product: NioAI, executable `nio`.
-- Required provider: NioXS, provider ID `nioxs`.
-- First model: NioNano, model ID `nio-nano`.
-- Future family: NioMini, NioCore, NioMax, NioUltra; names reserved in the design, with capabilities and resource tiers to be defined after Nano evaluation.
-- Selection: `nioxs::nio-nano`.
-- Default behavior: NioNano first, automatic continuation on an explicitly configured LLM when necessary.
-- Browser: pure native Rust HTTP + HTML extraction in-process; no Chromium, no Obscura, no external browser processes (changed after the Phase 1 Obscura feasibility probe; the probe remains as historical evidence).
-- Search: keyless adapters (DuckDuck Lite, Wikipedia, GitHub) with no search API keys; skip CAPTCHAs and blocked pages.
-- Distribution: private implementation, downloadable binaries and artifacts on R2 or S3.
-- Persistence: NioDB core HTTP records API for workflow state, research cache, and optional feedback.
-- NioJS: excluded from v0.1.0.
+Along the project lifecycle, developers switch to NioNano for quick assistance (e.g. changing labels, font-colors, CSS tweaks, AST diagnostics, keyless web lookups) or leverage **explicit prefix triggers**:
 
-NioNano first means build one useful model and its minimum provider surface before expanding into a model platform. No Mini/Core/Max/Ultra implementation until Nano is evaluated and released.
-
-NioXS is mandatory even for a local installation: `nio` connects to a loopback NioXS API, which runs NioNano. Hosted NioXS is a second deployment of the same contract. A local-first pilot is the proposed implementation order, not a requirement that every future user self-host.
+- `--tools: <task>`: Runs pre-defined specialized tools and Python plugins (e.g., SVG-to-favicon generator, image resizers, asset pipelines). Prompts the user for confirmation before downloading any external plugins.
+- `--bash: <cmd>`: Executes bash command lines directly in-session, eliminating the need to leave or exit the coding agent TUI.
+- `--coding: <prompt>`: Consults upstream LLMs (Kilo provider + Kilo auto free / mini code models). NioXS acts as an intelligent middleman by bundling relevant local files/folders, sending them to the LLM, and streaming the response back.
+- **Decision Model Arbiter**: Determines safety gates, validates bash safety, prompts user approval before plugin downloads, and prunes context before sending to Kilo LLMs.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    U[User] --> N[NioAI]
-    N --> P[NioXS provider API]
-    P --> C[NioNano classifier and workflow controller]
-    C <--> DB[NioDB run state and evidence/cache]
-    C --> L[Typed tool call returned to Nio]
-    L --> B[Nio policy and tool broker]
-    B --> T[Local files and approved commands]
-    T --> R[Tool result returned to NioXS]
-    R --> C
-    C --> W[Browser research worker]
-    W --> O[Obscura]
-    O --> E[Extract and rank evidence]
-    E --> C
-    C --> F{Can complete task?}
-    F -->|Yes| A[Evidence-backed answer]
-    F -->|No| H[Explicit handoff returned to Nio]
-    H --> M[User-configured LLM provider]
-    M --> B
-    A --> N
+    U["Coder in Agent / TUI / IDE"] -->|OpenAI-compatible API| P["NioXS Gateway /v1/chat/completions"]
+    P --> DM["NioNano Decision Model & Router"]
+    
+    DM -->|Prefix '--bash:'| BASH["In-Session Bash Runner<br/>Direct execution without leaving TUI"]
+    DM -->|Prefix '--tools:'| PLUG{"Plugin Installed?"}
+    PLUG -->|No| CONF["Ask User Consent to Download Plugin"]
+    CONF -->|Approved| PY["Python Tool / Script Runner<br/>e.g. SVG-to-Favicon, Asset Tweaks"]
+    PLUG -->|Yes| PY
+    
+    DM -->|Prefix '--coding:'| KILO["Kilo Provider Middleman<br/>Kilo Auto Free / Mini Code"]
+    KILO -->|Bundle local files/folders| LLM["Upstream LLM Consultation"]
+    LLM --> CHECK{"Hallucination Prevention<br/>(Symbol/File existence & AST)"}
+    CHECK -->|Valid| P
+    CHECK -->|Hallucination Detected| GATE{"Decision Gate: Reroute or Ask?"}
+    GATE -->|Auto-Reroute| REROUTE["Augment Context with Docs/AST & Retry"]
+    REROUTE --> LLM
+    GATE -->|Ask User| PROMPT["Prompt User to Clarify or Reroute"]
+    PROMPT --> P
+    
+    DM -->|Direct Assist Query| NANO["NioNano Local MicroLM Assist<br/>AST Diagnostics, Label/CSS Tweaks, Web Scraper"]
+    
+    BASH --> P
+    PY --> P
+    NANO --> P
+    P --> U
 ```
 
 NioXS also connects to NioDB for durable run/action records, scoped evidence/cache, and opt-in feedback. Nio retains its own sessions and all client command approvals. Database persistence never grants command permissions.
@@ -84,34 +81,37 @@ The detailed task checklist is [TODO_V0.1.0.md](TODO_V0.1.0.md). All tasks are i
 | Phase 1 | Foundations and provider connection | Private structure, provider/storage contracts, NioDB connectivity, minimal API, Nio provider registration | Capability definitions, evaluation corpus, durable run/action schema | Nio selects nioxs::nio-nano, completes one client tool round trip, and handles cancellation; Obscura-only feasibility is demonstrated | Complete with evidence |
 | Phase 2 | First trained model and project workflows | Artifact loading, capability metadata, NioDB-backed workflow continuation and recovery | Python-trained classifier, Rust inference, argument validation, project inspection, file/code search, approved checks | Held-out supported and unsupported requests are evaluated; project workflows execute through Nio's broker without extra permissions | Complete with evidence |
 | Phase 3 | Adaptive browser research | Keyless search adapters, pure-native HTML extraction, NioDB-backed scoped cache and evidence records | Search-to-website flow, extraction, ranking, package comparison, complexity-based expansion | Small lookups stop early; broader requests expand; CAPTCHA and timeout handling remain bounded; no external browser process is installed or spawned | Research engine implemented in-tree; cache/quota/pruning, live smoke, and evidence report open |
-| Phase 4 | Consult & Execute, handoff, and interoperability | Consult-and-execute protocol, fallback continuation in Nio, streaming conformance, basic local MCP server/client support | Small coding agent loop (consult_llm, edit_file, verification), persisted consultation/handoff records, opt-in feedback, mapped MCP workflows | Consult & Execute verifies tests and edits without losing Nano sovereignty; handoff preserves completed actions; external API/MCP pass end-to-end checks | Partial: MCP stdio server and an ungated edit/verify loop exist; consult_llm, feedback, edit gating, handoff continuation open |
-| Phase 5 | Packaging and v0.1.0 release | Signed artifacts, R2/S3 install/update, NioDB deployment/backup/recovery, default rollout | Evaluated and pinned trained model, measured footprint, published capability limits | Clean-machine acceptance passes and release blockers are closed before fresh-install default activation | Open |
+| Phase 4 | Companion Tools, Prefix Routing, & Kilo LLM Consultation | Prefix parser (`--tools:`, `--bash:`, `--coding:`), OpenAI-compatible middleman, Kilo provider integration (Kilo Auto Free / Mini Code), plugin manager | Decision model policy arbiter, plugin download consent gate, local file/folder bundler for LLM, bash runner | Coders can trigger `--bash:`, `--tools:`, or `--coding:` in any OpenAI agent/TUI without leaving the session; plugins require explicit download consent | In progress |
+| Phase 5 | Packaging, Verification, and Release | Signed artifacts, R2/S3 install/update, NioDB deployment/backup/recovery, default rollout | Evaluated and pinned trained companion model, measured footprint, published capability limits | Clean-machine acceptance passes and release blockers are closed before fresh-install default activation | Open |
 
-Dependencies: Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5. Establish browser feasibility in Phase 1 so an incompatible engine does not become a late surprise. Define the handoff schema in Phase 1, implement it in Phase 4.
+Dependencies: Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5.
 
-## v0.1.0 release scope
+## Companion Workflow & Prefix Directives
 
-Include one trained non-LLM model, the required NioXS provider, supported project workflows, keyless adaptive browser research, automatic configured-LLM fallback, the documented text Chat Completions subset, basic local MCP, NioDB-backed persistence, and verified self-hosted distribution. NioDB assistance, SQL fallback, vectors/embeddings, and NioJS integration are outside this release.
+NioNano serves as an in-TUI companion that developers switch to for targeted tasks or trigger with prefixes:
 
-Start platform validation with Linux x86_64. Add macOS ARM64 to v0.1.0 only if its full release checks pass; record the actual supported platform matrix. Hosted service operation is a separate rollout: v0.1.0 documents deployment and authentication but does not require launching a public hosted service.
+1. **`--bash: <command>` (In-TUI Terminal Execution)**:
+   - Executes arbitrary shell commands directly from within the coding agent conversation.
+   - Eliminates context-switching out of Aider, OpenCode, Cline, or Cursor TUIs.
+   - Decision Model gates dangerous or destructive invocations.
 
-The user requested Nano as the development default during Phase 1. The Nio development build now uses nioxs::nio-nano when no model is selected. Existing explicit model selections remain unchanged unless intentionally changed; Kilo remains a built-in alternative. Production release gates still apply.
+2. **`--tools: <task>` (Specialized Python Plugins & Tool Runner)**:
+   - Dispatches to specialized pre-defined tools/plugins (e.g., SVG-to-Favicon converter, asset generators, CSS font/color normalizers).
+   - **Consent Gate**: If the required plugin is not yet locally installed, NioNano prompts the user for explicit permission to download/install before execution.
 
-Defer Mini/Core/Max/Ultra models, remote MCP transport, broader Responses API compatibility, multimodal generation, arbitrary autonomous repairs, additional platform expansion, and a public hosted launch until after v0.1.0.
+3. **`--coding: <request>` (Kilo LLM Consultation Middleman)**:
+   - Connects to Kilo provider (`kilo auto free`, `kilo mini code`).
+   - NioXS acts as an intelligent middleman: extracts and bundles relevant local files/folders into a compact context, sends the payload to Kilo, and streams the answer back.
 
-## v0.2.0 scope
+4. **`--coding:guard <request>` / `--coding!: <request>` (Strict Guarded Mode with Anti-Hallucination)**:
+   - Activates strict **Hallucination Prevention**: inspects Kilo's generated code against the local AST symbol graph and project files.
+   - **Reality Check**: Catches ghost APIs, non-existent files, and fake imports.
+   - **Reroute Gate**: If hallucinations are found, NioXS either automatically reroutes (fetching accurate docs/AST and re-querying Kilo) or prompts the user whether they wish to reroute or proceed.
 
-After v0.1.0 lands, the next milestone is the trained, measured MicroLM: real-phrasing corpus, hashed word+char-ngram logistic router (~20 hierarchical labels, ≤500 KB artifact), trained CRF argument extraction, calibrated abstention, and on-disk hash-pinned knowledge packs — with an explicit non-LLM constitution and cited external baselines instead of local mini-LLM runs. Full plan, workstreams, and exit gates: [NIOXS_V0.2.0.md](NIOXS_V0.2.0.md). Consult & execute, handoff, and frontier fallback remain v1.0.0 work.
+5. **Default / Unprefixed (Local MicroLM Assist)**:
+   - Instant assistance for UI labels, font-colors, CSS tweaks, AST search, compiler diagnostic triage (`brain.rs`), and keyless web research.
 
-## Initial task workflows
-
-1. **Inspect project:** identify files and manifests, detect project type, extract available commands, report direct evidence.
-2. **Find code:** extract search terms and optional file filters, search, rank matches, return exact snippets and paths.
-3. **Run checks:** detect an explicitly supported configured command, request existing approval, run it, parse output, report failures. Never accept arbitrary generated shell strings as a workflow shortcut.
-4. **Research sources:** form bounded queries, read search results, choose URLs, visit small batches, return source-linked passages.
-5. **Compare packages:** fill named comparison fields from accessible metadata/documentation, preserve missing fields and conflicts.
-
-Large novel features, original prose, creative design, and unfamiliar code fixes are outside the first local capability set. They can hand off immediately. Rules and trained classification select workflows; tools implement the actual actions.
+Large autonomous rewrites are not performed blind: NioNano explains, diagnoses, or delegates via `--coding:`. Rules and the decision arbiter score every candidate action.
 
 ## Adaptive research policy
 

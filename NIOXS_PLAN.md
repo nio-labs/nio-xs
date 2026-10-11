@@ -52,62 +52,64 @@ NioDB is an explicit v0.1.0 runtime dependency. Health/readiness should report s
 
 Vector search and embedding generation are deferred beyond v0.1.0; use lexical ranking for this release. Deployment owns NioDB backups and coordinated schema migrations. NioXS artifact rollback must not corrupt persistent records or silently downgrade their schema.
 
-## 3. Architecture and full task flow
+## 3. Architecture and Companion Task Flow
 
 ```mermaid
 flowchart TD
-    U[User] --> N[Nio CLI or TUI]
-    A[External API or MCP client] --> G[NioXS service adapters]
-    N --> R[NioXS required provider API]
-    G --> R
-    R --> X[NioNano capability check]
-    X --> D{Supported and arguments sufficient?}
-    D -->|Yes| W[Bounded workflow]
-    W <--> DB[NioDB run state and evidence/cache]
-    D -->|Missing required input| Q[Ask focused clarification]
-    Q --> X
-    W --> B[Policy and tool broker]
-    B --> F[Files, project search, approved commands]
-    B --> S[Browser research with Obscura]
-    B --> M[Configured MCP tools]
-    F --> E[Evaluate coverage and progress]
-    S --> E
-    M --> E
-    E -->|Useful next action within budget| W
-    E -->|Complete| O[Structured or templated answer]
-    D -->|Unsupported| H[Prepare handoff]
-    E -->|Needs broader reasoning| H
-    H --> P{Fallback configured and allowed?}
-    P -->|Yes| L[Configured LLM continues same turn]
-    P -->|No| I[Partial result or capability limitation]
-    L --> B
-    O --> Z[Stream result and save session]
-    I --> Z
+    U["Coder in Aider / OpenCode / Cline / TUI"] -->|OpenAI /v1/chat/completions| G["NioXS Gateway"]
+    G --> D["NioNano Decision Model & Router"]
+
+    D -->|Prefix '--bash: <cmd>'| B["In-Session Bash Runner<br/>Runs shell directly without closing TUI"]
+    
+    D -->|Prefix '--tools: <task>'| CHK{"Plugin Locally Installed?"}
+    CHK -->|No| ASK["Prompt User Consent:<br/>'Download and install plugin?'"]
+    ASK -->|User Approves| INST["Download & Register Python Plugin"]
+    INST --> RUN["Execute Python Script / Tool<br/>e.g. SVG Favicon, Asset Scaler"]
+    CHK -->|Yes| RUN
+
+    D -->|Prefix '--coding: <req>'| K["Kilo Provider Middleman"]
+    K --> CTX["Bundle Relevant Local Files & Folders"]
+    CTX --> LLM["Consult Kilo Auto Free / Mini Code"]
+    LLM --> VERIFY{"Hallucination & Reality Check<br/>(Symbol/File existence & AST parse)"}
+    VERIFY -->|Valid| RET["Stream Response Back to User"]
+    VERIFY -->|Hallucinated Symbol/API| GATE{"Reroute or Prompt User?<br/>(Decision Model Arbiter)"}
+    GATE -->|Auto-Reroute| REROUTE["Augment Context via Web Scraper / AST & Re-query"]
+    REROUTE --> LLM
+    GATE -->|Ask User| CLARIFY["Ask User: 'Invented symbol detected. Reroute or continue?'"]
+    CLARIFY --> RET
+
+    D -->|Unprefixed / Direct Assist| N["NioNano MicroLM Assist<br/>AST Diagnostics, Label/Color Tweaks, Web Scraper"]
+
+    B --> RESP["Format Output / Stream Response"]
+    RUN --> RESP
+    RET --> RESP
+    N --> RESP
+    RESP --> U
 ```
 
-1. Resolve explicit model, saved preference, or new-install default `nioxs::nio-nano` (provider ID `nioxs`, model ID `nio-nano`).
-2. Load the turn's existing project scope, mode, tools, attachments, deadline, and cancellation signal.
-3. Nio sends NioNano requests to the NioXS provider endpoint. Explicit selections of existing LLM providers continue through their respective provider paths.
-4. NioNano classifies the request into a supported workflow, unsupported intent, or clarification needed.
-5. Extract validated arguments. A known workflow must have the inputs it needs before execution.
-6. Execute bounded actions through the broker, preserving tool IDs and results in the session.
-7. Reassess using workflow-specific completion checks. Continue only when a next step can improve the result.
-8. Return a source-grounded result or hand off once to the configured LLM.
-9. The LLM receives completed work and pending questions, uses the same broker, and completes the turn.
-10. Save the actual backend path. The next new turn starts from the selected default again. Resolve follow-up intent from task state; route an ongoing unsupported coding task back to the LLM without repeating earlier actions.
+1. **OpenAI Gateway Compatibility**: Coder connects their favorite coding agent (Aider, OpenCode, Cline, Continue, Cursor) to NioXS (`http://127.0.0.1:7460/v1`), selecting `nio-nano` as the model.
+2. **Prefix-Driven Intent Routing**:
+   - `--bash: <cmd>`: Direct terminal execution. The developer never needs to minimize or exit their coding TUI.
+   - `--tools: <task>`: Dispatches to pre-defined Python automation scripts. If the tool/plugin is not locally present, NioNano pauses and asks the user for explicit download confirmation.
+   - `--coding: <prompt>`: Dispatches to upstream Kilo provider models (`kilo auto free`, `kilo mini code`). NioXS acts as a middleman, bundling local relevant file contexts, sending the request to Kilo, and returning the synthesis.
+   - Direct Query: NioNano serves as an immediate, lightweight assist for label edits, CSS/style tweaks, AST compiler error triage (`crates/nano/src/brain.rs`), and keyless web lookups.
+3. **Hallucination Prevention & Rerouting Layer**:
+   - Before returning code generated by Kilo, NioXS inspects the output against local symbols, file paths, and syntax constraints.
+   - If Kilo invents non-existent APIs, missing crates/modules, or ghost file paths, the Decision Model intercepts the response:
+     - **Auto-Reroute**: Queries the web scraper (crates.io/npm/docs) or project AST to ground the context and re-prompts Kilo.
+     - **User Prompt Gate**: Prompts the developer: *"Hallucination detected in LLM response: symbol `<foo>` does not exist. Would you like to reroute with live documentation, fix context, or proceed anyway?"*
+4. **Decision Model Arbiter**:
+   - Scores proposals, verifies policy constraints, validates safety of bash invocations, enforces user consent for plugin installations, and prevents uncontrolled autonomous destructive modifications.
 
-## 4. First-release capabilities
+## 4. Companion Capabilities & Directives
 
-| Workflow | NioNano result | Delegate when |
-| --- | --- | --- |
-| Inspect project | Languages, framework evidence, package scripts, relevant files | User needs architectural interpretation beyond predefined checks |
-| Search project | Ranked file matches and exact excerpts | User asks for arbitrary code explanation or implementation |
-| Run checks | Approved test/build/lint results and parsed failures | Failure requires an unfamiliar diagnosis or repair |
-| Web lookup | Relevant passages, titles, URLs, access times | Question needs an original synthesis beyond extraction |
-| Package comparison | Available metadata and source-linked comparison fields | User needs contextual recommendations unsupported by extracted fields |
-| Structured extraction | Validated fields from JSON, CSV, or known page schemas | Inputs do not match a supported schema |
-
-Later additions: deterministic repairs, parser-based refactoring, richer document processing, data profiling, and named automation workflows. Nio's optional document readers remain reusable. Arbitrary skills written in natural language do not become executable workflows simply by being read.
+| Directive / Prefix | Target Engine | Purpose & Behavior | User Gate / Policy |
+| --- | --- | --- | --- |
+| `--bash: <cmd>` | Native Host Shell | Run builds, tests, git status, file moves without leaving TUI | Validates safe execution; blocks destructive rm/format |
+| `--tools: <task>` | Python Tool Plugins | Specialized tasks (e.g., SVG-to-favicon, asset resizing, style formatters) | **Consent Gate**: Must ask user to download/install before execution |
+| `--coding: <req>` | Kilo Provider LLM | Fast upstream code synthesis via Kilo (auto free / mini code) | Bundles relevant local files/folders; streams Kilo response |
+| `--coding:guard <req>`<br/>`--coding!: <req>` | Kilo + NioNano AST Arbiter | Strict anti-hallucination code generation | **Reality Check Gate**: Verifies symbols/files against AST; reroutes or prompts user if hallucination detected |
+| Direct / Unprefixed | NioNano MicroLM | Label changes, font-colors, CSS edits, AST compiler triage, web search | Fast local response (<10ms), zero API keys needed |
 
 ## 5. Browser research flow
 
@@ -172,28 +174,32 @@ Measure false acceptance of unsupported tasks, workflow success, fallback precis
 
 Feedback collection is optional and scoped to the deployment by default. For local deployments, there is no automatic upload of prompts, project files, or tool outputs. Hosted inference necessarily sends request context and client-executed tool results to the NioXS endpoint; that does not authorize retaining them as training data. Retraining and artifact publication are explicit maintainer workflows, not uncontrolled learning during every session.
 
-## 8. LLM consultation and handoff semantics (Consult & Execute)
+## 8. Decision modeling and handoff semantics
 
-NioNano acts as a sovereign, bounded agent controller. Rather than unconditionally yielding the entire conversation loop to an LLM upon hitting complex tasks, NioNano supports two complementary integration modes: **Consult & Execute** (primary) and **Full Handoff** (fallback escape hatch).
+> **Retired:** runtime LLM consultation (`consult_llm`) and the Kilo Code
+> integration are removed. NioNano does not call an external LLM; reasoning and
+> authoring stay with the client's LLM. See [NIOXS_NEXT.md](NIOXS_NEXT.md).
 
-### Consult & Execute (Small Coding Agent loop)
+NioNano acts as a sovereign, bounded decision layer. Rather than yielding the conversation loop to an LLM or talking to one itself, NioNano turns intent into typed decisions, and the LLM remains the user's reasoning and authoring partner.
 
-In Consult & Execute, NioNano remains in the driver's seat throughout the entire turn:
+### Decision Modeling (Small Coding Agent loop)
+
+NioNano remains in the driver's seat throughout the entire turn. The LLM is the user's reasoning partner, not an internal dependency:
 1. **Context & Inspection**: Nano navigates the project, performs symbol search (`search_code`), file reads (`read_file`), and failure inspection (`run_checks`).
-2. **Consultation tool dispatch**: When synthesis, complex logic, or code modifications are required, Nano dispatches a typed client tool call: `consult_llm { "prompt": ..., "context": ..., "format": "patch" | "instruction" }`.
-3. **Client execution**: Nio executes the consultation against the user-configured LLM provider, ensuring all API credentials remain securely inside Nio.
-4. **Validation and execution**: Nano inspects the LLM's advisory output, verifies paths against `safe_path`, validates patch syntax, and dispatches bounded modification tools (`edit_file` / `apply_patch`).
-5. **Verification loop**: Nano immediately verifies changes by executing configured checks (`run_checks`), reporting verified outcomes or re-consulting if checks fail within the 8-action budget.
+2. **Candidate proposals**: A plan, patch, or tool call may originate from the user's LLM or from Nano's own workflows. Candidates arrive as typed proposals, never as free text to execute blindly.
+3. **Scoring and selection**: Nano scores each candidate against intent match, permissions, evidence coverage, cost, plugin availability, and prior outcomes, then returns `execute`, `clarify`, `abstain`, or `handoff`.
+4. **Validation and execution**: Nano verifies paths against `safe_path`, validates patch syntax, and dispatches bounded modification tools (`edit_file` / `apply_patch`) only for the chosen candidate.
+5. **Verification loop**: Nano verifies changes by executing configured checks (`run_checks`) and reports verified outcomes within the 8-action budget.
 
-This turns NioNano into a fast, transparent **Small Coding Agent**: deterministically bounded by budgets and permissions, with the LLM used strictly as a stateless reasoning and diff oracle rather than an unconstrained conversational agent.
+This turns NioNano into a fast, transparent **decision layer**: deterministically bounded by budgets and permissions, and complementary to the LLM rather than a substitute for it. The proposal schema, scoring features, and abstention gates are specified in [NIOXS_NEXT.md](NIOXS_NEXT.md).
 
 ### Full Handoff (Fallback escape hatch)
 
 When an open-ended conversational task or non-workflow instruction cannot be bounded within Nano's execution budget, NioXS produces a structured handoff.
 
-Fallback triggers: unsupported capability outside coding/inspection, validated classifier abstention, or repeated lack of progress after consultation. A single tool failure is not enough.
+Fallback triggers: unsupported capability outside coding/inspection, validated classifier abstention, or repeated lack of progress. A single tool failure is not enough.
 
-Do not hand off or consult to evade a denied approval, restricted project scope, user cancellation, or local-only policy. Distinguish missing user input from missing capability: clarify inputs rather than spending an LLM call unnecessarily. Network outages and CAPTCHA exhaustion remain partial results.
+Do not hand off to evade a denied approval, restricted project scope, user cancellation, or local-only policy. Distinguish missing user input from missing capability: clarify inputs rather than producing a handoff unnecessarily. Network outages and CAPTCHA exhaustion remain partial results.
 
 Handoff packet:
 

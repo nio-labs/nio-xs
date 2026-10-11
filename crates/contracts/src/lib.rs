@@ -146,6 +146,125 @@ pub struct Handoff {
     pub completed_action_ids: Vec<String>,
 }
 
+// --- Decision contract -----------------------------------------------------
+//
+// The LLM (or any client) *proposes*; NioNano *decides*. Proposals are scored
+// against intent, permissions, required arguments, evidence, cost, and prior
+// outcomes. `POST /v1/decide` is advisory only: it never executes a proposal.
+
+pub const MAX_PROPOSALS: usize = 32;
+pub const MAX_PROMPT_BYTES: usize = 1024;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Proposal {
+    pub id: String,
+    /// Tool or workflow name, or `answer` for a plain reply.
+    pub action: String,
+    #[serde(default)]
+    pub arguments: Value,
+    /// Evidence references (digests, paths, or URLs) backing the proposal.
+    #[serde(default)]
+    pub evidence: Vec<String>,
+    /// Relative cost units; higher is more expensive. Used as a bounded penalty.
+    #[serde(default)]
+    pub cost: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PastOutcome {
+    pub action: String,
+    pub successes: u32,
+    pub failures: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecideRequest {
+    pub schema_version: u32,
+    pub prompt: String,
+    #[serde(default)]
+    pub proposals: Vec<Proposal>,
+    /// Actions permitted for this turn. Empty means "answer only".
+    #[serde(default)]
+    pub allowed_actions: Vec<String>,
+    /// Argument names a candidate must carry to be executable.
+    #[serde(default)]
+    pub required_fields: Vec<String>,
+    #[serde(default)]
+    pub past_outcomes: Vec<PastOutcome>,
+}
+
+impl DecideRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != SCHEMA_VERSION {
+            return Err("unsupported schema_version".into());
+        }
+        if self.prompt.trim().is_empty() || self.prompt.len() > MAX_PROMPT_BYTES {
+            return Err("prompt must contain 1..1024 bytes".into());
+        }
+        if self.proposals.len() > MAX_PROPOSALS {
+            return Err("at most 32 proposals are supported".into());
+        }
+        let mut ids = Vec::with_capacity(self.proposals.len());
+        for proposal in &self.proposals {
+            if proposal.id.is_empty() || proposal.id.len() > 64 {
+                return Err("proposal id must contain 1..64 bytes".into());
+            }
+            if proposal.action.is_empty() || proposal.action.len() > 64 {
+                return Err("proposal action must contain 1..64 bytes".into());
+            }
+            if ids.contains(&proposal.id) {
+                return Err("proposal ids must be unique".into());
+            }
+            ids.push(proposal.id.clone());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionOutcome {
+    Execute,
+    Clarify,
+    Abstain,
+    Handoff,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DecisionPolicy {
+    pub allowed_actions: Vec<String>,
+    /// Actions that appeared in a proposal but were not permitted this turn.
+    pub denied: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RankedCandidate {
+    pub id: String,
+    pub action: String,
+    pub score: u32,
+    pub intent_match: bool,
+    pub permitted: bool,
+    pub evidence_refs: usize,
+    pub missing_fields: Vec<String>,
+    pub reason: String,
+}
+
+/// Attached to completions as `nioxs.decision` and returned by `/v1/decide`.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Decision {
+    pub schema_version: u32,
+    pub outcome: DecisionOutcome,
+    pub chosen: Option<RankedCandidate>,
+    pub ranked: Vec<RankedCandidate>,
+    pub confidence: f32,
+    pub evidence: Vec<String>,
+    pub policy: DecisionPolicy,
+    pub abstained_reason: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DurableEvent {
@@ -158,4 +277,69 @@ pub struct DurableEvent {
     pub action_id: Option<String>,
     pub result_digest: Option<String>,
     pub expires_at_unix: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn request(proposals: Vec<Proposal>) -> DecideRequest {
+        DecideRequest {
+            schema_version: SCHEMA_VERSION,
+            prompt: "read README.md".into(),
+            proposals,
+            allowed_actions: vec!["read_file".into()],
+            required_fields: vec!["path".into()],
+            past_outcomes: Vec::new(),
+        }
+    }
+
+    fn proposal(id: &str) -> Proposal {
+        Proposal {
+            id: id.into(),
+            action: "read_file".into(),
+            arguments: json!({"path": "README.md"}),
+            evidence: Vec::new(),
+            cost: 0,
+        }
+    }
+
+    #[test]
+    fn valid_decide_request_passes_validation() {
+        assert!(request(vec![proposal("a")]).validate().is_ok());
+        assert!(request(vec![]).validate().is_ok());
+    }
+
+    #[test]
+    fn schema_version_and_prompt_limits_are_enforced() {
+        let mut wrong = request(vec![]);
+        wrong.schema_version = 2;
+        assert!(wrong.validate().is_err());
+        let mut blank = request(vec![]);
+        blank.prompt = "   ".into();
+        assert!(blank.validate().is_err());
+        let mut long = request(vec![]);
+        long.prompt = "x".repeat(MAX_PROMPT_BYTES + 1);
+        assert!(long.validate().is_err());
+    }
+
+    #[test]
+    fn duplicate_ids_and_oversized_batches_are_rejected() {
+        assert!(
+            request(vec![proposal("a"), proposal("a")])
+                .validate()
+                .is_err()
+        );
+        let many: Vec<Proposal> = (0..=MAX_PROPOSALS)
+            .map(|index| proposal(&format!("p{index}")))
+            .collect();
+        assert!(request(many).validate().is_err());
+    }
+
+    #[test]
+    fn unknown_request_fields_are_rejected_by_serde() {
+        let value = json!({"schema_version": 1, "prompt": "read README.md", "extra": true});
+        assert!(serde_json::from_value::<DecideRequest>(value).is_err());
+    }
 }
