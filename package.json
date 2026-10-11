@@ -1,6 +1,6 @@
 {
   "name": "@nio-labs/nio-xs",
-  "version": "0.2.1",
+  "version": "0.2.5",
   "description": "NioXS: AI Gateway & Companion for Coding Agents with NioNano MicroLM",
   "main": "bin/nioxs.js",
   "bin": {
@@ -26,7 +26,7 @@
     "microlm"
   ],
   "author": "Nio Labs",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/nio-labs/nio-xs.git"

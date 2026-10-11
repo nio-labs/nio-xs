@@ -60,9 +60,22 @@ docker run -d --name nioxs -p 7460:7460 ghcr.io/nio-labs/nioxs:latest
 
 ---
 
-## 🔌 Plug into Your Favorite Coding Agent
+## 🔌 One-Click Agent Setup (`nioxs init`)
 
-Once NioXS is running on `http://127.0.0.1:7460/v1`, select `nio-nano` in your coding agent:
+Automatically configure your coding agents to route through NioXS:
+
+```bash
+# Auto-configure all detected agents in the current project
+nioxs init
+
+# Or target specific agents
+nioxs init --aider       # Writes .aider.conf.yml
+nioxs init --cline       # Writes cline_mcp_settings.json
+nioxs init --opencode    # Writes opencode.json
+nioxs init --cursor      # Displays Cursor OpenAI custom endpoint settings
+```
+
+Once running on `http://127.0.0.1:7460/v1`, select `nio-nano` in your agent:
 
 * **Aider**:
   ```bash
@@ -81,9 +94,11 @@ Developers can switch to NioNano along their project lifecycle or trigger in-ses
 |---|---|---|
 | *(Direct / Unprefixed)* | **MicroLM Assist** | Sub-millisecond edits: change button labels, font colors, CSS tweaks, AST compiler diagnostics triage, and keyless web lookups. |
 | `--bash: <cmd>` | **In-TUI Terminal** | Run shell commands (e.g. `--bash: cargo test`) directly in conversation without exiting or minimizing the coding agent TUI. |
+| `--test: [pattern]` | **Auto Test Runner** | Automatically detects test suite (`cargo test`, `npm test`, `pytest`, `go test`), runs matching pattern, and feeds back trimmed traces. |
+| `--git:status` / `--git:diff` | **Git Diff Summary** | Summarizes working branch status and symbol diffs for context bundling. |
 | `--tools: <task>` | **Python Plugins** | Specialized automation (e.g. SVG-to-favicon generator, asset resizers). Prompts for download consent before installing new plugins. |
 | `--coding: <prompt>` | **Kilo LLM Middleman** | Bundles relevant local files/folders and consults Kilo models (`kilo auto free`, `kilo mini code`). |
-| `--coding:guard <req>`<br/>*or* `--coding!: <req>` | **Anti-Hallucination Guard** | Verifies Kilo's generated code against local AST symbols. Catches ghost APIs and non-existent files; prompts to reroute with live docs. |
+| `--coding:guard <req>`<br/>*or* `--coding!: <req>` | **Anti-Hallucination Guard** | Verifies generated code against Rust, TypeScript, Python, and Go AST symbols. Catches ghost APIs and non-existent files; prompts to reroute. |
 
 ---
 

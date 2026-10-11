@@ -19,15 +19,75 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|mcp]\nCommands:\n  serve   Start HTTP OpenAI-compatible AI gateway (default)\n  mcp     Start Model Context Protocol (MCP) JSON-RPC stdio server\nEnvironment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID, NIOXS_API_TOKEN_FILE (optional on loopback)."
+            "Usage: nioxs [serve|mcp|init]\n\
+Commands:\n\
+  serve   Start HTTP OpenAI-compatible AI gateway (default)\n\
+  mcp     Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
+  init    Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
+\n\
+Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID, NIOXS_API_TOKEN_FILE (optional on loopback)."
         );
+        return Ok(());
+    }
+    if arg.as_deref() == Some("init") {
+        let target = std::env::args().nth(2).unwrap_or_else(|| "--all".into());
+        match target.as_str() {
+            "--aider" => {
+                let config = "openai-api-base: http://127.0.0.1:7460/v1\nmodel: openai/nio-nano\nopenai-api-key: nioxs-local\n";
+                std::fs::write(".aider.conf.yml", config)?;
+                println!("✔ Successfully created .aider.conf.yml for Aider");
+            }
+            "--cline" => {
+                let config = serde_json::json!({
+                    "mcpServers": {
+                        "nioxs": {
+                            "command": "nioxs",
+                            "args": ["mcp"]
+                        }
+                    }
+                });
+                std::fs::write("cline_mcp_settings.json", serde_json::to_string_pretty(&config)?)?;
+                println!("✔ Successfully created cline_mcp_settings.json for Cline");
+            }
+            "--opencode" => {
+                let config = serde_json::json!({
+                    "provider": "openai",
+                    "baseURL": "http://127.0.0.1:7460/v1",
+                    "apiKey": "nioxs-local",
+                    "model": "nio-nano"
+                });
+                std::fs::write("opencode.json", serde_json::to_string_pretty(&config)?)?;
+                println!("✔ Successfully created opencode.json for OpenCode");
+            }
+            "--cursor" => {
+                println!("Cursor OpenAI Endpoint Configuration:");
+                println!("  Base URL: http://127.0.0.1:7460/v1");
+                println!("  API Key:  nioxs-local");
+                println!("  Model:    nio-nano");
+            }
+            _ => {
+                println!("Auto-configuring coding agent settings in current directory...");
+                let aider_cfg = "openai-api-base: http://127.0.0.1:7460/v1\nmodel: openai/nio-nano\nopenai-api-key: nioxs-local\n";
+                let _ = std::fs::write(".aider.conf.yml", aider_cfg);
+                let cline_cfg = serde_json::json!({
+                    "mcpServers": {
+                        "nioxs": {
+                            "command": "nioxs",
+                            "args": ["mcp"]
+                        }
+                    }
+                });
+                let _ = std::fs::write("cline_mcp_settings.json", serde_json::to_string_pretty(&cline_cfg)?);
+                println!("✔ Configured .aider.conf.yml and cline_mcp_settings.json");
+            }
+        }
         return Ok(());
     }
     if arg.as_deref() == Some("mcp") {
         return nioxs_provider::mcp::run_stdio_server().map_err(|e| e.into());
     }
     if arg.is_some() && arg.as_deref() != Some("serve") {
-        return Err("unknown command; expected 'nioxs', 'nioxs serve', or 'nioxs mcp'".into());
+        return Err("unknown command; expected 'nioxs', 'nioxs serve', 'nioxs init', or 'nioxs mcp'".into());
     }
     let listen: std::net::SocketAddr = std::env::var("NIOXS_LISTEN")
         .unwrap_or_else(|_| "127.0.0.1:7460".into())
@@ -79,10 +139,20 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .as_nanos()
     );
     let listener = tokio::net::TcpListener::bind(listen).await?;
+    let addr = listener.local_addr()?;
     eprintln!(
-        "NioXS {} listening on {} (Phase 2 trained Nano)",
+        "\n\
+  ╭──────────────────────────────────────────────────────────╮\n\
+  │  ⚡ NioXS v{:<8} Pure Coding Companion Gateway        │\n\
+  ├──────────────────────────────────────────────────────────┤\n\
+  │  • Gateway API : http://{:<33} │\n\
+  │  • NioDB Store : {:<40} │\n\
+  │  • MicroLM     : NioNano (<0.5ms decision triage)        │\n\
+  │  • Directives  : --bash:, --tools:, --coding:, --test:   │\n\
+  ╰──────────────────────────────────────────────────────────╯\n",
         env!("CARGO_PKG_VERSION"),
-        listener.local_addr()?
+        addr,
+        db_url,
     );
     axum::serve(
         listener,

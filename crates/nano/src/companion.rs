@@ -68,10 +68,14 @@ impl CompanionResult {
                 )
             }
             Self::ToolExecuted { plugin_name, output } => {
-                format!(
-                    "### 🔌 Tool `{plugin_name}` Output\n\n```\n{}\n```",
-                    output.trim()
-                )
+                if plugin_name == "plugin_catalog" {
+                    output.clone()
+                } else {
+                    format!(
+                        "### 🔌 Tool `{plugin_name}` Output\n\n```\n{}\n```",
+                        output.trim()
+                    )
+                }
             }
             Self::CodingResponse { guarded, content, hallucination_alert } => {
                 if let Some(alert) = hallucination_alert {
@@ -183,6 +187,40 @@ pub fn resolve_plugin_for_task(task: &str) -> (String, bool) {
 
 /// Dispatches a `--tools:` command, prompting for consent if uninstalled.
 pub fn dispatch_tool(task: &str) -> CompanionResult {
+    let trimmed = task.trim();
+    if trimmed.is_empty() || trimmed == "list" || trimmed == "help" || trimmed == "?" {
+        let plugin_dir = PathBuf::from(".nioxs/plugins");
+        let has_svg = plugin_dir.join("svg2favicon.py").exists();
+        let has_scaler = plugin_dir.join("image_scaler.py").exists();
+        let has_style = plugin_dir.join("style_helper.py").exists();
+
+        let catalog = format!(
+            "### 🔌 NioNano Python Plugins & Tool Directives\n\n\
+            NioNano tools run **isolated, user-consented Python plugins** for media, styling, and asset tasks that don't belong in LLM weights.\n\n\
+            #### 📋 Plugin Catalog:\n\
+            1. **`svg2favicon`** [{}]\n\
+               • *Capability:* Generates `.ico`, `apple-touch-icon.png`, and favicons from SVG.\n\
+               • *Example:* `--tools: generate favicon from logo.svg`\n\n\
+            2. **`image_scaler`** [{}]\n\
+               • *Capability:* High-performance image thumbnailing and WebP conversion.\n\
+               • *Example:* `--tools: resize assets/banner.png to 800x400`\n\n\
+            3. **`style_helper`** [{}]\n\
+               • *Capability:* Extracts CSS/Tailwind color palettes and typography rules.\n\
+               • *Example:* `--tools: extract color palette from styles.css`\n\n\
+            #### 🛡️ Capability Boundary:\n\
+            • **Allowed:** Deterministic file and asset transforms, formatting, local media generation.\n\
+            • **Blocked:** Arbitrary network tunneling, shell escapes, unconsented disk wiping.\n\
+            • *Note:* If a plugin is not yet downloaded, NioNano will ask for consent before downloading.",
+            if has_svg { "Installed" } else { "Available on demand" },
+            if has_scaler { "Installed" } else { "Available on demand" },
+            if has_style { "Installed" } else { "Available on demand" }
+        );
+        return CompanionResult::ToolExecuted {
+            plugin_name: "plugin_catalog".to_string(),
+            output: catalog,
+        };
+    }
+
     let (plugin_name, is_installed) = resolve_plugin_for_task(task);
 
     if !is_installed {
@@ -243,11 +281,31 @@ pub fn detect_hallucinations(code: &str, known_symbols: &[String], known_files: 
             }
         }
 
-        // Check for referenced files
-        if trimmed.contains(".rs") || trimmed.contains(".ts") || trimmed.contains(".py") {
+        // Check for TypeScript / Python imports from relative files: import { Foo } from "./bar"
+        if (trimmed.starts_with("import ") || trimmed.starts_with("from ")) && trimmed.contains("./") {
             for word in trimmed.split_whitespace() {
                 let candidate = word.trim_matches(|c: char| "`\"',;:()[]{}".contains(c));
-                if (candidate.ends_with(".rs") || candidate.ends_with(".ts") || candidate.ends_with(".py"))
+                if candidate.starts_with("./") || candidate.starts_with("../") {
+                    let path_candidate = candidate.trim_end_matches(".js").trim_end_matches(".ts");
+                    let exists = Path::new(candidate).exists()
+                        || Path::new(&format!("{candidate}.ts")).exists()
+                        || Path::new(&format!("{candidate}.js")).exists()
+                        || Path::new(&format!("{path_candidate}.ts")).exists()
+                        || Path::new(&format!("{path_candidate}.js")).exists();
+                    if !exists && !known_files.iter().any(|f| f.contains(candidate)) {
+                        if !ghost_files.contains(&candidate.to_string()) {
+                            ghost_files.push(candidate.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for referenced files
+        if trimmed.contains(".rs") || trimmed.contains(".ts") || trimmed.contains(".py") || trimmed.contains(".go") {
+            for word in trimmed.split_whitespace() {
+                let candidate = word.trim_matches(|c: char| "`\"',;:()[]{}".contains(c));
+                if (candidate.ends_with(".rs") || candidate.ends_with(".ts") || candidate.ends_with(".py") || candidate.ends_with(".go"))
                     && candidate.contains('/')
                     && !Path::new(candidate).exists()
                     && !known_files.iter().any(|f| f == candidate)

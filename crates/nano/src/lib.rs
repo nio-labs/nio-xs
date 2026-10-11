@@ -59,6 +59,8 @@ pub enum Intent {
     TaskPlan(String),
     Bash(String),
     Tool(String),
+    TestRunner(String),
+    GitSummary,
     Coding { prompt: String, guarded: bool },
     Unsupported,
 }
@@ -67,6 +69,8 @@ impl Intent {
         match self {
             Self::Bash(_) => "bash_command",
             Self::Tool(_) => "run_tool",
+            Self::TestRunner(_) => "test_runner",
+            Self::GitSummary => "git_summary",
             Self::Coding { guarded: true, .. } => "coding_guarded",
             Self::Coding { guarded: false, .. } => "coding",
             Self::Read(_) => "read_file",
@@ -494,6 +498,12 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     }
     if let Some(tool_req) = trimmed_prompt.strip_prefix("--tools:") {
         return Intent::Tool(tool_req.trim().to_string());
+    }
+    if let Some(test_req) = trimmed_prompt.strip_prefix("--test:") {
+        return Intent::TestRunner(test_req.trim().to_string());
+    }
+    if trimmed_prompt == "--git:status" || trimmed_prompt == "--git:diff" || trimmed_prompt.starts_with("--git:") {
+        return Intent::GitSummary;
     }
     if let Some(coding_req) = trimmed_prompt.strip_prefix("--coding:guard") {
         return Intent::Coding {
@@ -1100,7 +1110,14 @@ pub fn decide_with_model(
     match intent {
 
         Intent::Unsupported => Ok(w.limitation(
-            "I'm specialized in project code inspection, tests, builds, scaffolds, and web research. I couldn't identify a programming action for that request. Try asking 'help' to view available capabilities, or specify a file or symbol.",
+            "⚡ **NioNano Companion Ready.** I couldn't identify a direct matching programming action for that phrasing.\n\n\
+            Here are quick actions you can run right now:\n\
+            • ⚡ **Run Commands**: `--bash: <cmd>` (e.g. `--bash: git status`)\n\
+            • 🧪 **Run Tests**: `--test: [pattern]`\n\
+            • 🔌 **Plugins & Tools**: `--tools: list`\n\
+            • 🛡️ **Guarded Coding**: `--coding:guard <request>`\n\
+            • 🔍 **Inspect**: `inspect project`, `analyze codebase`, or `where is <symbol> defined?`\n\
+            • ❓ **Help**: Type `help` for full capability catalog.",
             false,
         )),
         Intent::Bash(cmd) => {
@@ -1114,6 +1131,43 @@ pub fn decide_with_model(
                 _ => Outcome::Completed,
             };
             Ok(w.end(res.to_markdown(), outcome))
+        }
+        Intent::TestRunner(pattern) => {
+            // Determine project test runner
+            let test_cmd = if std::path::Path::new("Cargo.toml").exists() {
+                if pattern.is_empty() {
+                    "cargo test".to_string()
+                } else {
+                    format!("cargo test {pattern}")
+                }
+            } else if std::path::Path::new("package.json").exists() {
+                if pattern.is_empty() {
+                    "npm test".to_string()
+                } else {
+                    format!("npm test -- {pattern}")
+                }
+            } else if std::path::Path::new("pytest.ini").exists() || std::path::Path::new("pyproject.toml").exists() {
+                if pattern.is_empty() {
+                    "pytest".to_string()
+                } else {
+                    format!("pytest -k '{pattern}'")
+                }
+            } else if std::path::Path::new("go.mod").exists() {
+                if pattern.is_empty() {
+                    "go test ./...".to_string()
+                } else {
+                    format!("go test -run '{pattern}' ./...")
+                }
+            } else {
+                format!("echo 'No known test configuration detected for pattern: {pattern}'")
+            };
+
+            let res = companion::execute_in_session_bash(&test_cmd);
+            Ok(w.end(res.to_markdown(), Outcome::Completed))
+        }
+        Intent::GitSummary => {
+            let res = companion::execute_in_session_bash("git status -s && git diff --stat");
+            Ok(w.end(res.to_markdown(), Outcome::Completed))
         }
         Intent::Coding { prompt, guarded } => {
             let draft = format!(
@@ -1359,35 +1413,51 @@ pub fn decide_with_model(
         Intent::Greeting => {
             let turn = GREETING_ROTATION.fetch_add(1, Ordering::Relaxed);
             let greetings = [
-                "👋 **Hello! I'm NioNano**, your sovereign pair programmer and MicroLM (μLM).\n\nHere are a few quick ways we can collaborate:\n• 🔍 **Inspect Workspace**: `inspect project` or `what is my project build on?`\n• ⚡ **Code Health Audit**: `analyze codebase` or `review <file>`\n• 🧠 **Diagnostics & Triage**: `analyze <file>` for unwrap risks, complexity, and safety\n• 🔎 **Find Symbols**: `where is <symbol> defined?` or `who calls <symbol>?`\n• 🌐 **Web & Doc Research**: `what is <term>?` or `wiki <topic>`\n\nWhat would you like to explore or diagnose today?",
-                "⚡ **Hey there! NioNano is ready.**\n\nEquipped with symbolic code search, unified patching, AST navigation, and live web research:\n• 🔎 **Find Symbols**: `where is <symbol> defined?` or `who calls <symbol>?`\n• 🛠️ **Refactor Code**: `replace 'old_code' with 'new_code' in <file>`\n• ✅ **Run Checks**: `run test check` or `run build check`\n• 📝 **Git Operations**: `review git diff` or `suggest commit message`\n\nHow can I assist your coding session?",
-                "🧠 **Welcome! NioNano MicroLM (μLM)** at your service.\n\nFocused on high-precision code assist, problem solving, and diagnosis:\n• 🦀 **Diagnostics & Triage**: `where is <symbol> defined?` or `analyze <file>`\n• 🏗️ **Architectural Walkthrough**: Ask technical questions naturally\n• 🌐 **Web Research**: `what is <topic>?` or `wiki <topic>`\n• 🔍 **Search Source Code**: `search code for <keyword>`\n\nAsk any programming question or tell me which file to inspect!",
-                "🧪 **Greetings! NioNano test & validation engine ready.**\n\nLet's ensure zero regressions in your project:\n• 🎯 **Scaffold Tests**: `write test for <function> in <file>`\n• 🔄 **Edit & Test Loop**: `replace 'a' with 'b' in <file> and run tests`\n• 🔍 **Analyze Functions**: `analyze <file>` for unwrap risks, complexity, and safety\n• 📋 **File Discovery**: `find *.rs` or `find Cargo.toml`\n\nWhat shall we verify or test?",
-                "🚀 **Hi! How can I help you program today?**\n\nPopular prompts to try right now:\n• `what is my project build on?` — Get an instant stack breakdown\n• `search code for <keyword>` — Search occurrences across your project\n• `where is <symbol> defined?` — Locate declarations\n• `scaffold gitignore` — Generate deterministic project templates\n\nJust type your request!",
+                "⚡ **Hello! I'm NioNano MicroLM (μLM)** — your sovereign in-TUI coding companion.\n\n\
+                I run as an ultra-fast (<0.5ms) decision layer alongside your coding agent.\n\n\
+                #### 🎯 In-Session Directives\n\
+                • `--bash: <cmd>` — Run in-session terminal commands without exiting your TUI\n\
+                • `--test: [pattern]` — Auto-detect runner (`cargo`, `npm`, `pytest`, `go`) and trim error traces\n\
+                • `--git:status` / `--git:diff` — Summarize working tree diffs and modified symbols\n\
+                • `--tools: <task>` — Run specialized Python plugins (e.g. svg2favicon, asset resizers)\n\
+                • `--coding:guard <prompt>` — Anti-hallucination reality checks against project AST symbols\n\n\
+                #### 🔬 Quick Inspections\n\
+                • `what is my project build on?` / `inspect project`\n\
+                • `analyze codebase` or `analyze <file>`\n\
+                • `where is <symbol> defined?` / `who calls <symbol>?`\n\n\
+                What would you like to inspect, run, or diagnose today?",
+                "🧠 **Welcome! NioNano Coding Companion Ready.**\n\n\
+                Trained for sovereign code exploration, AST diagnostic triage, and live assistance:\n\
+                • ⚡ **Terminal**: `--bash: cargo test` or `--test:`\n\
+                • 🛡️ **Guarded Coding**: `--coding:guard <req>` (verified against project AST symbols)\n\
+                • 🔌 **Plugins**: `--tools: list` or `--tools: <task>`\n\
+                • 📊 **Git**: `--git:status` or `review git diff`\n\n\
+                How can I assist your coding session?",
             ];
             let msg = greetings[turn % greetings.len()];
             Ok(w.end(msg.to_string(), Outcome::Completed))
         }
         Intent::Help => {
             Ok(w.end(
-                "### NioNano MicroLM (μLM) — Core Capabilities & Usage\n\n\
-                #### 1. Project & Workspace Inspection\n\
-                • `what is my project build on?` — Executive tech stack summary\n\
-                • `inspect project` — Scan workspace manifests and dependencies\n\
+                "### ⚡ NioNano MicroLM (μLM) — Companion Capabilities & Directives\n\n\
+                #### 🎯 In-TUI Companion Directives\n\
+                • `--bash: <cmd>` — Run in-session terminal commands directly in chat\n\
+                • `--test: [pattern]` — Auto-detects project test framework (`cargo`, `npm`, `pytest`, `go`) and trims compiler errors\n\
+                • `--git:status` / `--git:diff` — Working tree diff and symbol changes\n\
+                • `--tools: <task>` — Run specialized Python plugins (asset conversions, formatting)\n\
+                • `--tools: list` — View available and installed Python plugins\n\
+                • `--coding: <prompt>` — Context bundling with local files & folders\n\
+                • `--coding:guard <req>` / `--coding!: <req>` — Reality-check generated code against AST symbols\n\n\
+                #### 🔬 Workspace & Code Analysis\n\
+                • `inspect project` / `what is my project build on?` — Stack & architecture triage\n\
+                • `analyze codebase` or `code quality` — Full health audit (unwrap safety, complexity)\n\
+                • `analyze <file>` — AST metrics, unwrap analysis, and diagnostic remediation\n\
                 • `read <file>` — Read project source file\n\
-                • `find <glob>` — Discover files (e.g. `find *.rs`)\n\n\
-                #### 2. Code Analysis & Symbol Navigation\n\
-                • `analyze codebase` / `code quality` — Full health audit\n\
-                • `analyze <file>` — Ast metrics, cyclomatic complexity & unwrap safety\n\
-                • `where is <symbol> defined?` — Locate declarations & structs\n\
-                • `who calls <symbol>?` — Find references & call sites\n\n\
-                #### 3. Sovereign Coding & Pair Programming\n\
-                • `replace 'old' with 'new' in <file>` — Deterministic code patching\n\
-                • `replace 'old' with 'new' in <file> and run tests` — Autonomous TDD loop\n\
-                • `write test for <fn> in <file>` — Dynamic test scaffolder\n\
-                • `review git diff` / `suggest commit message` — Git workflow review\n\n\
-                #### 4. Web & Registry Research\n\
-                • `what is <topic>?` / `wiki <topic>` — Synthesized research answer\n\
+                • `find <glob>` — Locate files by glob pattern\n\
+                • `where is <symbol> defined?` — Multi-language declaration finder (Rust, TS, Python, Go)\n\
+                • `who calls <symbol>?` — Locate symbol call-sites across project\n\n\
+                #### 🌐 Web & Package Research\n\
+                • `what is <topic>?` / `wiki <topic>` — Synthesized keyless web research\n\
                 • `crate <name>` / `npm <name>` — Package registry lookups\n\
                 • `scaffold <template>` — Templates (`gitignore`, `github-ci`, `license-mit`)".into(),
                 Outcome::Completed,

@@ -30,11 +30,208 @@ pub enum DiagnosticLevel {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SymbolNode {
     pub name: String,
-    pub kind: String, // fn, struct, enum, trait, type
+    pub kind: String, // fn, struct, enum, trait, type, class, interface
     pub file: String,
     pub line: usize,
     pub callers: Vec<String>,
     pub callees: Vec<String>,
+}
+
+/// Extracts symbols across Rust, TypeScript, JavaScript, Python, and Go.
+pub fn extract_symbols_from_source(file: &str, content: &str) -> Vec<SymbolNode> {
+    let mut symbols = Vec::new();
+    let ext = file.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+
+    for (idx, line) in content.lines().enumerate() {
+        let line_num = idx + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with('#') {
+            continue;
+        }
+
+        match ext.as_str() {
+            "rs" => {
+                if let Some(rest) = trimmed.strip_prefix("pub async fn ").or_else(|| trimmed.strip_prefix("async fn ")).or_else(|| trimmed.strip_prefix("pub fn ")).or_else(|| trimmed.strip_prefix("fn ")) {
+                    if let Some(name) = rest.split(['(', '<', ' ']).next() {
+                        if !name.is_empty() {
+                            symbols.push(SymbolNode {
+                                name: name.to_string(),
+                                kind: "fn".into(),
+                                file: file.to_string(),
+                                line: line_num,
+                                callers: vec![],
+                                callees: vec![],
+                            });
+                        }
+                    }
+                } else if let Some(rest) = trimmed.strip_prefix("pub struct ").or_else(|| trimmed.strip_prefix("struct ")) {
+                    if let Some(name) = rest.split(['{', ';', '<', ' ']).next() {
+                        if !name.is_empty() {
+                            symbols.push(SymbolNode {
+                                name: name.to_string(),
+                                kind: "struct".into(),
+                                file: file.to_string(),
+                                line: line_num,
+                                callers: vec![],
+                                callees: vec![],
+                            });
+                        }
+                    }
+                } else if let Some(rest) = trimmed.strip_prefix("pub enum ").or_else(|| trimmed.strip_prefix("enum ")) {
+                    if let Some(name) = rest.split(['{', '<', ' ']).next() {
+                        if !name.is_empty() {
+                            symbols.push(SymbolNode {
+                                name: name.to_string(),
+                                kind: "enum".into(),
+                                file: file.to_string(),
+                                line: line_num,
+                                callers: vec![],
+                                callees: vec![],
+                            });
+                        }
+                    }
+                } else if let Some(rest) = trimmed.strip_prefix("pub trait ").or_else(|| trimmed.strip_prefix("trait ")) {
+                    if let Some(name) = rest.split(['{', '<', ' ']).next() {
+                        if !name.is_empty() {
+                            symbols.push(SymbolNode {
+                                name: name.to_string(),
+                                kind: "trait".into(),
+                                file: file.to_string(),
+                                line: line_num,
+                                callers: vec![],
+                                callees: vec![],
+                            });
+                        }
+                    }
+                }
+            }
+            "ts" | "tsx" | "js" | "jsx" => {
+                if let Some(rest) = trimmed.strip_prefix("export function ").or_else(|| trimmed.strip_prefix("function ")).or_else(|| trimmed.strip_prefix("export async function ")).or_else(|| trimmed.strip_prefix("async function ")) {
+                    if let Some(name) = rest.split(['(', '<', ' ']).next() {
+                        if !name.is_empty() {
+                            symbols.push(SymbolNode {
+                                name: name.to_string(),
+                                kind: "function".into(),
+                                file: file.to_string(),
+                                line: line_num,
+                                callers: vec![],
+                                callees: vec![],
+                            });
+                        }
+                    }
+                } else if let Some(rest) = trimmed.strip_prefix("export class ").or_else(|| trimmed.strip_prefix("class ")) {
+                    if let Some(name) = rest.split(['{', '<', ' ']).next() {
+                        if !name.is_empty() {
+                            symbols.push(SymbolNode {
+                                name: name.to_string(),
+                                kind: "class".into(),
+                                file: file.to_string(),
+                                line: line_num,
+                                callers: vec![],
+                                callees: vec![],
+                            });
+                        }
+                    }
+                } else if let Some(rest) = trimmed.strip_prefix("export interface ").or_else(|| trimmed.strip_prefix("interface ")) {
+                    if let Some(name) = rest.split(['{', '<', ' ']).next() {
+                        if !name.is_empty() {
+                            symbols.push(SymbolNode {
+                                name: name.to_string(),
+                                kind: "interface".into(),
+                                file: file.to_string(),
+                                line: line_num,
+                                callers: vec![],
+                                callees: vec![],
+                            });
+                        }
+                    }
+                } else if let Some(rest) = trimmed.strip_prefix("export type ").or_else(|| trimmed.strip_prefix("type ")) {
+                    if let Some(name) = rest.split(['=', '<', ' ']).next() {
+                        if !name.is_empty() {
+                            symbols.push(SymbolNode {
+                                name: name.to_string(),
+                                kind: "type".into(),
+                                file: file.to_string(),
+                                line: line_num,
+                                callers: vec![],
+                                callees: vec![],
+                            });
+                        }
+                    }
+                }
+            }
+            "py" => {
+                if let Some(rest) = trimmed.strip_prefix("def ") {
+                    if let Some(name) = rest.split(['(', ':']).next() {
+                        if !name.is_empty() {
+                            symbols.push(SymbolNode {
+                                name: name.trim().to_string(),
+                                kind: "def".into(),
+                                file: file.to_string(),
+                                line: line_num,
+                                callers: vec![],
+                                callees: vec![],
+                            });
+                        }
+                    }
+                } else if let Some(rest) = trimmed.strip_prefix("class ") {
+                    if let Some(name) = rest.split(['(', ':', ' ']).next() {
+                        if !name.is_empty() {
+                            symbols.push(SymbolNode {
+                                name: name.trim().to_string(),
+                                kind: "class".into(),
+                                file: file.to_string(),
+                                line: line_num,
+                                callers: vec![],
+                                callees: vec![],
+                            });
+                        }
+                    }
+                }
+            }
+            "go" => {
+                if let Some(rest) = trimmed.strip_prefix("func ") {
+                    // func (r *Receiver) Method() or func FunctionName()
+                    let rest = if rest.starts_with('(') {
+                        if let Some(idx) = rest.find(')') {
+                            rest[idx + 1..].trim_start()
+                        } else {
+                            rest
+                        }
+                    } else {
+                        rest
+                    };
+                    if let Some(name) = rest.split(['(', ' ']).next() {
+                        if !name.is_empty() {
+                            symbols.push(SymbolNode {
+                                name: name.to_string(),
+                                kind: "func".into(),
+                                file: file.to_string(),
+                                line: line_num,
+                                callers: vec![],
+                                callees: vec![],
+                            });
+                        }
+                    }
+                } else if let Some(rest) = trimmed.strip_prefix("type ") {
+                    let parts: Vec<&str> = rest.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        symbols.push(SymbolNode {
+                            name: parts[0].to_string(),
+                            kind: parts[1].to_string(),
+                            file: file.to_string(),
+                            line: line_num,
+                            callers: vec![],
+                            callees: vec![],
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    symbols
 }
 
 /// The solving and reasoning state machine for developer assistance.
@@ -196,5 +393,26 @@ mod tests {
         let plan = formulate_assist_plan("fix borrow error", &diags[0]);
         assert_eq!(plan.steps.len(), 2);
         assert!(plan.steps[0].description.contains("Clone"));
+    }
+
+    #[test]
+    fn test_multi_language_symbol_extraction() {
+        let ts_code = "export class GatewayService {}\nexport function startGateway() {}";
+        let ts_syms = extract_symbols_from_source("gateway.ts", ts_code);
+        assert_eq!(ts_syms.len(), 2);
+        assert_eq!(ts_syms[0].name, "GatewayService");
+        assert_eq!(ts_syms[1].name, "startGateway");
+
+        let py_code = "class DatabaseConnection:\n    pass\ndef execute_query(sql):\n    pass";
+        let py_syms = extract_symbols_from_source("db.py", py_code);
+        assert_eq!(py_syms.len(), 2);
+        assert_eq!(py_syms[0].name, "DatabaseConnection");
+        assert_eq!(py_syms[1].name, "execute_query");
+
+        let go_code = "type Server struct {}\nfunc (s *Server) Listen() {}";
+        let go_syms = extract_symbols_from_source("main.go", go_code);
+        assert_eq!(go_syms.len(), 2);
+        assert_eq!(go_syms[0].name, "Server");
+        assert_eq!(go_syms[1].name, "Listen");
     }
 }
