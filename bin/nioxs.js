@@ -14,7 +14,7 @@ const os = require('os');
 const https = require('https');
 
 const REPO = 'nio-labs/nio-xs';
-const VERSION = process.env.NIOXS_VERSION || 'v0.2.0';
+const VERSION = process.env.NIOXS_VERSION || 'v0.2.1';
 
 // 1. Detect Operating System and Architecture
 function getPlatformInfo() {
@@ -125,6 +125,7 @@ async function findOrDownloadBinary() {
       fs.chmodSync(cachedBinary, 0o755);
     }
     console.log(`[nioxs] Successfully installed to ${cachedBinary}`);
+    await ensureNioDbBinary(cacheDir, { osType, arch, isWindows });
     return cachedBinary;
   } catch (err) {
     // If remote release asset is not ready, check if cargo is available to build locally
@@ -139,11 +140,45 @@ async function findOrDownloadBinary() {
         stdio: 'inherit',
       });
       if (buildResult.status === 0 && fs.existsSync(localBuild)) {
+        await ensureNioDbBinary(cacheDir, { osType, arch, isWindows });
         return localBuild;
       }
     }
     throw new Error(`Could not find or download nioxs binary. Please run 'cargo build --release' or install via install.sh.`);
   }
+}
+
+async function ensureNioDbBinary(cacheDir, { osType, arch, isWindows }) {
+  const niodbName = isWindows ? 'niodb.exe' : 'niodb';
+  const targetPath = path.join(cacheDir, niodbName);
+  if (fs.existsSync(targetPath)) {
+    return targetPath;
+  }
+
+  // Check if niodb exists in PATH
+  const whichCmd = isWindows ? 'where' : 'which';
+  const whichResult = spawnSync(whichCmd, ['niodb'], { stdio: 'pipe' });
+  if (whichResult.status === 0) {
+    return targetPath;
+  }
+
+  console.log(`[nioxs] Bundling NioDB for state persistence...`);
+  // nio-labs/nio-db release assets naming convention: niodb-{os}-{arch}
+  const dbOs = osType === 'windows' ? 'win32' : osType;
+  const dbArch = arch === 'amd64' ? 'x64' : arch;
+  const dbAssetName = isWindows ? `niodb-${dbOs}-${dbArch}.exe` : `niodb-${dbOs}-${dbArch}`;
+  const niodbUrl = `https://github.com/nio-labs/nio-db/releases/latest/download/${dbAssetName}`;
+
+  try {
+    await downloadBinary(niodbUrl, targetPath);
+    if (!isWindows) {
+      fs.chmodSync(targetPath, 0o755);
+    }
+    console.log(`[nioxs] NioDB bundled successfully at ${targetPath}`);
+  } catch (err) {
+    console.warn(`[nioxs] Note: Automatic NioDB download deferred (${err.message}).`);
+  }
+  return targetPath;
 }
 
 async function main() {

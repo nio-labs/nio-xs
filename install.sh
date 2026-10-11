@@ -124,7 +124,41 @@ else
     fi
 fi
 
-# 5. Check PATH availability
+# 5. Bundle and install NioDB for state persistence
+NIODB_NAME="niodb"
+if [ "$IS_WINDOWS" = true ]; then
+    NIODB_NAME="niodb.exe"
+fi
+NIODB_TARGET="$INSTALL_DIR/$NIODB_NAME"
+
+if ! command -v niodb >/dev/null 2>&1 && [ ! -f "$NIODB_TARGET" ]; then
+    info "Bundling NioDB state store ($OS-$ARCH)..."
+    DB_OS="$OS"
+    if [ "$OS" = "windows" ]; then
+        DB_OS="win32"
+    fi
+    DB_ARCH="$ARCH"
+    if [ "$ARCH" = "amd64" ]; then
+        DB_ARCH="x64"
+    fi
+
+    DB_ASSET="niodb-$DB_OS-$DB_ARCH"
+    if [ "$IS_WINDOWS" = true ]; then
+        DB_ASSET="${DB_ASSET}.exe"
+    fi
+    DB_URL="https://github.com/nio-labs/nio-db/releases/latest/download/$DB_ASSET"
+
+    TEMP_DB="$(mktemp 2>/dev/null || echo "/tmp/niodb_download")"
+    if curl -fsSL "$DB_URL" -o "$TEMP_DB" 2>/dev/null || wget -qO "$TEMP_DB" "$DB_URL" 2>/dev/null; then
+        mv "$TEMP_DB" "$NIODB_TARGET"
+        chmod +x "$NIODB_TARGET"
+        info "NioDB bundled successfully at ${BOLD}$NIODB_TARGET${RESET}"
+    else
+        warn "Could not bundle prebuilt NioDB directly; nioxs will manage state or prompt on start."
+    fi
+fi
+
+# 6. Check PATH availability
 info "NioXS binary installed successfully to: ${BOLD}$TARGET_FILE${RESET}"
 
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then

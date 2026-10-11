@@ -16,6 +16,7 @@ use nioxs_contracts::{
 use nioxs_nano::{Model, decide_with_model};
 mod journal;
 pub mod mcp;
+pub mod niodb_supervisor;
 use nioxs_storage::NioDb;
 use serde_json::{Value, json};
 use std::{

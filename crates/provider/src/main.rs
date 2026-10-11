@@ -32,9 +32,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let listen: std::net::SocketAddr = std::env::var("NIOXS_LISTEN")
         .unwrap_or_else(|_| "127.0.0.1:7460".into())
         .parse()?;
-    let token_file =
-        std::env::var("NIOXS_DB_TOKEN_FILE").map_err(|_| "NIOXS_DB_TOKEN_FILE is required")?;
-    let db_token = std::fs::read_to_string(token_file)?.trim().to_string();
+    let (db_url, db_token, _niodb_proc) = nioxs_provider::niodb_supervisor::ensure_niodb(
+        std::env::var("NIOXS_DB_URL").ok().as_deref(),
+        std::env::var("NIOXS_DB_TOKEN_FILE").ok().as_deref(),
+    )
+    .await?;
+
     let api_token = std::env::var("NIOXS_API_TOKEN_FILE")
         .ok()
         .map(std::fs::read_to_string)
@@ -55,10 +58,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     {
         return Err("invalid deployment ID".into());
     }
-    let db = NioDb::new(
-        &std::env::var("NIOXS_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:7432".into()),
-        db_token,
-    )?;
+    let db = NioDb::new(&db_url, db_token)?;
     let model = match std::env::var("NIOXS_MODEL_FILE") {
         Ok(file) => {
             let bytes = std::fs::read(file)?;

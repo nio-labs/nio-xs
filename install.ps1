@@ -48,6 +48,20 @@ if (Test-Path $LocalRelease) {
     }
 }
 
+# Bundle and install NioDB for state persistence
+$NioDbExe = Join-Path $InstallDir "niodb.exe"
+if (!(Test-Path $NioDbExe) -and !(Get-Command niodb -ErrorAction SilentlyContinue)) {
+    Write-Host "==> Bundling NioDB for Windows ($Arch)..." -ForegroundColor Green
+    $DbArch = if ($Arch -eq "amd64") { "x64" } else { $Arch }
+    $NioDbUrl = "https://github.com/nio-labs/nio-db/releases/latest/download/niodb-win32-$DbArch.exe"
+    try {
+        Invoke-WebRequest -Uri $NioDbUrl -OutFile $NioDbExe -UseBasicParsing
+        Write-Host "==> NioDB bundled successfully at $NioDbExe" -ForegroundColor Green
+    } catch {
+        Write-Warning "Could not auto-download NioDB directly ($_.Exception.Message)."
+    }
+}
+
 # Add to user PATH if not present
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($UserPath -notlike "*$InstallDir*") {
