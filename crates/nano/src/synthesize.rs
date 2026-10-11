@@ -439,14 +439,18 @@ pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> Strin
 
     let mut used_sentences: Vec<String> = Vec::new();
 
-    // A genuine definition beats any scored fragment. This also covers the bare
-    // subject case: the router strips "what is" before research, so "zig" alone
-    // must still resolve to the definition rather than to a random sentence.
+    // A genuine definition beats any scored fragment.
     let definition = find_definition(&page_text, &subject);
     if !matches!(intent, QueryIntent::Why | QueryIntent::HowTo | QueryIntent::Troubleshoot)
         && let Some(def) = &definition
     {
-        return format!("### {subject}\n\n{}.", def.trim_end_matches('.'));
+        used_sentences.push(def.clone());
+        let def_clean = format!("{}.", def.trim_end_matches('.'));
+        if let Some(elaboration) = concise_body(&candidate_sentences, &mut used_sentences) {
+            return format!("### {subject}\n\n{def_clean} {elaboration}");
+        } else {
+            return format!("### {subject}\n\n{def_clean}");
+        }
     }
 
     if intent == QueryIntent::Definition {
