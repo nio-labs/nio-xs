@@ -105,39 +105,3 @@ Developers can switch to NioNano along their project lifecycle or trigger in-ses
    Zero external browser binaries (no Chromium, no Obscura), zero search API keys. NioXS curls and scrapes DuckDuckGo Lite, Wikipedia, and GitHub directly with a built-in BM25 lexical ranker and bot-challenge defenses.
 4. **Durable & Idempotent**:
    Every turn, action claim, and execution state is cryptographically journaled in NioDB to prevent duplicate tool dispatches.
-
----
-
-- **v0.1.0 (Current)**: Rock-solid, non-LLM MicroLM foundation — plus the Phase A correctness patch (gated edits, truthful telemetry, no risk-word blocklist):
-  - Rust-native intent router and classifier (`nioxs-nano`).
-  - Read, find, search, check workflows.
-  - Pure native Rust scraping engine (`nioxs-browser`) for DuckDuckGo Lite, Wikipedia, and GitHub.
-  - NioDB durability and frozen holdout safety verification.
-  - Note: the coding engine, dataset hub, and local MCP stdio server are in-tree ahead of their gates and are re-scoped by the v0.2.0 plan below.
-- **v0.2.0 (Next)**: The Measured MicroLM — [plan](NIOXS_V0.2.0.md):
-  - Real-phrasing corpus (Stack Overflow / GitHub issue titles) with frozen holdout and CI eval.
-  - Trained hashed word+char-ngram logistic router (~20 hierarchical labels, ≤500 KB artifact, <1 ms p99).
-  - Trained CRF argument extraction replacing string heuristics.
-  - Calibrated abstention: clarify as a guarantee, not a threshold guess.
-  - On-disk hash-pinned knowledge packs with BM25 + MMR citations, additive without recompiling.
-  - Still 100% non-LLM: no runtime LLM, no neural networks, no LLM-generated training data.
-- **v1.0.0**: Decision Layer & Plugin Ecosystem:
-  - Versioned plugin packs (Rust or Python) fetched, verified, and executed under MicroLM policy.
-  - Decision modeling over external LLM candidate answers: MicroLM scores, verifies, and selects an executable plan instead of delegating execution.
-  - Public knowledge-pack repository distributed through GitHub Releases (see [NIOXS_NEXT.md](NIOXS_NEXT.md)).
-
----
-
-## Planning & Documentation
-
-- [Next milestone — Decision Layer, Plugins, and Knowledge Packs](NIOXS_NEXT.md)
-- [Full design and flows](NIOXS_PLAN.md)
-- [Five-phase roadmap and acceptance gates](NIOXS_ROADMAP.md)
-- [v0.2.0 plan — The Measured MicroLM](NIOXS_V0.2.0.md)
-- [Local development and startup](docs/DEVELOPMENT.md)
-- [Provider contracts](contracts/README.md)
-- [Storage contract](contracts/storage.md)
-- [Phase 1 evidence](evaluation/PHASE1_EVIDENCE.md)
-- [Phase 2 evidence and limitations](evaluation/PHASE2_EVIDENCE.md)
-- [Dependency pins](dependency-pins.json)
-- [License inventory](THIRD_PARTY.md)
