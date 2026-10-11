@@ -95,11 +95,6 @@ Developers can switch to NioNano along their project lifecycle or trigger in-ses
 
 ---
 
-## 📦 Open Source & Closed Source Architecture (Approach A)
-
-* **NioXS (Open Source)**: The public gateway (`crates/provider`), browser scraper (`crates/browser`), and CLI tools are open source under Apache-2.0 / MIT.
-* **NioNano (Proprietary / Closed Source)**: The sub-megabyte Micro Learning Model weights (`models/nano.json`), decision arbiter, and Code Assist Brain (`crates/nano`) are proprietary and compiled directly into official release binaries.
-
 ## Architectural Principles
 
 1. **MicroLM-First Autonomous Execution**:
