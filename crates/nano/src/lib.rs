@@ -499,6 +499,15 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     if let Some(tool_req) = trimmed_prompt.strip_prefix("--tools:") {
         return Intent::Tool(tool_req.trim().to_string());
     }
+    let lower_trimmed = trimmed_prompt.to_ascii_lowercase();
+    if lower_trimmed == "yes" || lower_trimmed == "proceed" || lower_trimmed == "install" || lower_trimmed == "ok" {
+        return Intent::Tool("install svg2favicon".to_string());
+    }
+    if let Some(rest) = lower_trimmed.strip_prefix("install ") {
+        if ["svg2favicon", "image_scaler", "style_helper"].contains(&rest.trim()) {
+            return Intent::Tool(format!("install {}", rest.trim()));
+        }
+    }
     if let Some(test_req) = trimmed_prompt.strip_prefix("--test:") {
         return Intent::TestRunner(test_req.trim().to_string());
     }

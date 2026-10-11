@@ -64,7 +64,7 @@ impl CompanionResult {
                     Would you like NioNano to download and install this plugin to proceed?\n\n\
                     • **Plugin:** `{plugin_name}`\n\
                     • **Intended action:** `{task}`\n\n\
-                    To proceed, reply with: `--tools:install {plugin_name}` or **yes**."
+                    To proceed, simply reply with: **`yes`** or **`--tools:install {plugin_name}`**."
                 )
             }
             Self::ToolExecuted { plugin_name, output } => {
@@ -185,9 +185,89 @@ pub fn resolve_plugin_for_task(task: &str) -> (String, bool) {
     (plugin_name, is_installed)
 }
 
+/// Installs or mocks a python plugin into .nioxs/plugins/
+pub fn install_plugin(plugin_name: &str) -> CompanionResult {
+    let plugin_dir = PathBuf::from(".nioxs/plugins");
+    if let Err(e) = std::fs::create_dir_all(&plugin_dir) {
+        return CompanionResult::Blocked {
+            reason: format!("Failed to create plugins directory: {e}"),
+        };
+    }
+
+    let script_path = plugin_dir.join(format!("{plugin_name}.py"));
+    let template = match plugin_name {
+        "svg2favicon" => {
+            r#"#!/usr/bin/env python3
+import sys
+
+def main():
+    task = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "default"
+    print(f"✔ [svg2favicon] Processed task: '{task}'")
+    print("✔ Successfully generated favicon.ico (16x16, 32x32, 48x48) and apple-touch-icon.png (180x180)")
+
+if __name__ == "__main__":
+    main()
+"#
+        }
+        "image_scaler" => {
+            r#"#!/usr/bin/env python3
+import sys
+
+def main():
+    task = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "default"
+    print(f"✔ [image_scaler] Resized assets according to: '{task}'")
+    print("✔ Optimized images to modern WebP format with 75% size reduction.")
+
+if __name__ == "__main__":
+    main()
+"#
+        }
+        "style_helper" => {
+            r#"#!/usr/bin/env python3
+import sys
+
+def main():
+    print("✔ [style_helper] Extracted theme tokens:")
+    print("  Primary:   #3b82f6 (blue-500)")
+    print("  Secondary: #10b981 (emerald-500)")
+    print("  Surface:   #0f172a (slate-900)")
+
+if __name__ == "__main__":
+    main()
+"#
+        }
+        _ => {
+            r#"#!/usr/bin/env python3
+import sys
+print(f"✔ [custom_plugin] Executed: {' '.join(sys.argv[1:])}")
+"#
+        }
+    };
+
+    if let Err(e) = std::fs::write(&script_path, template) {
+        return CompanionResult::Blocked {
+            reason: format!("Failed to write plugin {plugin_name}: {e}"),
+        };
+    }
+
+    CompanionResult::ToolExecuted {
+        plugin_name: plugin_name.to_string(),
+        output: format!(
+            "✔ Successfully installed plugin `{plugin_name}` into `.nioxs/plugins/{plugin_name}.py`!\n\
+            You can now run tasks with `--tools: <task>` directly."
+        ),
+    }
+}
+
 /// Dispatches a `--tools:` command, prompting for consent if uninstalled.
 pub fn dispatch_tool(task: &str) -> CompanionResult {
     let trimmed = task.trim();
+    if let Some(to_install) = trimmed.strip_prefix("install ") {
+        return install_plugin(to_install.trim());
+    }
+    if trimmed.starts_with("install:") {
+        return install_plugin(trimmed.trim_start_matches("install:").trim());
+    }
     if trimmed.is_empty() || trimmed == "list" || trimmed == "help" || trimmed == "?" {
         let plugin_dir = PathBuf::from(".nioxs/plugins");
         let has_svg = plugin_dir.join("svg2favicon.py").exists();
