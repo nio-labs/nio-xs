@@ -1,6 +1,6 @@
 # NioXS and NioNano roadmap
 
-Status: Re-architected as a **Pure Coding Assist Companion** (OpenAI-compatible drop-in for coding agents/TUIs) rather than an autonomous agent. Synced 2026-10-11. Architecture and detailed flows: [NIOXS_PLAN.md](NIOXS_PLAN.md).
+Status: Re-architected as a **Pure Coding Assist Companion** (OpenAI-compatible drop-in for coding agents/TUIs) rather than an autonomous agent. Synced 2026-10-11. Architecture and detailed flows: [PLAN.md](PLAN.md).
 
 ## Product identity and scope: Pure Coding Assist Companion
 

@@ -1,6 +1,6 @@
 # NioXS and NioNano: design and implementation plan
 
-Status: proposed design, not implemented. Revised 2026-10-09. See [NIOXS_ROADMAP.md](NIOXS_ROADMAP.md) for milestones and execution order.
+Status: proposed design, not implemented. Revised 2026-10-09. See [ROADMAP.md](ROADMAP.md) for milestones and execution order.
 
 ## 1. Product decisions
 
@@ -178,7 +178,7 @@ Feedback collection is optional and scoped to the deployment by default. For loc
 
 > **Retired:** runtime LLM consultation (`consult_llm`) and the Kilo Code
 > integration are removed. NioNano does not call an external LLM; reasoning and
-> authoring stay with the client's LLM. See [NIOXS_NEXT.md](NIOXS_NEXT.md).
+> authoring stay with the client's LLM. See [NEXT.md](NEXT.md).
 
 NioNano acts as a sovereign, bounded decision layer. Rather than yielding the conversation loop to an LLM or talking to one itself, NioNano turns intent into typed decisions, and the LLM remains the user's reasoning and authoring partner.
 
@@ -191,7 +191,7 @@ NioNano remains in the driver's seat throughout the entire turn. The LLM is the 
 4. **Validation and execution**: Nano verifies paths against `safe_path`, validates patch syntax, and dispatches bounded modification tools (`edit_file` / `apply_patch`) only for the chosen candidate.
 5. **Verification loop**: Nano verifies changes by executing configured checks (`run_checks`) and reports verified outcomes within the 8-action budget.
 
-This turns NioNano into a fast, transparent **decision layer**: deterministically bounded by budgets and permissions, and complementary to the LLM rather than a substitute for it. The proposal schema, scoring features, and abstention gates are specified in [NIOXS_NEXT.md](NIOXS_NEXT.md).
+This turns NioNano into a fast, transparent **decision layer**: deterministically bounded by budgets and permissions, and complementary to the LLM rather than a substitute for it. The proposal schema, scoring features, and abstention gates are specified in [NEXT.md](NEXT.md).
 
 ### Full Handoff (Fallback escape hatch)
 
@@ -300,7 +300,7 @@ Bundle dependency licenses and notices for each pinned release. Crawl4AI's curre
 
 ## 13. v0.1.0 implementation phases and acceptance gates
 
-Release order and scope are maintained in [NIOXS_ROADMAP.md](NIOXS_ROADMAP.md), with actionable tasks in [TODO_V0.1.0.md](TODO_V0.1.0.md).
+Release order and scope are maintained in [ROADMAP.md](ROADMAP.md), with actionable tasks in [TODO_V0.1.0.md](TODO_V0.1.0.md).
 
 | Phase | Deliverable | Completion evidence |
 | --- | --- | --- |
