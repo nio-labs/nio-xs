@@ -21,7 +21,7 @@
                  ┌────────────────────┴────────────────────┐
                  ▼                                         ▼
    ┌───────────────────────────┐             ┌───────────────────────────┐
-   │  NioNano (MicroLM: 52 KB) │             │    Upstream LLM (Kilo)    │
+   │  NioNano (MicroLM: 46 KB) │             │    Upstream LLM (Kilo)    │
    │  • Micro Learning Model   │             │  • Triggered via --code   │
    │  • <1ms CPU inference     │             │  • Kilo Auto Free / Mini  │
    │  • AST compiler triage    │             │  • Decides what to read   │
@@ -31,7 +31,7 @@
    └───────────────────────────┘             └───────────────────────────┘
 ```
 
-NioNano acts as a **Micro Learning Model (µLM)**—not a bloated generative model, but a specialized, deterministic 52 KB model that assists the developer directly in their TUI. For heavy generation, NioXS acts as an intelligent middleman to upstream LLMs while validating generated code against the local project AST to prevent hallucinations.
+NioNano acts as a **Micro Learning Model (µLM)**—not a bloated generative model, but a specialized, deterministic 46 KB model that assists the developer directly in their TUI. For heavy generation, NioXS acts as an intelligent middleman to upstream LLMs while validating generated code against the local project AST to prevent hallucinations.
 
 ---
 
@@ -104,7 +104,7 @@ Developers can switch to NioNano along their project lifecycle or trigger in-ses
 
 ## 🔬 Taxonomy: What is a MicroLM?
 
-* **MicroLM = Micro Learning Model (µLM)**: Unlike Large Language Models (LLMs) that require gigabytes of VRAM and hallucinate text, NioNano is a **52 KB deterministic learning model** trained specifically for code navigation, intent classification, and decision arbiter logic.
+* **MicroLM = Micro Learning Model (µLM)**: Unlike Large Language Models (LLMs) that require gigabytes of VRAM and hallucinate text, NioNano is a **46 KB deterministic learning model** trained specifically for code navigation, intent classification, and decision arbiter logic.
 * **CPU-Native**: Runs locally with `<1ms` inference latency on standard CPUs with zero GPU requirements.
 * **Binary Footprint**: Standalone single-binary executable is only **5.5 MB** with zero external dependencies.
 

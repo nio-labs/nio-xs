@@ -71,7 +71,7 @@ pub enum Intent {
     Bash(String),
     Tool(String),
     TestRunner(String),
-    GitSummary,
+    GitSummary(String),
     Coding {
         prompt: String,
         guarded: bool,
@@ -87,7 +87,7 @@ impl Intent {
             Self::Tool(_) => "run_tool",
             Self::Config(_) => "config",
             Self::TestRunner(_) => "test_runner",
-            Self::GitSummary => "git_summary",
+            Self::GitSummary(_) => "git_summary",
             Self::Coding { guarded: true, .. } => "coding_guarded",
             Self::Coding { guarded: false, .. } => "coding",
             Self::Read(_) => "read_file",
@@ -114,8 +114,8 @@ impl Intent {
             Self::ScaffoldTest { .. } => "scaffold_template",
             Self::ReviewDiff => "inspect_project",
             Self::SuggestCommit => "inspect_project",
-            Self::ProjectSuggestions => "unsupported",
-            Self::TaskPlan(_) => "unsupported",
+            Self::ProjectSuggestions => "project_suggestions",
+            Self::TaskPlan(_) => "task_plan",
             Self::Unsupported => "unsupported",
         }
     }
@@ -583,8 +583,18 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     if let Some(test_req) = strip_directive(trimmed_prompt, "--test") {
         return Intent::TestRunner(test_req.to_string());
     }
-    if strip_directive(trimmed_prompt, "--git").is_some() {
-        return Intent::GitSummary;
+    if let Some(git_req) = strip_directive(trimmed_prompt, "--git") {
+        // Only known subcommands are honored; the bare directive means "status
+        // plus diff". An unknown subcommand is clarified instead of being
+        // silently collapsed into the default summary.
+        return match git_req.trim().to_ascii_lowercase().as_str() {
+            "" => Intent::GitSummary(String::new()),
+            "status" => Intent::GitSummary("status".into()),
+            "diff" => Intent::GitSummary("diff".into()),
+            other => Intent::Clarify(format!(
+                "Unknown `--git` subcommand `{other}`. Use `--git`, `--git:status`, or `--git:diff`."
+            )),
+        };
     }
     if let Some(help_topic) = strip_directive(trimmed_prompt, "--help") {
         return if help_topic.is_empty() {
@@ -1405,8 +1415,13 @@ pub fn decide_with_model(
             let res = companion::execute_in_session_bash(&test_cmd);
             Ok(w.end(res.to_markdown(), Outcome::Completed))
         }
-        Intent::GitSummary => {
-            let res = companion::execute_in_session_bash("git status -s && git diff --stat");
+        Intent::GitSummary(sub) => {
+            let cmd = match sub.as_str() {
+                "status" => "git status -s",
+                "diff" => "git diff --stat",
+                _ => "git status -s && git diff --stat",
+            };
+            let res = companion::execute_in_session_bash(cmd);
             Ok(w.end(res.to_markdown(), Outcome::Completed))
         }
         Intent::Coding { prompt, guarded } => {
@@ -2575,11 +2590,16 @@ mod tests {
             Intent::TestRunner("unit".into())
         );
 
-        // --git directives
-        assert_eq!(parse(&model, "--git status"), Intent::GitSummary);
-        assert_eq!(parse(&model, "--git:status"), Intent::GitSummary);
-        assert_eq!(parse(&model, "--git diff"), Intent::GitSummary);
-        assert_eq!(parse(&model, "--git:diff"), Intent::GitSummary);
+        // --git directives carry their subcommand; the bare form means status+diff.
+        assert_eq!(parse(&model, "--git"), Intent::GitSummary(String::new()));
+        assert_eq!(parse(&model, "--git status"), Intent::GitSummary("status".into()));
+        assert_eq!(parse(&model, "--git:status"), Intent::GitSummary("status".into()));
+        assert_eq!(parse(&model, "--git diff"), Intent::GitSummary("diff".into()));
+        assert_eq!(parse(&model, "--git:diff"), Intent::GitSummary("diff".into()));
+        assert!(matches!(
+            parse(&model, "--git commit"),
+            Intent::Clarify(_)
+        ));
 
         // --config directives
         assert_eq!(parse(&model, "--config code ON"), Intent::Config("code ON".into()));

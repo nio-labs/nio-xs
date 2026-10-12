@@ -23,6 +23,8 @@ fn is_answer_intent(intent: &Intent) -> bool {
             | Intent::Help
             | Intent::Clarify(_)
             | Intent::Plan(_)
+            | Intent::ProjectSuggestions
+            | Intent::TaskPlan(_)
             | Intent::Bash(_)
             | Intent::Tool(_)
             | Intent::Coding { .. }

@@ -135,7 +135,6 @@ Features shipped in-tree that this checklist never tracked. They exceed the v0.1
 - Code-health analysis (`analyze file` / `analyze codebase` with complexity and safety findings) — `crates/nano/src/analysis.rs`.
 - Coding engine: symbol definition/reference navigation, `replace … in …` refactor, autonomous edit-and-test loop, test scaffolder, `git diff` review, commit-message suggestion — `crates/nano/src/coder.rs`.
 - Deterministic patch engine and scaffold templates — `crates/nano/src/patch.rs` plus `scaffold <template>`.
-- Dataset hub: 36 static knowledge packs (~100 KB payload target each), prompt router, and on-demand persistence into NioDB collection `nano_datasets` — `crates/nano/src/dataset.rs`. Primarily a v0.1.5 capability; no cache or evidence report accompanies it.
 - Natural-language prompt normalization and rich response formatting — `normalize_prompt` in `lib.rs`, `crates/nano/src/synthesize.rs`.
 - Autonomous task planner and dynamic project suggestions — `TaskPlan` / `ProjectSuggestions` intents in `lib.rs` and their handlers in `coder.rs`.
 - Local MCP stdio server (`nioxs mcp`) — `crates/provider/src/mcp.rs`.
@@ -147,8 +146,8 @@ Features shipped in-tree that this checklist never tracked. They exceed the v0.1
 | 1 — Foundations/NioDB/provider | Complete with evidence; optional Crawl4AI probe deferred |
 | 2 — Trained Nano/project workflows | Complete with evidence |
 | 3 — Adaptive browser research | Engine implemented in-tree; NioDB cache/quota/pruning, live smoke tests, and an evidence report remain open |
-| 4 — Handoff/API/MCP | Partial: MCP stdio server and bounded edit/verify loop exist; edit gating, feedback, handoff continuation open; LLM consultation retired |
+| 4 — Handoff/API/MCP | Partial: MCP stdio server and bounded edit/verify loop exist; edit gating, feedback, handoff continuation open; LLM consultation available via `--code` |
 | 5 — Packaging/release | Open; stale capability metadata (`crates/provider/src/lib.rs`) must be fixed first |
-| Beyond scope | Coding engine, dataset hub, code analysis, git helpers, rotating responses — shipped, untracked, awaiting v0.1.5 scope decision |
+| Beyond scope | Coding engine, code analysis, git helpers, rotating responses — shipped, untracked, awaiting v0.1.5 scope decision |
 
 Update phase status and attach acceptance evidence as work is completed. Phase 1 checkmarks cover its limited foundation scope, not Phase 2–5 capabilities.
