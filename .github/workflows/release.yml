@@ -56,7 +56,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        # Pin to the same channel as rust-toolchain.toml so `targets:` installs
+        # into the toolchain cargo actually uses.
+        uses: dtolnay/rust-toolchain@1.99.0
         with:
           targets: ${{ matrix.target }}
 
