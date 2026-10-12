@@ -14,7 +14,7 @@ const os = require('os');
 const https = require('https');
 
 const REPO = 'nio-labs/nio-xs';
-const VERSION = process.env.NIOXS_VERSION || 'v0.2.7';
+const VERSION = process.env.NIOXS_VERSION || 'v0.3.0';
 
 // 1. Detect Operating System and Architecture
 function getPlatformInfo() {
