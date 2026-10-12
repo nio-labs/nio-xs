@@ -103,13 +103,7 @@ flowchart TD
 
 ## 4. Companion Capabilities & Directives
 
-| Directive / Prefix | Target Engine | Purpose & Behavior | User Gate / Policy |
-| --- | --- | --- | --- |
-| `--bash: <cmd>` | Native Host Shell | Run builds, tests, git status, file moves without leaving TUI | Validates safe execution; blocks destructive rm/format |
-| `--tools: <task>` | Python Tool Plugins | Specialized tasks (e.g., SVG-to-favicon, asset resizing, style formatters) | **Consent Gate**: Must ask user to download/install before execution |
-| `--code: <req>` | Kilo Provider LLM | Fast upstream code synthesis via Kilo (auto free / mini code) | Bundles relevant local files/folders; streams Kilo response |
-| `--code guard <req>`<br/>`--code! <req>` | Kilo + NioNano AST Arbiter | Strict anti-hallucination code generation | **Reality Check Gate**: Verifies symbols/files against AST; reroutes or prompts user if hallucination detected |
-| Direct / Unprefixed | NioNano MicroLM | Label changes, font-colors, CSS edits, AST compiler triage, web search | Fast local response (<10ms), zero API keys needed |
+The **authoritative** directive table lives in [README.md § In-TUI Companion Directives](../README.md#-in-tui-companion-directives) and is not duplicated here. In short, NioNano routes typed prefixes to the native host shell (`--bash`), Python plugins (`--tools`) behind a download-consent gate, configured checks (`--test`), git summaries (`--git`), session config (`--config`), help (`--help`), and the explicit `--code` upstream consultation (guarded with `--code guard` / `--code!`).
 
 ## 5. Browser research flow
 

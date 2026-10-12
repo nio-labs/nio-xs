@@ -3,6 +3,19 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+/// Single write gate for every edit path: refuse a target that fails
+/// `safe_path`, so no edit can escape the trusted project scope or land on a
+/// sensitive file. All edit writes go through here instead of `fs::write`.
+fn write_trusted(path: &Path, contents: &str) -> Result<(), String> {
+    let rel = path.to_string_lossy();
+    if !crate::safe_path(&rel, false) {
+        return Err(format!(
+            "Refusing to modify '{rel}': path is outside the trusted project scope."
+        ));
+    }
+    fs::write(path, contents).map_err(|e| format!("Failed to write '{rel}': {e}"))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SymbolLocation {
     pub file: String,
@@ -196,6 +209,11 @@ pub fn refactor_file(
     replacement_text: &str,
 ) -> Result<String, String> {
     let path = Path::new(file_path);
+    if !crate::safe_path(file_path, false) {
+        return Err(format!(
+            "Refusing to edit '{file_path}': path is outside the trusted project scope."
+        ));
+    }
     if !path.exists() {
         return Err(format!("File '{file_path}' does not exist."));
     }
@@ -205,8 +223,7 @@ pub fn refactor_file(
 
     let (patched, count) = apply_patch_to_string(&original, target_text, replacement_text, false)?;
 
-    fs::write(path, patched)
-        .map_err(|e| format!("Failed to write patched file '{file_path}': {e}"))?;
+    write_trusted(path, &patched)?;
 
     let mut out = format!(
         "✔ Successfully refactored `{file_path}` ({count} unique occurrence replaced):\n\n"
@@ -229,6 +246,11 @@ pub fn tdd_refactor_and_test(
     replacement_text: &str,
 ) -> Result<String, String> {
     let path = Path::new(file_path);
+    if !crate::safe_path(file_path, false) {
+        return Err(format!(
+            "Refusing to edit '{file_path}': path is outside the trusted project scope."
+        ));
+    }
     if !path.exists() {
         return Err(format!("File '{file_path}' does not exist."));
     }
@@ -239,8 +261,7 @@ pub fn tdd_refactor_and_test(
     let (patched, count) = apply_patch_to_string(&original, target_text, replacement_text, false)?;
 
     // Apply patch
-    fs::write(path, &patched)
-        .map_err(|e| format!("Failed to write patched file '{file_path}': {e}"))?;
+    write_trusted(path, &patched)?;
 
     // Phase 1: Compiler-in-the-Loop Validation
     if let Err(diagnostics) = crate::compiler::run_project_check(".") {
@@ -258,7 +279,7 @@ pub fn tdd_refactor_and_test(
         
         if !healed {
             // Rollback patch on compilation failure
-            let _ = fs::write(path, &original);
+            let _ = write_trusted(path, &original);
             let mut err_msg = format!("Compilation failed after patch. Rolled back changes.\n");
             for d in diagnostics {
                 err_msg.push_str(&format!("- [{}] {}:{}: {}\n", d.error_code, d.file_path, d.line_number, d.message));
@@ -298,7 +319,7 @@ pub fn tdd_refactor_and_test(
         }
         Ok(output) => {
             // Roll back to original file content immediately!
-            let _ = fs::write(path, original);
+            let _ = write_trusted(path, &original);
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
             let diag = if !stderr.trim().is_empty() {
@@ -315,7 +336,7 @@ pub fn tdd_refactor_and_test(
             ))
         }
         Err(e) => {
-            let _ = fs::write(path, original);
+            let _ = write_trusted(path, &original);
             Err(format!("Could not execute test runner '{cmd}': {e}. Reverted change."))
         }
     }
@@ -784,5 +805,29 @@ mod tests {
         assert!(contains_isolated_symbol("foo::bar()", "foo"));
         assert!(!contains_isolated_symbol("let x = foobar();", "foo"));
         assert!(!contains_isolated_symbol("let x = my_foo();", "foo"));
+    }
+
+    #[test]
+    fn test_edit_writes_are_gated_by_safe_path() {
+        for bad in ["../outside.rs", "/etc/passwd", ".env", ".ssh/id_rsa"] {
+            let err = write_trusted(Path::new(bad), "x").expect_err("unsafe path must be refused");
+            assert!(
+                err.contains("outside the trusted project scope"),
+                "{bad}: {err}"
+            );
+        }
+        let rel = Path::new("__nioxs_write_trusted_test.tmp");
+        write_trusted(rel, "ok").expect("project-relative write must be allowed");
+        assert_eq!(fs::read_to_string(rel).unwrap(), "ok");
+        let _ = fs::remove_file(rel);
+    }
+
+    #[test]
+    fn test_refactor_refuses_a_path_outside_the_project() {
+        let err = refactor_file("../outside.rs", "a", "b").expect_err("must refuse");
+        assert!(
+            err.contains("outside the trusted project scope"),
+            "unexpected error: {err}"
+        );
     }
 }

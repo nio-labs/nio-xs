@@ -119,7 +119,7 @@ async fn capabilities(State(app): State<Arc<App>>, headers: HeaderMap) -> Respon
             "provider authentication required",
         );
     }
-    Json(json!({"schema_version":SCHEMA_VERSION,"provider":PROVIDER,"model":MODEL,"implementation":"trained_naive_bayes_and_typed_workflows","model_version":app.model.model_version,"trained":true,"confidence_threshold":app.model.threshold,"workflows":["read_file","inspect_project","find_files","search_code","run_checks","web_fetch","research_sources"],"client_tools":["read_file","find_files","search_code","run_command","web_fetch"],"server_tools":[],"streaming":true,"automatic_fallback":false,"browser_execution":true,"mcp":false,"decision_contract":true,"storage":"niodb_immutable_action_journal"})).into_response()
+    Json(json!({"schema_version":SCHEMA_VERSION,"provider":PROVIDER,"model":MODEL,"implementation":"trained_naive_bayes_and_typed_workflows","model_version":app.model.model_version,"trained":true,"confidence_threshold":app.model.threshold,"workflows":nioxs_nano::SHIPPED_WORKFLOWS,"client_tools":["read_file","find_files","search_code","run_command","web_fetch"],"server_tools":[],"streaming":true,"automatic_fallback":false,"browser_execution":true,"mcp":true,"decision_contract":true,"storage":"niodb_immutable_action_journal"})).into_response()
 }
 
 async fn cancel(
@@ -1619,10 +1619,17 @@ src/engine*
             .await
             .unwrap();
         let bytes = to_bytes(response.into_body(), 8192).await.unwrap();
-        assert_eq!(
-            serde_json::from_slice::<Value>(&bytes).unwrap()["trained"],
-            true
-        );
+        let caps: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(caps["trained"], true);
+        // The advertised surface must match what actually shipped, including MCP.
+        assert_eq!(caps["mcp"], true);
+        let workflows = caps["workflows"].as_array().expect("workflows array");
+        for expected in ["coding", "git_summary", "project_suggestions", "task_plan"] {
+            assert!(
+                workflows.iter().any(|w| w == expected),
+                "capabilities must advertise the shipped workflow '{expected}': {workflows:?}"
+            );
+        }
         let secure = router(App {
             db: NioDb::new("http://127.0.0.1:9", "test".into()).unwrap(),
             deployment: "test".into(),

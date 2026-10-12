@@ -229,7 +229,7 @@ here:
 
 | Milestone | Contents | Exit evidence |
 |---|---|---|
-| **v0.3 (now)** | Retire consulting (done); professional NLP responses (done); `dev.sh` reload runner (done); decision contract implemented (scoring, abstention, `/v1/decide`, `nioxs.decision`) | No `consult_llm`/Kilo code; synthesis has no raw markdown links; all four decision outcomes covered by tests |
+| **v0.3** | Upstream consultation stays live on the `--code` directive (the old `--coding:` spelling is retired, not the feature); professional NLP responses; `dev.sh` reload runner; decision contract implemented (scoring, abstention, `/v1/decide`, `nioxs.decision`); gated write path (`safe_path`) for edits; `/v1/capabilities` regenerated from the shipped intent set; `--code` handoff for unbound code-modification verbs | No doc claims a retired feature that still ships; `/v1/capabilities` matches the shipped intent set; edit writes refuse untrusted paths; all four decision outcomes covered by tests |
 | **v0.4** | Learned decision weights and calibration on frozen benchmarks; plugin manifest, supervisor, permissions, limits, audit | Plugin escapes blocked; decision benchmark numbers recorded |
 | **v0.5** | Dataset index, on-demand fetch, quota/eviction; first 25 packs published publicly | Live fetch → NioDB → cited answer; license CI green |
 | **v0.6** | Plugin registry, Python venv management, MCP mapping; decision model training on frozen benchmarks | Reproducible packs; plugin install verified by digest |

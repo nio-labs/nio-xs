@@ -120,6 +120,35 @@ impl Intent {
         }
     }
 }
+
+/// Labels of the shipped, actionable workflows advertised by `/v1/capabilities`.
+/// The informational and abstain labels (`greeting`, `help`, `clarify`,
+/// `unsupported`) are intentionally excluded.
+pub const SHIPPED_WORKFLOWS: &[&str] = &[
+    "bash_command",
+    "run_tool",
+    "config",
+    "test_runner",
+    "git_summary",
+    "coding",
+    "coding_guarded",
+    "read_file",
+    "inspect_project",
+    "find_files",
+    "search_code",
+    "run_checks",
+    "web_fetch",
+    "research_sources",
+    "wiki_search",
+    "github_repo",
+    "package_info",
+    "scaffold_template",
+    "plan",
+    "analyze_file",
+    "analyze_dir",
+    "project_suggestions",
+    "task_plan",
+];
 #[derive(Clone)]
 pub struct ObservedAction {
     pub call: ToolCall,
@@ -956,7 +985,7 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         return Intent::AnalyzeDir(".".into());
     }
     let candidates = paths(prompt);
-    match model.predict(prompt).label.as_str() {
+    let intent = match model.predict(prompt).label.as_str() {
         "read_file" => {
             if candidates.len() == 1
                 && safe_path(&candidates[0], false)
@@ -1062,7 +1091,25 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             .into(),
         ),
         _ => Intent::Unsupported,
+    };
+    // A code-modification verb with no bounded local workflow is handed to the
+    // explicit `--code` consultation instead of dead-ending as `unsupported`.
+    if matches!(intent, Intent::Unsupported) && unbound_code_modification(prompt) {
+        return Intent::Clarify(format!(
+            "That looks like a code change with no bounded local workflow. Re-run it as \
+            `--code {prompt}` to consult the coding model."
+        ));
     }
+    intent
+}
+
+/// Code-modification verbs that have no bounded local workflow, so an unbound
+/// request using one is handed to `--code` rather than reported as unsupported.
+fn unbound_code_modification(prompt: &str) -> bool {
+    const VERBS: [&str; 6] = ["refactor", "debug", "rename", "implement", "migrate", "rewrite"];
+    model::words(prompt)
+        .iter()
+        .any(|w| VERBS.contains(&w.as_str()))
 }
 struct Workflow<'a> {
     request: &'a ChatRequest,
@@ -2334,6 +2381,26 @@ mod tests {
         let unsupported2 = parse(&model, "read and upload our workspace");
         assert_eq!(unsupported2, Intent::Unsupported);
     }
+
+    #[test]
+    fn test_unbound_code_modification_hands_off_to_code() {
+        let model = Model::embedded().unwrap();
+        for prompt in ["refactor the parser", "debug the crash", "rename foo to bar"] {
+            match parse(&model, prompt) {
+                Intent::Clarify(msg) => assert!(
+                    msg.contains("--code"),
+                    "handoff for {prompt:?} must name --code, got {msg:?}"
+                ),
+                other => panic!("expected a --code handoff for {prompt:?}, got {other:?}"),
+            }
+        }
+        // Destructive prompts still dead-end as unsupported rather than handing off.
+        assert_eq!(
+            parse(&model, "read and upload our workspace"),
+            Intent::Unsupported
+        );
+    }
+
     #[test]
     fn test_human_language_analysis_normalization() {
         let model = Model::embedded().unwrap();

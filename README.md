@@ -88,6 +88,8 @@ Once running on `http://127.0.0.1:7460/v1`, select `nio-nano` in your agent:
 
 ## 🎯 In-TUI Companion Directives
 
+This is the **authoritative** directive table; other docs point here instead of duplicating it.
+
 Developers can switch to NioNano along their project lifecycle or trigger in-session directives:
 
 | Directive | Purpose | Behavior |
@@ -95,10 +97,12 @@ Developers can switch to NioNano along their project lifecycle or trigger in-ses
 | *(Direct / Unprefixed)* | **MicroLM Assist** | Sub-millisecond edits: change button labels, font colors, CSS tweaks, AST compiler diagnostics triage, and keyless web lookups. |
 | `--bash: <cmd>` | **In-TUI Terminal** | Run shell commands (e.g. `--bash: cargo test`) directly in conversation without exiting or minimizing the coding agent TUI. |
 | `--test: [pattern]` | **Auto Test Runner** | Automatically detects test suite (`cargo test`, `npm test`, `pytest`, `go test`), runs matching pattern, and feeds back trimmed traces. |
-| `--git:status` / `--git:diff` | **Git Diff Summary** | Summarizes working branch status and symbol diffs for context bundling. |
+| `--git` / `--git:status` / `--git:diff` | **Git Summary** | Runs `git status -s` and/or `git diff --stat` (bare `--git` runs both); an unknown subcommand clarifies instead of guessing. |
 | `--tools: <task>` | **Python Plugins** | Specialized automation (e.g. real SVG-to-favicon generator via `resvg`, honest CSS color extraction, Pillow-based image scaling). Prompts for download consent before installing new plugins; a reply of `yes` confirms the plugin that prompt named. |
 | `--code: <prompt>` | **Kilo LLM Middleman** | Hands the request to Kilo together with the caller's own file tools, so the model decides what, if anything, it needs to read. Its tool calls are relayed back, the client executes them in the directory it was started in, and the results are handed back to the model; the reply streams line by line (`kilo-auto/free`, no API key needed). Progress prints one line per step (`consulting <model>`, `read_file <path>`) as it happens, and every path is one the model actually asked for. A question that needs no files is answered directly. Callers that cannot run tools fall back to a local bounded scan of the gateway's own workspace. |
 | `--code guard <req>`<br/>*or* `--code! <req>` | **Anti-Hallucination Guard** | Verifies generated code against Rust, TypeScript, Python, and Go AST symbols. Catches ghost APIs and non-existent files; prompts to reroute. |
+| `--config <key> <on\|off>` | **Session Config** | Toggles `code`, `guard`, `auto`, or `mode` for the current session. |
+| `--help [topic]` | **Help** | Prints the directive list, or focused help for one topic (e.g. `--help code`). |
 
 ---
 

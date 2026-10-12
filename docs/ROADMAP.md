@@ -88,28 +88,7 @@ Dependencies: Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5.
 
 ## Companion Workflow & Prefix Directives
 
-NioNano serves as an in-TUI companion that developers switch to for targeted tasks or trigger with prefixes:
-
-1. **`--bash: <command>` (In-TUI Terminal Execution)**:
-   - Executes arbitrary shell commands directly from within the coding agent conversation.
-   - Eliminates context-switching out of Aider, OpenCode, Cline, or Cursor TUIs.
-   - Decision Model gates dangerous or destructive invocations.
-
-2. **`--tools: <task>` (Specialized Python Plugins & Tool Runner)**:
-   - Dispatches to specialized pre-defined tools/plugins (e.g., SVG-to-Favicon converter, asset generators, CSS font/color normalizers).
-   - **Consent Gate**: If the required plugin is not yet locally installed, NioNano prompts the user for explicit permission to download/install before execution.
-
-3. **`--code: <request>` (Kilo LLM Consultation Middleman)**:
-   - Connects to Kilo provider (`kilo auto free`, `kilo mini code`).
-   - NioXS acts as an intelligent middleman: extracts and bundles relevant local files/folders into a compact context, sends the payload to Kilo, and streams the answer back.
-
-4. **`--code guard <request>` / `--code! <request>` (Strict Guarded Mode with Anti-Hallucination)**:
-   - Activates strict **Hallucination Prevention**: inspects Kilo's generated code against the local AST symbol graph and project files.
-   - **Reality Check**: Catches ghost APIs, non-existent files, and fake imports.
-   - **Reroute Gate**: If hallucinations are found, NioXS either automatically reroutes (fetching accurate docs/AST and re-querying Kilo) or prompts the user whether they wish to reroute or proceed.
-
-5. **Default / Unprefixed (Local MicroLM Assist)**:
-   - Instant assistance for UI labels, font-colors, CSS tweaks, AST search, compiler diagnostic triage (`brain.rs`), and keyless web research.
+NioNano serves as an in-TUI companion that developers switch to for targeted tasks or trigger with prefixes. The **authoritative** directive list — `--bash`, `--tools`, `--test`, `--git`, `--config`, `--help`, and the `--code` consultation (`--code guard` / `--code!`) — lives once in [README.md § In-TUI Companion Directives](../README.md#-in-tui-companion-directives) and is not duplicated here, so the two cannot drift.
 
 Large autonomous rewrites are not performed blind: NioNano explains, diagnoses, or delegates via `--code:`. Rules and the decision arbiter score every candidate action.
 
