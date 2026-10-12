@@ -3979,4 +3979,42 @@ mod tests {
         let help_default = dispatch_help("");
         assert!(help_default.contains("Companion Directives & Capabilities"));
     }
+
+    #[test]
+    fn test_persona_preset_expansion_and_injection() {
+        // 1. Test preset lookup and expansion for "ex"
+        let preset = find_builtin_preset("ex").expect("should find 'ex' preset");
+        assert_eq!(preset.name, "Taylor");
+        assert_eq!(preset.id, "ex");
+
+        let ex_json = serde_json::json!("ex");
+        let persona_str = parse_persona_json_value(&ex_json).expect("should parse 'ex' preset");
+        assert!(persona_str.contains("Taylor"));
+        assert!(persona_str.contains("sarcastic"));
+
+        // 2. Test full persona JSON object
+        let custom_json = serde_json::json!({
+            "name": "Morgan",
+            "preset": "rustacean",
+            "instructions": ["Always reference memory safety and zero-cost abstractions."]
+        });
+        let custom_str = parse_persona_json_value(&custom_json).expect("should parse custom persona");
+        assert!(custom_str.contains("Morgan"));
+        assert!(custom_str.contains("zero-cost abstractions"));
+
+        // 3. Test extraction from caller_system if config is empty
+        let caller_sys = "Persona Instructions (strictly adhere to these across all responses):\nIdentity: Your name is Taylor.\n1. Witty and sharp.";
+        let extracted = extract_persona_from_system(caller_sys).expect("should extract persona from caller_system");
+        assert!(extracted.contains("Witty and sharp"));
+
+        // 4. Test prompt building with caller_system persona
+        let history = vec![serde_json::from_value::<nioxs_contracts::Message>(serde_json::json!({
+            "role": "system",
+            "content": caller_sys
+        })).unwrap()];
+        let prompt = build_coding_system_prompt(&history);
+        assert!(prompt.contains("### 🎭 Active Persona & Identity Rules (ALWAYS ACTIVE)"));
+        assert!(prompt.contains("Witty and sharp"));
+        assert!(prompt.contains("CRITICAL DIRECTIVE"));
+    }
 }
