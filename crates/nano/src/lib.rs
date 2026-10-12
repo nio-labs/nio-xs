@@ -5,17 +5,17 @@
 //! (sub-megabyte embedded weights, multinomial n-gram distribution, <1ms CPU inference)
 //! to provide sovereign pair-programming workflows without external API dependencies or GPU requirements.
 
-pub mod compiler;
 pub mod analysis;
+pub mod brain;
 pub mod coder;
+pub mod companion;
+pub mod compiler;
+pub mod dag;
+pub mod decision;
 pub mod model;
 pub mod patch;
 pub mod synthesize;
-pub mod dag;
-pub mod decision;
 pub mod watcher;
-pub mod brain;
-pub mod companion;
 
 pub use model::Model;
 use nioxs_contracts::{
@@ -24,8 +24,8 @@ use nioxs_contracts::{
 };
 pub use patch::{apply_patch_to_string, scaffold_template};
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 static GREETING_ROTATION: AtomicUsize = AtomicUsize::new(0);
 
@@ -50,9 +50,20 @@ pub enum Intent {
     AnalyzeDir(String),
     SymbolDef(String),
     SymbolRefs(String),
-    RefactorPatch { file: String, old: String, new: String },
-    TddRefactor { file: String, old: String, new: String },
-    ScaffoldTest { file: String, function: String },
+    RefactorPatch {
+        file: String,
+        old: String,
+        new: String,
+    },
+    TddRefactor {
+        file: String,
+        old: String,
+        new: String,
+    },
+    ScaffoldTest {
+        file: String,
+        function: String,
+    },
     ReviewDiff,
     SuggestCommit,
     ProjectSuggestions,
@@ -61,7 +72,12 @@ pub enum Intent {
     Tool(String),
     TestRunner(String),
     GitSummary,
-    Coding { prompt: String, guarded: bool },
+    Coding {
+        prompt: String,
+        guarded: bool,
+    },
+    Config(String),
+    HelpTopic(String),
     Unsupported,
 }
 impl Intent {
@@ -69,6 +85,7 @@ impl Intent {
         match self {
             Self::Bash(_) => "bash_command",
             Self::Tool(_) => "run_tool",
+            Self::Config(_) => "config",
             Self::TestRunner(_) => "test_runner",
             Self::GitSummary => "git_summary",
             Self::Coding { guarded: true, .. } => "coding_guarded",
@@ -85,7 +102,7 @@ impl Intent {
             Self::Package(_) => "package_info",
             Self::Scaffold(_) => "scaffold_template",
             Self::Greeting => "greeting",
-            Self::Help => "help",
+            Self::Help | Self::HelpTopic(_) => "help",
             Self::Clarify(_) => "clarify",
             Self::Plan(_) => "plan",
             Self::AnalyzeFile(_) => "analyze_file",
@@ -118,6 +135,16 @@ pub struct Decision {
     pub intent: String,
     pub step: usize,
     pub observed: Vec<ObservedAction>,
+    /// Ordered progress segments for progressive SSE streaming.
+    /// Empty for every intent except a `--coding:` turn; the provider emits
+    /// each as a separate `delta.content` event so the TUI renders work line by
+    /// line (the step trail). `content` remains the fully-assembled markdown for
+    /// non-streaming clients.
+    pub stream_segments: Vec<String>,
+    /// A pending upstream consultation. When set, the provider opens the
+    /// upstream request with `stream: true` and forwards the model's own deltas
+    /// to the client instead of returning `content` in one block.
+    pub coding: Option<companion::CodingConsult>,
 }
 fn embedded() -> &'static Model {
     static MODEL: OnceLock<Model> = OnceLock::new();
@@ -188,7 +215,18 @@ fn split_compound_prompt(prompt: &str) -> Option<Vec<&str>> {
     let mut changed = true;
     while changed {
         changed = false;
-        for filler in &["hey ", "hi ", "hello ", "ok ", "well ", "so ", "now ", "please ", "can you ", "could you "] {
+        for filler in &[
+            "hey ",
+            "hi ",
+            "hello ",
+            "ok ",
+            "well ",
+            "so ",
+            "now ",
+            "please ",
+            "can you ",
+            "could you ",
+        ] {
             if lower.starts_with(filler) {
                 lower = lower[filler.len()..].trim_start().to_string();
                 s = s[filler.len()..].trim_start();
@@ -219,7 +257,10 @@ pub fn parse(model: &Model, prompt: &str) -> Intent {
     if let Some(parts) = split_compound_prompt(prompt) {
         let mut steps = Vec::new();
         for part in parts {
-            if model::features(part).iter().any(|f| f == "<unsupported-risk>") {
+            if model::features(part)
+                .iter()
+                .any(|f| f == "<unsupported-risk>")
+            {
                 return Intent::Unsupported;
             }
             let sub = parse_atomic(model, part);
@@ -297,7 +338,9 @@ pub fn normalize_prompt(prompt: &str) -> String {
     for word in words {
         let clean = word.trim_matches(|c: char| "`\"',:!?".contains(c));
         let norm = match clean {
-            "analyse" | "analysing" | "analysed" | "analyzing" | "analyzed" | "analysis" => "analyze",
+            "analyse" | "analysing" | "analysed" | "analyzing" | "analyzed" | "analysis" => {
+                "analyze"
+            }
             "analyst" => "analyze",
             "eval" | "evaluation" | "evaluating" => "evaluate",
             "auditing" | "audited" => "audit",
@@ -431,9 +474,13 @@ pub fn extract_natural_read_intent(prompt: &str, norm: &str) -> Option<Intent> {
         };
 
         if let Some(rest) = matched {
-            let cleaned = rest.trim().trim_matches(|c: char| "`\"',;:!? \t\r\n".contains(c));
+            let cleaned = rest
+                .trim()
+                .trim_matches(|c: char| "`\"',;:!? \t\r\n".contains(c));
             if cleaned == "it" || cleaned == "that" || cleaned == "file" || cleaned == "this" {
-                return Some(Intent::Clarify("Which project-relative file should I read?".into()));
+                return Some(Intent::Clarify(
+                    "Which project-relative file should I read?".into(),
+                ));
             }
 
             let candidates = paths(rest);
@@ -444,7 +491,10 @@ pub fn extract_natural_read_intent(prompt: &str, norm: &str) -> Option<Intent> {
                 return Some(Intent::Read(candidates[0].clone()));
             }
 
-            if safe_path(cleaned, false) && !cleaned.contains(['*', '?', ' ']) && !cleaned.is_empty() {
+            if safe_path(cleaned, false)
+                && !cleaned.contains(['*', '?', ' '])
+                && !cleaned.is_empty()
+            {
                 let canonical = match cleaned.to_ascii_lowercase().as_str() {
                     "cargo.toml" => "Cargo.toml".to_string(),
                     "readme" | "readme.md" => "README.md".to_string(),
@@ -462,17 +512,25 @@ pub fn extract_natural_read_intent(prompt: &str, norm: &str) -> Option<Intent> {
         && (stripped_prompt.contains(" contain") || stripped_prompt.contains(" look"))
     {
         let candidates = paths(prompt);
-        if candidates.len() == 1 && safe_path(&candidates[0], false) && !candidates[0].contains(['*', '?']) {
+        if candidates.len() == 1
+            && safe_path(&candidates[0], false)
+            && !candidates[0].contains(['*', '?'])
+        {
             return Some(Intent::Read(candidates[0].clone()));
         }
     }
 
     // Bare file query: user typed just the filename or path
-    let trimmed = prompt.trim().trim_matches(|c: char| "`\"',; \t\r\n".contains(c));
+    let trimmed = prompt
+        .trim()
+        .trim_matches(|c: char| "`\"',; \t\r\n".contains(c));
     if !trimmed.contains(' ') && safe_path(trimmed, false) && !trimmed.contains(['*', '?']) {
         let lower = trimmed.to_ascii_lowercase();
         let has_ext = trimmed.contains('.');
-        let is_known = matches!(lower.as_str(), "readme" | "makefile" | "license" | "dockerfile");
+        let is_known = matches!(
+            lower.as_str(),
+            "readme" | "makefile" | "license" | "dockerfile"
+        );
         if has_ext || is_known {
             let canonical = match lower.as_str() {
                 "cargo.toml" => "Cargo.toml".to_string(),
@@ -488,48 +546,77 @@ pub fn extract_natural_read_intent(prompt: &str, norm: &str) -> Option<Intent> {
     None
 }
 
+fn strip_directive<'a>(prompt: &'a str, name: &str) -> Option<&'a str> {
+    let rest = prompt.strip_prefix(name)?;
+    if rest.is_empty() {
+        return Some("");
+    }
+    if let Some(after) = rest.strip_prefix(':') {
+        return Some(after.trim());
+    }
+    if rest.starts_with(' ') || rest.starts_with('\t') {
+        return Some(rest.trim());
+    }
+    None
+}
+
 pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     if prompt.len() > 1024 || !prompt.is_ascii() {
         return Intent::Unsupported;
     }
     let trimmed_prompt = prompt.trim();
-    if let Some(cmd) = trimmed_prompt.strip_prefix("--bash:") {
-        return Intent::Bash(cmd.trim().to_string());
+    if let Some(cmd) = strip_directive(trimmed_prompt, "--bash") {
+        return Intent::Bash(cmd.to_string());
     }
-    if let Some(tool_req) = trimmed_prompt.strip_prefix("--tools:") {
-        return Intent::Tool(tool_req.trim().to_string());
+    if let Some(tool_req) = strip_directive(trimmed_prompt, "--tools") {
+        return Intent::Tool(tool_req.to_string());
+    }
+    if let Some(config_req) = strip_directive(trimmed_prompt, "--config") {
+        return Intent::Config(config_req.to_string());
     }
     let lower_trimmed = trimmed_prompt.to_ascii_lowercase();
-    if lower_trimmed == "yes" || lower_trimmed == "proceed" || lower_trimmed == "install" || lower_trimmed == "ok" {
-        return Intent::Tool("install svg2favicon".to_string());
-    }
     if let Some(rest) = lower_trimmed.strip_prefix("install ") {
-        if ["svg2favicon", "image_scaler", "style_helper"].contains(&rest.trim()) {
+        if companion::is_known_plugin(rest.trim()) {
             return Intent::Tool(format!("install {}", rest.trim()));
         }
     }
-    if let Some(test_req) = trimmed_prompt.strip_prefix("--test:") {
-        return Intent::TestRunner(test_req.trim().to_string());
+    if let Some(test_req) = strip_directive(trimmed_prompt, "--test") {
+        return Intent::TestRunner(test_req.to_string());
     }
-    if trimmed_prompt == "--git:status" || trimmed_prompt == "--git:diff" || trimmed_prompt.starts_with("--git:") {
+    if strip_directive(trimmed_prompt, "--git").is_some() {
         return Intent::GitSummary;
     }
-    if let Some(coding_req) = trimmed_prompt.strip_prefix("--coding:guard") {
+    if let Some(help_topic) = strip_directive(trimmed_prompt, "--help") {
+        return if help_topic.is_empty() {
+            Intent::Help
+        } else {
+            Intent::HelpTopic(help_topic.to_string())
+        };
+    }
+    if let Some(coding_req) = strip_directive(trimmed_prompt, "--code guard")
+        .or_else(|| strip_directive(trimmed_prompt, "--code:guard"))
+        .or_else(|| strip_directive(trimmed_prompt, "--coding guard"))
+        .or_else(|| strip_directive(trimmed_prompt, "--coding:guard"))
+        .or_else(|| strip_directive(trimmed_prompt, "--code!"))
+        .or_else(|| strip_directive(trimmed_prompt, "--coding!"))
+    {
         return Intent::Coding {
-            prompt: coding_req.trim().to_string(),
+            prompt: coding_req.to_string(),
             guarded: true,
         };
     }
-    if let Some(coding_req) = trimmed_prompt.strip_prefix("--coding!:") {
+    if let Some(coding_req) = strip_directive(trimmed_prompt, "--code")
+        .or_else(|| strip_directive(trimmed_prompt, "--coding"))
+    {
         return Intent::Coding {
-            prompt: coding_req.trim().to_string(),
-            guarded: true,
+            prompt: coding_req.to_string(),
+            guarded: companion::is_config_guard_on(),
         };
     }
-    if let Some(coding_req) = trimmed_prompt.strip_prefix("--coding:") {
+    if companion::is_config_code_on() {
         return Intent::Coding {
-            prompt: coding_req.trim().to_string(),
-            guarded: false,
+            prompt: trimmed_prompt.to_string(),
+            guarded: companion::is_config_guard_on(),
         };
     }
     for word in prompt.split_whitespace() {
@@ -539,7 +626,9 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         }
     }
     let norm = normalize_prompt(prompt);
-    if let Some(coder_intent) = coder::parse_coder_intent(prompt).or_else(|| coder::parse_coder_intent(&norm)) {
+    if let Some(coder_intent) =
+        coder::parse_coder_intent(prompt).or_else(|| coder::parse_coder_intent(&norm))
+    {
         return coder_intent;
     }
     if let Some(read_intent) = extract_natural_read_intent(prompt, &norm) {
@@ -551,7 +640,18 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     let mut changed = true;
     while changed {
         changed = false;
-        for filler in &["hey ", "hi ", "hello ", "ok ", "well ", "so ", "now ", "please ", "can you ", "could you "] {
+        for filler in &[
+            "hey ",
+            "hi ",
+            "hello ",
+            "ok ",
+            "well ",
+            "so ",
+            "now ",
+            "please ",
+            "can you ",
+            "could you ",
+        ] {
             if lower.starts_with(filler) {
                 lower = lower[filler.len()..].trim_start().to_string();
                 s = s[filler.len()..].trim_start();
@@ -691,23 +791,71 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         }
     }
     let norm = normalize_prompt(prompt);
-    let trimmed = lower.trim().trim_end_matches(|c: char| "!?. \t\r\n".contains(c));
-    if ["hey", "hello", "hi", "good morning", "good evening", "howdy", "sup", "yo"]
-        .contains(&trimmed)
-        || ["hey", "hello", "hi", "good morning", "good evening", "howdy", "sup", "yo"]
-            .contains(&norm.as_str())
+    let trimmed = lower
+        .trim()
+        .trim_end_matches(|c: char| "!?. \t\r\n".contains(c));
+    if [
+        "hey",
+        "hello",
+        "hi",
+        "good morning",
+        "good evening",
+        "howdy",
+        "sup",
+        "yo",
+    ]
+    .contains(&trimmed)
+        || [
+            "hey",
+            "hello",
+            "hi",
+            "good morning",
+            "good evening",
+            "howdy",
+            "sup",
+            "yo",
+        ]
+        .contains(&norm.as_str())
     {
         return Intent::Greeting;
     }
-    if ["help", "what can you do", "commands", "usage", "capabilities"].contains(&trimmed)
-        || ["help", "what can you do", "commands", "usage", "capabilities"].contains(&norm.as_str())
+    if [
+        "help",
+        "what can you do",
+        "commands",
+        "usage",
+        "capabilities",
+    ]
+    .contains(&trimmed)
+        || [
+            "help",
+            "what can you do",
+            "commands",
+            "usage",
+            "capabilities",
+        ]
+        .contains(&norm.as_str())
     {
         return Intent::Help;
     }
-    if ["search my codebase", "search the codebase", "search codebase", "search code"].contains(&trimmed)
-        || ["search my codebase", "search the codebase", "search codebase", "search code"].contains(&norm.as_str())
+    if [
+        "search my codebase",
+        "search the codebase",
+        "search codebase",
+        "search code",
+    ]
+    .contains(&trimmed)
+        || [
+            "search my codebase",
+            "search the codebase",
+            "search codebase",
+            "search code",
+        ]
+        .contains(&norm.as_str())
     {
-        return Intent::Clarify("Which literal text or symbol should I search for in the codebase?".into());
+        return Intent::Clarify(
+            "Which literal text or symbol should I search for in the codebase?".into(),
+        );
     }
     let analyze_prefixes = [
         "analyze file ",
@@ -734,9 +882,23 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             None
         };
         if let Some(raw_target) = matched {
-            let target = raw_target.trim().trim_matches(|c: char| "`\"',:!?".contains(c));
+            let target = raw_target
+                .trim()
+                .trim_matches(|c: char| "`\"',:!?".contains(c));
             let lower_t = target.to_ascii_lowercase();
-            if ["codebase", "the codebase", "my codebase", "project", "the project", "my project", "code", "the code", "."].contains(&lower_t.as_str()) {
+            if [
+                "codebase",
+                "the codebase",
+                "my codebase",
+                "project",
+                "the project",
+                "my project",
+                "code",
+                "the code",
+                ".",
+            ]
+            .contains(&lower_t.as_str())
+            {
                 return Intent::AnalyzeDir(".".into());
             }
             let canonical_target = match lower_t.as_str() {
@@ -755,8 +917,34 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             }
         }
     }
-    if ["analyze codebase", "review codebase", "audit codebase", "analyze project", "review project", "audit project", "analyze code", "code review", "code audit", "analyze current codebase", "analyze current code base"].contains(&trimmed)
-        || ["analyze codebase", "review codebase", "audit codebase", "analyze project", "review project", "audit project", "analyze code", "code review", "code audit", "analyze current codebase", "analyze current code base"].contains(&norm.as_str())
+    if [
+        "analyze codebase",
+        "review codebase",
+        "audit codebase",
+        "analyze project",
+        "review project",
+        "audit project",
+        "analyze code",
+        "code review",
+        "code audit",
+        "analyze current codebase",
+        "analyze current code base",
+    ]
+    .contains(&trimmed)
+        || [
+            "analyze codebase",
+            "review codebase",
+            "audit codebase",
+            "analyze project",
+            "review project",
+            "audit project",
+            "analyze code",
+            "code review",
+            "code audit",
+            "analyze current codebase",
+            "analyze current code base",
+        ]
+        .contains(&norm.as_str())
     {
         return Intent::AnalyzeDir(".".into());
     }
@@ -821,11 +1009,22 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
                 Some(q)
                     if !q.is_empty()
                         && q.len() <= 240
-                        && !["it", "that", "this", "the thing", "my codebase", "the codebase", "codebase"].contains(&q.as_str()) =>
+                        && ![
+                            "it",
+                            "that",
+                            "this",
+                            "the thing",
+                            "my codebase",
+                            "the codebase",
+                            "codebase",
+                        ]
+                        .contains(&q.as_str()) =>
                 {
                     Intent::Search(q)
                 }
-                _ => Intent::Clarify("Which literal text or symbol should I search for in the codebase?".into()),
+                _ => Intent::Clarify(
+                    "Which literal text or symbol should I search for in the codebase?".into(),
+                ),
             }
         }
         "run_checks" => {
@@ -866,9 +1065,16 @@ struct Workflow<'a> {
     request_digest: String,
     intent: String,
     observed: Vec<ObservedAction>,
+    stream_segments: Vec<String>,
+    coding: Option<companion::CodingConsult>,
 }
 impl Workflow<'_> {
     fn decision(&self, content: Option<String>, call: Option<ToolCall>) -> Decision {
+        let step = if self.coding.is_some() {
+            companion::coding_tool_rounds(&self.request.messages[self.start..])
+        } else {
+            self.observed.len()
+        };
         Decision {
             content,
             call,
@@ -876,8 +1082,10 @@ impl Workflow<'_> {
             request_digest: self.request_digest.clone(),
             result_digest: self.observed.last().map(|o| o.result_digest.clone()),
             intent: self.intent.clone(),
-            step: self.observed.len(),
+            step,
             observed: self.observed.clone(),
+            stream_segments: self.stream_segments.clone(),
+            coding: self.coding.clone(),
         }
     }
     fn end(&mut self, content: String, outcome: Outcome) -> Decision {
@@ -890,10 +1098,7 @@ impl Workflow<'_> {
             continuation_required: continue_llm,
             completed_action_ids: self.observed.iter().map(|o| o.call.id.clone()).collect(),
         });
-        self.end(
-            reason.to_string(),
-            Outcome::CapabilityLimitation,
-        )
+        self.end(reason.to_string(), Outcome::CapabilityLimitation)
     }
     fn tool(&mut self, name: &str, args: Value) -> Result<Result<String, Decision>, String> {
         if self.observed.len() >= 8 {
@@ -1044,7 +1249,15 @@ pub fn decide_with_model(
             .find(|m| m.role == "assistant")
             .and_then(|m| m.content.as_str())
     {
-        if previous == "Which project-relative file should I read?" && paths(&prompt).len() == 1 {
+        if let Some(plugin) = companion::pending_consent_plugin(previous)
+            && companion::is_consent_reply(&prompt)
+        {
+            // The previous turn asked to download a specific plugin, so this reply approves
+            // that exact plugin rather than a hard-coded default.
+            prompt = format!("--tools:install {plugin}");
+        } else if previous == "Which project-relative file should I read?"
+            && paths(&prompt).len() == 1
+        {
             prompt = format!("read {prompt}");
         } else if previous == "Which literal text or symbol should I search for?" {
             prompt = format!("search code for {prompt}");
@@ -1052,7 +1265,16 @@ pub fn decide_with_model(
             prompt = format!("run {prompt}");
         }
     }
-    let intent = parse(model, &prompt);
+    let intent = if companion::is_consent_reply(&prompt) {
+        // Without a pending prompt there is nothing to approve; never install on a bare "yes".
+        Intent::Clarify(
+            "There's no pending confirmation to approve right now. Tell me what you'd like to do — \
+            for example `--tools:list`, `read Cargo.toml`, or `--coding: <request>`."
+                .into(),
+        )
+    } else {
+        parse(model, &prompt)
+    };
     let request_digest = digest(
         &serde_json::to_vec(&request.messages[..=start]).map_err(|_| "cannot encode history")?,
     );
@@ -1115,31 +1337,43 @@ pub fn decide_with_model(
         request_digest,
         intent: intent.label().into(),
         observed: vec![],
+        stream_segments: vec![],
+        coding: None,
     };
     match intent {
 
         Intent::Unsupported => Ok(w.limitation(
             "⚡ **NioNano Companion Ready.** I couldn't identify a direct matching programming action for that phrasing.\n\n\
             Here are quick actions you can run right now:\n\
-            • ⚡ **Run Commands**: `--bash: <cmd>` (e.g. `--bash: git status`)\n\
-            • 🧪 **Run Tests**: `--test: [pattern]`\n\
-            • 🔌 **Plugins & Tools**: `--tools: list`\n\
-            • 🛡️ **Guarded Coding**: `--coding:guard <request>`\n\
+            • ⚡ **Run Commands**: `--bash <cmd>` (e.g. `--bash git status`)\n\
+            • 🧪 **Run Tests**: `--test [pattern]`\n\
+            • 🔌 **Plugins & Tools**: `--tools list`\n\
+            • 🛡️ **Guarded Coding**: `--code guard <request>`\n\
             • 🔍 **Inspect**: `inspect project`, `analyze codebase`, or `where is <symbol> defined?`\n\
             • ❓ **Help**: Type `help` for full capability catalog.",
             false,
         )),
         Intent::Bash(cmd) => {
             let res = companion::execute_in_session_bash(&cmd);
-            Ok(w.end(res.to_markdown(), Outcome::Completed))
+            let markdown = format!(
+                "{}\n{}",
+                res.to_markdown(),
+                companion::bash_discovery_footer()
+            );
+            Ok(w.end(markdown, Outcome::Completed))
         }
         Intent::Tool(task) => {
             let res = companion::dispatch_tool(&task);
             let outcome = match &res {
                 companion::CompanionResult::ToolNeedsConsent { .. } => Outcome::Clarification,
+                companion::CompanionResult::ToolFailed { .. } => Outcome::ToolFailed,
                 _ => Outcome::Completed,
             };
             Ok(w.end(res.to_markdown(), outcome))
+        }
+        Intent::Config(req) => {
+            let res = companion::dispatch_config(&req);
+            Ok(w.end(res, Outcome::Completed))
         }
         Intent::TestRunner(pattern) => {
             // Determine project test runner
@@ -1179,20 +1413,102 @@ pub fn decide_with_model(
             Ok(w.end(res.to_markdown(), Outcome::Completed))
         }
         Intent::Coding { prompt, guarded } => {
-            let draft = format!(
-                "// Coding draft for request: {prompt}\n// Bundled local workspace files\n\npub fn handle_request() -> Result<(), Box<dyn std::error::Error>> {{\n    Ok(())\n}}\n"
-            );
-            let alert = if guarded {
-                companion::detect_hallucinations(&draft, &[], &[])
-            } else {
-                None
-            };
-            let res = companion::CompanionResult::CodingResponse {
-                guarded,
-                content: draft,
-                hallucination_alert: alert,
-            };
-            Ok(w.end(res.to_markdown(), Outcome::Completed))
+            let (clean_prompt, pinned_files) = companion::extract_pinned_files(&prompt);
+            let target_prompt = if clean_prompt.is_empty() { prompt.as_str() } else { clean_prompt.as_str() };
+            let prompt_text = target_prompt.trim();
+            if prompt_text.is_empty() && pinned_files.is_empty() {
+                return Ok(w.end(
+                    "Usage: `--code <request>` or `--code @<file> <request>`.\n\n\
+                    Example: `--code @src/net.rs add retry logic to the HTTP client`"
+                        .to_string(),
+                    Outcome::Clarification,
+                ));
+            }
+            let config = companion::coding_config();
+            // A tool-capable caller owns the working directory, so the model
+            // explores it itself: the provider offers `read_file`/`find_files`
+            // upstream, relays the model's own tool calls to the client, and
+            // replays the results on the next round. NioNano never picks files.
+            // Callers without those tools fall back to a local bounded bundle.
+            if w.request.permits_read() && w.request.permits_tool("find_files") {
+                let turn = &w.request.messages[w.start..];
+                let rounds = companion::coding_tool_rounds(turn);
+                let tools = if rounds < companion::CODING_MAX_ROUNDS {
+                    companion::coding_tool_schemas()
+                } else {
+                    Vec::new()
+                };
+                // The model announces itself once; later rounds are already
+                // visible as the reads it asked for.
+                if w.request.stream && rounds == 0 {
+                    let mut segments = Vec::new();
+                    for pf in &pinned_files {
+                        segments.push(companion::trail_read_segment(pf));
+                    }
+                    segments.push(companion::trail_consult_segment(&config.model));
+                    w.stream_segments = segments;
+                }
+                let mut initial_files = pinned_files.clone();
+                initial_files.extend(companion::coding_read_paths(turn));
+                w.coding = Some(companion::CodingConsult {
+                    config,
+                    prompt: prompt_text.to_string(),
+                    messages: companion::upstream_messages(prompt_text, &w.request.messages),
+                    tools,
+                    files: initial_files,
+                    guarded,
+                });
+                w.execution.outcome = Outcome::Completed;
+                return Ok(w.decision(None, None));
+            }
+            let bundle = companion::bundle_workspace_context_pinned(prompt_text, &pinned_files);
+            // Streaming clients get the model's own deltas forwarded live, so the
+            // trail line is emitted first and the answer flows from Kilo itself.
+            // Blocking clients still receive one assembled markdown answer.
+            if w.request.stream {
+                w.stream_segments = companion::coding_progress_segments(&bundle, &config.model);
+                w.coding = Some(companion::CodingConsult {
+                    config,
+                    prompt: prompt_text.to_string(),
+                    messages: companion::bundled_messages(prompt_text, &bundle.context, &w.request.messages),
+                    files: bundle.files.clone(),
+                    tools: Vec::new(),
+                    guarded,
+                });
+                w.execution.outcome = Outcome::Completed;
+                return Ok(w.decision(None, None));
+            }
+            let started = std::time::Instant::now();
+            match companion::consult_upstream(&config, prompt_text, &bundle.context, &w.request.messages) {
+                Ok(draft) => {
+                    let upstream_secs = started.elapsed().as_secs_f64();
+                    let steps = companion::coding_steps(&bundle, &config.model);
+                    let alert = if guarded {
+                        companion::detect_hallucinations(&draft, &[], &bundle.files)
+                    } else {
+                        None
+                    };
+                    let res = companion::CompanionResult::CodingResponse {
+                        guarded,
+                        content: draft.clone(),
+                        hallucination_alert: alert,
+                        steps,
+                        reply_secs: upstream_secs,
+                    };
+                    w.stream_segments = companion::coding_progress_segments(&bundle, &config.model);
+                    Ok(w.end(res.to_markdown(), Outcome::Completed))
+                }
+                Err(reason) => Ok(w.end(
+                    format!(
+                        "### ⚠️ Upstream Coding Consultation Failed\n\n\
+                        {reason}\n\n\
+                        No draft was generated. Kilo is pre-setup and needs no API key, so this is \
+                        usually a network issue; check access to `api.kilo.ai`, or override the \
+                        endpoint with `NIOXS_CODING_BASE_URL` / `NIOXS_CODING_MODEL`."
+                    ),
+                    Outcome::ToolFailed,
+                )),
+            }
         }
         Intent::Clarify(question) => Ok(w.end(question, Outcome::Clarification)),
         Intent::Read(path) => {
@@ -1425,11 +1741,11 @@ pub fn decide_with_model(
                 "⚡ **Hello! I'm NioNano MicroLM (μLM)** — your sovereign in-TUI coding companion.\n\n\
                 I run as an ultra-fast (<0.5ms) decision layer alongside your coding agent.\n\n\
                 #### 🎯 In-Session Directives\n\
-                • `--bash: <cmd>` — Run in-session terminal commands without exiting your TUI\n\
-                • `--test: [pattern]` — Auto-detect runner (`cargo`, `npm`, `pytest`, `go`) and trim error traces\n\
-                • `--git:status` / `--git:diff` — Summarize working tree diffs and modified symbols\n\
-                • `--tools: <task>` — Run specialized Python plugins (e.g. svg2favicon, asset resizers)\n\
-                • `--coding:guard <prompt>` — Anti-hallucination reality checks against project AST symbols\n\n\
+                • `--bash <cmd>` — Run in-session terminal commands without exiting your TUI\n\
+                • `--test [pattern]` — Auto-detect runner (`cargo`, `npm`, `pytest`, `go`) and trim error traces\n\
+                • `--git status` / `--git diff` — Summarize working tree diffs and modified symbols\n\
+                • `--tools <task>` — Run specialized Python plugins (e.g. svg2favicon, asset resizers)\n\
+                • `--code guard <prompt>` — Anti-hallucination reality checks against project AST symbols\n\n\
                 #### 🔬 Quick Inspections\n\
                 • `what is my project build on?` / `inspect project`\n\
                 • `analyze codebase` or `analyze <file>`\n\
@@ -1437,10 +1753,10 @@ pub fn decide_with_model(
                 What would you like to inspect, run, or diagnose today?",
                 "🧠 **Welcome! NioNano Coding Companion Ready.**\n\n\
                 Trained for sovereign code exploration, AST diagnostic triage, and live assistance:\n\
-                • ⚡ **Terminal**: `--bash: cargo test` or `--test:`\n\
-                • 🛡️ **Guarded Coding**: `--coding:guard <req>` (verified against project AST symbols)\n\
-                • 🔌 **Plugins**: `--tools: list` or `--tools: <task>`\n\
-                • 📊 **Git**: `--git:status` or `review git diff`\n\n\
+                • ⚡ **Terminal**: `--bash cargo test` or `--test`\n\
+                • 🛡️ **Guarded Coding**: `--code guard <req>` (verified against project AST symbols)\n\
+                • 🔌 **Plugins**: `--tools list` or `--tools <task>`\n\
+                • 📊 **Git**: `--git status` or `review git diff`\n\n\
                 How can I assist your coding session?",
             ];
             let msg = greetings[turn % greetings.len()];
@@ -1448,27 +1764,13 @@ pub fn decide_with_model(
         }
         Intent::Help => {
             Ok(w.end(
-                "### ⚡ NioNano MicroLM (μLM) — Companion Capabilities & Directives\n\n\
-                #### 🎯 In-TUI Companion Directives\n\
-                • `--bash: <cmd>` — Run in-session terminal commands directly in chat\n\
-                • `--test: [pattern]` — Auto-detects project test framework (`cargo`, `npm`, `pytest`, `go`) and trims compiler errors\n\
-                • `--git:status` / `--git:diff` — Working tree diff and symbol changes\n\
-                • `--tools: <task>` — Run specialized Python plugins (asset conversions, formatting)\n\
-                • `--tools: list` — View available and installed Python plugins\n\
-                • `--coding: <prompt>` — Context bundling with local files & folders\n\
-                • `--coding:guard <req>` / `--coding!: <req>` — Reality-check generated code against AST symbols\n\n\
-                #### 🔬 Workspace & Code Analysis\n\
-                • `inspect project` / `what is my project build on?` — Stack & architecture triage\n\
-                • `analyze codebase` or `code quality` — Full health audit (unwrap safety, complexity)\n\
-                • `analyze <file>` — AST metrics, unwrap analysis, and diagnostic remediation\n\
-                • `read <file>` — Read project source file\n\
-                • `find <glob>` — Locate files by glob pattern\n\
-                • `where is <symbol> defined?` — Multi-language declaration finder (Rust, TS, Python, Go)\n\
-                • `who calls <symbol>?` — Locate symbol call-sites across project\n\n\
-                #### 🌐 Web & Package Research\n\
-                • `what is <topic>?` / `wiki <topic>` — Synthesized keyless web research\n\
-                • `crate <name>` / `npm <name>` — Package registry lookups\n\
-                • `scaffold <template>` — Templates (`gitignore`, `github-ci`, `license-mit`)".into(),
+                companion::dispatch_help(""),
+                Outcome::Completed,
+            ))
+        }
+        Intent::HelpTopic(topic) => {
+            Ok(w.end(
+                companion::dispatch_help(&topic),
                 Outcome::Completed,
             ))
         }
@@ -1661,6 +1963,160 @@ mod tests {
         serde_json::from_value(json!({"model":MODEL,"messages":[{"role":"user","content":prompt}],"tools":if tools{vec![json!({"type":"function","function":{"name":"read_file"}})]}else{vec![]}})).unwrap()
     }
     #[test]
+    fn streaming_coding_turn_defers_the_upstream_call() {
+        let r: ChatRequest = serde_json::from_value(json!({
+            "model": MODEL,
+            "messages": [{"role": "user", "content": "--coding: analyze my project"}],
+            "stream": true,
+        }))
+        .unwrap();
+        let decision = decide(&r, "test").unwrap();
+        assert_eq!(decision.intent, "coding");
+        let consult = decision
+            .coding
+            .clone()
+            .expect("a streaming coding turn must defer the upstream call to the provider");
+        assert_eq!(consult.prompt, "analyze my project");
+        assert!(!consult.guarded);
+        assert!(
+            decision.content.is_none(),
+            "the answer streams from the model, so nothing is precomputed"
+        );
+        assert_eq!(
+            decision.stream_segments.first().map(String::as_str),
+            Some("🛠️ scanning workspace\n")
+        );
+        assert!(
+            decision.stream_segments.last().unwrap().ends_with('\n'),
+            "each trail segment must end with a single newline"
+        );
+        assert_eq!(decision.execution.outcome, Outcome::Completed);
+    }
+
+    /// A tool-capable caller gets the model, not a local file picker: the turn
+    /// is handed upstream with the caller's own file tools, and the model's tool
+    /// calls are replayed on the next round with their real results.
+    #[test]
+    fn coding_turn_hands_the_callers_project_to_the_model() {
+        let mut r: ChatRequest = serde_json::from_value(json!({
+            "model": MODEL,
+            "messages": [{"role": "user", "content": "--coding: analyze my project"}],
+            "stream": true,
+            "tools": [
+                {"type":"function","function":{"name":"read_file"}},
+                {"type":"function","function":{"name":"find_files"}}
+            ],
+        }))
+        .unwrap();
+
+        let first = decide(&r, "test").unwrap();
+        assert!(
+            first.call.is_none(),
+            "NioNano must not pick files itself; the model decides what to read"
+        );
+        let consult = first.coding.clone().expect("the model is consulted");
+        assert_eq!(consult.prompt, "analyze my project");
+        assert_eq!(consult.messages.len(), 2, "system + the request");
+        assert_eq!(consult.messages[1]["content"], "analyze my project");
+        assert_eq!(
+            consult.tools.len(),
+            3,
+            "the caller's file and skill tools are offered"
+        );
+        assert!(consult.files.is_empty(), "nothing was read yet");
+        assert_eq!(
+            first.stream_segments,
+            vec![format!(
+                "💭 consulting with LLM: {}\n",
+                companion::coding_config().model
+            )]
+        );
+        assert_eq!(first.execution.outcome, Outcome::Completed);
+
+        // The model asks the caller to read a file; the next round must carry
+        // that traffic back upstream so the model keeps its own context.
+        let call = ToolCall {
+            id: format!("call_nano_{}_abc123", first.execution.turn_id),
+            kind: "function".into(),
+            function: FunctionCall {
+                name: "read_file".into(),
+                arguments: json!({"path": "src/http.rs"}).to_string(),
+            },
+        };
+        r.messages.push(assistant_action(&call));
+        r.messages.push(tool_response(
+            &call,
+            "Lines 1-1 of 1:\nCALLER CONTENT OF src/http.rs",
+        ));
+
+        let second = decide(&r, "test").unwrap();
+        assert!(
+            second.stream_segments.is_empty(),
+            "consulting progress line must not repeat on subsequent tool rounds: {:?}",
+            second.stream_segments
+        );
+        let consult = second
+            .coding
+            .clone()
+            .expect("the model still owns the turn");
+        assert_eq!(
+            second.execution.turn_id, first.execution.turn_id,
+            "the continuation stays in the same turn"
+        );
+        assert_eq!(consult.files, vec!["src/http.rs".to_string()]);
+        assert_eq!(consult.messages[2]["role"], "assistant");
+        assert_eq!(
+            consult.messages[3]["content"],
+            "Lines 1-1 of 1:\nCALLER CONTENT OF src/http.rs"
+        );
+        assert_eq!(
+            consult.tools.len(),
+            3,
+            "rounds remain while the budget lasts"
+        );
+        assert!(
+            !consult.messages.iter().any(|message| {
+                message["content"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("Nio Axis"))
+            }),
+            "the gateway's own directory must never reach the model: {:?}",
+            consult.messages
+        );
+
+        // Once the round budget is spent the tools are withdrawn so the model
+        // answers with what it actually read.
+        for round in 0..companion::CODING_MAX_ROUNDS {
+            let call = ToolCall {
+                id: format!("call_nano_{}_r{round}", first.execution.turn_id),
+                kind: "function".into(),
+                function: FunctionCall {
+                    name: "read_file".into(),
+                    arguments: json!({"path": "src/http.rs"}).to_string(),
+                },
+            };
+            r.messages.push(assistant_action(&call));
+            r.messages.push(tool_response(&call, "file contents"));
+        }
+        let capped = decide(&r, "test").unwrap();
+        let consult = capped.coding.clone().expect("the model still answers");
+        assert!(
+            consult.tools.is_empty(),
+            "the tool budget must be exhausted, not unbounded"
+        );
+    }
+
+    fn assistant_action(call: &ToolCall) -> nioxs_contracts::Message {
+        serde_json::from_value(json!({"role":"assistant","content":null,"tool_calls":[call]}))
+            .unwrap()
+    }
+
+    fn tool_response(call: &ToolCall, content: &str) -> nioxs_contracts::Message {
+        serde_json::from_value(json!({"role":"tool","tool_call_id":call.id,"content":content}))
+            .unwrap()
+    }
+
+    #[test]
     fn fresh_turns_are_distinct_and_continuations_keep_the_returned_turn() {
         let mut r = request("now read readme.md", true);
         let first = decide(&r, "test").unwrap();
@@ -1681,6 +2137,65 @@ mod tests {
         assert_eq!(continuation.execution.turn_id, first.execution.turn_id);
         assert_eq!(continuation.execution.outcome, Outcome::Completed);
     }
+    #[test]
+    fn bare_consent_reply_without_a_pending_prompt_installs_nothing() {
+        // Regression: a plain "yes" used to install svg2favicon no matter what was asked before.
+        let mut r = request("--coding: analyze my project", true);
+        r.messages.push(
+            serde_json::from_value(json!({
+                "role": "assistant",
+                "content": "I'll analyze your project by first exploring its structure."
+            }))
+            .unwrap(),
+        );
+        r.messages
+            .push(serde_json::from_value(json!({"role": "user", "content": "yes"})).unwrap());
+        let decision = decide(&r, "test").unwrap();
+        assert!(
+            decision.call.is_none(),
+            "a bare yes must not dispatch a tool"
+        );
+        assert_eq!(decision.execution.outcome, Outcome::Clarification);
+        assert!(
+            decision
+                .content
+                .unwrap_or_default()
+                .contains("no pending confirmation")
+        );
+    }
+
+    #[test]
+    fn consent_reply_approves_the_plugin_the_previous_turn_requested() {
+        let pending = companion::CompanionResult::ToolNeedsConsent {
+            plugin_name: "image_scaler".to_string(),
+            task: "resize assets/banner.png to 800x400".to_string(),
+        }
+        .to_markdown();
+        let r: ChatRequest = serde_json::from_value(json!({
+            "model": MODEL,
+            "messages": [
+                {"role": "user", "content": "--tools: resize assets/banner.png to 800x400"},
+                {"role": "assistant", "content": pending},
+                {"role": "user", "content": "yes"}
+            ],
+            "tools": []
+        }))
+        .unwrap();
+        let decision = decide(&r, "test").unwrap();
+        let content = decision.content.unwrap_or_default();
+        assert!(
+            content.contains("image_scaler"),
+            "the approved plugin must be the pending one, got: {content}"
+        );
+        assert!(
+            !content.contains("svg2favicon"),
+            "a consent reply must never fall back to a default plugin"
+        );
+        let _ = std::fs::remove_file(".nioxs/plugins/image_scaler.py");
+        let _ = std::fs::remove_dir(".nioxs/plugins");
+        let _ = std::fs::remove_dir(".nioxs");
+    }
+
     #[test]
     fn natural_read_phrasing_and_correlated_results() {
         for prompt in [
@@ -1766,23 +2281,19 @@ mod tests {
             parse(model, "scaffold gitignore"),
             Intent::Scaffold("gitignore".into())
         );
-        assert_eq!(
-            parse(model, "what is Jev?"),
-            Intent::Research("Jev".into())
-        );
+        assert_eq!(parse(model, "what is Jev?"), Intent::Research("Jev".into()));
         assert_eq!(
             parse(model, "hey what is zig?"),
             Intent::Research("zig".into())
         );
-        assert_eq!(
-            parse(model, "why zig?"),
-            Intent::Research("zig".into())
-        );
+        assert_eq!(parse(model, "why zig?"), Intent::Research("zig".into()));
         assert_eq!(parse(model, "hey"), Intent::Greeting);
         assert_eq!(parse(model, "help"), Intent::Help);
         assert_eq!(
             parse(model, "search my codebase"),
-            Intent::Clarify("Which literal text or symbol should I search for in the codebase?".into())
+            Intent::Clarify(
+                "Which literal text or symbol should I search for in the codebase?".into()
+            )
         );
     }
     #[test]
@@ -1812,9 +2323,18 @@ mod tests {
     #[test]
     fn test_human_language_analysis_normalization() {
         let model = Model::embedded().unwrap();
-        assert_eq!(parse(&model, "analyst code"), Intent::AnalyzeDir(".".into()));
-        assert_eq!(parse(&model, "analyse codebase"), Intent::AnalyzeDir(".".into()));
-        assert_eq!(parse(&model, "analyze codebase"), Intent::AnalyzeDir(".".into()));
+        assert_eq!(
+            parse(&model, "analyst code"),
+            Intent::AnalyzeDir(".".into())
+        );
+        assert_eq!(
+            parse(&model, "analyse codebase"),
+            Intent::AnalyzeDir(".".into())
+        );
+        assert_eq!(
+            parse(&model, "analyze codebase"),
+            Intent::AnalyzeDir(".".into())
+        );
         assert_eq!(
             parse(&model, "can you give me an analysis of the codebase?"),
             Intent::AnalyzeDir(".".into())
@@ -1854,7 +2374,10 @@ mod tests {
 
         // Phase 5: Autonomous Edit-and-Test Loop (TDD)
         assert_eq!(
-            parse(&model, "replace 'old_fn' with 'new_fn' in src/lib.rs and run tests"),
+            parse(
+                &model,
+                "replace 'old_fn' with 'new_fn' in src/lib.rs and run tests"
+            ),
             Intent::TddRefactor {
                 file: "src/lib.rs".into(),
                 old: "old_fn".into(),
@@ -1870,27 +2393,32 @@ mod tests {
                 function: "calculate_tax".into(),
             }
         );
-        assert_eq!(
-            parse(&model, "review git diff"),
-            Intent::ReviewDiff
-        );
+        assert_eq!(parse(&model, "review git diff"), Intent::ReviewDiff);
         assert_eq!(
             parse(&model, "suggest commit message"),
             Intent::SuggestCommit
         );
     }
 
-
     #[test]
     fn test_suggestions_and_task_planning() {
         let model = Model::embedded().unwrap();
 
         assert_eq!(parse(&model, "any suggestion?"), Intent::ProjectSuggestions);
-        assert_eq!(parse(&model, "what should I work on?"), Intent::ProjectSuggestions);
-        assert_eq!(parse(&model, "suggest next steps"), Intent::ProjectSuggestions);
+        assert_eq!(
+            parse(&model, "what should I work on?"),
+            Intent::ProjectSuggestions
+        );
+        assert_eq!(
+            parse(&model, "suggest next steps"),
+            Intent::ProjectSuggestions
+        );
 
         assert_eq!(
-            parse(&model, "plan this task: implement token bucket rate limiter"),
+            parse(
+                &model,
+                "plan this task: implement token bucket rate limiter"
+            ),
             Intent::TaskPlan("implement token bucket rate limiter".into())
         );
         assert_eq!(
@@ -1904,18 +2432,54 @@ mod tests {
         let model = Model::embedded().unwrap();
 
         // 1. Natural read prompt variants
-        assert_eq!(parse(&model, "what is in Cargo.toml?"), Intent::Read("Cargo.toml".into()));
-        assert_eq!(parse(&model, "what's inside src/lib.rs"), Intent::Read("src/lib.rs".into()));
-        assert_eq!(parse(&model, "can you read src/lib.rs"), Intent::Read("src/lib.rs".into()));
-        assert_eq!(parse(&model, "view src/lib.rs"), Intent::Read("src/lib.rs".into()));
-        assert_eq!(parse(&model, "cat Cargo.toml"), Intent::Read("Cargo.toml".into()));
-        assert_eq!(parse(&model, "open Cargo.toml"), Intent::Read("Cargo.toml".into()));
-        assert_eq!(parse(&model, "let's look at Cargo.toml"), Intent::Read("Cargo.toml".into()));
-        assert_eq!(parse(&model, "show me what's inside Cargo.toml"), Intent::Read("Cargo.toml".into()));
-        assert_eq!(parse(&model, "show contents of README.md"), Intent::Read("README.md".into()));
-        assert_eq!(parse(&model, "display src/lib.rs"), Intent::Read("src/lib.rs".into()));
-        assert_eq!(parse(&model, "what does Cargo.toml contain?"), Intent::Read("Cargo.toml".into()));
-        assert_eq!(parse(&model, "Cargo.toml"), Intent::Read("Cargo.toml".into()));
+        assert_eq!(
+            parse(&model, "what is in Cargo.toml?"),
+            Intent::Read("Cargo.toml".into())
+        );
+        assert_eq!(
+            parse(&model, "what's inside src/lib.rs"),
+            Intent::Read("src/lib.rs".into())
+        );
+        assert_eq!(
+            parse(&model, "can you read src/lib.rs"),
+            Intent::Read("src/lib.rs".into())
+        );
+        assert_eq!(
+            parse(&model, "view src/lib.rs"),
+            Intent::Read("src/lib.rs".into())
+        );
+        assert_eq!(
+            parse(&model, "cat Cargo.toml"),
+            Intent::Read("Cargo.toml".into())
+        );
+        assert_eq!(
+            parse(&model, "open Cargo.toml"),
+            Intent::Read("Cargo.toml".into())
+        );
+        assert_eq!(
+            parse(&model, "let's look at Cargo.toml"),
+            Intent::Read("Cargo.toml".into())
+        );
+        assert_eq!(
+            parse(&model, "show me what's inside Cargo.toml"),
+            Intent::Read("Cargo.toml".into())
+        );
+        assert_eq!(
+            parse(&model, "show contents of README.md"),
+            Intent::Read("README.md".into())
+        );
+        assert_eq!(
+            parse(&model, "display src/lib.rs"),
+            Intent::Read("src/lib.rs".into())
+        );
+        assert_eq!(
+            parse(&model, "what does Cargo.toml contain?"),
+            Intent::Read("Cargo.toml".into())
+        );
+        assert_eq!(
+            parse(&model, "Cargo.toml"),
+            Intent::Read("Cargo.toml".into())
+        );
 
         // 2. Synthesize read NLP response
         let toml_sample = "[package]\nname = \"test-crate\"\nversion = \"0.1.0\"\n[dependencies]\ntokio = \"1.0\"\n";
@@ -1931,5 +2495,126 @@ mod tests {
         assert!(rs_res.contains("`add()`"));
         assert!(rs_res.contains("`Calc`"));
         assert!(rs_res.contains("```rust"));
+    }
+
+    #[test]
+    fn test_directive_parsing_with_and_without_colons() {
+        let model = Model::embedded().unwrap();
+
+        // --code directives
+        assert_eq!(
+            parse(&model, "--code write a function"),
+            Intent::Coding {
+                prompt: "write a function".into(),
+                guarded: false,
+            }
+        );
+        assert_eq!(
+            parse(&model, "--code: write a function"),
+            Intent::Coding {
+                prompt: "write a function".into(),
+                guarded: false,
+            }
+        );
+        assert_eq!(
+            parse(&model, "--code guard write a function"),
+            Intent::Coding {
+                prompt: "write a function".into(),
+                guarded: true,
+            }
+        );
+        assert_eq!(
+            parse(&model, "--code:guard write a function"),
+            Intent::Coding {
+                prompt: "write a function".into(),
+                guarded: true,
+            }
+        );
+        assert_eq!(
+            parse(&model, "--code! write a function"),
+            Intent::Coding {
+                prompt: "write a function".into(),
+                guarded: true,
+            }
+        );
+        assert_eq!(
+            parse(&model, "--coding: write a function"),
+            Intent::Coding {
+                prompt: "write a function".into(),
+                guarded: false,
+            }
+        );
+
+        // --bash directives
+        assert_eq!(
+            parse(&model, "--bash cargo check"),
+            Intent::Bash("cargo check".into())
+        );
+        assert_eq!(
+            parse(&model, "--bash: cargo check"),
+            Intent::Bash("cargo check".into())
+        );
+
+        // --tools directives
+        assert_eq!(
+            parse(&model, "--tools list"),
+            Intent::Tool("list".into())
+        );
+        assert_eq!(
+            parse(&model, "--tools: list"),
+            Intent::Tool("list".into())
+        );
+
+        // --test directives
+        assert_eq!(
+            parse(&model, "--test unit"),
+            Intent::TestRunner("unit".into())
+        );
+        assert_eq!(
+            parse(&model, "--test: unit"),
+            Intent::TestRunner("unit".into())
+        );
+
+        // --git directives
+        assert_eq!(parse(&model, "--git status"), Intent::GitSummary);
+        assert_eq!(parse(&model, "--git:status"), Intent::GitSummary);
+        assert_eq!(parse(&model, "--git diff"), Intent::GitSummary);
+        assert_eq!(parse(&model, "--git:diff"), Intent::GitSummary);
+
+        // --config directives
+        assert_eq!(parse(&model, "--config code ON"), Intent::Config("code ON".into()));
+        assert_eq!(parse(&model, "--config: code ON"), Intent::Config("code ON".into()));
+        assert_eq!(parse(&model, "--config list"), Intent::Config("list".into()));
+        assert_eq!(parse(&model, "--config: list"), Intent::Config("list".into()));
+    }
+
+    #[test]
+    fn test_config_code_on_defaults_prompt_to_code_directive() {
+        let model = Model::embedded().expect("embedded model");
+
+        companion::with_test_config(
+            companion::XsConfig {
+                code: true,
+                ..Default::default()
+            },
+            || {
+                assert!(companion::is_config_code_on());
+
+                // A plain request without --code prefix defaults to Intent::Coding!
+                let intent = parse(&model, "add retry logic to the HTTP client");
+                match intent {
+                    Intent::Coding { prompt, guarded } => {
+                        assert_eq!(prompt, "add retry logic to the HTTP client");
+                        assert!(!guarded);
+                    }
+                    other => panic!("Expected Intent::Coding when code is ON, got {:?}", other),
+                }
+
+                // Directives like --bash still route to their own intent
+                assert_eq!(parse(&model, "--bash cargo check"), Intent::Bash("cargo check".into()));
+                assert_eq!(parse(&model, "--tools list"), Intent::Tool("list".into()));
+            },
+        );
+        assert!(!companion::is_config_code_on());
     }
 }

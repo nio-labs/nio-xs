@@ -378,6 +378,114 @@ pub fn formulate_assist_plan(query: &str, diag: &Diagnostic) -> AssistPlan {
     }
 }
 
+/// A persisted workspace AST symbol index mapping symbols to files, lines, and kinds.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct WorkspaceIndex {
+    pub version: u32,
+    pub updated_at_unix: u64,
+    pub files: Vec<String>,
+    pub symbols: Vec<SymbolNode>,
+}
+
+impl WorkspaceIndex {
+    pub fn new() -> Self {
+        Self {
+            version: 1,
+            updated_at_unix: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            files: Vec::new(),
+            symbols: Vec::new(),
+        }
+    }
+
+    /// Finds files containing the given symbol or related callers/callees.
+    pub fn find_files_for_symbol(&self, symbol: &str) -> Vec<String> {
+        let sym_l = symbol.to_ascii_lowercase();
+        let mut matched_files = Vec::new();
+        for node in &self.symbols {
+            if node.name.to_ascii_lowercase() == sym_l || node.name.to_ascii_lowercase().contains(&sym_l) {
+                if !matched_files.contains(&node.file) {
+                    matched_files.push(node.file.clone());
+                }
+            }
+        }
+        matched_files
+    }
+}
+
+/// Scans the workspace directory and builds a complete WorkspaceIndex.
+pub fn scan_workspace_index(root: &std::path::Path) -> WorkspaceIndex {
+    let mut index = WorkspaceIndex::new();
+    let mut queue = vec![root.to_path_buf()];
+    let max_visited = 500;
+    let mut visited = 0;
+
+    while let Some(dir) = queue.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            visited += 1;
+            if visited > max_visited {
+                break;
+            }
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            if meta.is_dir() {
+                if !crate::companion::BUNDLE_SKIP_DIRS.contains(&name.as_str()) && !name.starts_with('.') {
+                    queue.push(path);
+                }
+                continue;
+            }
+            if !meta.is_file() || meta.len() > 100_000 {
+                continue;
+            }
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if !["rs", "ts", "tsx", "js", "jsx", "py", "go"].contains(&ext) {
+                continue;
+            }
+            let Ok(rel) = path.strip_prefix(root) else {
+                continue;
+            };
+            let rel_str = rel.to_string_lossy().replace('\\', "/");
+            if !crate::safe_path(&rel_str, false) {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let syms = extract_symbols_from_source(&rel_str, &content);
+            if !syms.is_empty() {
+                index.files.push(rel_str);
+                index.symbols.extend(syms);
+            }
+        }
+    }
+    index
+}
+
+/// Persists the workspace index to `.nioxs/index.json`.
+pub fn save_workspace_index(index: &WorkspaceIndex, dest: &std::path::Path) -> Result<(), String> {
+    if let Some(parent) = dest.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let data = serde_json::to_string_pretty(index)
+        .map_err(|e| format!("failed to serialize index: {e}"))?;
+    std::fs::write(dest, data)
+        .map_err(|e| format!("failed to write index to {}: {e}", dest.display()))
+}
+
+/// Loads the workspace index from `.nioxs/index.json` if available.
+pub fn load_workspace_index(path: &std::path::Path) -> Option<WorkspaceIndex> {
+    let data = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -414,5 +522,31 @@ mod tests {
         assert_eq!(go_syms.len(), 2);
         assert_eq!(go_syms[0].name, "Server");
         assert_eq!(go_syms[1].name, "Listen");
+    }
+
+    #[test]
+    fn test_workspace_index_search_and_persistence() {
+        let mut index = WorkspaceIndex::new();
+        index.files.push("src/auth.rs".into());
+        index.symbols.push(SymbolNode {
+            name: "validate_token".into(),
+            kind: "fn".into(),
+            file: "src/auth.rs".into(),
+            line: 12,
+            callers: vec![],
+            callees: vec![],
+        });
+
+        let found = index.find_files_for_symbol("validate_token");
+        assert_eq!(found, vec!["src/auth.rs"]);
+
+        let temp_dir = std::env::temp_dir().join(format!("nioxs-idx-{}", std::process::id()));
+        let file_path = temp_dir.join("index.json");
+        assert!(save_workspace_index(&index, &file_path).is_ok());
+
+        let loaded = load_workspace_index(&file_path).expect("loaded index");
+        assert_eq!(loaded.symbols.len(), 1);
+        assert_eq!(loaded.symbols[0].name, "validate_token");
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

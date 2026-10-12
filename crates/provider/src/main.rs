@@ -19,11 +19,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|mcp|init]\n\
+            "Usage: nioxs [serve|mcp|init|undo|history]\n\
 Commands:\n\
-  serve   Start HTTP OpenAI-compatible AI gateway (default)\n\
-  mcp     Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
-  init    Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
+  serve     Start HTTP OpenAI-compatible AI gateway (default)\n\
+  mcp       Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
+  init      Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
+  undo      Rollback last applied multi-file patch (or specific patch_id)\n\
+  history   Display local session turn journal from .nioxs/history.jsonl\n\
 \n\
 Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID, NIOXS_API_TOKEN_FILE (optional on loopback)."
         );
@@ -83,11 +85,77 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
         }
         return Ok(());
     }
+    if arg.as_deref() == Some("undo") {
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| ".".into());
+        let patch_id = std::env::args().nth(2);
+        let id_to_rollback = if let Some(id) = patch_id {
+            id
+        } else {
+            let undo_dir = current_dir.join(".nioxs/undo");
+            let mut latest_file = None;
+            let mut latest_time = std::time::SystemTime::UNIX_EPOCH;
+            if let Ok(entries) = std::fs::read_dir(&undo_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                        if let Ok(meta) = entry.metadata() {
+                            if let Ok(mod_time) = meta.modified() {
+                                if mod_time > latest_time {
+                                    latest_time = mod_time;
+                                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                                        latest_file = Some(stem.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            match latest_file {
+                Some(id) => id,
+                None => {
+                    println!("No undo snapshots found in .nioxs/undo/");
+                    return Ok(());
+                }
+            }
+        };
+
+        match nioxs_nano::patch::rollback_patch(&current_dir, &id_to_rollback) {
+            Ok(count) => {
+                println!("✔ Successfully rolled back patch '{id_to_rollback}' ({count} files restored).");
+            }
+            Err(e) => {
+                eprintln!("Failed to rollback patch '{id_to_rollback}': {e}");
+            }
+        }
+        return Ok(());
+    }
+    if arg.as_deref() == Some("history") {
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| ".".into());
+        let limit = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(20);
+        let turns = nioxs_provider::journal::read_local_turns(&current_dir, limit);
+        if turns.is_empty() {
+            println!("No local turn history found in .nioxs/history.jsonl");
+        } else {
+            println!("Recent Turns ({} total):", turns.len());
+            for (idx, turn) in turns.iter().enumerate() {
+                println!(
+                    "[{:2}] ts:{} | Intent: {:<12} | Outcome: {:<10}\n     Prompt: {}\n",
+                    idx + 1,
+                    turn.timestamp_unix,
+                    turn.intent,
+                    turn.outcome,
+                    turn.prompt.chars().take(80).collect::<String>()
+                );
+            }
+        }
+        return Ok(());
+    }
     if arg.as_deref() == Some("mcp") {
         return nioxs_provider::mcp::run_stdio_server().map_err(|e| e.into());
     }
     if arg.is_some() && arg.as_deref() != Some("serve") {
-        return Err("unknown command; expected 'nioxs', 'nioxs serve', 'nioxs init', or 'nioxs mcp'".into());
+        return Err("unknown command; expected 'nioxs', 'nioxs serve', 'nioxs init', 'nioxs mcp', 'nioxs undo', or 'nioxs history'".into());
     }
     let listen: std::net::SocketAddr = std::env::var("NIOXS_LISTEN")
         .unwrap_or_else(|_| "127.0.0.1:7460".into())
@@ -148,7 +216,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
   │  • Gateway API : http://{:<33} │\n\
   │  • NioDB Store : {:<40} │\n\
   │  • MicroLM     : NioNano (<0.5ms decision triage)        │\n\
-  │  • Directives  : --bash:, --tools:, --coding:, --test:   │\n\
+  │  • Directives  : --bash, --tools, --code, --test         │\n\
   ╰──────────────────────────────────────────────────────────╯\n",
         env!("CARGO_PKG_VERSION"),
         addr,

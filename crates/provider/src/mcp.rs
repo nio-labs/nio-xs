@@ -59,8 +59,8 @@ pub fn handle_rpc(line: &str) -> Option<String> {
         }
         "notifications/initialized" => None,
         "tools/list" => {
-            let tools = json!([
-                {
+            let mut tools = vec![
+                json!({
                     "name": "web_fetch",
                     "description": "Fetch and extract clean readable text from a web URL",
                     "inputSchema": {
@@ -70,8 +70,8 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                         },
                         "required": ["url"]
                     }
-                },
-                {
+                }),
+                json!({
                     "name": "wiki_search",
                     "description": "Search Wikipedia articles and extract article excerpts",
                     "inputSchema": {
@@ -81,8 +81,8 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                         },
                         "required": ["query"]
                     }
-                },
-                {
+                }),
+                json!({
                     "name": "github_repo",
                     "description": "Fetch GitHub repository README or overview",
                     "inputSchema": {
@@ -92,8 +92,8 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                         },
                         "required": ["repo"]
                     }
-                },
-                {
+                }),
+                json!({
                     "name": "package_info",
                     "description": "Inspect crates.io and npm package metadata",
                     "inputSchema": {
@@ -103,8 +103,8 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                         },
                         "required": ["name"]
                     }
-                },
-                {
+                }),
+                json!({
                     "name": "apply_patch",
                     "description": "Apply a deterministic line replacement patch",
                     "inputSchema": {
@@ -116,8 +116,8 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                         },
                         "required": ["content", "target", "replacement"]
                     }
-                },
-                {
+                }),
+                json!({
                     "name": "scaffold_template",
                     "description": "Scaffold standard project templates (gitignore, ci, license)",
                     "inputSchema": {
@@ -127,12 +127,73 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                         },
                         "required": ["template"]
                     }
+                }),
+                json!({
+                    "name": "ast_symbol_search",
+                    "description": "Search workspace symbols (fn, struct, type, class, etc.) across Rust, TypeScript, Python, and Go",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": { "type": "string" }
+                        },
+                        "required": ["query"]
+                    }
+                }),
+                json!({
+                    "name": "companion_tool",
+                    "description": "Execute any of the 20 local Python companion plugins (svg2favicon, jwt_decoder, regex_tester, json_yaml, etc.)",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "task": { "type": "string" }
+                        },
+                        "required": ["task"]
+                    }
+                })
+            ];
+
+            // Expose each companion plugin as an individual MCP tool
+            for plugin in nioxs_nano::companion::TOOL_PLUGINS {
+                tools.push(json!({
+                    "name": format!("plugin_{}", plugin.name),
+                    "description": format!("{}: {}", plugin.title, plugin.capability),
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "arguments": { "type": "string", "description": format!("Task description or CLI flags. Example: {}", plugin.example) }
+                        },
+                        "required": ["arguments"]
+                    }
+                }));
+            }
+
+            let res = JsonRpcResponse {
+                jsonrpc: "2.0".into(),
+                id,
+                result: Some(json!({ "tools": tools })),
+                error: None,
+            };
+            serde_json::to_string(&res).ok()
+        }
+        "prompts/list" => {
+            let prompts = json!([
+                {
+                    "name": "code_review",
+                    "description": "Audit code for edge cases, performance, unwrap panics, and security flaws"
+                },
+                {
+                    "name": "architect_design",
+                    "description": "Analyze system boundaries, contracts, modularity, and trade-offs"
+                },
+                {
+                    "name": "self_heal_diagnostics",
+                    "description": "Analyze compiler error diagnostics and formulate step-by-step remediation"
                 }
             ]);
             let res = JsonRpcResponse {
                 jsonrpc: "2.0".into(),
                 id,
-                result: Some(json!({ "tools": tools })),
+                result: Some(json!({ "prompts": prompts })),
                 error: None,
             };
             serde_json::to_string(&res).ok()
@@ -142,26 +203,46 @@ pub fn handle_rpc(line: &str) -> Option<String> {
             let tool_name = params["name"].as_str().unwrap_or("");
             let args = &params["arguments"];
 
-            let output_text = match tool_name {
-                "scaffold_template" => {
-                    let tpl = args["template"].as_str().unwrap_or("");
-                    match nioxs_nano::scaffold_template(tpl) {
-                        Some((name, content)) => format!("Scaffolded {name}:\n\n{content}"),
-                        None => format!("Unknown template '{tpl}'"),
+            let output_text = if let Some(plugin_name) = tool_name.strip_prefix("plugin_") {
+                let task_arg = args["arguments"].as_str().unwrap_or("");
+                let full_task = format!("{plugin_name} {task_arg}");
+                nioxs_nano::companion::dispatch_tool(&full_task).to_markdown()
+            } else {
+                match tool_name {
+                    "companion_tool" => {
+                        let task = args["task"].as_str().unwrap_or("");
+                        nioxs_nano::companion::dispatch_tool(task).to_markdown()
                     }
-                }
-                "apply_patch" => {
-                    let content = args["content"].as_str().unwrap_or("");
-                    let target = args["target"].as_str().unwrap_or("");
-                    let replacement = args["replacement"].as_str().unwrap_or("");
-                    match nioxs_nano::apply_patch_to_string(content, target, replacement, false) {
-                        Ok((patched, count)) => {
-                            format!("Successfully patched {count} occurrence(s):\n\n{patched}")
+                    "ast_symbol_search" => {
+                        let q = args["query"].as_str().unwrap_or("");
+                        let ws_index = nioxs_nano::brain::scan_workspace_index(std::path::Path::new("."));
+                        let files = ws_index.find_files_for_symbol(q);
+                        if files.is_empty() {
+                            format!("No symbols found matching query '{q}'.")
+                        } else {
+                            format!("Found symbol '{q}' in:\n{}", files.iter().map(|f| format!("• `{f}`")).collect::<Vec<_>>().join("\n"))
                         }
-                        Err(e) => format!("Patch error: {e}"),
                     }
+                    "scaffold_template" => {
+                        let tpl = args["template"].as_str().unwrap_or("");
+                        match nioxs_nano::scaffold_template(tpl) {
+                            Some((name, content)) => format!("Scaffolded {name}:\n\n{content}"),
+                            None => format!("Unknown template '{tpl}'"),
+                        }
+                    }
+                    "apply_patch" => {
+                        let content = args["content"].as_str().unwrap_or("");
+                        let target = args["target"].as_str().unwrap_or("");
+                        let replacement = args["replacement"].as_str().unwrap_or("");
+                        match nioxs_nano::apply_patch_to_string(content, target, replacement, false) {
+                            Ok((patched, count)) => {
+                                format!("Successfully patched {count} occurrence(s):\n\n{patched}")
+                            }
+                            Err(e) => format!("Patch error: {e}"),
+                        }
+                    }
+                    _ => format!("Tool '{tool_name}' dispatched via NioXS MCP server"),
                 }
-                _ => format!("Tool '{tool_name}' dispatched via NioXS MCP server"),
             };
 
             let res = JsonRpcResponse {

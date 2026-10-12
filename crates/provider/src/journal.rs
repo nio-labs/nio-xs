@@ -101,6 +101,7 @@ pub async fn record(app: &App, decision: &mut Decision) -> Result<(), String> {
         .find(|r| r["data"]["revision"] == data["revision"] && r["data"]["state"] == data["state"])
     {
         if essential(&existing["data"]) != data {
+            eprintln!("CONFLICT in journal.rs: existing={:?} vs data={:?}", essential(&existing["data"]), data);
             return Err("workflow_revision_conflict".into());
         }
     } else {
@@ -116,4 +117,77 @@ pub async fn record(app: &App, decision: &mut Decision) -> Result<(), String> {
             .await?;
     }
     Ok(())
+}
+
+/// A local session turn record persisted in `.nioxs/history.jsonl`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct LocalTurnRecord {
+    pub turn_id: String,
+    pub timestamp_unix: u64,
+    pub prompt: String,
+    pub intent: String,
+    pub outcome: String,
+    pub summary: Option<String>,
+}
+
+/// Appends a turn record to `.nioxs/history.jsonl`.
+pub fn append_local_turn(root: &std::path::Path, record: &LocalTurnRecord) -> Result<(), String> {
+    let dir = root.join(".nioxs");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("history.jsonl");
+    let line = serde_json::to_string(record)
+        .map_err(|e| format!("cannot serialize local turn: {e}"))?;
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("cannot open history.jsonl: {e}"))?;
+    writeln!(file, "{line}").map_err(|e| format!("cannot write history.jsonl: {e}"))
+}
+
+/// Reads recent local turns from `.nioxs/history.jsonl`.
+pub fn read_local_turns(root: &std::path::Path, limit: usize) -> Vec<LocalTurnRecord> {
+    let path = root.join(".nioxs/history.jsonl");
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let mut turns = Vec::new();
+    for line in content.lines() {
+        if let Ok(rec) = serde_json::from_str::<LocalTurnRecord>(line.trim()) {
+            turns.push(rec);
+        }
+    }
+    if turns.len() > limit {
+        turns.split_off(turns.len() - limit)
+    } else {
+        turns
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_local_turn_journaling() {
+        let temp_dir = std::env::temp_dir().join(format!("nioxs-hist-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        let rec = LocalTurnRecord {
+            turn_id: "turn-123".into(),
+            timestamp_unix: 1700000000,
+            prompt: "--code test".into(),
+            intent: "coding".into(),
+            outcome: "completed".into(),
+            summary: Some("Tested coding turn".into()),
+        };
+
+        assert!(append_local_turn(&temp_dir, &rec).is_ok());
+        let read = read_local_turns(&temp_dir, 10);
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].turn_id, "turn-123");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
 }

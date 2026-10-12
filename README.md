@@ -24,8 +24,8 @@
    │  NioNano (MicroLM: 52 KB) │             │    Upstream LLM (Kilo)    │
    │  • Micro Learning Model   │             │  • Triggered via --coding │
    │  • <1ms CPU inference     │             │  • Kilo Auto Free / Mini  │
-   │  • AST compiler triage    │             │  • Context-bundled from   │
-   │  • Pure native scraping   │             │    local files & folders  │
+   │  • AST compiler triage    │             │  • Decides what to read   │
+   │  • Pure native scraping   │             │    via the caller's tools │
    │  • UI label & style fixes │             │  • Guarded against ghost  │
    │  • Decision & safety gate │             │    symbols & fake paths   │
    └───────────────────────────┘             └───────────────────────────┘
@@ -96,8 +96,8 @@ Developers can switch to NioNano along their project lifecycle or trigger in-ses
 | `--bash: <cmd>` | **In-TUI Terminal** | Run shell commands (e.g. `--bash: cargo test`) directly in conversation without exiting or minimizing the coding agent TUI. |
 | `--test: [pattern]` | **Auto Test Runner** | Automatically detects test suite (`cargo test`, `npm test`, `pytest`, `go test`), runs matching pattern, and feeds back trimmed traces. |
 | `--git:status` / `--git:diff` | **Git Diff Summary** | Summarizes working branch status and symbol diffs for context bundling. |
-| `--tools: <task>` | **Python Plugins** | Specialized automation (e.g. SVG-to-favicon generator, asset resizers). Prompts for download consent before installing new plugins. |
-| `--coding: <prompt>` | **Kilo LLM Middleman** | Bundles relevant local files/folders and consults Kilo models (`kilo auto free`, `kilo mini code`). |
+| `--tools: <task>` | **Python Plugins** | Specialized automation (e.g. real SVG-to-favicon generator via `resvg`, honest CSS color extraction, Pillow-based image scaling). Prompts for download consent before installing new plugins; a reply of `yes` confirms the plugin that prompt named. |
+| `--coding: <prompt>` | **Kilo LLM Middleman** | Hands the request to Kilo together with the caller's own file tools, so the model decides what, if anything, it needs to read. Its tool calls are relayed back, the client executes them in the directory it was started in, and the results are handed back to the model; the reply streams line by line (`kilo-auto/free`, no API key needed). Progress prints one line per step (`consulting <model>`, `read_file <path>`) as it happens, and every path is one the model actually asked for. A question that needs no files is answered directly. Callers that cannot run tools fall back to a local bounded scan of the gateway's own workspace. |
 | `--coding:guard <req>`<br/>*or* `--coding!: <req>` | **Anti-Hallucination Guard** | Verifies generated code against Rust, TypeScript, Python, and Go AST symbols. Catches ghost APIs and non-existent files; prompts to reroute. |
 
 ---

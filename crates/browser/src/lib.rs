@@ -896,4 +896,57 @@ mod tests {
             "kisskh | Asian Dramas & Movies"
         );
     }
+
+    #[test]
+    fn test_offline_doc_cache() {
+        let temp_dir = std::env::temp_dir().join(format!("nioxs-doc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        let entry = DocCacheEntry {
+            package: "tokio".into(),
+            ecosystem: "cargo".into(),
+            version: "1.38.0".into(),
+            summary: "Asynchronous runtime for Rust".into(),
+            documentation_md: "## Tokio Runtime\nProvides multi-threaded event loop.".into(),
+            timestamp_unix: 1700000000,
+        };
+        assert!(save_doc_cache(&temp_dir, &entry).is_ok());
+
+        let loaded = load_doc_cache(&temp_dir, "tokio", "cargo").expect("loaded doc");
+        assert_eq!(loaded.version, "1.38.0");
+        assert!(loaded.documentation_md.contains("Tokio Runtime"));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+}
+
+/// Structured documentation entry stored in local cache.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DocCacheEntry {
+    pub package: String,
+    pub ecosystem: String, // cargo, npm, pypi, go
+    pub version: String,
+    pub summary: String,
+    pub documentation_md: String,
+    pub timestamp_unix: u64,
+}
+
+/// Saves documentation to `.nioxs/docs/<ecosystem>/<package>.json`.
+pub fn save_doc_cache(root: &Path, entry: &DocCacheEntry) -> Result<(), String> {
+    let dir = root.join(".nioxs/docs").join(&entry.ecosystem);
+    let _ = std::fs::create_dir_all(&dir);
+    let file = dir.join(format!("{}.json", entry.package.to_ascii_lowercase()));
+    let data = serde_json::to_string_pretty(entry)
+        .map_err(|e| format!("cannot serialize doc entry: {e}"))?;
+    std::fs::write(&file, data)
+        .map_err(|e| format!("cannot write doc entry to {}: {e}", file.display()))
+}
+
+/// Loads documentation from `.nioxs/docs/<ecosystem>/<package>.json` if available.
+pub fn load_doc_cache(root: &Path, package: &str, ecosystem: &str) -> Option<DocCacheEntry> {
+    let file = root
+        .join(".nioxs/docs")
+        .join(ecosystem)
+        .join(format!("{}.json", package.to_ascii_lowercase()));
+    let data = std::fs::read_to_string(&file).ok()?;
+    serde_json::from_str(&data).ok()
 }
