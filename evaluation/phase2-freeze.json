@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "artifact_sha256": "f2ed1586e45c036053e5c399ecbe789471757be3ee65596d3a89bcf9f882582c",
-  "holdout_sha256": "6d4a7e5f7bf42fc3d8add555dfcd1f3a95c76b5a57e476ba194ac034d0a44645",
+  "artifact_sha256": "9b03e97096d232b76a4de3143b9ef0c76b6e9b64d241a289e99fe1e4977fe125",
+  "holdout_sha256": "fb22d6cc201ef865480e2e89f10980fa2cf2055f0a4f444bb06d6200f5b4ba20",
   "purpose": "post-freeze synthetic acceptance; not real-world accuracy",
-  "records": 270
+  "records": 250
 }

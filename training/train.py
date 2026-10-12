@@ -6,7 +6,7 @@ LABELS = ['read_file', 'inspect_project', 'find_files', 'search_code', 'run_chec
 
 def features(prompt):
     words = re.findall(r'[a-z0-9_./*-]+', prompt.lower())[:80]
-    risk={'write','new','delete','steal','bypass','novel','weather','translate','email','captcha','deploy','fix','rewrite','refactor','explain','design','recommend','compare','summarize','debug','create','calculate','solve','research','remove','arbitrary','private','passwords','credentials','hack','upload','rm','sudo','web','better'}
+    risk={'steal','bypass','novel','weather','translate','email','captcha','deploy','arbitrary','private','passwords','credentials','hack','upload','rm','sudo'}
     unsafe=any(w in risk or w.startswith(('/', '../','~/')) for w in words)
     missing=any(w in {'it','that','thing'} for w in words)
     aliases={'where':'locate','which':'find','contain':'references','containing':'references','occurs':'references','occurrences':'references','matches':'references','look':'search','linter':'lint','compile':'build','suite':'tests','unit':'tests','test':'tests','filenames':'files','filename':'files','repository':'project','checkout':'project','workspace':'project','dependencies':'manifests','dependency':'manifest','display':'read','open':'read','contents':'read'}
@@ -69,10 +69,13 @@ def generate():
         for t_index,template in enumerate(groups[split_index]):
           for x_index,x in enumerate(targets[label][split_index]):
             out.append(dict(id=f'{label}_{split}_{t_index}_{x_index}',family_id=f'{label}_{split}_target_{x_index}',split=split,prompt=template.format(x=x).strip(),intent=label))
+    # Genuinely out-of-scope or destructive requests only. Common coding verbs
+    # (fix, refactor, debug, explain, write, create, summarize, compare, ...) are
+    # handled by the intent layer and must not be learned as `unsupported`.
     bad=[
-      ['write a novel about {x}','explain {x}','fix the bug in {x}','delete {x}','translate {x}','deploy {x}','design {x}','compare {x}','steal {x}','bypass {x}','email {x}','predict {x}','rewrite {x}','recommend {x}'],
-      ['refactor {x}','summarize {x}','debug {x}','create {x}','calculate {x}','solve {x}','research {x}','remove {x}'],
-      ['write tests for {x}','run arbitrary shell code from {x}','read and delete {x}','find ways to steal {x}','search the web for {x}','open and rewrite {x}','now fix {x}','build a new application for {x}','run tests then deploy {x}','explain and modify {x}','read private passwords from {x}','solve a captcha on {x}']]
+      ['write a novel about {x}','translate {x}','deploy {x}','steal {x}','bypass {x}','email {x}','hack into {x}','upload {x} to a remote server','tell me the weather in {x}','send an email about {x}'],
+      ['read private passwords from {x}','find ways to steal {x}','write a novel about {x}','translate {x} into French','deploy {x} to production','bypass the login for {x}','hack into {x}','solve a captcha on {x}','upload {x} to a remote server','send an email containing {x}'],
+      ['run arbitrary shell code from {x}','read private passwords from {x}','find ways to steal {x}','solve a captcha on {x}','upload {x} to a remote server','bypass the permissions for {x}','hack into {x}','tell me the weather in {x}','translate {x} into German','send an email containing {x}']]
     subjects=[['this project','the login handler','the README','the database','package files','a server','user accounts','system logs','an API','our repository'],['this checkout','configuration files','a network tool','application code','source files','the manifest','a plugin','the browser','a release','a cache'],['README.md','Cargo.toml','the current project','a private account','credentials','our source code','production','this website','a remote machine','these packages']]
     for i,split in enumerate(['train','validation','test']):
       for t,template in enumerate(bad[i]):

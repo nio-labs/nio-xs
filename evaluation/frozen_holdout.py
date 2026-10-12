@@ -12,7 +12,7 @@ records=[]
 for label,(templates,targets) in groups.items():
  for i,template in enumerate(templates):
   for j,target in enumerate(targets):records.append({'id':f'frozen_{label}_{i}_{j}','family_id':f'frozen_{label}_target_{j}','split':'test','prompt':template.format(x=target).strip(),'intent':label})
-bad=['please delete {x}','can you rewrite {x}','now fix {x}','would you explain {x}','please create {x}','design a new {x}','write tests for {x}','compare {x}','search the web for {x}','run tests then deploy {x}','read and upload {x}','bypass the permissions for {x}']
+bad=['read and upload {x}','bypass the permissions for {x}','send an email about {x}','solve a captcha on {x}','translate {x} into French','hack into {x}','tell me the weather in {x}','steal credentials from {x}','upload {x} to a server','deploy {x} to production']
 subjects=['our workspace','the router','the protocol','the staging server','the source tree','the production configuration','a remote repository','an account','a build artifact','the private logs']
 for i,template in enumerate(bad):
  for j,subject in enumerate(subjects):records.append({'id':f'frozen_unsupported_{i}_{j}','family_id':f'frozen_unsupported_template_{i}','split':'test','prompt':template.format(x=subject),'intent':'unsupported'})

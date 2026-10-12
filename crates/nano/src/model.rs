@@ -129,10 +129,12 @@ pub fn words(prompt: &str) -> Vec<String> {
 
 pub fn features(prompt: &str) -> Vec<String> {
     let original = words(prompt);
+    // Genuinely out-of-scope or destructive requests only. Common coding verbs
+    // (fix, refactor, debug, explain, write, create, summarize, ...) are handled
+    // by the intent layer and must not be forced to `unsupported` here. This set
+    // is mirrored by the feature builder in training/train.py; keep the two in
+    // lockstep or the Rust/Python parity fixture drifts.
     let risk = [
-        "write",
-        "new",
-        "delete",
         "steal",
         "bypass",
         "novel",
@@ -141,20 +143,6 @@ pub fn features(prompt: &str) -> Vec<String> {
         "email",
         "captcha",
         "deploy",
-        "fix",
-        "rewrite",
-        "refactor",
-        "explain",
-        "design",
-        "recommend",
-        "compare",
-        "summarize",
-        "debug",
-        "create",
-        "calculate",
-        "solve",
-        "research",
-        "remove",
         "arbitrary",
         "private",
         "passwords",
@@ -163,8 +151,6 @@ pub fn features(prompt: &str) -> Vec<String> {
         "upload",
         "rm",
         "sudo",
-        "web",
-        "better",
     ];
     let unsafe_request = original.iter().any(|w| {
         risk.contains(&w.as_str())

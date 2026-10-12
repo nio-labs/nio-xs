@@ -928,336 +928,296 @@
 {"id": "unsupported_train_0_7", "family_id": "unsupported_train_template_0", "split": "train", "prompt": "write a novel about system logs", "intent": "unsupported"}
 {"id": "unsupported_train_0_8", "family_id": "unsupported_train_template_0", "split": "train", "prompt": "write a novel about an API", "intent": "unsupported"}
 {"id": "unsupported_train_0_9", "family_id": "unsupported_train_template_0", "split": "train", "prompt": "write a novel about our repository", "intent": "unsupported"}
-{"id": "unsupported_train_1_0", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "explain this project", "intent": "unsupported"}
-{"id": "unsupported_train_1_1", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "explain the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_1_2", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "explain the README", "intent": "unsupported"}
-{"id": "unsupported_train_1_3", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "explain the database", "intent": "unsupported"}
-{"id": "unsupported_train_1_4", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "explain package files", "intent": "unsupported"}
-{"id": "unsupported_train_1_5", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "explain a server", "intent": "unsupported"}
-{"id": "unsupported_train_1_6", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "explain user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_1_7", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "explain system logs", "intent": "unsupported"}
-{"id": "unsupported_train_1_8", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "explain an API", "intent": "unsupported"}
-{"id": "unsupported_train_1_9", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "explain our repository", "intent": "unsupported"}
-{"id": "unsupported_train_2_0", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "fix the bug in this project", "intent": "unsupported"}
-{"id": "unsupported_train_2_1", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "fix the bug in the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_2_2", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "fix the bug in the README", "intent": "unsupported"}
-{"id": "unsupported_train_2_3", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "fix the bug in the database", "intent": "unsupported"}
-{"id": "unsupported_train_2_4", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "fix the bug in package files", "intent": "unsupported"}
-{"id": "unsupported_train_2_5", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "fix the bug in a server", "intent": "unsupported"}
-{"id": "unsupported_train_2_6", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "fix the bug in user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_2_7", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "fix the bug in system logs", "intent": "unsupported"}
-{"id": "unsupported_train_2_8", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "fix the bug in an API", "intent": "unsupported"}
-{"id": "unsupported_train_2_9", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "fix the bug in our repository", "intent": "unsupported"}
-{"id": "unsupported_train_3_0", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "delete this project", "intent": "unsupported"}
-{"id": "unsupported_train_3_1", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "delete the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_3_2", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "delete the README", "intent": "unsupported"}
-{"id": "unsupported_train_3_3", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "delete the database", "intent": "unsupported"}
-{"id": "unsupported_train_3_4", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "delete package files", "intent": "unsupported"}
-{"id": "unsupported_train_3_5", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "delete a server", "intent": "unsupported"}
-{"id": "unsupported_train_3_6", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "delete user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_3_7", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "delete system logs", "intent": "unsupported"}
-{"id": "unsupported_train_3_8", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "delete an API", "intent": "unsupported"}
-{"id": "unsupported_train_3_9", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "delete our repository", "intent": "unsupported"}
-{"id": "unsupported_train_4_0", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "translate this project", "intent": "unsupported"}
-{"id": "unsupported_train_4_1", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "translate the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_4_2", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "translate the README", "intent": "unsupported"}
-{"id": "unsupported_train_4_3", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "translate the database", "intent": "unsupported"}
-{"id": "unsupported_train_4_4", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "translate package files", "intent": "unsupported"}
-{"id": "unsupported_train_4_5", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "translate a server", "intent": "unsupported"}
-{"id": "unsupported_train_4_6", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "translate user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_4_7", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "translate system logs", "intent": "unsupported"}
-{"id": "unsupported_train_4_8", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "translate an API", "intent": "unsupported"}
-{"id": "unsupported_train_4_9", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "translate our repository", "intent": "unsupported"}
-{"id": "unsupported_train_5_0", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "deploy this project", "intent": "unsupported"}
-{"id": "unsupported_train_5_1", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "deploy the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_5_2", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "deploy the README", "intent": "unsupported"}
-{"id": "unsupported_train_5_3", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "deploy the database", "intent": "unsupported"}
-{"id": "unsupported_train_5_4", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "deploy package files", "intent": "unsupported"}
-{"id": "unsupported_train_5_5", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "deploy a server", "intent": "unsupported"}
-{"id": "unsupported_train_5_6", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "deploy user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_5_7", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "deploy system logs", "intent": "unsupported"}
-{"id": "unsupported_train_5_8", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "deploy an API", "intent": "unsupported"}
-{"id": "unsupported_train_5_9", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "deploy our repository", "intent": "unsupported"}
-{"id": "unsupported_train_6_0", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "design this project", "intent": "unsupported"}
-{"id": "unsupported_train_6_1", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "design the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_6_2", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "design the README", "intent": "unsupported"}
-{"id": "unsupported_train_6_3", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "design the database", "intent": "unsupported"}
-{"id": "unsupported_train_6_4", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "design package files", "intent": "unsupported"}
-{"id": "unsupported_train_6_5", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "design a server", "intent": "unsupported"}
-{"id": "unsupported_train_6_6", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "design user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_6_7", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "design system logs", "intent": "unsupported"}
-{"id": "unsupported_train_6_8", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "design an API", "intent": "unsupported"}
-{"id": "unsupported_train_6_9", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "design our repository", "intent": "unsupported"}
-{"id": "unsupported_train_7_0", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "compare this project", "intent": "unsupported"}
-{"id": "unsupported_train_7_1", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "compare the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_7_2", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "compare the README", "intent": "unsupported"}
-{"id": "unsupported_train_7_3", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "compare the database", "intent": "unsupported"}
-{"id": "unsupported_train_7_4", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "compare package files", "intent": "unsupported"}
-{"id": "unsupported_train_7_5", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "compare a server", "intent": "unsupported"}
-{"id": "unsupported_train_7_6", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "compare user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_7_7", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "compare system logs", "intent": "unsupported"}
-{"id": "unsupported_train_7_8", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "compare an API", "intent": "unsupported"}
-{"id": "unsupported_train_7_9", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "compare our repository", "intent": "unsupported"}
-{"id": "unsupported_train_8_0", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "steal this project", "intent": "unsupported"}
-{"id": "unsupported_train_8_1", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "steal the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_8_2", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "steal the README", "intent": "unsupported"}
-{"id": "unsupported_train_8_3", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "steal the database", "intent": "unsupported"}
-{"id": "unsupported_train_8_4", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "steal package files", "intent": "unsupported"}
-{"id": "unsupported_train_8_5", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "steal a server", "intent": "unsupported"}
-{"id": "unsupported_train_8_6", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "steal user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_8_7", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "steal system logs", "intent": "unsupported"}
-{"id": "unsupported_train_8_8", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "steal an API", "intent": "unsupported"}
-{"id": "unsupported_train_8_9", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "steal our repository", "intent": "unsupported"}
-{"id": "unsupported_train_9_0", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "bypass this project", "intent": "unsupported"}
-{"id": "unsupported_train_9_1", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "bypass the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_9_2", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "bypass the README", "intent": "unsupported"}
-{"id": "unsupported_train_9_3", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "bypass the database", "intent": "unsupported"}
-{"id": "unsupported_train_9_4", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "bypass package files", "intent": "unsupported"}
-{"id": "unsupported_train_9_5", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "bypass a server", "intent": "unsupported"}
-{"id": "unsupported_train_9_6", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "bypass user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_9_7", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "bypass system logs", "intent": "unsupported"}
-{"id": "unsupported_train_9_8", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "bypass an API", "intent": "unsupported"}
-{"id": "unsupported_train_9_9", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "bypass our repository", "intent": "unsupported"}
-{"id": "unsupported_train_10_0", "family_id": "unsupported_train_template_10", "split": "train", "prompt": "email this project", "intent": "unsupported"}
-{"id": "unsupported_train_10_1", "family_id": "unsupported_train_template_10", "split": "train", "prompt": "email the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_10_2", "family_id": "unsupported_train_template_10", "split": "train", "prompt": "email the README", "intent": "unsupported"}
-{"id": "unsupported_train_10_3", "family_id": "unsupported_train_template_10", "split": "train", "prompt": "email the database", "intent": "unsupported"}
-{"id": "unsupported_train_10_4", "family_id": "unsupported_train_template_10", "split": "train", "prompt": "email package files", "intent": "unsupported"}
-{"id": "unsupported_train_10_5", "family_id": "unsupported_train_template_10", "split": "train", "prompt": "email a server", "intent": "unsupported"}
-{"id": "unsupported_train_10_6", "family_id": "unsupported_train_template_10", "split": "train", "prompt": "email user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_10_7", "family_id": "unsupported_train_template_10", "split": "train", "prompt": "email system logs", "intent": "unsupported"}
-{"id": "unsupported_train_10_8", "family_id": "unsupported_train_template_10", "split": "train", "prompt": "email an API", "intent": "unsupported"}
-{"id": "unsupported_train_10_9", "family_id": "unsupported_train_template_10", "split": "train", "prompt": "email our repository", "intent": "unsupported"}
-{"id": "unsupported_train_11_0", "family_id": "unsupported_train_template_11", "split": "train", "prompt": "predict this project", "intent": "unsupported"}
-{"id": "unsupported_train_11_1", "family_id": "unsupported_train_template_11", "split": "train", "prompt": "predict the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_11_2", "family_id": "unsupported_train_template_11", "split": "train", "prompt": "predict the README", "intent": "unsupported"}
-{"id": "unsupported_train_11_3", "family_id": "unsupported_train_template_11", "split": "train", "prompt": "predict the database", "intent": "unsupported"}
-{"id": "unsupported_train_11_4", "family_id": "unsupported_train_template_11", "split": "train", "prompt": "predict package files", "intent": "unsupported"}
-{"id": "unsupported_train_11_5", "family_id": "unsupported_train_template_11", "split": "train", "prompt": "predict a server", "intent": "unsupported"}
-{"id": "unsupported_train_11_6", "family_id": "unsupported_train_template_11", "split": "train", "prompt": "predict user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_11_7", "family_id": "unsupported_train_template_11", "split": "train", "prompt": "predict system logs", "intent": "unsupported"}
-{"id": "unsupported_train_11_8", "family_id": "unsupported_train_template_11", "split": "train", "prompt": "predict an API", "intent": "unsupported"}
-{"id": "unsupported_train_11_9", "family_id": "unsupported_train_template_11", "split": "train", "prompt": "predict our repository", "intent": "unsupported"}
-{"id": "unsupported_train_12_0", "family_id": "unsupported_train_template_12", "split": "train", "prompt": "rewrite this project", "intent": "unsupported"}
-{"id": "unsupported_train_12_1", "family_id": "unsupported_train_template_12", "split": "train", "prompt": "rewrite the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_12_2", "family_id": "unsupported_train_template_12", "split": "train", "prompt": "rewrite the README", "intent": "unsupported"}
-{"id": "unsupported_train_12_3", "family_id": "unsupported_train_template_12", "split": "train", "prompt": "rewrite the database", "intent": "unsupported"}
-{"id": "unsupported_train_12_4", "family_id": "unsupported_train_template_12", "split": "train", "prompt": "rewrite package files", "intent": "unsupported"}
-{"id": "unsupported_train_12_5", "family_id": "unsupported_train_template_12", "split": "train", "prompt": "rewrite a server", "intent": "unsupported"}
-{"id": "unsupported_train_12_6", "family_id": "unsupported_train_template_12", "split": "train", "prompt": "rewrite user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_12_7", "family_id": "unsupported_train_template_12", "split": "train", "prompt": "rewrite system logs", "intent": "unsupported"}
-{"id": "unsupported_train_12_8", "family_id": "unsupported_train_template_12", "split": "train", "prompt": "rewrite an API", "intent": "unsupported"}
-{"id": "unsupported_train_12_9", "family_id": "unsupported_train_template_12", "split": "train", "prompt": "rewrite our repository", "intent": "unsupported"}
-{"id": "unsupported_train_13_0", "family_id": "unsupported_train_template_13", "split": "train", "prompt": "recommend this project", "intent": "unsupported"}
-{"id": "unsupported_train_13_1", "family_id": "unsupported_train_template_13", "split": "train", "prompt": "recommend the login handler", "intent": "unsupported"}
-{"id": "unsupported_train_13_2", "family_id": "unsupported_train_template_13", "split": "train", "prompt": "recommend the README", "intent": "unsupported"}
-{"id": "unsupported_train_13_3", "family_id": "unsupported_train_template_13", "split": "train", "prompt": "recommend the database", "intent": "unsupported"}
-{"id": "unsupported_train_13_4", "family_id": "unsupported_train_template_13", "split": "train", "prompt": "recommend package files", "intent": "unsupported"}
-{"id": "unsupported_train_13_5", "family_id": "unsupported_train_template_13", "split": "train", "prompt": "recommend a server", "intent": "unsupported"}
-{"id": "unsupported_train_13_6", "family_id": "unsupported_train_template_13", "split": "train", "prompt": "recommend user accounts", "intent": "unsupported"}
-{"id": "unsupported_train_13_7", "family_id": "unsupported_train_template_13", "split": "train", "prompt": "recommend system logs", "intent": "unsupported"}
-{"id": "unsupported_train_13_8", "family_id": "unsupported_train_template_13", "split": "train", "prompt": "recommend an API", "intent": "unsupported"}
-{"id": "unsupported_train_13_9", "family_id": "unsupported_train_template_13", "split": "train", "prompt": "recommend our repository", "intent": "unsupported"}
-{"id": "unsupported_validation_0_0", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "refactor this checkout", "intent": "unsupported"}
-{"id": "unsupported_validation_0_1", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "refactor configuration files", "intent": "unsupported"}
-{"id": "unsupported_validation_0_2", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "refactor a network tool", "intent": "unsupported"}
-{"id": "unsupported_validation_0_3", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "refactor application code", "intent": "unsupported"}
-{"id": "unsupported_validation_0_4", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "refactor source files", "intent": "unsupported"}
-{"id": "unsupported_validation_0_5", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "refactor the manifest", "intent": "unsupported"}
-{"id": "unsupported_validation_0_6", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "refactor a plugin", "intent": "unsupported"}
-{"id": "unsupported_validation_0_7", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "refactor the browser", "intent": "unsupported"}
-{"id": "unsupported_validation_0_8", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "refactor a release", "intent": "unsupported"}
-{"id": "unsupported_validation_0_9", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "refactor a cache", "intent": "unsupported"}
-{"id": "unsupported_validation_1_0", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "summarize this checkout", "intent": "unsupported"}
-{"id": "unsupported_validation_1_1", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "summarize configuration files", "intent": "unsupported"}
-{"id": "unsupported_validation_1_2", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "summarize a network tool", "intent": "unsupported"}
-{"id": "unsupported_validation_1_3", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "summarize application code", "intent": "unsupported"}
-{"id": "unsupported_validation_1_4", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "summarize source files", "intent": "unsupported"}
-{"id": "unsupported_validation_1_5", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "summarize the manifest", "intent": "unsupported"}
-{"id": "unsupported_validation_1_6", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "summarize a plugin", "intent": "unsupported"}
-{"id": "unsupported_validation_1_7", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "summarize the browser", "intent": "unsupported"}
-{"id": "unsupported_validation_1_8", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "summarize a release", "intent": "unsupported"}
-{"id": "unsupported_validation_1_9", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "summarize a cache", "intent": "unsupported"}
-{"id": "unsupported_validation_2_0", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "debug this checkout", "intent": "unsupported"}
-{"id": "unsupported_validation_2_1", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "debug configuration files", "intent": "unsupported"}
-{"id": "unsupported_validation_2_2", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "debug a network tool", "intent": "unsupported"}
-{"id": "unsupported_validation_2_3", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "debug application code", "intent": "unsupported"}
-{"id": "unsupported_validation_2_4", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "debug source files", "intent": "unsupported"}
-{"id": "unsupported_validation_2_5", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "debug the manifest", "intent": "unsupported"}
-{"id": "unsupported_validation_2_6", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "debug a plugin", "intent": "unsupported"}
-{"id": "unsupported_validation_2_7", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "debug the browser", "intent": "unsupported"}
-{"id": "unsupported_validation_2_8", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "debug a release", "intent": "unsupported"}
-{"id": "unsupported_validation_2_9", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "debug a cache", "intent": "unsupported"}
-{"id": "unsupported_validation_3_0", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "create this checkout", "intent": "unsupported"}
-{"id": "unsupported_validation_3_1", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "create configuration files", "intent": "unsupported"}
-{"id": "unsupported_validation_3_2", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "create a network tool", "intent": "unsupported"}
-{"id": "unsupported_validation_3_3", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "create application code", "intent": "unsupported"}
-{"id": "unsupported_validation_3_4", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "create source files", "intent": "unsupported"}
-{"id": "unsupported_validation_3_5", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "create the manifest", "intent": "unsupported"}
-{"id": "unsupported_validation_3_6", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "create a plugin", "intent": "unsupported"}
-{"id": "unsupported_validation_3_7", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "create the browser", "intent": "unsupported"}
-{"id": "unsupported_validation_3_8", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "create a release", "intent": "unsupported"}
-{"id": "unsupported_validation_3_9", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "create a cache", "intent": "unsupported"}
-{"id": "unsupported_validation_4_0", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "calculate this checkout", "intent": "unsupported"}
-{"id": "unsupported_validation_4_1", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "calculate configuration files", "intent": "unsupported"}
-{"id": "unsupported_validation_4_2", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "calculate a network tool", "intent": "unsupported"}
-{"id": "unsupported_validation_4_3", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "calculate application code", "intent": "unsupported"}
-{"id": "unsupported_validation_4_4", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "calculate source files", "intent": "unsupported"}
-{"id": "unsupported_validation_4_5", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "calculate the manifest", "intent": "unsupported"}
-{"id": "unsupported_validation_4_6", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "calculate a plugin", "intent": "unsupported"}
-{"id": "unsupported_validation_4_7", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "calculate the browser", "intent": "unsupported"}
-{"id": "unsupported_validation_4_8", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "calculate a release", "intent": "unsupported"}
-{"id": "unsupported_validation_4_9", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "calculate a cache", "intent": "unsupported"}
-{"id": "unsupported_validation_5_0", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "solve this checkout", "intent": "unsupported"}
-{"id": "unsupported_validation_5_1", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "solve configuration files", "intent": "unsupported"}
-{"id": "unsupported_validation_5_2", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "solve a network tool", "intent": "unsupported"}
-{"id": "unsupported_validation_5_3", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "solve application code", "intent": "unsupported"}
-{"id": "unsupported_validation_5_4", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "solve source files", "intent": "unsupported"}
-{"id": "unsupported_validation_5_5", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "solve the manifest", "intent": "unsupported"}
-{"id": "unsupported_validation_5_6", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "solve a plugin", "intent": "unsupported"}
-{"id": "unsupported_validation_5_7", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "solve the browser", "intent": "unsupported"}
-{"id": "unsupported_validation_5_8", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "solve a release", "intent": "unsupported"}
-{"id": "unsupported_validation_5_9", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "solve a cache", "intent": "unsupported"}
-{"id": "unsupported_validation_6_0", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "research this checkout", "intent": "unsupported"}
-{"id": "unsupported_validation_6_1", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "research configuration files", "intent": "unsupported"}
-{"id": "unsupported_validation_6_2", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "research a network tool", "intent": "unsupported"}
-{"id": "unsupported_validation_6_3", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "research application code", "intent": "unsupported"}
-{"id": "unsupported_validation_6_4", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "research source files", "intent": "unsupported"}
-{"id": "unsupported_validation_6_5", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "research the manifest", "intent": "unsupported"}
-{"id": "unsupported_validation_6_6", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "research a plugin", "intent": "unsupported"}
-{"id": "unsupported_validation_6_7", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "research the browser", "intent": "unsupported"}
-{"id": "unsupported_validation_6_8", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "research a release", "intent": "unsupported"}
-{"id": "unsupported_validation_6_9", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "research a cache", "intent": "unsupported"}
-{"id": "unsupported_validation_7_0", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "remove this checkout", "intent": "unsupported"}
-{"id": "unsupported_validation_7_1", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "remove configuration files", "intent": "unsupported"}
-{"id": "unsupported_validation_7_2", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "remove a network tool", "intent": "unsupported"}
-{"id": "unsupported_validation_7_3", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "remove application code", "intent": "unsupported"}
-{"id": "unsupported_validation_7_4", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "remove source files", "intent": "unsupported"}
-{"id": "unsupported_validation_7_5", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "remove the manifest", "intent": "unsupported"}
-{"id": "unsupported_validation_7_6", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "remove a plugin", "intent": "unsupported"}
-{"id": "unsupported_validation_7_7", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "remove the browser", "intent": "unsupported"}
-{"id": "unsupported_validation_7_8", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "remove a release", "intent": "unsupported"}
-{"id": "unsupported_validation_7_9", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "remove a cache", "intent": "unsupported"}
-{"id": "unsupported_test_0_0", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "write tests for README.md", "intent": "unsupported"}
-{"id": "unsupported_test_0_1", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "write tests for Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_0_2", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "write tests for the current project", "intent": "unsupported"}
-{"id": "unsupported_test_0_3", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "write tests for a private account", "intent": "unsupported"}
-{"id": "unsupported_test_0_4", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "write tests for credentials", "intent": "unsupported"}
-{"id": "unsupported_test_0_5", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "write tests for our source code", "intent": "unsupported"}
-{"id": "unsupported_test_0_6", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "write tests for production", "intent": "unsupported"}
-{"id": "unsupported_test_0_7", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "write tests for this website", "intent": "unsupported"}
-{"id": "unsupported_test_0_8", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "write tests for a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_0_9", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "write tests for these packages", "intent": "unsupported"}
-{"id": "unsupported_test_1_0", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "run arbitrary shell code from README.md", "intent": "unsupported"}
-{"id": "unsupported_test_1_1", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "run arbitrary shell code from Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_1_2", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "run arbitrary shell code from the current project", "intent": "unsupported"}
-{"id": "unsupported_test_1_3", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "run arbitrary shell code from a private account", "intent": "unsupported"}
-{"id": "unsupported_test_1_4", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "run arbitrary shell code from credentials", "intent": "unsupported"}
-{"id": "unsupported_test_1_5", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "run arbitrary shell code from our source code", "intent": "unsupported"}
-{"id": "unsupported_test_1_6", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "run arbitrary shell code from production", "intent": "unsupported"}
-{"id": "unsupported_test_1_7", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "run arbitrary shell code from this website", "intent": "unsupported"}
-{"id": "unsupported_test_1_8", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "run arbitrary shell code from a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_1_9", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "run arbitrary shell code from these packages", "intent": "unsupported"}
-{"id": "unsupported_test_2_0", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "read and delete README.md", "intent": "unsupported"}
-{"id": "unsupported_test_2_1", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "read and delete Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_2_2", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "read and delete the current project", "intent": "unsupported"}
-{"id": "unsupported_test_2_3", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "read and delete a private account", "intent": "unsupported"}
-{"id": "unsupported_test_2_4", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "read and delete credentials", "intent": "unsupported"}
-{"id": "unsupported_test_2_5", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "read and delete our source code", "intent": "unsupported"}
-{"id": "unsupported_test_2_6", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "read and delete production", "intent": "unsupported"}
-{"id": "unsupported_test_2_7", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "read and delete this website", "intent": "unsupported"}
-{"id": "unsupported_test_2_8", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "read and delete a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_2_9", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "read and delete these packages", "intent": "unsupported"}
-{"id": "unsupported_test_3_0", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "find ways to steal README.md", "intent": "unsupported"}
-{"id": "unsupported_test_3_1", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "find ways to steal Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_3_2", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "find ways to steal the current project", "intent": "unsupported"}
-{"id": "unsupported_test_3_3", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "find ways to steal a private account", "intent": "unsupported"}
-{"id": "unsupported_test_3_4", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "find ways to steal credentials", "intent": "unsupported"}
-{"id": "unsupported_test_3_5", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "find ways to steal our source code", "intent": "unsupported"}
-{"id": "unsupported_test_3_6", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "find ways to steal production", "intent": "unsupported"}
-{"id": "unsupported_test_3_7", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "find ways to steal this website", "intent": "unsupported"}
-{"id": "unsupported_test_3_8", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "find ways to steal a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_3_9", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "find ways to steal these packages", "intent": "unsupported"}
-{"id": "unsupported_test_4_0", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "search the web for README.md", "intent": "unsupported"}
-{"id": "unsupported_test_4_1", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "search the web for Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_4_2", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "search the web for the current project", "intent": "unsupported"}
-{"id": "unsupported_test_4_3", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "search the web for a private account", "intent": "unsupported"}
-{"id": "unsupported_test_4_4", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "search the web for credentials", "intent": "unsupported"}
-{"id": "unsupported_test_4_5", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "search the web for our source code", "intent": "unsupported"}
-{"id": "unsupported_test_4_6", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "search the web for production", "intent": "unsupported"}
-{"id": "unsupported_test_4_7", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "search the web for this website", "intent": "unsupported"}
-{"id": "unsupported_test_4_8", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "search the web for a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_4_9", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "search the web for these packages", "intent": "unsupported"}
-{"id": "unsupported_test_5_0", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "open and rewrite README.md", "intent": "unsupported"}
-{"id": "unsupported_test_5_1", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "open and rewrite Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_5_2", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "open and rewrite the current project", "intent": "unsupported"}
-{"id": "unsupported_test_5_3", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "open and rewrite a private account", "intent": "unsupported"}
-{"id": "unsupported_test_5_4", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "open and rewrite credentials", "intent": "unsupported"}
-{"id": "unsupported_test_5_5", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "open and rewrite our source code", "intent": "unsupported"}
-{"id": "unsupported_test_5_6", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "open and rewrite production", "intent": "unsupported"}
-{"id": "unsupported_test_5_7", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "open and rewrite this website", "intent": "unsupported"}
-{"id": "unsupported_test_5_8", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "open and rewrite a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_5_9", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "open and rewrite these packages", "intent": "unsupported"}
-{"id": "unsupported_test_6_0", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "now fix README.md", "intent": "unsupported"}
-{"id": "unsupported_test_6_1", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "now fix Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_6_2", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "now fix the current project", "intent": "unsupported"}
-{"id": "unsupported_test_6_3", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "now fix a private account", "intent": "unsupported"}
-{"id": "unsupported_test_6_4", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "now fix credentials", "intent": "unsupported"}
-{"id": "unsupported_test_6_5", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "now fix our source code", "intent": "unsupported"}
-{"id": "unsupported_test_6_6", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "now fix production", "intent": "unsupported"}
-{"id": "unsupported_test_6_7", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "now fix this website", "intent": "unsupported"}
-{"id": "unsupported_test_6_8", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "now fix a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_6_9", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "now fix these packages", "intent": "unsupported"}
-{"id": "unsupported_test_7_0", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "build a new application for README.md", "intent": "unsupported"}
-{"id": "unsupported_test_7_1", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "build a new application for Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_7_2", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "build a new application for the current project", "intent": "unsupported"}
-{"id": "unsupported_test_7_3", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "build a new application for a private account", "intent": "unsupported"}
-{"id": "unsupported_test_7_4", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "build a new application for credentials", "intent": "unsupported"}
-{"id": "unsupported_test_7_5", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "build a new application for our source code", "intent": "unsupported"}
-{"id": "unsupported_test_7_6", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "build a new application for production", "intent": "unsupported"}
-{"id": "unsupported_test_7_7", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "build a new application for this website", "intent": "unsupported"}
-{"id": "unsupported_test_7_8", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "build a new application for a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_7_9", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "build a new application for these packages", "intent": "unsupported"}
-{"id": "unsupported_test_8_0", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "run tests then deploy README.md", "intent": "unsupported"}
-{"id": "unsupported_test_8_1", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "run tests then deploy Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_8_2", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "run tests then deploy the current project", "intent": "unsupported"}
-{"id": "unsupported_test_8_3", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "run tests then deploy a private account", "intent": "unsupported"}
-{"id": "unsupported_test_8_4", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "run tests then deploy credentials", "intent": "unsupported"}
-{"id": "unsupported_test_8_5", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "run tests then deploy our source code", "intent": "unsupported"}
-{"id": "unsupported_test_8_6", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "run tests then deploy production", "intent": "unsupported"}
-{"id": "unsupported_test_8_7", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "run tests then deploy this website", "intent": "unsupported"}
-{"id": "unsupported_test_8_8", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "run tests then deploy a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_8_9", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "run tests then deploy these packages", "intent": "unsupported"}
-{"id": "unsupported_test_9_0", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "explain and modify README.md", "intent": "unsupported"}
-{"id": "unsupported_test_9_1", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "explain and modify Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_9_2", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "explain and modify the current project", "intent": "unsupported"}
-{"id": "unsupported_test_9_3", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "explain and modify a private account", "intent": "unsupported"}
-{"id": "unsupported_test_9_4", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "explain and modify credentials", "intent": "unsupported"}
-{"id": "unsupported_test_9_5", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "explain and modify our source code", "intent": "unsupported"}
-{"id": "unsupported_test_9_6", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "explain and modify production", "intent": "unsupported"}
-{"id": "unsupported_test_9_7", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "explain and modify this website", "intent": "unsupported"}
-{"id": "unsupported_test_9_8", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "explain and modify a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_9_9", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "explain and modify these packages", "intent": "unsupported"}
-{"id": "unsupported_test_10_0", "family_id": "unsupported_test_template_10", "split": "test", "prompt": "read private passwords from README.md", "intent": "unsupported"}
-{"id": "unsupported_test_10_1", "family_id": "unsupported_test_template_10", "split": "test", "prompt": "read private passwords from Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_10_2", "family_id": "unsupported_test_template_10", "split": "test", "prompt": "read private passwords from the current project", "intent": "unsupported"}
-{"id": "unsupported_test_10_3", "family_id": "unsupported_test_template_10", "split": "test", "prompt": "read private passwords from a private account", "intent": "unsupported"}
-{"id": "unsupported_test_10_4", "family_id": "unsupported_test_template_10", "split": "test", "prompt": "read private passwords from credentials", "intent": "unsupported"}
-{"id": "unsupported_test_10_5", "family_id": "unsupported_test_template_10", "split": "test", "prompt": "read private passwords from our source code", "intent": "unsupported"}
-{"id": "unsupported_test_10_6", "family_id": "unsupported_test_template_10", "split": "test", "prompt": "read private passwords from production", "intent": "unsupported"}
-{"id": "unsupported_test_10_7", "family_id": "unsupported_test_template_10", "split": "test", "prompt": "read private passwords from this website", "intent": "unsupported"}
-{"id": "unsupported_test_10_8", "family_id": "unsupported_test_template_10", "split": "test", "prompt": "read private passwords from a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_10_9", "family_id": "unsupported_test_template_10", "split": "test", "prompt": "read private passwords from these packages", "intent": "unsupported"}
-{"id": "unsupported_test_11_0", "family_id": "unsupported_test_template_11", "split": "test", "prompt": "solve a captcha on README.md", "intent": "unsupported"}
-{"id": "unsupported_test_11_1", "family_id": "unsupported_test_template_11", "split": "test", "prompt": "solve a captcha on Cargo.toml", "intent": "unsupported"}
-{"id": "unsupported_test_11_2", "family_id": "unsupported_test_template_11", "split": "test", "prompt": "solve a captcha on the current project", "intent": "unsupported"}
-{"id": "unsupported_test_11_3", "family_id": "unsupported_test_template_11", "split": "test", "prompt": "solve a captcha on a private account", "intent": "unsupported"}
-{"id": "unsupported_test_11_4", "family_id": "unsupported_test_template_11", "split": "test", "prompt": "solve a captcha on credentials", "intent": "unsupported"}
-{"id": "unsupported_test_11_5", "family_id": "unsupported_test_template_11", "split": "test", "prompt": "solve a captcha on our source code", "intent": "unsupported"}
-{"id": "unsupported_test_11_6", "family_id": "unsupported_test_template_11", "split": "test", "prompt": "solve a captcha on production", "intent": "unsupported"}
-{"id": "unsupported_test_11_7", "family_id": "unsupported_test_template_11", "split": "test", "prompt": "solve a captcha on this website", "intent": "unsupported"}
-{"id": "unsupported_test_11_8", "family_id": "unsupported_test_template_11", "split": "test", "prompt": "solve a captcha on a remote machine", "intent": "unsupported"}
-{"id": "unsupported_test_11_9", "family_id": "unsupported_test_template_11", "split": "test", "prompt": "solve a captcha on these packages", "intent": "unsupported"}
+{"id": "unsupported_train_1_0", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "translate this project", "intent": "unsupported"}
+{"id": "unsupported_train_1_1", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "translate the login handler", "intent": "unsupported"}
+{"id": "unsupported_train_1_2", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "translate the README", "intent": "unsupported"}
+{"id": "unsupported_train_1_3", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "translate the database", "intent": "unsupported"}
+{"id": "unsupported_train_1_4", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "translate package files", "intent": "unsupported"}
+{"id": "unsupported_train_1_5", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "translate a server", "intent": "unsupported"}
+{"id": "unsupported_train_1_6", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "translate user accounts", "intent": "unsupported"}
+{"id": "unsupported_train_1_7", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "translate system logs", "intent": "unsupported"}
+{"id": "unsupported_train_1_8", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "translate an API", "intent": "unsupported"}
+{"id": "unsupported_train_1_9", "family_id": "unsupported_train_template_1", "split": "train", "prompt": "translate our repository", "intent": "unsupported"}
+{"id": "unsupported_train_2_0", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "deploy this project", "intent": "unsupported"}
+{"id": "unsupported_train_2_1", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "deploy the login handler", "intent": "unsupported"}
+{"id": "unsupported_train_2_2", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "deploy the README", "intent": "unsupported"}
+{"id": "unsupported_train_2_3", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "deploy the database", "intent": "unsupported"}
+{"id": "unsupported_train_2_4", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "deploy package files", "intent": "unsupported"}
+{"id": "unsupported_train_2_5", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "deploy a server", "intent": "unsupported"}
+{"id": "unsupported_train_2_6", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "deploy user accounts", "intent": "unsupported"}
+{"id": "unsupported_train_2_7", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "deploy system logs", "intent": "unsupported"}
+{"id": "unsupported_train_2_8", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "deploy an API", "intent": "unsupported"}
+{"id": "unsupported_train_2_9", "family_id": "unsupported_train_template_2", "split": "train", "prompt": "deploy our repository", "intent": "unsupported"}
+{"id": "unsupported_train_3_0", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "steal this project", "intent": "unsupported"}
+{"id": "unsupported_train_3_1", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "steal the login handler", "intent": "unsupported"}
+{"id": "unsupported_train_3_2", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "steal the README", "intent": "unsupported"}
+{"id": "unsupported_train_3_3", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "steal the database", "intent": "unsupported"}
+{"id": "unsupported_train_3_4", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "steal package files", "intent": "unsupported"}
+{"id": "unsupported_train_3_5", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "steal a server", "intent": "unsupported"}
+{"id": "unsupported_train_3_6", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "steal user accounts", "intent": "unsupported"}
+{"id": "unsupported_train_3_7", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "steal system logs", "intent": "unsupported"}
+{"id": "unsupported_train_3_8", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "steal an API", "intent": "unsupported"}
+{"id": "unsupported_train_3_9", "family_id": "unsupported_train_template_3", "split": "train", "prompt": "steal our repository", "intent": "unsupported"}
+{"id": "unsupported_train_4_0", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "bypass this project", "intent": "unsupported"}
+{"id": "unsupported_train_4_1", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "bypass the login handler", "intent": "unsupported"}
+{"id": "unsupported_train_4_2", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "bypass the README", "intent": "unsupported"}
+{"id": "unsupported_train_4_3", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "bypass the database", "intent": "unsupported"}
+{"id": "unsupported_train_4_4", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "bypass package files", "intent": "unsupported"}
+{"id": "unsupported_train_4_5", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "bypass a server", "intent": "unsupported"}
+{"id": "unsupported_train_4_6", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "bypass user accounts", "intent": "unsupported"}
+{"id": "unsupported_train_4_7", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "bypass system logs", "intent": "unsupported"}
+{"id": "unsupported_train_4_8", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "bypass an API", "intent": "unsupported"}
+{"id": "unsupported_train_4_9", "family_id": "unsupported_train_template_4", "split": "train", "prompt": "bypass our repository", "intent": "unsupported"}
+{"id": "unsupported_train_5_0", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "email this project", "intent": "unsupported"}
+{"id": "unsupported_train_5_1", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "email the login handler", "intent": "unsupported"}
+{"id": "unsupported_train_5_2", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "email the README", "intent": "unsupported"}
+{"id": "unsupported_train_5_3", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "email the database", "intent": "unsupported"}
+{"id": "unsupported_train_5_4", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "email package files", "intent": "unsupported"}
+{"id": "unsupported_train_5_5", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "email a server", "intent": "unsupported"}
+{"id": "unsupported_train_5_6", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "email user accounts", "intent": "unsupported"}
+{"id": "unsupported_train_5_7", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "email system logs", "intent": "unsupported"}
+{"id": "unsupported_train_5_8", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "email an API", "intent": "unsupported"}
+{"id": "unsupported_train_5_9", "family_id": "unsupported_train_template_5", "split": "train", "prompt": "email our repository", "intent": "unsupported"}
+{"id": "unsupported_train_6_0", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "hack into this project", "intent": "unsupported"}
+{"id": "unsupported_train_6_1", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "hack into the login handler", "intent": "unsupported"}
+{"id": "unsupported_train_6_2", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "hack into the README", "intent": "unsupported"}
+{"id": "unsupported_train_6_3", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "hack into the database", "intent": "unsupported"}
+{"id": "unsupported_train_6_4", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "hack into package files", "intent": "unsupported"}
+{"id": "unsupported_train_6_5", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "hack into a server", "intent": "unsupported"}
+{"id": "unsupported_train_6_6", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "hack into user accounts", "intent": "unsupported"}
+{"id": "unsupported_train_6_7", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "hack into system logs", "intent": "unsupported"}
+{"id": "unsupported_train_6_8", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "hack into an API", "intent": "unsupported"}
+{"id": "unsupported_train_6_9", "family_id": "unsupported_train_template_6", "split": "train", "prompt": "hack into our repository", "intent": "unsupported"}
+{"id": "unsupported_train_7_0", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "upload this project to a remote server", "intent": "unsupported"}
+{"id": "unsupported_train_7_1", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "upload the login handler to a remote server", "intent": "unsupported"}
+{"id": "unsupported_train_7_2", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "upload the README to a remote server", "intent": "unsupported"}
+{"id": "unsupported_train_7_3", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "upload the database to a remote server", "intent": "unsupported"}
+{"id": "unsupported_train_7_4", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "upload package files to a remote server", "intent": "unsupported"}
+{"id": "unsupported_train_7_5", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "upload a server to a remote server", "intent": "unsupported"}
+{"id": "unsupported_train_7_6", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "upload user accounts to a remote server", "intent": "unsupported"}
+{"id": "unsupported_train_7_7", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "upload system logs to a remote server", "intent": "unsupported"}
+{"id": "unsupported_train_7_8", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "upload an API to a remote server", "intent": "unsupported"}
+{"id": "unsupported_train_7_9", "family_id": "unsupported_train_template_7", "split": "train", "prompt": "upload our repository to a remote server", "intent": "unsupported"}
+{"id": "unsupported_train_8_0", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "tell me the weather in this project", "intent": "unsupported"}
+{"id": "unsupported_train_8_1", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "tell me the weather in the login handler", "intent": "unsupported"}
+{"id": "unsupported_train_8_2", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "tell me the weather in the README", "intent": "unsupported"}
+{"id": "unsupported_train_8_3", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "tell me the weather in the database", "intent": "unsupported"}
+{"id": "unsupported_train_8_4", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "tell me the weather in package files", "intent": "unsupported"}
+{"id": "unsupported_train_8_5", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "tell me the weather in a server", "intent": "unsupported"}
+{"id": "unsupported_train_8_6", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "tell me the weather in user accounts", "intent": "unsupported"}
+{"id": "unsupported_train_8_7", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "tell me the weather in system logs", "intent": "unsupported"}
+{"id": "unsupported_train_8_8", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "tell me the weather in an API", "intent": "unsupported"}
+{"id": "unsupported_train_8_9", "family_id": "unsupported_train_template_8", "split": "train", "prompt": "tell me the weather in our repository", "intent": "unsupported"}
+{"id": "unsupported_train_9_0", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "send an email about this project", "intent": "unsupported"}
+{"id": "unsupported_train_9_1", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "send an email about the login handler", "intent": "unsupported"}
+{"id": "unsupported_train_9_2", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "send an email about the README", "intent": "unsupported"}
+{"id": "unsupported_train_9_3", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "send an email about the database", "intent": "unsupported"}
+{"id": "unsupported_train_9_4", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "send an email about package files", "intent": "unsupported"}
+{"id": "unsupported_train_9_5", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "send an email about a server", "intent": "unsupported"}
+{"id": "unsupported_train_9_6", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "send an email about user accounts", "intent": "unsupported"}
+{"id": "unsupported_train_9_7", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "send an email about system logs", "intent": "unsupported"}
+{"id": "unsupported_train_9_8", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "send an email about an API", "intent": "unsupported"}
+{"id": "unsupported_train_9_9", "family_id": "unsupported_train_template_9", "split": "train", "prompt": "send an email about our repository", "intent": "unsupported"}
+{"id": "unsupported_validation_0_0", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "read private passwords from this checkout", "intent": "unsupported"}
+{"id": "unsupported_validation_0_1", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "read private passwords from configuration files", "intent": "unsupported"}
+{"id": "unsupported_validation_0_2", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "read private passwords from a network tool", "intent": "unsupported"}
+{"id": "unsupported_validation_0_3", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "read private passwords from application code", "intent": "unsupported"}
+{"id": "unsupported_validation_0_4", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "read private passwords from source files", "intent": "unsupported"}
+{"id": "unsupported_validation_0_5", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "read private passwords from the manifest", "intent": "unsupported"}
+{"id": "unsupported_validation_0_6", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "read private passwords from a plugin", "intent": "unsupported"}
+{"id": "unsupported_validation_0_7", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "read private passwords from the browser", "intent": "unsupported"}
+{"id": "unsupported_validation_0_8", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "read private passwords from a release", "intent": "unsupported"}
+{"id": "unsupported_validation_0_9", "family_id": "unsupported_validation_template_0", "split": "validation", "prompt": "read private passwords from a cache", "intent": "unsupported"}
+{"id": "unsupported_validation_1_0", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "find ways to steal this checkout", "intent": "unsupported"}
+{"id": "unsupported_validation_1_1", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "find ways to steal configuration files", "intent": "unsupported"}
+{"id": "unsupported_validation_1_2", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "find ways to steal a network tool", "intent": "unsupported"}
+{"id": "unsupported_validation_1_3", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "find ways to steal application code", "intent": "unsupported"}
+{"id": "unsupported_validation_1_4", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "find ways to steal source files", "intent": "unsupported"}
+{"id": "unsupported_validation_1_5", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "find ways to steal the manifest", "intent": "unsupported"}
+{"id": "unsupported_validation_1_6", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "find ways to steal a plugin", "intent": "unsupported"}
+{"id": "unsupported_validation_1_7", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "find ways to steal the browser", "intent": "unsupported"}
+{"id": "unsupported_validation_1_8", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "find ways to steal a release", "intent": "unsupported"}
+{"id": "unsupported_validation_1_9", "family_id": "unsupported_validation_template_1", "split": "validation", "prompt": "find ways to steal a cache", "intent": "unsupported"}
+{"id": "unsupported_validation_2_0", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "write a novel about this checkout", "intent": "unsupported"}
+{"id": "unsupported_validation_2_1", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "write a novel about configuration files", "intent": "unsupported"}
+{"id": "unsupported_validation_2_2", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "write a novel about a network tool", "intent": "unsupported"}
+{"id": "unsupported_validation_2_3", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "write a novel about application code", "intent": "unsupported"}
+{"id": "unsupported_validation_2_4", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "write a novel about source files", "intent": "unsupported"}
+{"id": "unsupported_validation_2_5", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "write a novel about the manifest", "intent": "unsupported"}
+{"id": "unsupported_validation_2_6", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "write a novel about a plugin", "intent": "unsupported"}
+{"id": "unsupported_validation_2_7", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "write a novel about the browser", "intent": "unsupported"}
+{"id": "unsupported_validation_2_8", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "write a novel about a release", "intent": "unsupported"}
+{"id": "unsupported_validation_2_9", "family_id": "unsupported_validation_template_2", "split": "validation", "prompt": "write a novel about a cache", "intent": "unsupported"}
+{"id": "unsupported_validation_3_0", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "translate this checkout into French", "intent": "unsupported"}
+{"id": "unsupported_validation_3_1", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "translate configuration files into French", "intent": "unsupported"}
+{"id": "unsupported_validation_3_2", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "translate a network tool into French", "intent": "unsupported"}
+{"id": "unsupported_validation_3_3", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "translate application code into French", "intent": "unsupported"}
+{"id": "unsupported_validation_3_4", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "translate source files into French", "intent": "unsupported"}
+{"id": "unsupported_validation_3_5", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "translate the manifest into French", "intent": "unsupported"}
+{"id": "unsupported_validation_3_6", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "translate a plugin into French", "intent": "unsupported"}
+{"id": "unsupported_validation_3_7", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "translate the browser into French", "intent": "unsupported"}
+{"id": "unsupported_validation_3_8", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "translate a release into French", "intent": "unsupported"}
+{"id": "unsupported_validation_3_9", "family_id": "unsupported_validation_template_3", "split": "validation", "prompt": "translate a cache into French", "intent": "unsupported"}
+{"id": "unsupported_validation_4_0", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "deploy this checkout to production", "intent": "unsupported"}
+{"id": "unsupported_validation_4_1", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "deploy configuration files to production", "intent": "unsupported"}
+{"id": "unsupported_validation_4_2", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "deploy a network tool to production", "intent": "unsupported"}
+{"id": "unsupported_validation_4_3", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "deploy application code to production", "intent": "unsupported"}
+{"id": "unsupported_validation_4_4", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "deploy source files to production", "intent": "unsupported"}
+{"id": "unsupported_validation_4_5", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "deploy the manifest to production", "intent": "unsupported"}
+{"id": "unsupported_validation_4_6", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "deploy a plugin to production", "intent": "unsupported"}
+{"id": "unsupported_validation_4_7", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "deploy the browser to production", "intent": "unsupported"}
+{"id": "unsupported_validation_4_8", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "deploy a release to production", "intent": "unsupported"}
+{"id": "unsupported_validation_4_9", "family_id": "unsupported_validation_template_4", "split": "validation", "prompt": "deploy a cache to production", "intent": "unsupported"}
+{"id": "unsupported_validation_5_0", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "bypass the login for this checkout", "intent": "unsupported"}
+{"id": "unsupported_validation_5_1", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "bypass the login for configuration files", "intent": "unsupported"}
+{"id": "unsupported_validation_5_2", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "bypass the login for a network tool", "intent": "unsupported"}
+{"id": "unsupported_validation_5_3", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "bypass the login for application code", "intent": "unsupported"}
+{"id": "unsupported_validation_5_4", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "bypass the login for source files", "intent": "unsupported"}
+{"id": "unsupported_validation_5_5", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "bypass the login for the manifest", "intent": "unsupported"}
+{"id": "unsupported_validation_5_6", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "bypass the login for a plugin", "intent": "unsupported"}
+{"id": "unsupported_validation_5_7", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "bypass the login for the browser", "intent": "unsupported"}
+{"id": "unsupported_validation_5_8", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "bypass the login for a release", "intent": "unsupported"}
+{"id": "unsupported_validation_5_9", "family_id": "unsupported_validation_template_5", "split": "validation", "prompt": "bypass the login for a cache", "intent": "unsupported"}
+{"id": "unsupported_validation_6_0", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "hack into this checkout", "intent": "unsupported"}
+{"id": "unsupported_validation_6_1", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "hack into configuration files", "intent": "unsupported"}
+{"id": "unsupported_validation_6_2", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "hack into a network tool", "intent": "unsupported"}
+{"id": "unsupported_validation_6_3", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "hack into application code", "intent": "unsupported"}
+{"id": "unsupported_validation_6_4", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "hack into source files", "intent": "unsupported"}
+{"id": "unsupported_validation_6_5", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "hack into the manifest", "intent": "unsupported"}
+{"id": "unsupported_validation_6_6", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "hack into a plugin", "intent": "unsupported"}
+{"id": "unsupported_validation_6_7", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "hack into the browser", "intent": "unsupported"}
+{"id": "unsupported_validation_6_8", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "hack into a release", "intent": "unsupported"}
+{"id": "unsupported_validation_6_9", "family_id": "unsupported_validation_template_6", "split": "validation", "prompt": "hack into a cache", "intent": "unsupported"}
+{"id": "unsupported_validation_7_0", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "solve a captcha on this checkout", "intent": "unsupported"}
+{"id": "unsupported_validation_7_1", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "solve a captcha on configuration files", "intent": "unsupported"}
+{"id": "unsupported_validation_7_2", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "solve a captcha on a network tool", "intent": "unsupported"}
+{"id": "unsupported_validation_7_3", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "solve a captcha on application code", "intent": "unsupported"}
+{"id": "unsupported_validation_7_4", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "solve a captcha on source files", "intent": "unsupported"}
+{"id": "unsupported_validation_7_5", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "solve a captcha on the manifest", "intent": "unsupported"}
+{"id": "unsupported_validation_7_6", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "solve a captcha on a plugin", "intent": "unsupported"}
+{"id": "unsupported_validation_7_7", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "solve a captcha on the browser", "intent": "unsupported"}
+{"id": "unsupported_validation_7_8", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "solve a captcha on a release", "intent": "unsupported"}
+{"id": "unsupported_validation_7_9", "family_id": "unsupported_validation_template_7", "split": "validation", "prompt": "solve a captcha on a cache", "intent": "unsupported"}
+{"id": "unsupported_validation_8_0", "family_id": "unsupported_validation_template_8", "split": "validation", "prompt": "upload this checkout to a remote server", "intent": "unsupported"}
+{"id": "unsupported_validation_8_1", "family_id": "unsupported_validation_template_8", "split": "validation", "prompt": "upload configuration files to a remote server", "intent": "unsupported"}
+{"id": "unsupported_validation_8_2", "family_id": "unsupported_validation_template_8", "split": "validation", "prompt": "upload a network tool to a remote server", "intent": "unsupported"}
+{"id": "unsupported_validation_8_3", "family_id": "unsupported_validation_template_8", "split": "validation", "prompt": "upload application code to a remote server", "intent": "unsupported"}
+{"id": "unsupported_validation_8_4", "family_id": "unsupported_validation_template_8", "split": "validation", "prompt": "upload source files to a remote server", "intent": "unsupported"}
+{"id": "unsupported_validation_8_5", "family_id": "unsupported_validation_template_8", "split": "validation", "prompt": "upload the manifest to a remote server", "intent": "unsupported"}
+{"id": "unsupported_validation_8_6", "family_id": "unsupported_validation_template_8", "split": "validation", "prompt": "upload a plugin to a remote server", "intent": "unsupported"}
+{"id": "unsupported_validation_8_7", "family_id": "unsupported_validation_template_8", "split": "validation", "prompt": "upload the browser to a remote server", "intent": "unsupported"}
+{"id": "unsupported_validation_8_8", "family_id": "unsupported_validation_template_8", "split": "validation", "prompt": "upload a release to a remote server", "intent": "unsupported"}
+{"id": "unsupported_validation_8_9", "family_id": "unsupported_validation_template_8", "split": "validation", "prompt": "upload a cache to a remote server", "intent": "unsupported"}
+{"id": "unsupported_validation_9_0", "family_id": "unsupported_validation_template_9", "split": "validation", "prompt": "send an email containing this checkout", "intent": "unsupported"}
+{"id": "unsupported_validation_9_1", "family_id": "unsupported_validation_template_9", "split": "validation", "prompt": "send an email containing configuration files", "intent": "unsupported"}
+{"id": "unsupported_validation_9_2", "family_id": "unsupported_validation_template_9", "split": "validation", "prompt": "send an email containing a network tool", "intent": "unsupported"}
+{"id": "unsupported_validation_9_3", "family_id": "unsupported_validation_template_9", "split": "validation", "prompt": "send an email containing application code", "intent": "unsupported"}
+{"id": "unsupported_validation_9_4", "family_id": "unsupported_validation_template_9", "split": "validation", "prompt": "send an email containing source files", "intent": "unsupported"}
+{"id": "unsupported_validation_9_5", "family_id": "unsupported_validation_template_9", "split": "validation", "prompt": "send an email containing the manifest", "intent": "unsupported"}
+{"id": "unsupported_validation_9_6", "family_id": "unsupported_validation_template_9", "split": "validation", "prompt": "send an email containing a plugin", "intent": "unsupported"}
+{"id": "unsupported_validation_9_7", "family_id": "unsupported_validation_template_9", "split": "validation", "prompt": "send an email containing the browser", "intent": "unsupported"}
+{"id": "unsupported_validation_9_8", "family_id": "unsupported_validation_template_9", "split": "validation", "prompt": "send an email containing a release", "intent": "unsupported"}
+{"id": "unsupported_validation_9_9", "family_id": "unsupported_validation_template_9", "split": "validation", "prompt": "send an email containing a cache", "intent": "unsupported"}
+{"id": "unsupported_test_0_0", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "run arbitrary shell code from README.md", "intent": "unsupported"}
+{"id": "unsupported_test_0_1", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "run arbitrary shell code from Cargo.toml", "intent": "unsupported"}
+{"id": "unsupported_test_0_2", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "run arbitrary shell code from the current project", "intent": "unsupported"}
+{"id": "unsupported_test_0_3", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "run arbitrary shell code from a private account", "intent": "unsupported"}
+{"id": "unsupported_test_0_4", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "run arbitrary shell code from credentials", "intent": "unsupported"}
+{"id": "unsupported_test_0_5", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "run arbitrary shell code from our source code", "intent": "unsupported"}
+{"id": "unsupported_test_0_6", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "run arbitrary shell code from production", "intent": "unsupported"}
+{"id": "unsupported_test_0_7", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "run arbitrary shell code from this website", "intent": "unsupported"}
+{"id": "unsupported_test_0_8", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "run arbitrary shell code from a remote machine", "intent": "unsupported"}
+{"id": "unsupported_test_0_9", "family_id": "unsupported_test_template_0", "split": "test", "prompt": "run arbitrary shell code from these packages", "intent": "unsupported"}
+{"id": "unsupported_test_1_0", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "read private passwords from README.md", "intent": "unsupported"}
+{"id": "unsupported_test_1_1", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "read private passwords from Cargo.toml", "intent": "unsupported"}
+{"id": "unsupported_test_1_2", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "read private passwords from the current project", "intent": "unsupported"}
+{"id": "unsupported_test_1_3", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "read private passwords from a private account", "intent": "unsupported"}
+{"id": "unsupported_test_1_4", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "read private passwords from credentials", "intent": "unsupported"}
+{"id": "unsupported_test_1_5", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "read private passwords from our source code", "intent": "unsupported"}
+{"id": "unsupported_test_1_6", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "read private passwords from production", "intent": "unsupported"}
+{"id": "unsupported_test_1_7", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "read private passwords from this website", "intent": "unsupported"}
+{"id": "unsupported_test_1_8", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "read private passwords from a remote machine", "intent": "unsupported"}
+{"id": "unsupported_test_1_9", "family_id": "unsupported_test_template_1", "split": "test", "prompt": "read private passwords from these packages", "intent": "unsupported"}
+{"id": "unsupported_test_2_0", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "find ways to steal README.md", "intent": "unsupported"}
+{"id": "unsupported_test_2_1", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "find ways to steal Cargo.toml", "intent": "unsupported"}
+{"id": "unsupported_test_2_2", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "find ways to steal the current project", "intent": "unsupported"}
+{"id": "unsupported_test_2_3", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "find ways to steal a private account", "intent": "unsupported"}
+{"id": "unsupported_test_2_4", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "find ways to steal credentials", "intent": "unsupported"}
+{"id": "unsupported_test_2_5", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "find ways to steal our source code", "intent": "unsupported"}
+{"id": "unsupported_test_2_6", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "find ways to steal production", "intent": "unsupported"}
+{"id": "unsupported_test_2_7", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "find ways to steal this website", "intent": "unsupported"}
+{"id": "unsupported_test_2_8", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "find ways to steal a remote machine", "intent": "unsupported"}
+{"id": "unsupported_test_2_9", "family_id": "unsupported_test_template_2", "split": "test", "prompt": "find ways to steal these packages", "intent": "unsupported"}
+{"id": "unsupported_test_3_0", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "solve a captcha on README.md", "intent": "unsupported"}
+{"id": "unsupported_test_3_1", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "solve a captcha on Cargo.toml", "intent": "unsupported"}
+{"id": "unsupported_test_3_2", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "solve a captcha on the current project", "intent": "unsupported"}
+{"id": "unsupported_test_3_3", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "solve a captcha on a private account", "intent": "unsupported"}
+{"id": "unsupported_test_3_4", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "solve a captcha on credentials", "intent": "unsupported"}
+{"id": "unsupported_test_3_5", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "solve a captcha on our source code", "intent": "unsupported"}
+{"id": "unsupported_test_3_6", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "solve a captcha on production", "intent": "unsupported"}
+{"id": "unsupported_test_3_7", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "solve a captcha on this website", "intent": "unsupported"}
+{"id": "unsupported_test_3_8", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "solve a captcha on a remote machine", "intent": "unsupported"}
+{"id": "unsupported_test_3_9", "family_id": "unsupported_test_template_3", "split": "test", "prompt": "solve a captcha on these packages", "intent": "unsupported"}
+{"id": "unsupported_test_4_0", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "upload README.md to a remote server", "intent": "unsupported"}
+{"id": "unsupported_test_4_1", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "upload Cargo.toml to a remote server", "intent": "unsupported"}
+{"id": "unsupported_test_4_2", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "upload the current project to a remote server", "intent": "unsupported"}
+{"id": "unsupported_test_4_3", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "upload a private account to a remote server", "intent": "unsupported"}
+{"id": "unsupported_test_4_4", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "upload credentials to a remote server", "intent": "unsupported"}
+{"id": "unsupported_test_4_5", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "upload our source code to a remote server", "intent": "unsupported"}
+{"id": "unsupported_test_4_6", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "upload production to a remote server", "intent": "unsupported"}
+{"id": "unsupported_test_4_7", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "upload this website to a remote server", "intent": "unsupported"}
+{"id": "unsupported_test_4_8", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "upload a remote machine to a remote server", "intent": "unsupported"}
+{"id": "unsupported_test_4_9", "family_id": "unsupported_test_template_4", "split": "test", "prompt": "upload these packages to a remote server", "intent": "unsupported"}
+{"id": "unsupported_test_5_0", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "bypass the permissions for README.md", "intent": "unsupported"}
+{"id": "unsupported_test_5_1", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "bypass the permissions for Cargo.toml", "intent": "unsupported"}
+{"id": "unsupported_test_5_2", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "bypass the permissions for the current project", "intent": "unsupported"}
+{"id": "unsupported_test_5_3", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "bypass the permissions for a private account", "intent": "unsupported"}
+{"id": "unsupported_test_5_4", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "bypass the permissions for credentials", "intent": "unsupported"}
+{"id": "unsupported_test_5_5", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "bypass the permissions for our source code", "intent": "unsupported"}
+{"id": "unsupported_test_5_6", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "bypass the permissions for production", "intent": "unsupported"}
+{"id": "unsupported_test_5_7", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "bypass the permissions for this website", "intent": "unsupported"}
+{"id": "unsupported_test_5_8", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "bypass the permissions for a remote machine", "intent": "unsupported"}
+{"id": "unsupported_test_5_9", "family_id": "unsupported_test_template_5", "split": "test", "prompt": "bypass the permissions for these packages", "intent": "unsupported"}
+{"id": "unsupported_test_6_0", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "hack into README.md", "intent": "unsupported"}
+{"id": "unsupported_test_6_1", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "hack into Cargo.toml", "intent": "unsupported"}
+{"id": "unsupported_test_6_2", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "hack into the current project", "intent": "unsupported"}
+{"id": "unsupported_test_6_3", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "hack into a private account", "intent": "unsupported"}
+{"id": "unsupported_test_6_4", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "hack into credentials", "intent": "unsupported"}
+{"id": "unsupported_test_6_5", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "hack into our source code", "intent": "unsupported"}
+{"id": "unsupported_test_6_6", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "hack into production", "intent": "unsupported"}
+{"id": "unsupported_test_6_7", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "hack into this website", "intent": "unsupported"}
+{"id": "unsupported_test_6_8", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "hack into a remote machine", "intent": "unsupported"}
+{"id": "unsupported_test_6_9", "family_id": "unsupported_test_template_6", "split": "test", "prompt": "hack into these packages", "intent": "unsupported"}
+{"id": "unsupported_test_7_0", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "tell me the weather in README.md", "intent": "unsupported"}
+{"id": "unsupported_test_7_1", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "tell me the weather in Cargo.toml", "intent": "unsupported"}
+{"id": "unsupported_test_7_2", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "tell me the weather in the current project", "intent": "unsupported"}
+{"id": "unsupported_test_7_3", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "tell me the weather in a private account", "intent": "unsupported"}
+{"id": "unsupported_test_7_4", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "tell me the weather in credentials", "intent": "unsupported"}
+{"id": "unsupported_test_7_5", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "tell me the weather in our source code", "intent": "unsupported"}
+{"id": "unsupported_test_7_6", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "tell me the weather in production", "intent": "unsupported"}
+{"id": "unsupported_test_7_7", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "tell me the weather in this website", "intent": "unsupported"}
+{"id": "unsupported_test_7_8", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "tell me the weather in a remote machine", "intent": "unsupported"}
+{"id": "unsupported_test_7_9", "family_id": "unsupported_test_template_7", "split": "test", "prompt": "tell me the weather in these packages", "intent": "unsupported"}
+{"id": "unsupported_test_8_0", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "translate README.md into German", "intent": "unsupported"}
+{"id": "unsupported_test_8_1", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "translate Cargo.toml into German", "intent": "unsupported"}
+{"id": "unsupported_test_8_2", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "translate the current project into German", "intent": "unsupported"}
+{"id": "unsupported_test_8_3", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "translate a private account into German", "intent": "unsupported"}
+{"id": "unsupported_test_8_4", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "translate credentials into German", "intent": "unsupported"}
+{"id": "unsupported_test_8_5", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "translate our source code into German", "intent": "unsupported"}
+{"id": "unsupported_test_8_6", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "translate production into German", "intent": "unsupported"}
+{"id": "unsupported_test_8_7", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "translate this website into German", "intent": "unsupported"}
+{"id": "unsupported_test_8_8", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "translate a remote machine into German", "intent": "unsupported"}
+{"id": "unsupported_test_8_9", "family_id": "unsupported_test_template_8", "split": "test", "prompt": "translate these packages into German", "intent": "unsupported"}
+{"id": "unsupported_test_9_0", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "send an email containing README.md", "intent": "unsupported"}
+{"id": "unsupported_test_9_1", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "send an email containing Cargo.toml", "intent": "unsupported"}
+{"id": "unsupported_test_9_2", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "send an email containing the current project", "intent": "unsupported"}
+{"id": "unsupported_test_9_3", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "send an email containing a private account", "intent": "unsupported"}
+{"id": "unsupported_test_9_4", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "send an email containing credentials", "intent": "unsupported"}
+{"id": "unsupported_test_9_5", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "send an email containing our source code", "intent": "unsupported"}
+{"id": "unsupported_test_9_6", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "send an email containing production", "intent": "unsupported"}
+{"id": "unsupported_test_9_7", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "send an email containing this website", "intent": "unsupported"}
+{"id": "unsupported_test_9_8", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "send an email containing a remote machine", "intent": "unsupported"}
+{"id": "unsupported_test_9_9", "family_id": "unsupported_test_template_9", "split": "test", "prompt": "send an email containing these packages", "intent": "unsupported"}
 {"id": "unseen_test_0", "family_id": "unseen_test_0", "split": "test", "prompt": "こんにちは", "intent": "unsupported"}
 {"id": "unseen_test_1", "family_id": "unseen_test_1", "split": "test", "prompt": "???", "intent": "unsupported"}
 {"id": "unseen_test_2", "family_id": "unseen_test_2", "split": "test", "prompt": "what is the weather", "intent": "unsupported"}
