@@ -9,7 +9,7 @@ Status: Revised roadmap for v0.2.0. NioXS is positioned as a **Pure Coding Assis
 NioXS and NioNano operate as a **lightweight in-TUI companion and decision layer**, not an autonomous agent that takes over the keyboard. Because NioXS exposes standard OpenAI-compatible endpoints (`/v1/chat/completions`), developers can plug it into any existing coding agent (Aider, OpenCode, Cline, Continue, Roo, Cursor). Coders switch to `nio-nano` along their project lifecycle for micro-edits (label changes, font-colors, CSS tweaks, AST compiler triage) or trigger specialized workflows using explicit prefixes:
 - `--tools: <task>`: executes pre-defined specialized tools and Python plugins (e.g., SVG-to-Favicon generation), prompting the user for consent before downloading external plugins.
 - `--bash: <cmd>`: executes shell commands directly within the coding agent session so the user never has to leave their TUI.
-- `--coding: <req>`: acts as an intelligent middleman by bundling local relevant files/folders and consulting upstream LLMs via the Kilo provider (Kilo Auto Free / Mini Code).
+- `--code: <req>`: acts as an intelligent middleman by bundling local relevant files/folders and consulting upstream LLMs via the Kilo provider (Kilo Auto Free / Mini Code).
 - **Decision Model**: acts as the safety arbiter and download/bash permission gate.
 
 ---
@@ -24,7 +24,7 @@ The differentiator is that NioXS is **complementary to the developer and their c
 | Placement | Host agent / TUI (Aider, Cline, etc.) | Selected model or middleman gateway (`nio-nano`) |
 | In-TUI Terminal | Typically requires switching out to terminal | `--bash:` runs directly in conversation |
 | Specialized Tools | Static tools or heavy tool definitions | `--tools:` triggers Python plugins (with download consent) |
-| Large Coding Tasks | Handles directly or via `--coding:` | Acts as middleman to Kilo LLM with local files/folders bundled |
+| Large Coding Tasks | Handles directly or via `--code:` | Acts as middleman to Kilo LLM with local files/folders bundled |
 | Micro Edits & Fixes | High token cost, slow turnarounds | Local MicroLM (<1ms), label/color/CSS edits, AST compiler triage |
 | Safety Gate | Unchecked edits unless gated | Decision Model arbitrates policy, bash safety & plugin downloads |
 
@@ -34,7 +34,7 @@ The differentiator is that NioXS is **complementary to the developer and their c
 2. If they need instant micro-assistance (e.g. "change button label to 'Submit'", "fix rustc diagnostic", "change heading font-color to blue"), NioNano handles it instantly without high token fees.
 3. If they enter `--bash: cargo test`, NioXS runs the command and streams stdout/stderr back without exiting the TUI.
 4. If they enter `--tools: convert icon.svg to favicon.ico`, NioXS detects the required Python plugin, checks if it is installed, requests user approval if download is required, and executes the script.
-5. If they enter `--coding: refactor auth module`, NioXS bundles the relevant local files and folders and queries the Kilo provider (`kilo auto free` / `kilo mini code`). Before returning the code, NioXS performs a **Hallucination & Reality Check** (inspecting generated symbols, imports, and file paths against the project AST). If an invented symbol or invalid API is found, NioXS automatically reroutes (e.g. augmenting context with web/AST docs and re-querying Kilo) or prompts the user whether they wish to reroute or continue.
+5. If they enter `--code: refactor auth module`, NioXS bundles the relevant local files and folders and queries the Kilo provider (`kilo auto free` / `kilo mini code`). Before returning the code, NioXS performs a **Hallucination & Reality Check** (inspecting generated symbols, imports, and file paths against the project AST). If an invented symbol or invalid API is found, NioXS automatically reroutes (e.g. augmenting context with web/AST docs and re-querying Kilo) or prompts the user whether they wish to reroute or continue.
 
 **Deliverable (implemented):** a `nioxs.decision` object on the completions
 response — `{ chosen, ranked, confidence, evidence, policy, abstained_reason }`

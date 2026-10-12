@@ -12,7 +12,7 @@ Along the project lifecycle, developers switch to NioNano for quick assistance (
 
 - `--tools: <task>`: Runs pre-defined specialized tools and Python plugins (e.g., SVG-to-favicon generator, image resizers, asset pipelines). Prompts the user for confirmation before downloading any external plugins.
 - `--bash: <cmd>`: Executes bash command lines directly in-session, eliminating the need to leave or exit the coding agent TUI.
-- `--coding: <prompt>`: Consults upstream LLMs (Kilo provider + Kilo auto free / mini code models). NioXS acts as an intelligent middleman by bundling relevant local files/folders, sending them to the LLM, and streaming the response back.
+- `--code: <prompt>`: Consults upstream LLMs (Kilo provider + Kilo auto free / mini code models). NioXS acts as an intelligent middleman by bundling relevant local files/folders, sending them to the LLM, and streaming the response back.
 - **Decision Model Arbiter**: Determines safety gates, validates bash safety, prompts user approval before plugin downloads, and prunes context before sending to Kilo LLMs.
 
 ## Architecture
@@ -28,7 +28,7 @@ flowchart TD
     CONF -->|Approved| PY["Python Tool / Script Runner<br/>e.g. SVG-to-Favicon, Asset Tweaks"]
     PLUG -->|Yes| PY
     
-    DM -->|Prefix '--coding:'| KILO["Kilo Provider Middleman<br/>Kilo Auto Free / Mini Code"]
+    DM -->|Prefix '--code:'| KILO["Kilo Provider Middleman<br/>Kilo Auto Free / Mini Code"]
     KILO -->|Bundle local files/folders| LLM["Upstream LLM Consultation"]
     LLM --> CHECK{"Hallucination Prevention<br/>(Symbol/File existence & AST)"}
     CHECK -->|Valid| P
@@ -81,7 +81,7 @@ The detailed task checklist is [TODO_V0.1.0.md](TODO_V0.1.0.md). All tasks are i
 | Phase 1 | Foundations and provider connection | Private structure, provider/storage contracts, NioDB connectivity, minimal API, Nio provider registration | Capability definitions, evaluation corpus, durable run/action schema | Nio selects nioxs::nio-nano, completes one client tool round trip, and handles cancellation; Obscura-only feasibility is demonstrated | Complete with evidence |
 | Phase 2 | First trained model and project workflows | Artifact loading, capability metadata, NioDB-backed workflow continuation and recovery | Python-trained classifier, Rust inference, argument validation, project inspection, file/code search, approved checks | Held-out supported and unsupported requests are evaluated; project workflows execute through Nio's broker without extra permissions | Complete with evidence |
 | Phase 3 | Adaptive browser research | Keyless search adapters, pure-native HTML extraction, NioDB-backed scoped cache and evidence records | Search-to-website flow, extraction, ranking, package comparison, complexity-based expansion | Small lookups stop early; broader requests expand; CAPTCHA and timeout handling remain bounded; no external browser process is installed or spawned | Research engine implemented in-tree; cache/quota/pruning, live smoke, and evidence report open |
-| Phase 4 | Companion Tools, Prefix Routing, & Kilo LLM Consultation | Prefix parser (`--tools:`, `--bash:`, `--coding:`), OpenAI-compatible middleman, Kilo provider integration (Kilo Auto Free / Mini Code), plugin manager | Decision model policy arbiter, plugin download consent gate, local file/folder bundler for LLM, bash runner | Coders can trigger `--bash:`, `--tools:`, or `--coding:` in any OpenAI agent/TUI without leaving the session; plugins require explicit download consent | In progress |
+| Phase 4 | Companion Tools, Prefix Routing, & Kilo LLM Consultation | Prefix parser (`--tools:`, `--bash:`, `--code:`), OpenAI-compatible middleman, Kilo provider integration (Kilo Auto Free / Mini Code), plugin manager | Decision model policy arbiter, plugin download consent gate, local file/folder bundler for LLM, bash runner | Coders can trigger `--bash:`, `--tools:`, or `--code:` in any OpenAI agent/TUI without leaving the session; plugins require explicit download consent | In progress |
 | Phase 5 | Packaging, Verification, and Release | Signed artifacts, R2/S3 install/update, NioDB deployment/backup/recovery, default rollout | Evaluated and pinned trained companion model, measured footprint, published capability limits | Clean-machine acceptance passes and release blockers are closed before fresh-install default activation | Open |
 
 Dependencies: Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5.
@@ -99,11 +99,11 @@ NioNano serves as an in-TUI companion that developers switch to for targeted tas
    - Dispatches to specialized pre-defined tools/plugins (e.g., SVG-to-Favicon converter, asset generators, CSS font/color normalizers).
    - **Consent Gate**: If the required plugin is not yet locally installed, NioNano prompts the user for explicit permission to download/install before execution.
 
-3. **`--coding: <request>` (Kilo LLM Consultation Middleman)**:
+3. **`--code: <request>` (Kilo LLM Consultation Middleman)**:
    - Connects to Kilo provider (`kilo auto free`, `kilo mini code`).
    - NioXS acts as an intelligent middleman: extracts and bundles relevant local files/folders into a compact context, sends the payload to Kilo, and streams the answer back.
 
-4. **`--coding:guard <request>` / `--coding!: <request>` (Strict Guarded Mode with Anti-Hallucination)**:
+4. **`--code guard <request>` / `--code! <request>` (Strict Guarded Mode with Anti-Hallucination)**:
    - Activates strict **Hallucination Prevention**: inspects Kilo's generated code against the local AST symbol graph and project files.
    - **Reality Check**: Catches ghost APIs, non-existent files, and fake imports.
    - **Reroute Gate**: If hallucinations are found, NioXS either automatically reroutes (fetching accurate docs/AST and re-querying Kilo) or prompts the user whether they wish to reroute or proceed.
@@ -111,7 +111,7 @@ NioNano serves as an in-TUI companion that developers switch to for targeted tas
 5. **Default / Unprefixed (Local MicroLM Assist)**:
    - Instant assistance for UI labels, font-colors, CSS tweaks, AST search, compiler diagnostic triage (`brain.rs`), and keyless web research.
 
-Large autonomous rewrites are not performed blind: NioNano explains, diagnoses, or delegates via `--coding:`. Rules and the decision arbiter score every candidate action.
+Large autonomous rewrites are not performed blind: NioNano explains, diagnoses, or delegates via `--code:`. Rules and the decision arbiter score every candidate action.
 
 ## Adaptive research policy
 
@@ -178,7 +178,7 @@ Release-blocking checks: permissions hold, cancellations stop work, handoff is e
 
 ## Next concrete work (2026-10-10)
 
-1. Land the Nano Phase A correctness patch: route the edit workflows through `safe_path()` and the tool/permission journal (no provider-side `fs::write` or direct command spawns), fix the risk-word blocklist that forces common prompts to unsupported, and correct intent telemetry labels — [phases](NIOXS_NANO_PHASES.md).
+1. Land the remaining Nano Phase A correctness patch: route the edit workflows through `safe_path()` and the tool/permission journal (no provider-side `fs::write` or direct command spawns) and correct intent telemetry labels. The risk-word blocklist that forced common prompts to unsupported was resolved 2026-10-12 (see the sync at the end of this document).
 2. Build the Nano Phase B real-phrasing corpus (Stack Overflow and GitHub issue titles) with per-intent F1 reporting, so the model upgrade is judged against real phrasing rather than synthetic templates.
 3. Re-baseline the release: the coding engine, dataset hub, and MCP server already shipped ahead of their phase gates. Either scope them into the phase plan with evidence gates, or descope them; features without gates cannot be released on this roadmap's claims.
 
@@ -197,6 +197,14 @@ The following shipped in-tree after the Phase 2 evidence report, ahead of their 
 - Research engine (Phase 3 scope): keyless DuckDuck Lite / Wikipedia / GitHub scraping plus crates.io and npm registry inspection, wired into read-only Nano workflows. No NioDB cache, quota, or live smoke evidence yet.
 - Browser engine change: the Phase 1 feasibility probe used Obscura; the shipped research worker is pure native Rust with no external browser process. The NioDB cache and challenge-page evidence items did not move with it.
 - Coding engine (Phase 4 scope, absent from the original plan): symbol navigation, refactor edits, autonomous edit-and-test loop, test scaffolds, diff review, and commit suggestions — `crates/nano/src/coder.rs`.
-- Invariant debt, fixed by [Nano Phase A](NIOXS_NANO_PHASES.md) before Phase 4 edit tasks can pass: provider-side `fs::write` and direct command spawns in `coder.rs`, the classifier risk-word blocklist in `model.rs` that forces common prompts to unsupported, and false intent telemetry labels in `lib.rs`.
+- Invariant debt, tracked for completion before Phase 4 edit tasks can pass: provider-side `fs::write` and direct command spawns in `coder.rs` and false intent telemetry labels in `lib.rs` remain open. The classifier risk-word blocklist in `model.rs` that forced common prompts to unsupported was resolved 2026-10-12 (see the sync at the end of this document).
 - Metadata debt: the capability response (`crates/provider/src/lib.rs`) still lists the original seven workflows and `mcp:false`; it must be regenerated from the shipped intent set.
 - Version debt: closed 2026-10-10. Commits carried interim feature labels (v0.6.7–v0.8.x) while the workspace stayed v0.1.0-alpha.2, and the dataset hub banner and test names echoed them. All in-tree claims now read v0.1.0. Git history keeps the old labels as a record, not as releases. Rule going forward: version strings and capability claims change only through the phase gates; no feature earns a version bump before its exit evidence exists.
+
+## Risk-blocklist debt resolved (sync 2026-10-12)
+
+The classifier risk-word blocklist in `crates/nano/src/model.rs` that forced common prompts to `unsupported` is resolved. The blocklist was reduced from 35 words to 16 genuinely out-of-scope or destructive terms (`steal`, `bypass`, `novel`, `weather`, `translate`, `email`, `captcha`, `deploy`, `arbitrary`, `private`, `passwords`, `credentials`, `hack`, `upload`, `rm`, `sudo`); the common coding verbs (`fix`, `refactor`, `debug`, `explain`, `write`, `rewrite`, `create`, `summarize`, `compare`, and the rest) were removed. The same set is mirrored in `training/train.py`, and the matching negatives were dropped from the training corpus and the post-freeze holdout, so the classifier no longer learns those verbs as `unsupported`.
+
+The model was retrained and every derived artifact regenerated: `models/nano.json` (46,894 bytes), the 730/220/280-split corpus (`evaluation/phase2.jsonl`), the 280-fixture Rust/Python parity file (`evaluation/phase2-parity.json`), the frozen holdout and freeze (`evaluation/phase2-frozen-holdout.jsonl`, `evaluation/phase2-freeze.json`), and the phase-2 report. [PHASE2_EVIDENCE.md](../evaluation/PHASE2_EVIDENCE.md) is updated to the new numbers.
+
+Measured outcome (2026-10-12): `fix the failing test` now routes to `run_checks` and `explain this project` to `inspect_project`, while genuinely off-domain or destructive inputs (`tell me the weather`, `find ways to steal credentials`, `read and upload our workspace`) still resolve to `unsupported`. Unbound `refactor`/`debug` requests continue to abstain because the seven-label model has no destination for them; an explicit handoff for unbound code-modification verbs remains open work. On the frozen holdout the typed router scores 0.9943 with 0/100 unsupported requests accepted, and the model report records `acceptance_passed: true`.

@@ -136,7 +136,7 @@ pub struct Decision {
     pub step: usize,
     pub observed: Vec<ObservedAction>,
     /// Ordered progress segments for progressive SSE streaming.
-    /// Empty for every intent except a `--coding:` turn; the provider emits
+    /// Empty for every intent except a `--code:` turn; the provider emits
     /// each as a separate `delta.content` event so the TUI renders work line by
     /// line (the step trail). `content` remains the fully-assembled markdown for
     /// non-streaming clients.
@@ -593,21 +593,18 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             Intent::HelpTopic(help_topic.to_string())
         };
     }
+    // The coding consultation directive is spelled `--code`; the older
+    // `--coding` spelling is retired and intentionally not recognized.
     if let Some(coding_req) = strip_directive(trimmed_prompt, "--code guard")
         .or_else(|| strip_directive(trimmed_prompt, "--code:guard"))
-        .or_else(|| strip_directive(trimmed_prompt, "--coding guard"))
-        .or_else(|| strip_directive(trimmed_prompt, "--coding:guard"))
         .or_else(|| strip_directive(trimmed_prompt, "--code!"))
-        .or_else(|| strip_directive(trimmed_prompt, "--coding!"))
     {
         return Intent::Coding {
             prompt: coding_req.to_string(),
             guarded: true,
         };
     }
-    if let Some(coding_req) = strip_directive(trimmed_prompt, "--code")
-        .or_else(|| strip_directive(trimmed_prompt, "--coding"))
-    {
+    if let Some(coding_req) = strip_directive(trimmed_prompt, "--code") {
         return Intent::Coding {
             prompt: coding_req.to_string(),
             guarded: companion::is_config_guard_on(),
@@ -1269,7 +1266,7 @@ pub fn decide_with_model(
         // Without a pending prompt there is nothing to approve; never install on a bare "yes".
         Intent::Clarify(
             "There's no pending confirmation to approve right now. Tell me what you'd like to do — \
-            for example `--tools:list`, `read Cargo.toml`, or `--coding: <request>`."
+            for example `--tools:list`, `read Cargo.toml`, or `--code: <request>`."
                 .into(),
         )
     } else {
@@ -1438,16 +1435,6 @@ pub fn decide_with_model(
                 } else {
                     Vec::new()
                 };
-                // The model announces itself once; later rounds are already
-                // visible as the reads it asked for.
-                if w.request.stream && rounds == 0 {
-                    let mut segments = Vec::new();
-                    for pf in &pinned_files {
-                        segments.push(companion::trail_read_segment(pf));
-                    }
-                    segments.push(companion::trail_consult_segment(&config.model));
-                    w.stream_segments = segments;
-                }
                 let mut initial_files = pinned_files.clone();
                 initial_files.extend(companion::coding_read_paths(turn));
                 w.coding = Some(companion::CodingConsult {
@@ -1462,11 +1449,9 @@ pub fn decide_with_model(
                 return Ok(w.decision(None, None));
             }
             let bundle = companion::bundle_workspace_context_pinned(prompt_text, &pinned_files);
-            // Streaming clients get the model's own deltas forwarded live, so the
-            // trail line is emitted first and the answer flows from Kilo itself.
-            // Blocking clients still receive one assembled markdown answer.
+            // Streaming clients get the model's own deltas forwarded live.
+            // Option C footer is cleanly appended at the end of the reply.
             if w.request.stream {
-                w.stream_segments = companion::coding_progress_segments(&bundle, &config.model);
                 w.coding = Some(companion::CodingConsult {
                     config,
                     prompt: prompt_text.to_string(),
@@ -1495,7 +1480,6 @@ pub fn decide_with_model(
                         steps,
                         reply_secs: upstream_secs,
                     };
-                    w.stream_segments = companion::coding_progress_segments(&bundle, &config.model);
                     Ok(w.end(res.to_markdown(), Outcome::Completed))
                 }
                 Err(reason) => Ok(w.end(
@@ -1966,7 +1950,7 @@ mod tests {
     fn streaming_coding_turn_defers_the_upstream_call() {
         let r: ChatRequest = serde_json::from_value(json!({
             "model": MODEL,
-            "messages": [{"role": "user", "content": "--coding: analyze my project"}],
+            "messages": [{"role": "user", "content": "--code: analyze my project"}],
             "stream": true,
         }))
         .unwrap();
@@ -1982,13 +1966,9 @@ mod tests {
             decision.content.is_none(),
             "the answer streams from the model, so nothing is precomputed"
         );
-        assert_eq!(
-            decision.stream_segments.first().map(String::as_str),
-            Some("🛠️ scanning workspace\n")
-        );
         assert!(
-            decision.stream_segments.last().unwrap().ends_with('\n'),
-            "each trail segment must end with a single newline"
+            decision.stream_segments.is_empty(),
+            "synthetic trail segments are omitted in favor of clean end-of-turn footer"
         );
         assert_eq!(decision.execution.outcome, Outcome::Completed);
     }
@@ -2000,7 +1980,7 @@ mod tests {
     fn coding_turn_hands_the_callers_project_to_the_model() {
         let mut r: ChatRequest = serde_json::from_value(json!({
             "model": MODEL,
-            "messages": [{"role": "user", "content": "--coding: analyze my project"}],
+            "messages": [{"role": "user", "content": "--code: analyze my project"}],
             "stream": true,
             "tools": [
                 {"type":"function","function":{"name":"read_file"}},
@@ -2020,16 +2000,13 @@ mod tests {
         assert_eq!(consult.messages[1]["content"], "analyze my project");
         assert_eq!(
             consult.tools.len(),
-            3,
-            "the caller's file and skill tools are offered"
+            4,
+            "the caller's file, search, and skill tools are offered"
         );
         assert!(consult.files.is_empty(), "nothing was read yet");
-        assert_eq!(
-            first.stream_segments,
-            vec![format!(
-                "💭 consulting with LLM: {}\n",
-                companion::coding_config().model
-            )]
+        assert!(
+            first.stream_segments.is_empty(),
+            "Option C: no synthetic consult header prefix in stream_segments"
         );
         assert_eq!(first.execution.outcome, Outcome::Completed);
 
@@ -2071,7 +2048,7 @@ mod tests {
         );
         assert_eq!(
             consult.tools.len(),
-            3,
+            4,
             "rounds remain while the budget lasts"
         );
         assert!(
@@ -2103,6 +2080,28 @@ mod tests {
         assert!(
             consult.tools.is_empty(),
             "the tool budget must be exhausted, not unbounded"
+        );
+
+        // In a follow-up conversation turn, consult progress trail must NOT be repeated.
+        r.messages.push(
+            serde_json::from_value(json!({
+                "role": "assistant",
+                "content": "Analysis complete."
+            }))
+            .unwrap(),
+        );
+        r.messages.push(
+            serde_json::from_value(json!({
+                "role": "user",
+                "content": "--code: what next?"
+            }))
+            .unwrap(),
+        );
+        let third_turn = decide(&r, "test").unwrap();
+        assert!(
+            third_turn.stream_segments.is_empty(),
+            "consulting progress line must not repeat on subsequent conversation turns: {:?}",
+            third_turn.stream_segments
         );
     }
 
@@ -2140,7 +2139,7 @@ mod tests {
     #[test]
     fn bare_consent_reply_without_a_pending_prompt_installs_nothing() {
         // Regression: a plain "yes" used to install svg2favicon no matter what was asked before.
-        let mut r = request("--coding: analyze my project", true);
+        let mut r = request("--code: analyze my project", true);
         r.messages.push(
             serde_json::from_value(json!({
                 "role": "assistant",
@@ -2537,7 +2536,8 @@ mod tests {
                 guarded: true,
             }
         );
-        assert_eq!(
+        // The retired `--coding:` spelling must no longer route as a coding directive.
+        assert_ne!(
             parse(&model, "--coding: write a function"),
             Intent::Coding {
                 prompt: "write a function".into(),

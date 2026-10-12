@@ -326,7 +326,7 @@ async fn chat(
         ));
         value
     };
-    // A `--coding:` turn hands back a pending upstream consultation instead of a
+    // A `--code:` turn hands back a pending upstream consultation instead of a
     // pre-computed answer. The model is asked with the caller's file tools and
     // its own deltas are forwarded live, so it decides what to read and the
     // client executes those reads in the directory it was started in.
@@ -360,7 +360,7 @@ async fn chat(
     let chunk = |delta: Value, finish: Value| json!({"id":id,"object":"chat.completion.chunk","created":0,"model":MODEL,"choices":[{"index":0,"delta":delta,"finish_reason":finish}]});
     let mut terminal = chunk(json!({}), json!(finish));
     terminal["nioxs"] = nioxs_value;
-    // A successful `--coding:` turn carries pre-ordered segments: the step trail
+    // A successful `--code:` turn carries pre-ordered segments: the step trail
     // then the chunked answer. Emit each as its own SSE delta so the client
     // renders progress live. Every other intent keeps the single-chunk shape.
     if !decision.stream_segments.is_empty() {
@@ -389,7 +389,7 @@ async fn chat(
     Sse::new(stream::iter(events)).into_response()
 }
 
-/// Text and tool requests collected while forwarding an upstream `--coding:`
+/// Text and tool requests collected while forwarding an upstream `--code:`
 /// stream.
 #[derive(Default)]
 struct CodingSink {
@@ -725,19 +725,36 @@ fn relay_coding_calls(calls: &[RequestedCall], turn: &str) -> Result<Vec<ClientC
                 call.name
             ));
         }
-        let Ok(arguments) = serde_json::from_str::<Value>(&call.arguments) else {
+        let Ok(mut arguments) = serde_json::from_str::<Value>(&call.arguments) else {
             return Err(format!(
                 "`{}` was called with unparseable arguments",
                 call.name
             ));
         };
+        // Normalize search_code query if model passed alternative keys
+        if call.name == "search_code" && arguments.get("query").is_none() {
+            if let Some(val) = arguments
+                .get("pattern")
+                .or_else(|| arguments.get("text"))
+                .or_else(|| arguments.get("search"))
+                .or_else(|| arguments.get("term"))
+            {
+                if let Some(s) = val.as_str() {
+                    arguments["query"] = json!(s);
+                }
+            }
+        }
+        let serialized_args = arguments.to_string();
         // Deduplicate duplicate identical tool calls in the same batch
-        let key = (call.name.clone(), call.arguments.clone());
+        let key = (call.name.clone(), serialized_args.clone());
         if !seen.insert(key) {
             continue;
         }
         let path = arguments["path"].as_str().unwrap_or(".");
-        if call.name != "read_skill_file" && !nioxs_nano::safe_path(path, false) {
+        if call.name != "read_skill_file"
+            && call.name != "git_status"
+            && !nioxs_nano::safe_path(path, false)
+        {
             return Err(format!("`{path}` is outside the caller's project"));
         }
         let hint = if call.name == "read_file" {
@@ -748,6 +765,14 @@ fn relay_coding_calls(calls: &[RequestedCall], turn: &str) -> Result<Vec<ClientC
         } else if call.name == "read_skill_file" {
             let skill_name = arguments["name"].as_str().unwrap_or("skill");
             format!("🧠 read_skill {skill_name}\n")
+        } else if call.name == "search_code" {
+            let query = arguments["query"].as_str().unwrap_or("");
+            format!("🔍 search_code {query}\n")
+        } else if call.name == "git_status" {
+            "📊 git_status\n".to_string()
+        } else if call.name == "git_diff" {
+            let p = arguments["path"].as_str().unwrap_or(".");
+            format!("📝 git_diff {p}\n")
         } else {
             let glob = arguments["glob"].as_str().unwrap_or("**/*");
             format!("📁 find_files {glob}\n")
@@ -756,11 +781,11 @@ fn relay_coding_calls(calls: &[RequestedCall], turn: &str) -> Result<Vec<ClientC
             id: format!(
                 "call_nano_{turn}_{}",
                 &nioxs_contracts::digest(
-                    format!("{turn}:{index}:{}:{}", call.name, call.arguments).as_bytes()
+                    format!("{turn}:{index}:{}:{}", call.name, serialized_args).as_bytes()
                 )[..16]
             ),
             name: call.name.clone(),
-            arguments: call.arguments.clone(),
+            arguments: serialized_args,
             hint,
         });
     }
@@ -770,7 +795,7 @@ fn relay_coding_calls(calls: &[RequestedCall], turn: &str) -> Result<Vec<ClientC
 /// Builds the SSE payloads for a turn that streams a progress trail: the trail
 /// lines first, then the pending tool call, then the terminal chunk.
 ///
-/// A `--coding:` turn reads the caller's project one client action at a time,
+/// A `--code:` turn reads the caller's project one client action at a time,
 /// so a trail round still has to carry the call the client executes next.
 fn trail_payloads(
     segments: &[String],
@@ -1023,6 +1048,10 @@ async fn coding_sse(
                 alert.trim()
             ));
         }
+        // Option C: Append subtle footer at the end of the answer only when answer text is non-empty.
+        if !text.trim().is_empty() {
+            closing.push_str(&companion::coding_footer(&tail_consult.config.model));
+        }
         let mut events = Vec::new();
         if !closing.is_empty() {
             events.push(content_event(&id_tail, closing));
@@ -1181,6 +1210,9 @@ async fn coding_response(
             alert.trim()
         ));
     }
+    if !content.trim().is_empty() {
+        content.push_str(&companion::coding_footer(&consult.config.model));
+    }
     coding_json(
         &id,
         json!({"role":"assistant","content":content}),
@@ -1244,7 +1276,7 @@ mod tests {
     }
 
     /// A trail round must still carry the tool call the client executes next,
-    /// otherwise a tool-driven `--coding:` turn stalls after the scan line.
+    /// otherwise a tool-driven `--code:` turn stalls after the scan line.
     #[test]
     fn trail_rounds_carry_their_tool_call() {
         let call = ToolCall {
@@ -1327,13 +1359,19 @@ mod tests {
             &[
                 call("read_file", "{\"path\":\"src/main.rs\"}"),
                 call("find_files", "{\"glob\":\"src/**/*.rs\"}"),
+                call("search_code", "{\"query\":\"fn main\"}"),
+                call("git_status", "{}"),
+                call("git_diff", "{}"),
             ],
             "turn_abc",
         )
         .unwrap();
-        assert_eq!(relayed.len(), 2);
+        assert_eq!(relayed.len(), 5);
         assert_eq!(relayed[0].hint, "📄 read_file src/main.rs\n");
         assert_eq!(relayed[1].hint, "📁 find_files src/**/*.rs\n");
+        assert_eq!(relayed[2].hint, "🔍 search_code fn main\n");
+        assert_eq!(relayed[3].hint, "📊 git_status\n");
+        assert_eq!(relayed[4].hint, "📝 git_diff .\n");
         assert!(
             relayed[0].id.starts_with("call_nano_turn_abc_"),
             "the client must be able to recover the turn: {}",

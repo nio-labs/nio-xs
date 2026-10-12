@@ -75,7 +75,7 @@ Exit evidence: a lookup stops when its required fields are found, a comparison e
 
 Goal: empower NioNano as a decision and execution layer while preserving sovereign execution, with handoff as an escape hatch, API compatibility, and local MCP.
 
-**Retired:** LLM consultation (`consult_llm`) and the Kilo Code integration are removed. Nano does not call an external LLM at runtime; reasoning and authoring stay with the client's LLM, while Nano decides, verifies, and executes. See [NEXT.md](NEXT.md).
+**Directive naming:** the upstream-consultation directive is `--code` (guarded: `--code guard` / `--code!`). The earlier `--coding:` spelling is retired and no longer routes. Nano's default routing stays local; only an explicit `--code` turn consults the Kilo gateway, while reasoning and authoring otherwise stay with the client's LLM. See [NEXT.md](NEXT.md).
 
 - [ ] Implement bounded, verified code modification: safe file editing (`edit_file` / `apply_patch`) validating against `safe_path` and project trust. (An edit engine exists — `crates/nano/src/patch.rs` and the coder edit path — but `coder.rs:208,242` call `fs::write` directly, bypassing the tool gate; gated on Nano Phase A.)
 - [ ] Implement the verification loop: run configured checks (`run_checks`) post-edit and iterate or terminate within the 8-action budget. (An edit-and-test loop exists in `coder.rs` but runs on the ungated edit path and spawns commands directly; gated on Nano Phase A.)
