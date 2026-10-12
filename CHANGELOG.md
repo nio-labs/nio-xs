@@ -3,6 +3,15 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.3.2
+
+Release theme: **Termux binaries.**
+
+### Fixed
+- Termux/Android binaries failed to build because the workflow set only the
+  cargo linker and `cc-rs` could not find the NDK clang. The Android branch now
+  also exports `CC`/`AR` and adds the NDK toolchain `bin` to `PATH`.
+
 ## v0.3.1
 
 Release theme: **complete binaries.** v0.3.0 shipped only the linux-amd64,

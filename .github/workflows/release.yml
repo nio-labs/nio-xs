@@ -95,13 +95,19 @@ jobs:
             API=21
             HOST_TAG=linux-x86_64
             NDK="${ANDROID_NDK_HOME:?ANDROID_NDK_HOME is not set}"
+            TOOLBIN="$NDK/toolchains/llvm/prebuilt/$HOST_TAG/bin"
             case "$TARGET" in
               aarch64-linux-android) CC_BIN="aarch64-linux-android${API}-clang" ;;
               x86_64-linux-android)  CC_BIN="x86_64-linux-android${API}-clang" ;;
               *) echo "unsupported Android target: $TARGET" >&2; exit 1 ;;
             esac
             VAR="CARGO_TARGET_$(echo "$TARGET" | tr 'a-z-' 'A-Z_')_LINKER"
-            export "$VAR=$NDK/toolchains/llvm/prebuilt/$HOST_TAG/bin/$CC_BIN"
+            export "$VAR=$TOOLBIN/$CC_BIN"
+            # cc-rs (used by ring and friends) also needs the C compiler and
+            # archiver on CC/AR, plus the NDK bin dir on PATH.
+            export CC="$TOOLBIN/$CC_BIN"
+            export AR="$TOOLBIN/llvm-ar"
+            export "PATH=$TOOLBIN:$PATH"
           fi
           cargo build --release --target "$TARGET" --bin nioxs
           mkdir -p dist
