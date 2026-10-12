@@ -80,6 +80,9 @@ jobs:
           IS_ANDROID: ${{ matrix.android }}
         run: |
           set -euo pipefail
+          # cargo uses the channel pinned in rust-toolchain.toml, so the target
+          # must be added to that toolchain, not only to the setup action.
+          rustup target add "$TARGET"
           # Rust env var name for a target, e.g. aarch64-linux-android ->
           # CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER
           if [ -n "${LINKER:-}" ]; then
