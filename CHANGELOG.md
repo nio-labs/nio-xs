@@ -3,6 +3,18 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.3.1
+
+Release theme: **complete binaries.** v0.3.0 shipped only the linux-amd64,
+darwin-arm64, and windows-amd64 assets because the cross-targets failed.
+
+### Fixed
+- The release workflow installed cross-compilation targets into `stable` while
+  cargo built with the channel pinned in `rust-toolchain.toml`, so linux-arm64,
+  darwin-amd64, termux (amd64/arm64), and windows-arm64 failed with
+  "can't find crate for `core`". The setup action is now pinned to the same
+  channel, so every artifact `bin/nioxs.js` requests is produced.
+
 ## v0.3.0
 
 Release theme: **safe writes and an honest surface.**
