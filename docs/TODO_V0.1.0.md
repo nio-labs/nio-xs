@@ -1,10 +1,10 @@
-# NioXS + NioNano v0.1.0 TODO
+# NioXS + NioNano TODO
 
-Status: Phases 1–2 complete with evidence; Phase 3 research engine implemented in-tree with its NioDB cache/quota/smoke gates still open; Phase 4 partial (a local MCP stdio server and a bounded edit/verify loop exist, but edit paths bypass the tool gate, and feedback records and handoff continuation are missing; LLM consultation is retired); Phase 5 open. Optional Phase 1 Crawl4AI probe remains deferred. Target: v0.1.0. See [roadmap](ROADMAP.md) and [full design](PLAN.md).
+Status: release **v0.3.3** (see the [release & phase map](ROADMAP.md#release--phase-map)). Phases 1–2 complete with evidence; Phase 3 research engine implemented in-tree with its NioDB cache/quota/smoke gates still open; Phase 4 partial — a local MCP stdio server (its protocol surface now has acceptance tests, the live client round-trip does not) and a bounded, `safe_path`-gated edit/verify loop exist, while feedback records and handoff continuation are missing and the upstream consultation is live on the `--code` directive; Phase 5 open. Optional Phase 1 Crawl4AI probe remains deferred. See [roadmap](ROADMAP.md) and [full design](PLAN.md).
 
 Check tasks only after their acceptance evidence exists. Each phase depends on the previous phase. Nano is the only model in this release.
 
-**Tracking sync 2026-10-11.** Workspace is at `v0.1.0-alpha.3`. The static dataset subsystem has been pruned in favor of pure dynamic web scraping via headless browser headers and the Code Assist Brain (`brain.rs`) with AST diagnostic parsing. The Decision Model (`decision.rs`) is repositioned as a safety, policy, and workflow arbiter. All workspace tests (contracts, browser, nano, provider, storage) pass and release binaries are verified. Target: v0.1.0 final and v0.2.0 roadmap.
+**Tracking sync 2026-10-13.** Workspace is at `v0.3.3`. The static dataset subsystem has been pruned in favor of pure dynamic web scraping via headless browser headers and the Code Assist Brain (`brain.rs`) with AST diagnostic parsing. The Decision Model (`decision.rs`) is repositioned as a safety, policy, and workflow arbiter. All workspace tests (contracts, browser, nano, provider, storage) pass and the v0.3.3 release binaries are verified across eight targets. Target: v0.4.0.
 
 ## Phase 1 — Foundations, NioDB, and provider connection
 

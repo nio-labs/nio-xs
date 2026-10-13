@@ -1,6 +1,20 @@
 # NioXS and NioNano roadmap
 
-Status: Re-architected as a **Pure Coding Assist Companion** (OpenAI-compatible drop-in for coding agents/TUIs) rather than an autonomous agent. Synced 2026-10-11. Architecture and detailed flows: [PLAN.md](PLAN.md).
+Status: Re-architected as a **Pure Coding Assist Companion** (OpenAI-compatible drop-in for coding agents/TUIs) rather than an autonomous agent. Synced 2026-10-13. Architecture and detailed flows: [PLAN.md](PLAN.md).
+
+## Release & phase map
+
+One vocabulary. **Phase 1–5** are the structural roadmap stages; **`vX.Y.Z`** is the shipped release (the workspace `Cargo.toml` version and the git tag). They are not rival schemes: a phase is delivered by one or more releases, and a release may carry work from more than one phase. This table is authoritative — [TODO_V0.1.0.md](TODO_V0.1.0.md) and [NEXT.md](NEXT.md) describe the same state in these terms.
+
+| Release | Phase | State |
+| --- | --- | --- |
+| `v0.2.0`–`v0.2.7` | Phase 1–2 baseline, plus features shipped ahead of their gates (coding engine, research engine, MCP server, release matrix) | Phase 1–2 complete with evidence; Phase 3–4 gates open |
+| `v0.3.0`–`v0.3.3` | Phase 4 (safe writes, honest surface): `safe_path`-gated edits, honest `/v1/capabilities`, `--code` handoff, full 8-target release matrix | **Current release** |
+| `v0.4` (planned) | Phase 4 remainder: MCP live client round-trip (the protocol surface now has acceptance tests in `crates/provider/src/mcp.rs`), learned decision weights, plugin supervisor | Planned |
+| `v0.5` (planned) | Phase 3 remainder (research cache/quota) plus dataset index and packs | Planned |
+| Phase 5 (ungated) | Packaging, distribution, production evaluation | Open |
+
+Rule (unchanged): version strings and capability claims change only when their exit evidence exists.
 
 ## Product identity and scope: Pure Coding Assist Companion
 

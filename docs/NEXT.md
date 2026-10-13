@@ -1,6 +1,6 @@
 # NioXS Next — Companion Coding Assist, Prefix Directives, and Decision Gate
 
-Status: Revised roadmap for v0.2.0. NioXS is positioned as a **Pure Coding Assist Companion** (OpenAI-compatible drop-in for coding agents/TUIs) rather than an autonomous agent.
+Status: Revised roadmap; the shipped release is **v0.3.3**. The milestone table below maps to Phases 1–5 via the [release & phase map](ROADMAP.md#release--phase-map). NioXS is positioned as a **Pure Coding Assist Companion** (OpenAI-compatible drop-in for coding agents/TUIs) rather than an autonomous agent.
 
 ---
 
