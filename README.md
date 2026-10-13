@@ -1,11 +1,5 @@
 # NioXS (Nio Axis)
 
-<p align="center">
-  <img src="docs/logo.svg" alt="NioXS logo: white XS on teal" width="160" height="160">
-</p>
-
-**Repository branding:** use [`docs/social-preview.png`](docs/social-preview.png) as the repository social preview and [`docs/logo.png`](docs/logo.png) as the square Nio Labs profile image.
-
 **The Lightweight Coding Companion & AI Gateway orchestrated by NioFlow, with NioNano MicroLM (Micro Learning Model) for local evidence and actions.**
 
 > **AXIS = AI + XS**: NioXS serves as the operational axis and in-TUI coding companion—providing OpenAI-compatible gateway routing, an in-session bash runner, Python tool plugins, compiler diagnostic triage, and anti-hallucination guardrails for coding agents.
