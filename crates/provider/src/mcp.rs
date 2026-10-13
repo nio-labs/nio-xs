@@ -321,4 +321,101 @@ mod tests {
         let text = res["result"]["content"][0]["text"].as_str().unwrap();
         assert!(text.contains(".gitignore"));
     }
+
+    /// Acceptance gate: the handshake advertises the protocol, tool capability,
+    /// and a non-empty server version.
+    #[test]
+    fn test_initialize_advertises_protocol_and_capabilities() {
+        let res: Value = serde_json::from_str(
+            &handle_rpc(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(res["jsonrpc"], "2.0");
+        assert_eq!(res["result"]["protocolVersion"], "2024-11-05");
+        assert!(res["result"]["capabilities"]["tools"].is_object());
+        assert!(
+            !res["result"]["serverInfo"]["version"]
+                .as_str()
+                .unwrap_or_default()
+                .is_empty(),
+            "server version must be reported"
+        );
+    }
+
+    /// A JSON-RPC notification must not produce a response.
+    #[test]
+    fn test_notifications_are_silent() {
+        assert!(handle_rpc(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#).is_none());
+    }
+
+    /// The advertised tool list must contain every core tool and one entry per
+    /// shipped companion plugin (so the MCP surface matches what Nano exposes).
+    #[test]
+    fn test_tools_list_exposes_core_tools_and_plugins() {
+        let res: Value = serde_json::from_str(
+            &handle_rpc(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#).unwrap(),
+        )
+        .unwrap();
+        let names: Vec<&str> = res["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        for expected in [
+            "web_fetch",
+            "wiki_search",
+            "github_repo",
+            "package_info",
+            "apply_patch",
+            "scaffold_template",
+            "ast_symbol_search",
+            "companion_tool",
+        ] {
+            assert!(names.contains(&expected), "tools/list must expose '{expected}': {names:?}");
+        }
+        for plugin in nioxs_nano::companion::TOOL_PLUGINS {
+            let expected = format!("plugin_{}", plugin.name);
+            assert!(
+                names.contains(&expected.as_str()),
+                "tools/list must expose '{expected}': {names:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_prompts_list_is_advertised() {
+        let res: Value = serde_json::from_str(
+            &handle_rpc(r#"{"jsonrpc":"2.0","id":3,"method":"prompts/list"}"#).unwrap(),
+        )
+        .unwrap();
+        let prompts = res["result"]["prompts"].as_array().unwrap();
+        assert!(prompts.iter().any(|p| p["name"] == "code_review"));
+    }
+
+    /// A tools/call must return a well-formed JSON-RPC result carrying text.
+    #[test]
+    fn test_apply_patch_tool_call_returns_text_result() {
+        let req = r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"apply_patch","arguments":{"content":"a\nb\n","target":"b","replacement":"c"}}}"#;
+        let res: Value = serde_json::from_str(&handle_rpc(req).unwrap()).unwrap();
+        assert_eq!(res["jsonrpc"], "2.0");
+        let text = res["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("patched"), "unexpected result: {text}");
+        assert!(text.contains('c'));
+    }
+
+    #[test]
+    fn test_unknown_method_returns_method_not_found() {
+        let res: Value = serde_json::from_str(
+            &handle_rpc(r#"{"jsonrpc":"2.0","id":5,"method":"does/not-exist"}"#).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(res["error"]["code"], -32601);
+    }
+
+    #[test]
+    fn test_malformed_json_returns_parse_error() {
+        let res: Value = serde_json::from_str(&handle_rpc("not json").unwrap()).unwrap();
+        assert_eq!(res["error"]["code"], -32700);
+    }
 }
