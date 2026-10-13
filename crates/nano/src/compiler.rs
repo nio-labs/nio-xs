@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use std::path::Path;
+use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompilerDiagnostic {
@@ -72,14 +72,16 @@ pub fn run_cargo_check(root: &str) -> Result<(), Vec<CompilerDiagnostic>> {
         .arg("--message-format=json")
         .current_dir(root)
         .output()
-        .map_err(|e| vec![CompilerDiagnostic {
-            file_path: "".to_string(),
-            line_number: 0,
-            error_code: "IO_ERROR".to_string(),
-            message: format!("Failed to run cargo check: {}", e),
-            label: "".to_string(),
-            suggested_replacement: None,
-        }])?;
+        .map_err(|e| {
+            vec![CompilerDiagnostic {
+                file_path: "".to_string(),
+                line_number: 0,
+                error_code: "IO_ERROR".to_string(),
+                message: format!("Failed to run cargo check: {}", e),
+                label: "".to_string(),
+                suggested_replacement: None,
+            }]
+        })?;
 
     let mut diagnostics = Vec::new();
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -89,15 +91,22 @@ pub fn run_cargo_check(root: &str) -> Result<(), Vec<CompilerDiagnostic>> {
             if cargo_msg.reason == "compiler-message" {
                 if let Some(msg) = cargo_msg.message {
                     if msg.level == "error" {
-                        let code = msg.code.map(|c| c.code).unwrap_or_else(|| "UNKNOWN".to_string());
-                        
+                        let code = msg
+                            .code
+                            .map(|c| c.code)
+                            .unwrap_or_else(|| "UNKNOWN".to_string());
+
                         let mut suggested = None;
                         for child in &msg.children {
-                            if let Some(span) = child.spans.iter().find(|s| s.is_primary && s.suggested_replacement.is_some()) {
+                            if let Some(span) = child
+                                .spans
+                                .iter()
+                                .find(|s| s.is_primary && s.suggested_replacement.is_some())
+                            {
                                 suggested = span.suggested_replacement.clone();
                             }
                         }
-                        
+
                         if let Some(span) = msg.spans.iter().find(|s| s.is_primary) {
                             diagnostics.push(CompilerDiagnostic {
                                 file_path: span.file_name.clone(),
@@ -140,7 +149,7 @@ pub fn run_tsc_check(root: &str) -> Result<(), Vec<CompilerDiagnostic>> {
         .arg("--noEmit")
         .current_dir(root)
         .output();
-        
+
     match output {
         Ok(out) if !out.status.success() => {
             let stderr = String::from_utf8_lossy(&out.stderr);
@@ -160,10 +169,8 @@ pub fn run_tsc_check(root: &str) -> Result<(), Vec<CompilerDiagnostic>> {
 }
 
 pub fn run_pyright_check(root: &str) -> Result<(), Vec<CompilerDiagnostic>> {
-    let output = Command::new("pyright")
-        .current_dir(root)
-        .output();
-        
+    let output = Command::new("pyright").current_dir(root).output();
+
     match output {
         Ok(out) if !out.status.success() => {
             let stdout = String::from_utf8_lossy(&out.stdout);

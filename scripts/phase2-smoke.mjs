@@ -82,7 +82,7 @@ try {
   const providerEnv = { NIOXS_DB_URL:dbUrl, NIOXS_DB_TOKEN_FILE:tokenFile, NIOXS_LISTEN:`127.0.0.1:${providerPort}`, NIOXS_DEPLOYMENT_ID:'smoke' };
   let provider=start(args.provider,['serve'],providerEnv,'provider'); await waitReady(`${providerUrl}/ready`);
   const catalog=await request(`${providerUrl}/v1/models`);
-  assert(catalog.value.data[0].id==='nio-nano','model missing'); record('NioXS provider catalog and authenticated storage readiness');
+  assert(catalog.value.data[0].id==='nio-flow','default model missing'); record('NioXS provider catalog and authenticated storage readiness');
   const firstBody={model:'nio-nano',messages:[{role:'user',content:'read README.md'}],tools:[{type:'function',function:{name:'read_file',parameters:{type:'object',properties:{path:{type:'string'},line_count:{type:'integer'}},required:['path']}}}]};
   const first=await request(`${providerUrl}/v1/chat/completions`,firstBody);
   assert(first.status===200&&first.value.choices[0].finish_reason==='tool_calls','tool call missing');

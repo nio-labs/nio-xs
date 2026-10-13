@@ -14,12 +14,14 @@ pub mod dag;
 pub mod decision;
 pub mod model;
 pub mod patch;
+pub mod profiles;
 pub mod synthesize;
+pub mod upstream;
 pub mod watcher;
 
 pub use model::Model;
 use nioxs_contracts::{
-    ChatRequest, Execution, FunctionCall, Handoff, MODEL, Outcome, PROVIDER, SCHEMA_VERSION,
+    ChatRequest, Execution, FunctionCall, Handoff, MODEL_NANO, Outcome, PROVIDER, SCHEMA_VERSION,
     ToolCall, digest,
 };
 pub use patch::{apply_patch_to_string, scaffold_template};
@@ -625,6 +627,18 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             )),
         };
     }
+    if let Some(glob) = strip_directive(trimmed_prompt, "--find-files") {
+        let glob = if glob.trim().is_empty() {
+            "*"
+        } else {
+            glob.trim()
+        };
+        return if safe_path(glob, true) {
+            Intent::Files(glob.to_string())
+        } else {
+            Intent::Clarify("Use a project-relative filename or glob for --find-files.".into())
+        };
+    }
     if let Some(help_topic) = strip_directive(trimmed_prompt, "--help") {
         return if help_topic.is_empty() {
             Intent::Help
@@ -1106,7 +1120,14 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
 /// Code-modification verbs that have no bounded local workflow, so an unbound
 /// request using one is handed to `--code` rather than reported as unsupported.
 fn unbound_code_modification(prompt: &str) -> bool {
-    const VERBS: [&str; 6] = ["refactor", "debug", "rename", "implement", "migrate", "rewrite"];
+    const VERBS: [&str; 6] = [
+        "refactor",
+        "debug",
+        "rename",
+        "implement",
+        "migrate",
+        "rewrite",
+    ];
     model::words(prompt)
         .iter()
         .any(|w| VERBS.contains(&w.as_str()))
@@ -1275,6 +1296,10 @@ pub fn decide_with_model(
     model: &Model,
 ) -> Result<Decision, String> {
     let start = request.validate()?;
+    let route = profiles::route(
+        &request.model,
+        request.messages[start].content.as_str().unwrap_or(""),
+    );
     for (index, message) in request.messages[start + 1..].iter().enumerate() {
         if message.role == "tool"
             && !request.messages[start + 1..start + 1 + index]
@@ -1319,7 +1344,30 @@ pub fn decide_with_model(
             prompt = format!("run {prompt}");
         }
     }
-    let intent = if companion::is_consent_reply(&prompt) {
+    let flow_options = profiles::flow_options(&prompt);
+    let no_helm = route.selected == nioxs_contracts::MODEL_FLOW && !flow_options.1;
+    let thinker_options = profiles::thinker_options(&prompt);
+    let thinker_with_helm = route.selected == nioxs_contracts::MODEL_THINKER && thinker_options.1;
+    let intent = if no_helm && flow_options.0.is_empty() {
+        Intent::Clarify(
+            "Usage: --no-helm <task>. Flow uses its specialists without the final Helm gate."
+                .into(),
+        )
+    } else if route.selected == nioxs_contracts::MODEL_THINKER
+        && thinker_with_helm
+        && thinker_options.0.is_empty()
+    {
+        Intent::Clarify("Usage: --with-helm <task>. NioThinker runs its three reflection phases first, then NioHelm reviews the result.".into())
+    } else if profiles::direct_answer(route.selected) {
+        Intent::Coding {
+            prompt: if thinker_with_helm {
+                thinker_options.0
+            } else {
+                prompt.clone()
+            },
+            guarded: false,
+        }
+    } else if companion::is_consent_reply(&prompt) {
         // Without a pending prompt there is nothing to approve; never install on a bare "yes".
         Intent::Clarify(
             "There's no pending confirmation to approve right now. Tell me what you'd like to do — \
@@ -1327,7 +1375,22 @@ pub fn decide_with_model(
                 .into(),
         )
     } else {
-        parse(model, &prompt)
+        let parsed = parse(model, &prompt);
+        if route.selected != MODEL_NANO
+            && (!prompt.starts_with("--") || no_helm)
+            && !matches!(parsed, Intent::Help | Intent::Config(_))
+        {
+            Intent::Coding {
+                prompt: if no_helm {
+                    flow_options.0
+                } else {
+                    prompt.clone()
+                },
+                guarded: profiles::guarded(route.selected),
+            }
+        } else {
+            parsed
+        }
     };
     let request_digest = digest(
         &serde_json::to_vec(&request.messages[..=start]).map_err(|_| "cannot encode history")?,
@@ -1384,7 +1447,7 @@ pub fn decide_with_model(
             schema_version: SCHEMA_VERSION,
             turn_id: turn,
             provider: PROVIDER.into(),
-            model: MODEL.into(),
+            model: route.selected.into(),
             outcome: Outcome::CapabilityLimitation,
             handoff: None,
         },
@@ -1472,6 +1535,7 @@ pub fn decide_with_model(
             Ok(w.end(res.to_markdown(), Outcome::Completed))
         }
         Intent::Coding { prompt, guarded } => {
+            let guarded = guarded || profiles::guarded(route.selected);
             let (clean_prompt, pinned_files) = companion::extract_pinned_files(&prompt);
             let target_prompt = if clean_prompt.is_empty() { prompt.as_str() } else { clean_prompt.as_str() };
             let prompt_text = target_prompt.trim();
@@ -1489,20 +1553,33 @@ pub fn decide_with_model(
             // upstream, relays the model's own tool calls to the client, and
             // replays the results on the next round. NioNano never picks files.
             // Callers without those tools fall back to a local bounded bundle.
-            if w.request.permits_read() && w.request.permits_tool("find_files") {
+            if profiles::direct_answer(route.selected) || !profiles::project_evidence_relevant(prompt_text) || (w.request.permits_read() && w.request.permits_tool("find_files")) {
                 let turn = &w.request.messages[w.start..];
                 let rounds = companion::coding_tool_rounds(turn);
-                let tools = if rounds < companion::CODING_MAX_ROUNDS {
-                    companion::coding_tool_schemas()
+                let tools = if rounds < profiles::tool_rounds(route.selected) {
+                    let schemas = if profiles::direct_answer(route.selected) {
+                        w.request.tools.iter().filter(|tool| profiles::answer_tool(route.selected, tool["function"]["name"].as_str().unwrap_or(""))).cloned().collect()
+                    } else { companion::coding_tool_schemas() };
+                    schemas.into_iter()
+                        .filter(|tool| tool["function"]["name"] == "web_fetch" || profiles::project_evidence_relevant(prompt_text))
+                        .filter(|tool| w.request.permits_tool(tool["function"]["name"].as_str().unwrap_or("")))
+                        .collect()
                 } else {
                     Vec::new()
                 };
                 let mut initial_files = pinned_files.clone();
                 initial_files.extend(companion::coding_read_paths(turn));
+                let mut messages = profiles::messages(route.selected, companion::upstream_messages(prompt_text, &w.request.messages));
+                if tools.is_empty() {
+                    messages.push(json!({
+                        "role": "system",
+                        "content": "No further inspection tools are available for this request (not offered or budget exhausted). Do not request or emit any more tool calls, including XML tool-call text. Answer now using the user request and the tool results already present in the conversation. State clearly if the available evidence is insufficient."
+                    }));
+                }
                 w.coding = Some(companion::CodingConsult {
                     config,
                     prompt: prompt_text.to_string(),
-                    messages: companion::upstream_messages(prompt_text, &w.request.messages),
+                    messages,
                     tools,
                     files: initial_files,
                     guarded,
@@ -1511,50 +1588,18 @@ pub fn decide_with_model(
                 return Ok(w.decision(None, None));
             }
             let bundle = companion::bundle_workspace_context_pinned(prompt_text, &pinned_files);
-            // Streaming clients get the model's own deltas forwarded live.
-            // Option C footer is cleanly appended at the end of the reply.
-            if w.request.stream {
-                w.coding = Some(companion::CodingConsult {
-                    config,
-                    prompt: prompt_text.to_string(),
-                    messages: companion::bundled_messages(prompt_text, &bundle.context, &w.request.messages),
-                    files: bundle.files.clone(),
-                    tools: Vec::new(),
-                    guarded,
-                });
-                w.execution.outcome = Outcome::Completed;
-                return Ok(w.decision(None, None));
-            }
-            let started = std::time::Instant::now();
-            match companion::consult_upstream(&config, prompt_text, &bundle.context, &w.request.messages) {
-                Ok(draft) => {
-                    let upstream_secs = started.elapsed().as_secs_f64();
-                    let steps = companion::coding_steps(&bundle, &config.model);
-                    let alert = if guarded {
-                        companion::detect_hallucinations(&draft, &[], &bundle.files)
-                    } else {
-                        None
-                    };
-                    let res = companion::CompanionResult::CodingResponse {
-                        guarded,
-                        content: draft.clone(),
-                        hallucination_alert: alert,
-                        steps,
-                        reply_secs: upstream_secs,
-                    };
-                    Ok(w.end(res.to_markdown(), Outcome::Completed))
-                }
-                Err(reason) => Ok(w.end(
-                    format!(
-                        "### ⚠️ Upstream Coding Consultation Failed\n\n\
-                        {reason}\n\n\
-                        No draft was generated. Kilo is pre-setup and needs no API key, so this is \
-                        usually a network issue; check access to `api.kilo.ai`, or override the \
-                        endpoint with `NIOXS_CODING_BASE_URL` / `NIOXS_CODING_MODEL`."
-                    ),
-                    Outcome::ToolFailed,
-                )),
-            }
+            // Both streaming and JSON clients use the same provider-owned
+            // consultation, including catalog selection and upstream metadata.
+            w.coding = Some(companion::CodingConsult {
+                config,
+                prompt: prompt_text.to_string(),
+                messages: profiles::messages(route.selected, companion::bundled_messages(prompt_text, &bundle.context, &w.request.messages)),
+                files: bundle.files,
+                tools: Vec::new(),
+                guarded,
+            });
+            w.execution.outcome = Outcome::Completed;
+            Ok(w.decision(None, None))
         }
         Intent::Clarify(question) => Ok(w.end(question, Outcome::Clarification)),
         Intent::Read(path) => {
@@ -2005,13 +2050,158 @@ pub fn decide_with_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nioxs_contracts::MODEL_NANO;
+    #[test]
+    fn answer_profiles_consult_with_persona_and_never_dispatch_native_mutations() {
+        for name in [
+            nioxs_contracts::MODEL_ECHO,
+            nioxs_contracts::MODEL_SAGE,
+            nioxs_contracts::MODEL_QUILL,
+            nioxs_contracts::MODEL_SCOUT,
+            nioxs_contracts::MODEL_THINKER,
+        ] {
+            for prompt in ["Hello", "--bash echo should-not-execute", "--test", "yes"] {
+                let request: ChatRequest = serde_json::from_value(json!({"model":name,
+                    "messages":[{"role":"system","content":"Persona & Guidelines (always active):\nIdentity: Your name is Morgan."},{"role":"user","content":prompt}],
+                    "tools":[{"type":"function","function":{"name":"read_file","parameters":{"type":"object","required":["path"]}}},
+                        {"type":"function","function":{"name":"run_command"}},
+                        {"type":"function","function":{"name":"patch_file"}},
+                        {"type":"function","function":{"name":"web_fetch"}}]})).unwrap();
+                let decision = decide(&request, "test").unwrap();
+                assert_eq!(decision.execution.model, name);
+                assert!(decision.call.is_none());
+                let consult = decision.coding.unwrap();
+                assert!(
+                    consult
+                        .messages
+                        .iter()
+                        .any(|m| m["content"].as_str().is_some_and(|s| s.contains("Morgan")))
+                );
+                assert!(
+                    consult.tools.iter().all(|t| profiles::answer_tool(
+                        name,
+                        t["function"]["name"].as_str().unwrap()
+                    ))
+                );
+                let safe_tools: Vec<_> = consult
+                    .tools
+                    .iter()
+                    .map(|tool| tool["function"]["name"].as_str().unwrap())
+                    .collect();
+                if matches!(
+                    name,
+                    nioxs_contracts::MODEL_SCOUT | nioxs_contracts::MODEL_THINKER
+                ) {
+                    assert_eq!(safe_tools, ["web_fetch"]);
+                } else {
+                    assert!(safe_tools.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn answer_profiles_support_toolless_questions_and_scout_web_only() {
+        for name in [
+            nioxs_contracts::MODEL_ECHO,
+            nioxs_contracts::MODEL_SAGE,
+            nioxs_contracts::MODEL_QUILL,
+            nioxs_contracts::MODEL_SCOUT,
+            nioxs_contracts::MODEL_THINKER,
+        ] {
+            let request: ChatRequest = serde_json::from_value(
+                json!({"model":name,"messages":[{"role":"user","content":"Explain ownership"}]}),
+            )
+            .unwrap();
+            let consult = decide(&request, "test").unwrap().coding.unwrap();
+            assert!(consult.files.is_empty());
+            assert!(consult.tools.is_empty());
+        }
+        let request: ChatRequest = serde_json::from_value(json!({"model":"nio-scout","messages":[{"role":"user","content":"Research this URL"}],"tools":[{"type":"function","function":{"name":"web_fetch"}}]})).unwrap();
+        assert_eq!(
+            decide(&request, "test").unwrap().coding.unwrap().tools[0]["function"]["name"],
+            "web_fetch"
+        );
+    }
+
+    #[test]
+    fn flow_no_helm_directive_enters_coding_and_bare_flag_explains_usage() {
+        let request: ChatRequest = serde_json::from_value(json!({"model":"nio-flow","messages":[{"role":"user","content":"--no-helm suggest a site"}]})).unwrap();
+        let decision = decide(&request, "test").unwrap();
+        assert_eq!(decision.coding.unwrap().prompt, "suggest a site");
+        let request: ChatRequest = serde_json::from_value(
+            json!({"model":"nio-flow","messages":[{"role":"user","content":"--no-helm"}]}),
+        )
+        .unwrap();
+        let decision = decide(&request, "test").unwrap();
+        assert_eq!(decision.execution.outcome, Outcome::Clarification);
+        assert!(decision.content.unwrap().contains("Usage: --no-helm"));
+    }
+
+    #[test]
+    fn profiles_default_to_consultation_and_keep_their_identity() {
+        for name in [
+            nioxs_contracts::MODEL_HELM,
+            nioxs_contracts::MODEL_NOVA,
+            nioxs_contracts::MODEL_ATOM,
+            nioxs_contracts::MODEL_NEON,
+        ] {
+            let r: ChatRequest = serde_json::from_value(json!({"model":name,"messages":[{"role":"user","content":"consider the authentication implementation"}],"tools":[{"type":"function","function":{"name":"read_file"}},{"type":"function","function":{"name":"find_files"}}]})).unwrap();
+            let decision = decide(&r, "test").unwrap();
+            assert_eq!(decision.execution.model, name);
+            let consult = decision.coding.unwrap();
+            assert!(consult.messages.iter().any(|m| {
+                m["content"]
+                    .as_str()
+                    .is_some_and(|s| s.contains(profiles::instructions(name).unwrap()))
+            }));
+            assert_eq!(
+                consult.tools.len(),
+                2,
+                "only caller-provided tools are offered"
+            );
+            assert_eq!(consult.guarded, profiles::guarded(name));
+        }
+        let mut r = request("brainstorm a dashboard", true);
+        r.model = nioxs_contracts::MODEL_AUTO.into();
+        r.stream = true;
+        assert_eq!(
+            decide(&r, "test").unwrap().execution.model,
+            nioxs_contracts::MODEL_FLOW
+        );
+    }
+    #[test]
+    fn nonstreamed_toolless_coding_is_deferred_to_the_provider() {
+        let r = request("--code explain ownership", false);
+        let decision = decide(&r, "test").unwrap();
+        assert!(decision.content.is_none());
+        let consult = decision.coding.unwrap();
+        assert!(consult.tools.is_empty());
+        assert!(consult.messages.iter().any(|m| m["role"] == "user"));
+    }
+
+    #[test]
+    fn auto_requests_enter_nioflow_orchestration() {
+        for prompt in [
+            "compare approaches",
+            "brainstorm ideas",
+            "implement auth",
+            "review auth",
+        ] {
+            let r: ChatRequest = serde_json::from_value(json!({"model":nioxs_contracts::MODEL_AUTO,"messages":[{"role":"user","content":prompt}]})).unwrap();
+            assert_eq!(
+                decide(&r, "test").unwrap().execution.model,
+                nioxs_contracts::MODEL_FLOW
+            );
+        }
+    }
     fn request(prompt: &str, tools: bool) -> ChatRequest {
-        serde_json::from_value(json!({"model":MODEL,"messages":[{"role":"user","content":prompt}],"tools":if tools{vec![json!({"type":"function","function":{"name":"read_file"}})]}else{vec![]}})).unwrap()
+        serde_json::from_value(json!({"model":MODEL_NANO,"messages":[{"role":"user","content":prompt}],"tools":if tools{vec![json!({"type":"function","function":{"name":"read_file"}})]}else{vec![]}})).unwrap()
     }
     #[test]
     fn streaming_coding_turn_defers_the_upstream_call() {
         let r: ChatRequest = serde_json::from_value(json!({
-            "model": MODEL,
+            "model": MODEL_NANO,
             "messages": [{"role": "user", "content": "--code: analyze my project"}],
             "stream": true,
         }))
@@ -2041,7 +2231,7 @@ mod tests {
     #[test]
     fn coding_turn_hands_the_callers_project_to_the_model() {
         let mut r: ChatRequest = serde_json::from_value(json!({
-            "model": MODEL,
+            "model": MODEL_NANO,
             "messages": [{"role": "user", "content": "--code: analyze my project"}],
             "stream": true,
             "tools": [
@@ -2062,8 +2252,8 @@ mod tests {
         assert_eq!(consult.messages[1]["content"], "analyze my project");
         assert_eq!(
             consult.tools.len(),
-            4,
-            "the caller's file, search, and skill tools are offered"
+            2,
+            "only the caller's offered file tools are forwarded"
         );
         assert!(consult.files.is_empty(), "nothing was read yet");
         assert!(
@@ -2110,7 +2300,7 @@ mod tests {
         );
         assert_eq!(
             consult.tools.len(),
-            4,
+            2,
             "rounds remain while the budget lasts"
         );
         assert!(
@@ -2233,7 +2423,7 @@ mod tests {
         }
         .to_markdown();
         let r: ChatRequest = serde_json::from_value(json!({
-            "model": MODEL,
+            "model": MODEL_NANO,
             "messages": [
                 {"role": "user", "content": "--tools: resize assets/banner.png to 800x400"},
                 {"role": "assistant", "content": pending},
@@ -2385,7 +2575,11 @@ mod tests {
     #[test]
     fn test_unbound_code_modification_hands_off_to_code() {
         let model = Model::embedded().unwrap();
-        for prompt in ["refactor the parser", "debug the crash", "rename foo to bar"] {
+        for prompt in [
+            "refactor the parser",
+            "debug the crash",
+            "rename foo to bar",
+        ] {
             match parse(&model, prompt) {
                 Intent::Clarify(msg) => assert!(
                     msg.contains("--code"),
@@ -2638,14 +2832,8 @@ mod tests {
         );
 
         // --tools directives
-        assert_eq!(
-            parse(&model, "--tools list"),
-            Intent::Tool("list".into())
-        );
-        assert_eq!(
-            parse(&model, "--tools: list"),
-            Intent::Tool("list".into())
-        );
+        assert_eq!(parse(&model, "--tools list"), Intent::Tool("list".into()));
+        assert_eq!(parse(&model, "--tools: list"), Intent::Tool("list".into()));
 
         // --test directives
         assert_eq!(
@@ -2659,20 +2847,41 @@ mod tests {
 
         // --git directives carry their subcommand; the bare form means status+diff.
         assert_eq!(parse(&model, "--git"), Intent::GitSummary(String::new()));
-        assert_eq!(parse(&model, "--git status"), Intent::GitSummary("status".into()));
-        assert_eq!(parse(&model, "--git:status"), Intent::GitSummary("status".into()));
-        assert_eq!(parse(&model, "--git diff"), Intent::GitSummary("diff".into()));
-        assert_eq!(parse(&model, "--git:diff"), Intent::GitSummary("diff".into()));
-        assert!(matches!(
-            parse(&model, "--git commit"),
-            Intent::Clarify(_)
-        ));
+        assert_eq!(
+            parse(&model, "--git status"),
+            Intent::GitSummary("status".into())
+        );
+        assert_eq!(
+            parse(&model, "--git:status"),
+            Intent::GitSummary("status".into())
+        );
+        assert_eq!(
+            parse(&model, "--git diff"),
+            Intent::GitSummary("diff".into())
+        );
+        assert_eq!(
+            parse(&model, "--git:diff"),
+            Intent::GitSummary("diff".into())
+        );
+        assert!(matches!(parse(&model, "--git commit"), Intent::Clarify(_)));
 
         // --config directives
-        assert_eq!(parse(&model, "--config code ON"), Intent::Config("code ON".into()));
-        assert_eq!(parse(&model, "--config: code ON"), Intent::Config("code ON".into()));
-        assert_eq!(parse(&model, "--config list"), Intent::Config("list".into()));
-        assert_eq!(parse(&model, "--config: list"), Intent::Config("list".into()));
+        assert_eq!(
+            parse(&model, "--config code ON"),
+            Intent::Config("code ON".into())
+        );
+        assert_eq!(
+            parse(&model, "--config: code ON"),
+            Intent::Config("code ON".into())
+        );
+        assert_eq!(
+            parse(&model, "--config list"),
+            Intent::Config("list".into())
+        );
+        assert_eq!(
+            parse(&model, "--config: list"),
+            Intent::Config("list".into())
+        );
     }
 
     #[test]
@@ -2698,10 +2907,30 @@ mod tests {
                 }
 
                 // Directives like --bash still route to their own intent
-                assert_eq!(parse(&model, "--bash cargo check"), Intent::Bash("cargo check".into()));
+                assert_eq!(
+                    parse(&model, "--bash cargo check"),
+                    Intent::Bash("cargo check".into())
+                );
                 assert_eq!(parse(&model, "--tools list"), Intent::Tool("list".into()));
             },
         );
         assert!(!companion::is_config_code_on());
+    }
+
+    #[test]
+    fn explicit_find_files_directive_works_with_code_mode_enabled() {
+        let model = Model::embedded().expect("embedded model");
+        companion::with_test_config(
+            companion::XsConfig {
+                code: true,
+                ..Default::default()
+            },
+            || {
+                assert_eq!(
+                    parse(&model, "--find-files **/*"),
+                    Intent::Files("**/*".into())
+                )
+            },
+        );
     }
 }

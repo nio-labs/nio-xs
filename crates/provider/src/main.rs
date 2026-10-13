@@ -35,7 +35,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
         let target = std::env::args().nth(2).unwrap_or_else(|| "--all".into());
         match target.as_str() {
             "--aider" => {
-                let config = "openai-api-base: http://127.0.0.1:7460/v1\nmodel: openai/nio-nano\nopenai-api-key: nioxs-local\n";
+                let config = "openai-api-base: http://127.0.0.1:7460/v1\nmodel: openai/nio-flow\nopenai-api-key: nioxs-local\n";
                 std::fs::write(".aider.conf.yml", config)?;
                 println!("✔ Successfully created .aider.conf.yml for Aider");
             }
@@ -48,7 +48,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
                         }
                     }
                 });
-                std::fs::write("cline_mcp_settings.json", serde_json::to_string_pretty(&config)?)?;
+                std::fs::write(
+                    "cline_mcp_settings.json",
+                    serde_json::to_string_pretty(&config)?,
+                )?;
                 println!("✔ Successfully created cline_mcp_settings.json for Cline");
             }
             "--opencode" => {
@@ -56,7 +59,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
                     "provider": "openai",
                     "baseURL": "http://127.0.0.1:7460/v1",
                     "apiKey": "nioxs-local",
-                    "model": "nio-nano"
+                    "model": "nio-flow"
                 });
                 std::fs::write("opencode.json", serde_json::to_string_pretty(&config)?)?;
                 println!("✔ Successfully created opencode.json for OpenCode");
@@ -65,11 +68,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
                 println!("Cursor OpenAI Endpoint Configuration:");
                 println!("  Base URL: http://127.0.0.1:7460/v1");
                 println!("  API Key:  nioxs-local");
-                println!("  Model:    nio-nano");
+                println!("  Model:    nio-flow");
             }
             _ => {
                 println!("Auto-configuring coding agent settings in current directory...");
-                let aider_cfg = "openai-api-base: http://127.0.0.1:7460/v1\nmodel: openai/nio-nano\nopenai-api-key: nioxs-local\n";
+                let aider_cfg = "openai-api-base: http://127.0.0.1:7460/v1\nmodel: openai/nio-flow\nopenai-api-key: nioxs-local\n";
                 let _ = std::fs::write(".aider.conf.yml", aider_cfg);
                 let cline_cfg = serde_json::json!({
                     "mcpServers": {
@@ -79,7 +82,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
                         }
                     }
                 });
-                let _ = std::fs::write("cline_mcp_settings.json", serde_json::to_string_pretty(&cline_cfg)?);
+                let _ = std::fs::write(
+                    "cline_mcp_settings.json",
+                    serde_json::to_string_pretty(&cline_cfg)?,
+                );
                 println!("✔ Configured .aider.conf.yml and cline_mcp_settings.json");
             }
         }
@@ -122,7 +128,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
 
         match nioxs_nano::patch::rollback_patch(&current_dir, &id_to_rollback) {
             Ok(count) => {
-                println!("✔ Successfully rolled back patch '{id_to_rollback}' ({count} files restored).");
+                println!(
+                    "✔ Successfully rolled back patch '{id_to_rollback}' ({count} files restored)."
+                );
             }
             Err(e) => {
                 eprintln!("Failed to rollback patch '{id_to_rollback}': {e}");
@@ -132,7 +140,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
     }
     if arg.as_deref() == Some("history") {
         let current_dir = std::env::current_dir().unwrap_or_else(|_| ".".into());
-        let limit = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(20);
+        let limit = std::env::args()
+            .nth(2)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(20);
         let turns = nioxs_provider::journal::read_local_turns(&current_dir, limit);
         if turns.is_empty() {
             println!("No local turn history found in .nioxs/history.jsonl");

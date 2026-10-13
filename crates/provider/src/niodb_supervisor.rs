@@ -137,9 +137,7 @@ pub async fn ensure_niodb(
     requested_url: Option<&str>,
     token_file: Option<&str>,
 ) -> Result<(String, String, Option<NioDbProcess>), String> {
-    let url = requested_url
-        .unwrap_or("http://127.0.0.1:7432")
-        .to_string();
+    let url = requested_url.unwrap_or("http://127.0.0.1:7432").to_string();
 
     // Check if an existing NioDB is already healthy
     let client = reqwest::Client::builder()
@@ -158,10 +156,14 @@ pub async fn ensure_niodb(
                 .trim()
                 .to_string()
         } else {
-            let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_else(|_| ".".into());
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| ".".into());
             let default_dir = Path::new(&home).join(".nioxs/data");
-            resolve_token(&default_dir)
-                .ok_or_else(|| "NioDB is running on 7432, but no token was provided (set NIOXS_DB_TOKEN_FILE)".to_string())?
+            resolve_token(&default_dir).ok_or_else(|| {
+                "NioDB is running on 7432, but no token was provided (set NIOXS_DB_TOKEN_FILE)"
+                    .to_string()
+            })?
         };
         return Ok((url, token, None));
     }
@@ -170,7 +172,9 @@ pub async fn ensure_niodb(
     let niodb_bin = find_niodb_binary()
         .ok_or_else(|| "NioDB executable not found. Please install via install.sh or run 'npx @nio-labs/nio-xs'.".to_string())?;
 
-    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_else(|_| ".".into());
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".into());
     let data_dir = Path::new(&home).join(".nioxs/data");
     let _ = std::fs::create_dir_all(&data_dir);
 

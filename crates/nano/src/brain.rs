@@ -51,7 +51,12 @@ pub fn extract_symbols_from_source(file: &str, content: &str) -> Vec<SymbolNode>
 
         match ext.as_str() {
             "rs" => {
-                if let Some(rest) = trimmed.strip_prefix("pub async fn ").or_else(|| trimmed.strip_prefix("async fn ")).or_else(|| trimmed.strip_prefix("pub fn ")).or_else(|| trimmed.strip_prefix("fn ")) {
+                if let Some(rest) = trimmed
+                    .strip_prefix("pub async fn ")
+                    .or_else(|| trimmed.strip_prefix("async fn "))
+                    .or_else(|| trimmed.strip_prefix("pub fn "))
+                    .or_else(|| trimmed.strip_prefix("fn "))
+                {
                     if let Some(name) = rest.split(['(', '<', ' ']).next() {
                         if !name.is_empty() {
                             symbols.push(SymbolNode {
@@ -64,7 +69,10 @@ pub fn extract_symbols_from_source(file: &str, content: &str) -> Vec<SymbolNode>
                             });
                         }
                     }
-                } else if let Some(rest) = trimmed.strip_prefix("pub struct ").or_else(|| trimmed.strip_prefix("struct ")) {
+                } else if let Some(rest) = trimmed
+                    .strip_prefix("pub struct ")
+                    .or_else(|| trimmed.strip_prefix("struct "))
+                {
                     if let Some(name) = rest.split(['{', ';', '<', ' ']).next() {
                         if !name.is_empty() {
                             symbols.push(SymbolNode {
@@ -77,7 +85,10 @@ pub fn extract_symbols_from_source(file: &str, content: &str) -> Vec<SymbolNode>
                             });
                         }
                     }
-                } else if let Some(rest) = trimmed.strip_prefix("pub enum ").or_else(|| trimmed.strip_prefix("enum ")) {
+                } else if let Some(rest) = trimmed
+                    .strip_prefix("pub enum ")
+                    .or_else(|| trimmed.strip_prefix("enum "))
+                {
                     if let Some(name) = rest.split(['{', '<', ' ']).next() {
                         if !name.is_empty() {
                             symbols.push(SymbolNode {
@@ -90,7 +101,10 @@ pub fn extract_symbols_from_source(file: &str, content: &str) -> Vec<SymbolNode>
                             });
                         }
                     }
-                } else if let Some(rest) = trimmed.strip_prefix("pub trait ").or_else(|| trimmed.strip_prefix("trait ")) {
+                } else if let Some(rest) = trimmed
+                    .strip_prefix("pub trait ")
+                    .or_else(|| trimmed.strip_prefix("trait "))
+                {
                     if let Some(name) = rest.split(['{', '<', ' ']).next() {
                         if !name.is_empty() {
                             symbols.push(SymbolNode {
@@ -106,7 +120,12 @@ pub fn extract_symbols_from_source(file: &str, content: &str) -> Vec<SymbolNode>
                 }
             }
             "ts" | "tsx" | "js" | "jsx" => {
-                if let Some(rest) = trimmed.strip_prefix("export function ").or_else(|| trimmed.strip_prefix("function ")).or_else(|| trimmed.strip_prefix("export async function ")).or_else(|| trimmed.strip_prefix("async function ")) {
+                if let Some(rest) = trimmed
+                    .strip_prefix("export function ")
+                    .or_else(|| trimmed.strip_prefix("function "))
+                    .or_else(|| trimmed.strip_prefix("export async function "))
+                    .or_else(|| trimmed.strip_prefix("async function "))
+                {
                     if let Some(name) = rest.split(['(', '<', ' ']).next() {
                         if !name.is_empty() {
                             symbols.push(SymbolNode {
@@ -119,7 +138,10 @@ pub fn extract_symbols_from_source(file: &str, content: &str) -> Vec<SymbolNode>
                             });
                         }
                     }
-                } else if let Some(rest) = trimmed.strip_prefix("export class ").or_else(|| trimmed.strip_prefix("class ")) {
+                } else if let Some(rest) = trimmed
+                    .strip_prefix("export class ")
+                    .or_else(|| trimmed.strip_prefix("class "))
+                {
                     if let Some(name) = rest.split(['{', '<', ' ']).next() {
                         if !name.is_empty() {
                             symbols.push(SymbolNode {
@@ -132,7 +154,10 @@ pub fn extract_symbols_from_source(file: &str, content: &str) -> Vec<SymbolNode>
                             });
                         }
                     }
-                } else if let Some(rest) = trimmed.strip_prefix("export interface ").or_else(|| trimmed.strip_prefix("interface ")) {
+                } else if let Some(rest) = trimmed
+                    .strip_prefix("export interface ")
+                    .or_else(|| trimmed.strip_prefix("interface "))
+                {
                     if let Some(name) = rest.split(['{', '<', ' ']).next() {
                         if !name.is_empty() {
                             symbols.push(SymbolNode {
@@ -145,7 +170,10 @@ pub fn extract_symbols_from_source(file: &str, content: &str) -> Vec<SymbolNode>
                             });
                         }
                     }
-                } else if let Some(rest) = trimmed.strip_prefix("export type ").or_else(|| trimmed.strip_prefix("type ")) {
+                } else if let Some(rest) = trimmed
+                    .strip_prefix("export type ")
+                    .or_else(|| trimmed.strip_prefix("type "))
+                {
                     if let Some(name) = rest.split(['=', '<', ' ']).next() {
                         if !name.is_empty() {
                             symbols.push(SymbolNode {
@@ -272,18 +300,39 @@ pub fn parse_compiler_diagnostics(raw_output: &str) -> Vec<Diagnostic> {
                         "help" => DiagnosticLevel::Help,
                         _ => DiagnosticLevel::Error,
                     };
-                    let message = msg.get("message").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                    let code = msg.get("code").and_then(|c| c.get("code")).and_then(|c| c.as_str()).map(str::to_string);
-                    
+                    let message = msg
+                        .get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let code = msg
+                        .get("code")
+                        .and_then(|c| c.get("code"))
+                        .and_then(|c| c.as_str())
+                        .map(str::to_string);
+
                     let mut file = None;
                     let mut line_num = None;
                     let mut col_num = None;
 
                     if let Some(spans) = msg.get("spans").and_then(|s| s.as_array()) {
-                        if let Some(primary) = spans.iter().find(|s| s.get("is_primary").and_then(|p| p.as_bool()).unwrap_or(false)) {
-                            file = primary.get("file_name").and_then(|f| f.as_str()).map(str::to_string);
-                            line_num = primary.get("line_start").and_then(|l| l.as_u64()).map(|n| n as usize);
-                            col_num = primary.get("column_start").and_then(|c| c.as_u64()).map(|n| n as usize);
+                        if let Some(primary) = spans.iter().find(|s| {
+                            s.get("is_primary")
+                                .and_then(|p| p.as_bool())
+                                .unwrap_or(false)
+                        }) {
+                            file = primary
+                                .get("file_name")
+                                .and_then(|f| f.as_str())
+                                .map(str::to_string);
+                            line_num = primary
+                                .get("line_start")
+                                .and_then(|l| l.as_u64())
+                                .map(|n| n as usize);
+                            col_num = primary
+                                .get("column_start")
+                                .and_then(|c| c.as_u64())
+                                .map(|n| n as usize);
                         }
                     }
 
@@ -301,8 +350,15 @@ pub fn parse_compiler_diagnostics(raw_output: &str) -> Vec<Diagnostic> {
         } else if trimmed.starts_with("error[E") {
             // Textual rustc error fallback: error[E0382]: use of moved value...
             let code_end = trimmed.find(']').unwrap_or(trimmed.len());
-            let code = if code_end > 6 { Some(trimmed[6..code_end].to_string()) } else { None };
-            let message = trimmed[code_end + 1..].trim_start_matches(':').trim().to_string();
+            let code = if code_end > 6 {
+                Some(trimmed[6..code_end].to_string())
+            } else {
+                None
+            };
+            let message = trimmed[code_end + 1..]
+                .trim_start_matches(':')
+                .trim()
+                .to_string();
 
             diagnostics.push(Diagnostic {
                 code,
@@ -330,17 +386,22 @@ pub fn formulate_assist_plan(query: &str, diag: &Diagnostic) -> AssistPlan {
                     description: "Clone value prior to closure or move site".into(),
                     file: diag.file.clone(),
                     target_symbol: None,
-                    rationale: "Resolves use of moved value by creating an independent owned instance.".into(),
+                    rationale:
+                        "Resolves use of moved value by creating an independent owned instance."
+                            .into(),
                 });
                 steps.push(AssistStep {
-                    description: "Wrap shared data in Arc<T> or Arc<Mutex<T>> if across async boundaries".into(),
+                    description:
+                        "Wrap shared data in Arc<T> or Arc<Mutex<T>> if across async boundaries"
+                            .into(),
                     file: diag.file.clone(),
                     target_symbol: None,
                     rationale: "Enables multiple concurrent owners across tasks.".into(),
                 });
                 return AssistPlan {
                     title: format!("Remediating Borrow Checker Error [{code}]"),
-                    root_cause: "Value is moved into a scope or closure and accessed after move.".into(),
+                    root_cause: "Value is moved into a scope or closure and accessed after move."
+                        .into(),
                     steps,
                     verified: true,
                 };
@@ -350,7 +411,9 @@ pub fn formulate_assist_plan(query: &str, diag: &Diagnostic) -> AssistPlan {
                     description: "Shorten scope of mutable borrow".into(),
                     file: diag.file.clone(),
                     target_symbol: None,
-                    rationale: "Ensures the mutable reference is dropped before subsequent accesses.".into(),
+                    rationale:
+                        "Ensures the mutable reference is dropped before subsequent accesses."
+                            .into(),
                 });
                 return AssistPlan {
                     title: format!("Remediating Multiple Borrow Conflict [{code}]"),
@@ -364,7 +427,10 @@ pub fn formulate_assist_plan(query: &str, diag: &Diagnostic) -> AssistPlan {
     }
 
     steps.push(AssistStep {
-        description: format!("Review target site and compiler recommendations: {}", diag.message),
+        description: format!(
+            "Review target site and compiler recommendations: {}",
+            diag.message
+        ),
         file: diag.file.clone(),
         target_symbol: None,
         rationale: "Address compiler diagnostic with idiomatic patterns.".into(),
@@ -405,7 +471,9 @@ impl WorkspaceIndex {
         let sym_l = symbol.to_ascii_lowercase();
         let mut matched_files = Vec::new();
         for node in &self.symbols {
-            if node.name.to_ascii_lowercase() == sym_l || node.name.to_ascii_lowercase().contains(&sym_l) {
+            if node.name.to_ascii_lowercase() == sym_l
+                || node.name.to_ascii_lowercase().contains(&sym_l)
+            {
                 if !matched_files.contains(&node.file) {
                     matched_files.push(node.file.clone());
                 }
@@ -437,7 +505,9 @@ pub fn scan_workspace_index(root: &std::path::Path) -> WorkspaceIndex {
                 continue;
             };
             if meta.is_dir() {
-                if !crate::companion::BUNDLE_SKIP_DIRS.contains(&name.as_str()) && !name.starts_with('.') {
+                if !crate::companion::BUNDLE_SKIP_DIRS.contains(&name.as_str())
+                    && !name.starts_with('.')
+                {
                     queue.push(path);
                 }
                 continue;

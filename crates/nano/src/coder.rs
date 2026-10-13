@@ -43,7 +43,16 @@ fn collect_source_files(dir: &Path, files: &mut Vec<String>) {
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                     if matches!(
                         ext,
-                        "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "go" | "c" | "cpp" | "h" | "hpp"
+                        "rs" | "py"
+                            | "js"
+                            | "ts"
+                            | "jsx"
+                            | "tsx"
+                            | "go"
+                            | "c"
+                            | "cpp"
+                            | "h"
+                            | "hpp"
                     ) {
                         if let Some(p) = path.to_str() {
                             files.push(p.to_string());
@@ -58,7 +67,9 @@ fn collect_source_files(dir: &Path, files: &mut Vec<String>) {
 /// Phase 3: Semantic Symbol Definition Finder.
 /// Locates where a symbol is defined (e.g., fn, struct, enum, class, def) excluding call sites.
 pub fn find_symbol_definitions(symbol: &str, root: &str) -> Vec<SymbolLocation> {
-    let clean_symbol = symbol.trim().trim_matches(|c: char| "`\"',;:!?".contains(c));
+    let clean_symbol = symbol
+        .trim()
+        .trim_matches(|c: char| "`\"',;:!?".contains(c));
     let mut files = Vec::new();
     collect_source_files(Path::new(root), &mut files);
 
@@ -110,7 +121,10 @@ pub fn find_symbol_definitions(symbol: &str, root: &str) -> Vec<SymbolLocation> 
                 || trimmed.starts_with(&format!("export const {clean_symbol} ="));
 
             if is_rust_def || is_py_def || is_js_def {
-                let kind = if trimmed.contains("fn ") || trimmed.contains("def ") || trimmed.contains("function ") {
+                let kind = if trimmed.contains("fn ")
+                    || trimmed.contains("def ")
+                    || trimmed.contains("function ")
+                {
                     "Function"
                 } else if trimmed.contains("struct ") {
                     "Struct"
@@ -141,15 +155,15 @@ pub fn find_symbol_definitions(symbol: &str, root: &str) -> Vec<SymbolLocation> 
 /// Phase 3: Semantic Symbol References / Call-Sites Finder.
 /// Locates where a symbol is referenced/called, excluding its definition lines.
 pub fn find_symbol_references(symbol: &str, root: &str) -> Vec<SymbolLocation> {
-    let clean_symbol = symbol.trim().trim_matches(|c: char| "`\"',;:!?".contains(c));
+    let clean_symbol = symbol
+        .trim()
+        .trim_matches(|c: char| "`\"',;:!?".contains(c));
     let mut files = Vec::new();
     collect_source_files(Path::new(root), &mut files);
 
     let defs = find_symbol_definitions(clean_symbol, root);
-    let def_set: std::collections::HashSet<(String, usize)> = defs
-        .into_iter()
-        .map(|d| (d.file, d.line_number))
-        .collect();
+    let def_set: std::collections::HashSet<(String, usize)> =
+        defs.into_iter().map(|d| (d.file, d.line_number)).collect();
 
     let mut results = Vec::new();
 
@@ -189,10 +203,13 @@ fn contains_isolated_symbol(line: &str, symbol: &str) -> bool {
     let mut cursor = 0;
     while let Some(pos) = line[cursor..].find(symbol) {
         let abs = cursor + pos;
-        let before_ok = abs == 0 || !line.as_bytes()[abs - 1].is_ascii_alphanumeric() && line.as_bytes()[abs - 1] != b'_';
+        let before_ok = abs == 0
+            || !line.as_bytes()[abs - 1].is_ascii_alphanumeric()
+                && line.as_bytes()[abs - 1] != b'_';
         let after_pos = abs + symbol.len();
         let after_ok = after_pos >= line.len()
-            || !line.as_bytes()[after_pos].is_ascii_alphanumeric() && line.as_bytes()[after_pos] != b'_';
+            || !line.as_bytes()[after_pos].is_ascii_alphanumeric()
+                && line.as_bytes()[after_pos] != b'_';
 
         if before_ok && after_ok {
             return true;
@@ -218,8 +235,8 @@ pub fn refactor_file(
         return Err(format!("File '{file_path}' does not exist."));
     }
 
-    let original = fs::read_to_string(path)
-        .map_err(|e| format!("Cannot read file '{file_path}': {e}"))?;
+    let original =
+        fs::read_to_string(path).map_err(|e| format!("Cannot read file '{file_path}': {e}"))?;
 
     let (patched, count) = apply_patch_to_string(&original, target_text, replacement_text, false)?;
 
@@ -255,8 +272,8 @@ pub fn tdd_refactor_and_test(
         return Err(format!("File '{file_path}' does not exist."));
     }
 
-    let original = fs::read_to_string(path)
-        .map_err(|e| format!("Cannot read file '{file_path}': {e}"))?;
+    let original =
+        fs::read_to_string(path).map_err(|e| format!("Cannot read file '{file_path}': {e}"))?;
 
     let (patched, count) = apply_patch_to_string(&original, target_text, replacement_text, false)?;
 
@@ -269,20 +286,23 @@ pub fn tdd_refactor_and_test(
         let heal_run = Command::new("cargo")
             .args(&["fix", "--allow-dirty", "--allow-no-vcs", "--broken-code"])
             .output();
-            
+
         let mut healed = false;
         if let Ok(out) = heal_run {
             if out.status.success() || crate::compiler::run_project_check(".").is_ok() {
                 healed = true;
             }
         }
-        
+
         if !healed {
             // Rollback patch on compilation failure
             let _ = write_trusted(path, &original);
             let mut err_msg = format!("Compilation failed after patch. Rolled back changes.\n");
             for d in diagnostics {
-                err_msg.push_str(&format!("- [{}] {}:{}: {}\n", d.error_code, d.file_path, d.line_number, d.message));
+                err_msg.push_str(&format!(
+                    "- [{}] {}:{}: {}\n",
+                    d.error_code, d.file_path, d.line_number, d.message
+                ));
                 if let Some(sug) = d.suggested_replacement {
                     err_msg.push_str(&format!("  Suggested Fix: `{sug}`\n"));
                 }
@@ -337,7 +357,9 @@ pub fn tdd_refactor_and_test(
         }
         Err(e) => {
             let _ = write_trusted(path, &original);
-            Err(format!("Could not execute test runner '{cmd}': {e}. Reverted change."))
+            Err(format!(
+                "Could not execute test runner '{cmd}': {e}. Reverted change."
+            ))
         }
     }
 }
@@ -349,10 +371,12 @@ pub fn scaffold_test_for_function(file_path: &str, function_name: &str) -> Resul
         return Err(format!("File '{file_path}' does not exist."));
     }
 
-    let content = fs::read_to_string(path)
-        .map_err(|e| format!("Cannot read file '{file_path}': {e}"))?;
+    let content =
+        fs::read_to_string(path).map_err(|e| format!("Cannot read file '{file_path}': {e}"))?;
 
-    let clean_fn = function_name.trim().trim_matches(|c: char| "`\"',;:!?".contains(c));
+    let clean_fn = function_name
+        .trim()
+        .trim_matches(|c: char| "`\"',;:!?".contains(c));
     let mut sig_line = None;
     for line in content.lines() {
         let trimmed = line.trim();
@@ -374,16 +398,12 @@ pub fn scaffold_test_for_function(file_path: &str, function_name: &str) -> Resul
                 "#[cfg(test)]\nmod tests {{\n    use super::*;\n\n    #[test]\n    fn test_{clean_fn}_behavior() {{\n        // Target: {sig_comment}\n        let result = {clean_fn}();\n        assert!(!result.is_empty());\n    }}\n}}\n"
             ))
         }
-        "py" => {
-            Ok(format!(
-                "def test_{clean_fn}():\n    # Target: {clean_fn}\n    result = {clean_fn}()\n    assert result is not None\n"
-            ))
-        }
-        _ => {
-            Ok(format!(
-                "describe('{clean_fn}', () => {{\n    it('should behave as expected', () => {{\n        const result = {clean_fn}();\n        expect(result).toBeDefined();\n    }});\n}});\n"
-            ))
-        }
+        "py" => Ok(format!(
+            "def test_{clean_fn}():\n    # Target: {clean_fn}\n    result = {clean_fn}()\n    assert result is not None\n"
+        )),
+        _ => Ok(format!(
+            "describe('{clean_fn}', () => {{\n    it('should behave as expected', () => {{\n        const result = {clean_fn}();\n        expect(result).toBeDefined();\n    }});\n}});\n"
+        )),
     }
 }
 
@@ -414,7 +434,8 @@ pub fn review_git_diff() -> Result<String, String> {
             if line.contains(".unwrap()") || line.contains(".expect(") {
                 unwraps_added += 1;
             }
-            if line.contains("println!") || line.contains("console.log(") || line.contains("print(") {
+            if line.contains("println!") || line.contains("console.log(") || line.contains("print(")
+            {
                 debug_prints_added += 1;
             }
             if line.contains("#[test]") || line.contains("assert_eq!") || line.contains("it(") {
@@ -425,7 +446,9 @@ pub fn review_git_diff() -> Result<String, String> {
 
     let mut report = String::new();
     report.push_str("### Git Diff Review\n\n");
-    report.push_str(&format!("**Changed Files & Statistics**:\n```\n{stat}\n```\n\n"));
+    report.push_str(&format!(
+        "**Changed Files & Statistics**:\n```\n{stat}\n```\n\n"
+    ));
 
     report.push_str("#### Strengths & Positive Observations\n");
     if tests_touched {
@@ -442,7 +465,9 @@ pub fn review_git_diff() -> Result<String, String> {
         report.push_str(&format!("• ⚠ Detected {debug_prints_added} debug print statement(s). Ensure these are cleaned up before merging.\n"));
     }
     if unwraps_added == 0 && debug_prints_added == 0 {
-        report.push_str("• ✔ No unhandled panic unwraps or lingering debug print statements detected.\n");
+        report.push_str(
+            "• ✔ No unhandled panic unwraps or lingering debug print statements detected.\n",
+        );
     }
 
     report.push_str("\n#### Recommendation\n");
@@ -495,7 +520,9 @@ use crate::Intent;
 
 pub fn parse_coder_intent(prompt: &str) -> Option<Intent> {
     let lower = prompt.to_ascii_lowercase();
-    let trimmed = lower.trim().trim_end_matches(|c: char| "?!. \t\r\n".contains(c));
+    let trimmed = lower
+        .trim()
+        .trim_end_matches(|c: char| "?!. \t\r\n".contains(c));
 
     // Git Diff & Commit
     if [
@@ -563,7 +590,9 @@ pub fn parse_coder_intent(prompt: &str) -> Option<Intent> {
         "plan ",
     ] {
         if lower.starts_with(prefix) {
-            let task = prompt[prefix.len()..].trim().trim_matches(|c: char| "`\"',;:!?".contains(c));
+            let task = prompt[prefix.len()..]
+                .trim()
+                .trim_matches(|c: char| "`\"',;:!?".contains(c));
             if !task.is_empty() && task.len() > 3 {
                 return Some(Intent::TaskPlan(task.to_string()));
             }
@@ -571,12 +600,23 @@ pub fn parse_coder_intent(prompt: &str) -> Option<Intent> {
     }
 
     // Dynamic Test Scaffolding
-    for prefix in &["write test for ", "generate test for ", "scaffold test for ", "create test for "] {
+    for prefix in &[
+        "write test for ",
+        "generate test for ",
+        "scaffold test for ",
+        "create test for ",
+    ] {
         if lower.starts_with(prefix) {
             let rest = &prompt[prefix.len()..];
             if let Some((fn_part, file_part)) = rest.split_once(" in ") {
-                let function = fn_part.trim().trim_matches(|c: char| "`\"',;:!?".contains(c)).to_string();
-                let file = file_part.trim().trim_matches(|c: char| "`\"',;:!?".contains(c)).to_string();
+                let function = fn_part
+                    .trim()
+                    .trim_matches(|c: char| "`\"',;:!?".contains(c))
+                    .to_string();
+                let file = file_part
+                    .trim()
+                    .trim_matches(|c: char| "`\"',;:!?".contains(c))
+                    .to_string();
                 if !function.is_empty() && !file.is_empty() {
                     return Some(Intent::ScaffoldTest { file, function });
                 }
@@ -610,7 +650,9 @@ pub fn parse_coder_intent(prompt: &str) -> Option<Intent> {
         "where is trait ",
     ] {
         if lower.starts_with(prefix) {
-            let symbol = prompt[prefix.len()..].trim().trim_matches(|c: char| "`\"',;:!? \t\r\n".contains(c));
+            let symbol = prompt[prefix.len()..]
+                .trim()
+                .trim_matches(|c: char| "`\"',;:!? \t\r\n".contains(c));
             if !symbol.is_empty() {
                 return Some(Intent::SymbolDef(symbol.to_string()));
             }
@@ -636,7 +678,9 @@ pub fn parse_coder_intent(prompt: &str) -> Option<Intent> {
         "callers of ",
     ] {
         if lower.starts_with(prefix) {
-            let symbol = prompt[prefix.len()..].trim().trim_matches(|c: char| "`\"',;:!? \t\r\n".contains(c));
+            let symbol = prompt[prefix.len()..]
+                .trim()
+                .trim_matches(|c: char| "`\"',;:!? \t\r\n".contains(c));
             if !symbol.is_empty() {
                 return Some(Intent::SymbolRefs(symbol.to_string()));
             }
@@ -656,12 +700,17 @@ pub fn parse_coder_intent(prompt: &str) -> Option<Intent> {
 }
 
 fn extract_refactor_intent(prompt: &str) -> Option<Intent> {
-    let is_tdd = prompt.to_ascii_lowercase().contains("test") || prompt.to_ascii_lowercase().contains("verify");
+    let is_tdd = prompt.to_ascii_lowercase().contains("test")
+        || prompt.to_ascii_lowercase().contains("verify");
 
     let quote_chars = ['\'', '"', '`'];
     for q in quote_chars {
-        let Some(first_q) = prompt.find(q) else { continue; };
-        let Some(second_q_rel) = prompt[first_q + 1..].find(q) else { continue; };
+        let Some(first_q) = prompt.find(q) else {
+            continue;
+        };
+        let Some(second_q_rel) = prompt[first_q + 1..].find(q) else {
+            continue;
+        };
         let second_q = second_q_rel + first_q + 1;
         let old = &prompt[first_q + 1..second_q];
 
@@ -675,8 +724,12 @@ fn extract_refactor_intent(prompt: &str) -> Option<Intent> {
         };
 
         let rest_after_with = &after_old[with_kw..];
-        let Some(third_q) = rest_after_with.find(q) else { continue; };
-        let Some(fourth_q_rel) = rest_after_with[third_q + 1..].find(q) else { continue; };
+        let Some(third_q) = rest_after_with.find(q) else {
+            continue;
+        };
+        let Some(fourth_q_rel) = rest_after_with[third_q + 1..].find(q) else {
+            continue;
+        };
         let fourth_q = fourth_q_rel + third_q + 1;
         let new = &rest_after_with[third_q + 1..fourth_q];
 
@@ -739,7 +792,10 @@ pub fn generate_project_suggestions(root: &str) -> String {
 
     let mut out = String::new();
     out.push_str("### 💡 NioNano Engineering Recommendations & Next Steps\n\n");
-    out.push_str(&format!("**Workspace Scan**: Found {} source files across project.\n\n", files.len()));
+    out.push_str(&format!(
+        "**Workspace Scan**: Found {} source files across project.\n\n",
+        files.len()
+    ));
 
     out.push_str("#### 🚀 Immediate Actionable Improvements:\n");
     if unwrap_count > 0 {
@@ -754,7 +810,9 @@ pub fn generate_project_suggestions(root: &str) -> String {
         out.push_str(&format!("• 📝 **Review Pending Changes**: You have {} uncommitted file modification{}. Run `review git diff` or `suggest commit message`.\n", uncommitted_files, if uncommitted_files == 1 { "" } else { "s" }));
     }
     if !has_readme {
-        out.push_str("• 📖 **Documentation**: Scaffold project architecture docs with `scaffold readme`.\n");
+        out.push_str(
+            "• 📖 **Documentation**: Scaffold project architecture docs with `scaffold readme`.\n",
+        );
     }
 
     out.push_str("\n#### 🏗️ Architecture & Planning Next Steps:\n");
@@ -768,16 +826,16 @@ pub fn generate_project_suggestions(root: &str) -> String {
 /// Formulates a structured 5-phase engineering execution plan for any feature, bug fix, or refactor.
 pub fn generate_task_plan(task: &str) -> String {
     use crate::dag::ExecutionDag;
-    
+
     let clean_task = task.trim().trim_matches(|c: char| "`\"',;:!?".contains(c));
     let mut dag = ExecutionDag::new(clean_task);
-    
+
     dag.add_node("phase1", "Architectural Analysis & Scope: Identify affected modules and declarations across the workspace. Check existing invariants to prevent breaking changes.", vec![]);
     dag.add_node("phase2", "Type Definitions & Contract Scaffolding: Define required structs, enums, error types, and trait interfaces. Ensure explicit error handling.", vec!["phase1"]);
     dag.add_node("phase3", "Core Implementation & Deterministic Patching: Implement business logic incrementally in designated files. Keep edits minimal and deterministic.", vec!["phase2"]);
     dag.add_node("phase4", "Autonomous TDD & Unit Testing: Scaffold unit tests and boundary test cases. Execute verification loop.", vec!["phase3"]);
     dag.add_node("phase5", "Self-Verification, Security & Commit: Verify compiler checks and generate semantic commit.", vec!["phase4"]);
-    
+
     dag.render_plan()
 }
 
@@ -788,11 +846,17 @@ mod tests {
     #[test]
     fn test_symbol_navigation_finds_self() {
         let defs = find_symbol_definitions("apply_patch_to_string", ".");
-        assert!(!defs.is_empty(), "Should find definition of apply_patch_to_string");
+        assert!(
+            !defs.is_empty(),
+            "Should find definition of apply_patch_to_string"
+        );
         assert!(defs.iter().any(|d| d.file.contains("patch.rs")));
 
         let refs = find_symbol_references("apply_patch_to_string", ".");
-        assert!(!refs.is_empty(), "Should find references of apply_patch_to_string");
+        assert!(
+            !refs.is_empty(),
+            "Should find references of apply_patch_to_string"
+        );
         // Definition in patch.rs should be excluded from references
         for r in &refs {
             assert!(!r.line_text.starts_with("pub fn apply_patch_to_string"));

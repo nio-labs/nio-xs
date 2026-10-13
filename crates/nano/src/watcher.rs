@@ -22,7 +22,8 @@ pub async fn start_background_watcher(niodb: NioDb, workspace_root: String, depl
                                         "size": content.len(),
                                         // Just index the presence and size to stay lightweight
                                     });
-                                    let _ = niodb.append_record("workspace_index", &key, &data).await;
+                                    let _ =
+                                        niodb.append_record("workspace_index", &key, &data).await;
                                 }
                             }
                         }

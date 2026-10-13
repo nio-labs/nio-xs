@@ -42,10 +42,16 @@ impl ExecutionDag {
 
     pub fn render_plan(&self) -> String {
         let mut out = String::new();
-        out.push_str(&format!("### 🗺️ DAG Execution Plan: `{}`\n\n", self.task_name));
+        out.push_str(&format!(
+            "### 🗺️ DAG Execution Plan: `{}`\n\n",
+            self.task_name
+        ));
         out.push_str("State Machine Initialized. Rollback checkpoints enabled.\n\n");
         for node in &self.nodes {
-            out.push_str(&format!("- **[{}]** {} (Deps: {:?})\n", node.id, node.description, node.dependencies));
+            out.push_str(&format!(
+                "- **[{}]** {} (Deps: {:?})\n",
+                node.id, node.description, node.dependencies
+            ));
         }
         out
     }

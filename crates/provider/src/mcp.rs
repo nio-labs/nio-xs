@@ -149,7 +149,7 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                         },
                         "required": ["task"]
                     }
-                })
+                }),
             ];
 
             // Expose each companion plugin as an individual MCP tool
@@ -215,12 +215,20 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                     }
                     "ast_symbol_search" => {
                         let q = args["query"].as_str().unwrap_or("");
-                        let ws_index = nioxs_nano::brain::scan_workspace_index(std::path::Path::new("."));
+                        let ws_index =
+                            nioxs_nano::brain::scan_workspace_index(std::path::Path::new("."));
                         let files = ws_index.find_files_for_symbol(q);
                         if files.is_empty() {
                             format!("No symbols found matching query '{q}'.")
                         } else {
-                            format!("Found symbol '{q}' in:\n{}", files.iter().map(|f| format!("• `{f}`")).collect::<Vec<_>>().join("\n"))
+                            format!(
+                                "Found symbol '{q}' in:\n{}",
+                                files
+                                    .iter()
+                                    .map(|f| format!("• `{f}`"))
+                                    .collect::<Vec<_>>()
+                                    .join("\n")
+                            )
                         }
                     }
                     "scaffold_template" => {
@@ -234,7 +242,8 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                         let content = args["content"].as_str().unwrap_or("");
                         let target = args["target"].as_str().unwrap_or("");
                         let replacement = args["replacement"].as_str().unwrap_or("");
-                        match nioxs_nano::apply_patch_to_string(content, target, replacement, false) {
+                        match nioxs_nano::apply_patch_to_string(content, target, replacement, false)
+                        {
                             Ok((patched, count)) => {
                                 format!("Successfully patched {count} occurrence(s):\n\n{patched}")
                             }
@@ -372,7 +381,10 @@ mod tests {
             "ast_symbol_search",
             "companion_tool",
         ] {
-            assert!(names.contains(&expected), "tools/list must expose '{expected}': {names:?}");
+            assert!(
+                names.contains(&expected),
+                "tools/list must expose '{expected}': {names:?}"
+            );
         }
         for plugin in nioxs_nano::companion::TOOL_PLUGINS {
             let expected = format!("plugin_{}", plugin.name);

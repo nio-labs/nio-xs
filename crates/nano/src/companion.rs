@@ -8,6 +8,7 @@
 //!
 //! The earlier `--coding:` spelling is retired; prompts using it are not routed here.
 
+use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -246,7 +247,8 @@ pub fn execute_in_session_bash(cmd: &str) -> CompanionResult {
 /// `kilo-auto/free` are served without an API key, matching the `nio` TUI.
 pub const DEFAULT_CODING_BASE_URL: &str = "https://api.kilo.ai/api/gateway";
 /// Default upstream model when the user has not selected one.
-pub const DEFAULT_CODING_MODEL: &str = "kilo-auto/free";
+pub const DEFAULT_CODING_MODEL: &str = "cohere/north-mini-code:free";
+pub const FALLBACK_CODING_MODEL: &str = "kilo-auto/free";
 
 /// Upstream configuration for `--code:` consultations.
 ///
@@ -259,6 +261,8 @@ pub struct CodingConfig {
     pub model: String,
     pub mode: String,
     pub auto_approve: bool,
+    /// Catalog selection is only enabled for Kilo's default, not explicit overrides.
+    pub automatic_model: bool,
 }
 
 /// A pending `--code:` upstream consultation.
@@ -368,7 +372,20 @@ pub fn coding_tool_schemas() -> Vec<serde_json::Value> {
 pub fn is_coding_tool(name: &str) -> bool {
     matches!(
         name,
-        "read_file" | "find_files" | "search_code" | "read_skill_file" | "git_status" | "git_diff"
+        "read_file"
+            | "find_files"
+            | "search_code"
+            | "read_skill_file"
+            | "git_status"
+            | "git_diff"
+            | "write_file"
+            | "edit_file"
+            | "apply_patch"
+            | "patch_file"
+            | "run_command"
+            | "run_tests"
+            | "web_fetch"
+            | "request_build_mode"
     )
 }
 
@@ -376,6 +393,7 @@ pub fn is_coding_tool(name: &str) -> bool {
 pub fn clean_directive_prompt(prompt: &str) -> &str {
     let trimmed = prompt.trim();
     for prefix in [
+        "--with-helm",
         "--code:guard",
         "--code guard",
         "--code!:",
@@ -396,6 +414,11 @@ pub fn clean_directive_prompt(prompt: &str) -> &str {
             let rest = rest.strip_prefix(':').unwrap_or(rest).trim_start();
             return rest;
         }
+    }
+    if let Some(rest) = trimmed.strip_suffix("--with-helm")
+        && rest.ends_with(char::is_whitespace)
+    {
+        return rest.trim_end();
     }
     trimmed
 }
@@ -492,9 +515,9 @@ pub const BUILTIN_PERSONA_PRESETS: &[BuiltinPersonaPreset] = &[
 
 pub fn find_builtin_preset(name: &str) -> Option<&'static BuiltinPersonaPreset> {
     let lower = name.trim().to_ascii_lowercase();
-    BUILTIN_PERSONA_PRESETS.iter().find(|p| {
-        p.id.eq_ignore_ascii_case(&lower) || p.name.eq_ignore_ascii_case(&lower)
-    })
+    BUILTIN_PERSONA_PRESETS
+        .iter()
+        .find(|p| p.id.eq_ignore_ascii_case(&lower) || p.name.eq_ignore_ascii_case(&lower))
 }
 
 /// Parses persona configuration from a serde_json Value into a structured system prompt section.
@@ -503,8 +526,13 @@ fn parse_persona_json_value(persona: &serde_json::Value) -> Option<String> {
     if let Some(persona_str) = persona.as_str().filter(|s| !s.trim().is_empty()) {
         let p_trimmed = persona_str.trim();
         if let Some(preset) = find_builtin_preset(p_trimmed) {
-            let mut parts = vec![format!("Identity: Your name is {}. When introducing yourself, identify as \"{}\".", preset.name, preset.name)];
-            parts.push("Persona Instructions (strictly adhere to these across all responses):".into());
+            let mut parts = vec![format!(
+                "Identity: Your name is {}. When introducing yourself, identify as \"{}\".",
+                preset.name, preset.name
+            )];
+            parts.push(
+                "Persona Instructions (strictly adhere to these across all responses):".into(),
+            );
             for (idx, inst) in preset.instructions.iter().enumerate() {
                 parts.push(format!("{}. {inst}", idx + 1));
             }
@@ -531,7 +559,9 @@ fn parse_persona_json_value(persona: &serde_json::Value) -> Option<String> {
         .or_else(|| preset_ref.map(|p| p.name));
 
     if let Some(n) = name {
-        parts.push(format!("Identity: Your name is {n}. When introducing yourself, identify as \"{n}\"."));
+        parts.push(format!(
+            "Identity: Your name is {n}. When introducing yourself, identify as \"{n}\"."
+        ));
     }
 
     if let Some(gender) = persona.get("gender").and_then(|v| v.as_str()) {
@@ -572,13 +602,13 @@ fn parse_persona_json_value(persona: &serde_json::Value) -> Option<String> {
 
 /// Extracts persona guidelines directly from a system message (such as Nio's caller system prompt).
 pub fn extract_persona_from_system(sys: &str) -> Option<String> {
-    if let Some(pos) = sys.find("Persona & Guidelines (always active):") {
+    if let Some(pos) = sys.rfind("Persona & Guidelines (always active):") {
         let section = sys[pos..].trim();
         if !section.is_empty() {
             return Some(section.to_string());
         }
     }
-    if let Some(pos) = sys.find("Persona Instructions") {
+    if let Some(pos) = sys.rfind("Persona Instructions") {
         let start = sys[..pos].rfind("Identity:").unwrap_or(pos);
         let section = sys[start..].trim();
         if !section.is_empty() {
@@ -588,16 +618,36 @@ pub fn extract_persona_from_system(sys: &str) -> Option<String> {
     None
 }
 
+fn request_persona(
+    caller_system: Option<&str>,
+    standalone: impl FnOnce() -> Option<String>,
+) -> Option<String> {
+    match caller_system {
+        Some(system) => extract_persona_from_system(system),
+        None => standalone(),
+    }
+}
+
 /// Loads the configured persona from local XsConfig or Nio configuration files if available.
 pub fn load_nio_persona() -> Option<String> {
     // 1. Check if an explicit persona is configured in XsConfig (.nioxs/config.json)
     let xs_cfg = load_config();
     if let Some(ref p) = xs_cfg.persona {
         let p_trimmed = p.trim();
-        if !p_trimmed.is_empty() && !matches!(p_trimmed.to_ascii_lowercase().as_str(), "off" | "none" | "default") {
+        if !p_trimmed.is_empty()
+            && !matches!(
+                p_trimmed.to_ascii_lowercase().as_str(),
+                "off" | "none" | "default"
+            )
+        {
             if let Some(preset) = find_builtin_preset(p_trimmed) {
-                let mut parts = vec![format!("Identity: Your name is {}. When introducing yourself, identify as \"{}\".", preset.name, preset.name)];
-                parts.push("Persona Instructions (strictly adhere to these across all responses):".into());
+                let mut parts = vec![format!(
+                    "Identity: Your name is {}. When introducing yourself, identify as \"{}\".",
+                    preset.name, preset.name
+                )];
+                parts.push(
+                    "Persona Instructions (strictly adhere to these across all responses):".into(),
+                );
                 for (idx, inst) in preset.instructions.iter().enumerate() {
                     parts.push(format!("{}. {inst}", idx + 1));
                 }
@@ -614,11 +664,21 @@ pub fn load_nio_persona() -> Option<String> {
     // 2. Discover Nio config file across standard paths (respecting NIO_CONFIG and XDG_CONFIG_HOME)
     let candidate_paths = [
         std::env::var("NIO_CONFIG").ok().map(PathBuf::from),
-        std::env::var("XDG_CONFIG_HOME").ok().map(|p| PathBuf::from(p).join("nio/config.json")),
-        std::env::var("APPDATA").ok().map(|p| PathBuf::from(p).join("nio/config.json")),
-        std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".config/nio/config.json")),
-        std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".nio/config.json")),
-        std::env::var("USERPROFILE").ok().map(|h| PathBuf::from(h).join(".config/nio/config.json")),
+        std::env::var("XDG_CONFIG_HOME")
+            .ok()
+            .map(|p| PathBuf::from(p).join("nio/config.json")),
+        std::env::var("APPDATA")
+            .ok()
+            .map(|p| PathBuf::from(p).join("nio/config.json")),
+        std::env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(h).join(".config/nio/config.json")),
+        std::env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(h).join(".nio/config.json")),
+        std::env::var("USERPROFILE")
+            .ok()
+            .map(|h| PathBuf::from(h).join(".config/nio/config.json")),
         Some(PathBuf::from(".nio/config.json")),
         Some(PathBuf::from(".nioxs/config.json")),
     ];
@@ -641,15 +701,19 @@ pub fn load_nio_persona() -> Option<String> {
 /// Enriches the upstream coding system prompt with active persona, skills, and plugins context.
 pub fn build_coding_system_prompt(history: &[nioxs_contracts::Message]) -> String {
     // 1. Identify active persona from local config or caller system message
-    let caller_system = history
+    let caller_context = history
         .iter()
-        .find(|m| m.role == "system")
-        .and_then(|m| m.content.as_str())
+        .filter(|message| message.role == "system")
+        .filter_map(|message| message.content.as_str())
         .map(str::trim)
-        .filter(|s| !s.is_empty());
+        .filter(|content| !content.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let caller_system = (!caller_context.is_empty()).then_some(caller_context.as_str());
 
-    let persona_snippet = load_nio_persona()
-        .or_else(|| caller_system.and_then(extract_persona_from_system));
+    // The caller owns the current session persona, including intentionally
+    // having none. Server-local settings are only a standalone fallback.
+    let persona_snippet = request_persona(caller_system, load_nio_persona);
 
     // Determine persona name if available
     let persona_name = persona_snippet.as_ref().and_then(|s| {
@@ -672,20 +736,29 @@ pub fn build_coding_system_prompt(history: &[nioxs_contracts::Message]) -> Strin
     });
 
     let intro = match persona_name {
-        Some(ref name) => format!("You are {name}, a coding assistant working inside a developer's TUI."),
-        None => "You are a coding assistant working inside a developer's TUI.".to_string(),
+        Some(ref name) => {
+            format!("You are {name}, an assistant working inside a developer's TUI.")
+        }
+        None => "You are an assistant working inside a developer's TUI.".to_string(),
     };
 
     let mut prompt = format!(
         "{intro} \
         The user's project is available through the read_file, find_files, and search_code tools, \
-        which run in that project. Read only what you actually need: if the request \
+        which run in that project. Use '.' for the project root and project-relative \
+        paths for reads and searches; the absolute caller root is descriptive context. \
+        Read only what you actually need: if the request \
         can be answered without opening files, answer directly. Always invoke tools \
         using the structured function calling API; never output raw XML tags or \
         tool-call blocks in message content. Never invent file contents or claim to \
-        have read something you did not read. Deliver clean, production-ready code \
+        have read something you did not read. Reuse file contents already returned \
+        in this conversation; do not ask for the same file and range again unless the \
+        user requests a refresh. Provide the requested deliverable in your selected role, \
+        ground project claims in actual evidence, and state what remains unverified \
         while consistently embodying your active persona's voice and personality."
     );
+
+    prompt.push_str("\n\nMatch the actual task: casual question, explanation, writing, ideas, project inspection, implementation, review, or decision. Answer general and casual questions directly without inspecting the workspace. Only inspect project files when the answer depends on this project's actual contents. Tool availability is not a reason to use a tool. Requests for ideas or feasibility do not authorize building a project or granting approval. Respect the requested number of ideas, format, and detail. Express the caller's persona naturally without repeatedly announcing your name or adopting a specialist role as your identity. Caller permissions and the selected specialist role control which actions are available.");
 
     // 2. Execution Mode & Autonomy Permissions
     let cfg = load_config();
@@ -698,10 +771,16 @@ pub fn build_coding_system_prompt(history: &[nioxs_contracts::Message]) -> Strin
 
     let mode_guidance = match cfg.mode.to_ascii_lowercase().as_str() {
         "auto" => "Full autonomy mode: analyze, plan, and execute changes end-to-end.",
-        "review" => "Review mode: focus on analyzing code quality, identifying vulnerabilities, bugs, and edge cases with constructive feedback.",
-        "architect" => "Architect mode: focus on system boundaries, data structures, modularity, and trade-offs.",
-        "fast" => "Fast mode: provide concise, direct code implementations without unnecessary explanation.",
-        _ => "Standard coding mode: provide clean, production-ready code with exact explanations.",
+        "review" => {
+            "Review mode: focus on analyzing code quality, identifying vulnerabilities, bugs, and edge cases with constructive feedback."
+        }
+        "architect" => {
+            "Architect mode: focus on system boundaries, data structures, modularity, and trade-offs."
+        }
+        "fast" => "Fast mode: provide concise, direct answers and the requested deliverable.",
+        _ => {
+            "Standard mode: provide the requested deliverable with clear explanations and evidence; identify anything unverified."
+        }
     };
 
     prompt.push_str(&format!(
@@ -732,7 +811,7 @@ pub fn build_coding_system_prompt(history: &[nioxs_contracts::Message]) -> Strin
     prompt.push_str("\n\n---\n### 🔌 Available Skills & Plugins in Nio\n\
         • Skills: Project workflows and conventions can be inspected with `read_skill_file`.\n\
         • Plugins: You have companion tools available on demand (e.g. `--tools: <task>` for svg2favicon, image_scaler, style_helper, json_yaml, jwt_decoder, regex_tester, sql_formatter, env_auditor, cron_parser, diff_viewer, uuid_gen, hash_calc, url_parser, base64_tool, color_convert, csv2json, tree_gen, semver_calc, lorem_gen).\n\
-        Always deliver concrete code and answers in your active persona's voice.");
+        Match your deliverable to the user's request and selected role in your active persona's voice.");
 
     prompt
 }
@@ -746,9 +825,7 @@ pub fn upstream_messages(
     history: &[nioxs_contracts::Message],
 ) -> Vec<serde_json::Value> {
     let system_prompt = build_coding_system_prompt(history);
-    let mut messages = vec![
-        serde_json::json!({"role": "system", "content": system_prompt}),
-    ];
+    let mut messages = vec![serde_json::json!({"role": "system", "content": system_prompt})];
 
     let mut saw_user = false;
     for message in history {
@@ -784,14 +861,18 @@ pub fn upstream_messages(
                             "content": serde_json::Value::Null,
                             "tool_calls": calls,
                         });
-                        if let Some(content) = message.content.as_str().filter(|s| !s.trim().is_empty()) {
+                        if let Some(content) =
+                            message.content.as_str().filter(|s| !s.trim().is_empty())
+                        {
                             let clean = strip_trail_segments(content);
                             if !clean.is_empty() {
                                 entry["content"] = serde_json::json!(clean);
                             }
                         }
                         messages.push(entry);
-                    } else if let Some(content) = message.content.as_str().filter(|s| !s.trim().is_empty()) {
+                    } else if let Some(content) =
+                        message.content.as_str().filter(|s| !s.trim().is_empty())
+                    {
                         let clean = strip_trail_segments(content);
                         if !clean.is_empty() {
                             messages.push(serde_json::json!({
@@ -800,7 +881,9 @@ pub fn upstream_messages(
                             }));
                         }
                     }
-                } else if let Some(content) = message.content.as_str().filter(|s| !s.trim().is_empty()) {
+                } else if let Some(content) =
+                    message.content.as_str().filter(|s| !s.trim().is_empty())
+                {
                     let clean = strip_trail_segments(content);
                     if !clean.is_empty() {
                         messages.push(serde_json::json!({
@@ -817,9 +900,9 @@ pub fn upstream_messages(
                     // Only results paired with a forwarded call are replayed, so the
                     // upstream never sees a dangling tool message.
                     let paired = messages.iter().any(|prior| {
-                        prior["tool_calls"]
-                            .as_array()
-                            .is_some_and(|calls| calls.iter().any(|call| call["id"].as_str() == Some(id)))
+                        prior["tool_calls"].as_array().is_some_and(|calls| {
+                            calls.iter().any(|call| call["id"].as_str() == Some(id))
+                        })
                     });
                     if paired {
                         messages.push(serde_json::json!({
@@ -851,7 +934,51 @@ pub fn upstream_messages(
         }));
     }
 
+    repair_tool_call_ids(&mut messages);
     messages
+}
+
+/// Repair histories produced by older relays that reused IDs across rounds.
+/// Remap each result to the nearest preceding occurrence without changing evidence.
+fn repair_tool_call_ids(messages: &mut [Value]) {
+    let reserved: std::collections::HashSet<String> = messages
+        .iter()
+        .filter_map(|message| message["tool_calls"].as_array())
+        .flatten()
+        .filter_map(|call| call["id"].as_str().map(str::to_string))
+        .collect();
+    let mut used = std::collections::HashSet::new();
+    let mut current = std::collections::HashMap::<String, String>::new();
+    for (index, message) in messages.iter_mut().enumerate() {
+        if message["role"] == "assistant" {
+            if let Some(calls) = message["tool_calls"].as_array_mut() {
+                for (slot, call) in calls.iter_mut().enumerate() {
+                    let Some(original) = call["id"].as_str().map(str::to_string) else {
+                        continue;
+                    };
+                    let mut id = original.clone();
+                    if used.contains(&id) {
+                        let suffix = nioxs_contracts::digest(
+                            format!("{index}:{slot}:{original}").as_bytes(),
+                        );
+                        id = format!("call_history_{}", &suffix[..24]);
+                        while used.contains(&id) || reserved.contains(&id) {
+                            id.push('_');
+                        }
+                    }
+                    used.insert(id.clone());
+                    current.insert(original, id.clone());
+                    call["id"] = json!(id);
+                }
+            }
+        } else if message["role"] == "tool" {
+            if let Some(id) = message["tool_call_id"].as_str()
+                && let Some(mapped) = current.get(id)
+            {
+                message["tool_call_id"] = json!(mapped);
+            }
+        }
+    }
 }
 
 /// Counts the tool rounds the model already used in this turn.
@@ -895,7 +1022,8 @@ pub fn coding_read_paths(turn: &[nioxs_contracts::Message]) -> Vec<String> {
 ///   then the Kilo gateway default.
 /// - API key: `NIOXS_CODING_API_KEY_FILE` (file contents), then
 ///   `NIOXS_CODING_API_KEY`, then the `nio` TUI's `NIO_API_KEY`.
-/// - Model: `NIOXS_CODING_MODEL`, then `kilo-auto/free`.
+/// - Model: `NIOXS_CODING_MODEL`, then saved config, then North Mini Code
+///   if listed by Kilo, otherwise Auto Free.
 pub fn coding_config() -> CodingConfig {
     resolve_coding_config(&|name| std::env::var(name).ok())
 }
@@ -914,11 +1042,19 @@ fn resolve_coding_config(get: &dyn Fn(&str) -> Option<String>) -> CodingConfig {
         .or_else(|| get("NIO_API_KEY"))
         .map(|k| k.trim().to_string())
         .filter(|k| !k.is_empty());
-    let model = get("NIOXS_CODING_MODEL")
+    let configured_model = get("NIOXS_CODING_MODEL")
         .or_else(|| load_config().model)
         .map(|m| m.trim().to_string())
-        .filter(|m| !m.is_empty())
-        .unwrap_or_else(|| DEFAULT_CODING_MODEL.to_string());
+        .filter(|m| !m.is_empty());
+    let automatic_model = configured_model.is_none() && base_url == DEFAULT_CODING_BASE_URL;
+    let model = configured_model.unwrap_or_else(|| {
+        if automatic_model {
+            DEFAULT_CODING_MODEL
+        } else {
+            FALLBACK_CODING_MODEL
+        }
+        .to_string()
+    });
     let cfg = load_config();
     let mode = cfg.mode;
     let auto_approve = cfg.auto_approve || mode.eq_ignore_ascii_case("auto");
@@ -928,6 +1064,7 @@ fn resolve_coding_config(get: &dyn Fn(&str) -> Option<String>) -> CodingConfig {
         model,
         mode,
         auto_approve,
+        automatic_model,
     }
 }
 
@@ -956,6 +1093,63 @@ pub const TRAIL_SCAN: &str = "🛠️ scanning workspace";
 pub const TRAIL_READ: &str = "📄 read_file";
 /// Trail line announcing the upstream consultation.
 pub const TRAIL_CONSULT: &str = "💭 consulting with LLM:";
+pub const TRAIL_PROFILE: &str = "🔀 profile:";
+pub const TRAIL_FALLBACK: &str = "↪ fallback:";
+pub const TRAIL_SKIP_HELM: &str = "↪ Helm skipped (--no-helm)";
+
+pub fn model_stage(model: &str) -> Option<&'static str> {
+    match model {
+        "nio-flow" => Some("🌊 NioFlow · Planning"),
+        "nio-thinker" => Some("🧠 NioThinker · Drafting"),
+        "nio-echo" => Some("💬 NioEcho · Answering"),
+        "nio-sage" => Some("📚 NioSage · Teaching"),
+        "nio-quill" => Some("✍ NioQuill · Writing"),
+        "nio-scout" => Some("🔎 NioScout · Researching"),
+        "nio-atom" => Some("NioAtom · Building"),
+        "nio-neon" => Some("NioNeon · Reviewing"),
+        "nio-helm" => Some("⚖ NioHelm · Go / No-Go"),
+        "nio-nova" => Some("NioNova · Exploring"),
+        "nio-nano" => Some("🔧 NioNano · Tools"),
+        _ => None,
+    }
+}
+
+/// Recognize both current stage labels and banners saved by older clients.
+pub fn stage_model(line: &str) -> Option<&'static str> {
+    let line = line.trim();
+    let line = line.strip_prefix("↪ ").unwrap_or(line);
+    if matches!(
+        line,
+        "🧠 NioThinker · Challenging"
+            | "🧠 NioThinker · Refining"
+            | "NioThinker · Drafting"
+            | "NioThinker · Challenging"
+            | "NioThinker · Refining"
+    ) {
+        return Some(nioxs_contracts::MODEL_THINKER);
+    }
+    nioxs_contracts::MODELS
+        .iter()
+        .copied()
+        .find(|model| {
+            model_stage(model).is_some_and(|label| {
+                label.trim_start_matches(|c: char| !c.is_ascii_alphanumeric())
+                    == line.trim_start_matches(|c: char| !c.is_ascii_alphanumeric())
+            })
+        })
+        .or_else(|| {
+            let label = line.strip_prefix(TRAIL_PROFILE)?.trim();
+            let id = label.rsplit('→').next()?.trim();
+            nioxs_contracts::MODELS
+                .iter()
+                .copied()
+                .find(|model| *model == id)
+        })
+}
+
+pub fn is_fallback_status(line: &str) -> bool {
+    line.trim().starts_with(TRAIL_FALLBACK) || line.trim() == "↪ Using Kilo Auto Free"
+}
 
 /// One self-terminating trail line for a file the client is about to read.
 pub fn trail_read_segment(path: &str) -> String {
@@ -981,6 +1175,11 @@ pub fn strip_trail_segments(text: &str) -> String {
     for line in text.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with(TRAIL_CONSULT)
+            || trimmed.starts_with(TRAIL_PROFILE)
+            || trimmed.starts_with("↪ Upstream:")
+            || stage_model(trimmed).is_some()
+            || is_fallback_status(trimmed)
+            || trimmed == TRAIL_SKIP_HELM
             || trimmed.starts_with(TRAIL_SCAN)
             || trimmed.starts_with(TRAIL_READ)
             || (trimmed.starts_with("*↳ answered by ") && trimmed.ends_with('*'))
@@ -1258,7 +1457,7 @@ fn score_context_file(path: &str, text: &str, words: &[String]) -> usize {
 ///
 /// The model owns exploration: it decides what, if anything, it needs to read
 /// from the caller's project, and the caller's own tools fetch it.
-pub const UPSTREAM_SYSTEM_PROMPT: &str = "You are a coding assistant working inside a developer's TUI. \
+pub const UPSTREAM_SYSTEM_PROMPT: &str = "You are an assistant working inside a developer's TUI. \
     The user's project is available through the read_file and find_files tools, \
     which run in that project. Read only what you actually need: if the request \
     can be answered without opening files, answer directly. Always invoke tools \
@@ -1296,7 +1495,7 @@ pub fn upstream_chat_body(
 }
 
 /// System instruction for the tool-less fallback, which carries a local bundle.
-const BUNDLED_SYSTEM_PROMPT: &str = "You are a coding assistant embedded in a developer's TUI. \
+const BUNDLED_SYSTEM_PROMPT: &str = "You are an assistant embedded in a developer's TUI. \
     Answer the request using the bundled workspace context when relevant. \
     Deliver the code or concrete answer consistently embodying your active persona rules and tone.";
 
@@ -1306,10 +1505,12 @@ pub fn bundled_messages(
     context: &str,
     history: &[nioxs_contracts::Message],
 ) -> Vec<serde_json::Value> {
-    let system_prompt = format!("{}\n\n{}", BUNDLED_SYSTEM_PROMPT, build_coding_system_prompt(history));
-    let mut messages = vec![
-        serde_json::json!({"role": "system", "content": system_prompt}),
-    ];
+    let system_prompt = format!(
+        "{}\n\n{}",
+        BUNDLED_SYSTEM_PROMPT,
+        build_coding_system_prompt(history)
+    );
+    let mut messages = vec![serde_json::json!({"role": "system", "content": system_prompt})];
 
     let user_content = if context.trim().is_empty() {
         format!("Request: {prompt}")
@@ -1322,7 +1523,10 @@ pub fn bundled_messages(
         return messages;
     }
 
-    let last_user_idx = history.iter().rposition(|m| m.role == "user").unwrap_or(history.len());
+    let last_user_idx = history
+        .iter()
+        .rposition(|m| m.role == "user")
+        .unwrap_or(history.len());
     for (idx, message) in history.iter().enumerate() {
         if idx == last_user_idx {
             continue;
@@ -1373,20 +1577,15 @@ pub fn consult_upstream(
     history: &[nioxs_contracts::Message],
 ) -> Result<String, String> {
     let messages = bundled_messages(prompt, context, history);
-    let body = upstream_chat_body(config, &messages, &[], false);
-    let url = upstream_chat_url(config);
+    let mut config = config.clone();
+    let url = upstream_chat_url(&config);
 
     crate::run_async(async move {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(45))
             .build()
             .map_err(|e| format!("failed to build HTTP client: {e}"))?;
-        let mut request = client.post(&url).json(&body);
-        if let Some(key) = config.api_key.as_deref() {
-            request = request.bearer_auth(key);
-        }
-        let response = request
-            .send()
+        let response = crate::upstream::send_chat(&client, &mut config, &messages, &[], false)
             .await
             .map_err(|e| format!("request to `{url}` failed: {e}"))?;
         let status = response.status();
@@ -1539,7 +1738,10 @@ pub fn dispatch_config(req: &str) -> String {
         let mode_str = &config.mode;
         let guard_str = if config.guard { "**ON**" } else { "OFF" };
         let stream_str = if config.stream { "**ON**" } else { "OFF" };
-        let model_str = config.model.as_deref().unwrap_or("kilo-auto/free (default)");
+        let model_str = config
+            .model
+            .as_deref()
+            .unwrap_or("North Mini Code → Auto Free (default)");
         let consent_str = &config.tools_consent;
         let persona_str = config.persona.as_deref().unwrap_or("default");
 
@@ -1625,59 +1827,60 @@ pub fn dispatch_config(req: &str) -> String {
                 "✔ Config updated: **mode** set to `{mode_val}`.\nExecution mode `{mode_val}` will be passed into all subsequent `--code` consultations."
             )
         }
-        "preset" => {
-            match val_lower.as_str() {
-                "auto" => {
-                    config.code = true;
-                    config.auto_approve = true;
-                    config.mode = "auto".to_string();
-                    config.tools_consent = "auto".to_string();
-                    if let Err(e) = save_config(&config) {
-                        return format!("⚠️ Failed to save config: {e}");
-                    }
-                    "✔ Applied preset **auto**: code=ON, auto_approve=ON, mode=auto, tools_consent=auto.\nFull autonomous mode activated for `--code` consultations.".to_string()
+        "preset" => match val_lower.as_str() {
+            "auto" => {
+                config.code = true;
+                config.auto_approve = true;
+                config.mode = "auto".to_string();
+                config.tools_consent = "auto".to_string();
+                if let Err(e) = save_config(&config) {
+                    return format!("⚠️ Failed to save config: {e}");
                 }
-                "review" => {
-                    config.code = true;
-                    config.auto_approve = false;
-                    config.mode = "review".to_string();
-                    if let Err(e) = save_config(&config) {
-                        return format!("⚠️ Failed to save config: {e}");
-                    }
-                    "✔ Applied preset **review**: code=ON, auto_approve=OFF, mode=review.\nDetailed code review and vulnerability audit mode activated.".to_string()
-                }
-                "architect" => {
-                    config.code = true;
-                    config.auto_approve = false;
-                    config.mode = "architect".to_string();
-                    if let Err(e) = save_config(&config) {
-                        return format!("⚠️ Failed to save config: {e}");
-                    }
-                    "✔ Applied preset **architect**: code=ON, auto_approve=OFF, mode=architect.\nHigh-level system design and modularity mode activated.".to_string()
-                }
-                "fast" => {
-                    config.code = true;
-                    config.auto_approve = true;
-                    config.mode = "fast".to_string();
-                    if let Err(e) = save_config(&config) {
-                        return format!("⚠️ Failed to save config: {e}");
-                    }
-                    "✔ Applied preset **fast**: code=ON, auto_approve=ON, mode=fast.\nFast concise code generation mode activated.".to_string()
-                }
-                "coding" | "default" | "standard" => {
-                    config.code = false;
-                    config.auto_approve = false;
-                    config.mode = "coding".to_string();
-                    if let Err(e) = save_config(&config) {
-                        return format!("⚠️ Failed to save config: {e}");
-                    }
-                    "✔ Applied preset **coding**: standard interactive coding defaults restored.".to_string()
-                }
-                _ => {
-                    format!("⚠️ Unknown preset `{val}`. Available presets: `auto`, `review`, `architect`, `fast`, `coding`.")
-                }
+                "✔ Applied preset **auto**: code=ON, auto_approve=ON, mode=auto, tools_consent=auto.\nFull autonomous mode activated for `--code` consultations.".to_string()
             }
-        }
+            "review" => {
+                config.code = true;
+                config.auto_approve = false;
+                config.mode = "review".to_string();
+                if let Err(e) = save_config(&config) {
+                    return format!("⚠️ Failed to save config: {e}");
+                }
+                "✔ Applied preset **review**: code=ON, auto_approve=OFF, mode=review.\nDetailed code review and vulnerability audit mode activated.".to_string()
+            }
+            "architect" => {
+                config.code = true;
+                config.auto_approve = false;
+                config.mode = "architect".to_string();
+                if let Err(e) = save_config(&config) {
+                    return format!("⚠️ Failed to save config: {e}");
+                }
+                "✔ Applied preset **architect**: code=ON, auto_approve=OFF, mode=architect.\nHigh-level system design and modularity mode activated.".to_string()
+            }
+            "fast" => {
+                config.code = true;
+                config.auto_approve = true;
+                config.mode = "fast".to_string();
+                if let Err(e) = save_config(&config) {
+                    return format!("⚠️ Failed to save config: {e}");
+                }
+                "✔ Applied preset **fast**: code=ON, auto_approve=ON, mode=fast.\nFast concise code generation mode activated.".to_string()
+            }
+            "coding" | "default" | "standard" => {
+                config.code = false;
+                config.auto_approve = false;
+                config.mode = "coding".to_string();
+                if let Err(e) = save_config(&config) {
+                    return format!("⚠️ Failed to save config: {e}");
+                }
+                "✔ Applied preset **coding**: standard interactive coding defaults restored."
+                    .to_string()
+            }
+            _ => {
+                format!(
+                    "⚠️ Unknown preset `{val}`. Available presets: `auto`, `review`, `architect`, `fast`, `coding`."
+                )
+            }
+        },
         "guard" => {
             let is_on = matches!(val_lower.as_str(), "on" | "true" | "1" | "enable" | "yes");
             config.guard = is_on;
@@ -1696,7 +1899,7 @@ pub fn dispatch_config(req: &str) -> String {
                 if let Err(e) = save_config(&config) {
                     return format!("⚠️ Failed to save config: {e}");
                 }
-                "✔ Config updated: **model** reset to default (kilo-auto/free).".to_string()
+                "✔ Config updated: **model** reset to default (North Mini Code when available, otherwise kilo-auto/free).".to_string()
             } else {
                 config.model = Some(val.clone());
                 if let Err(e) = save_config(&config) {
@@ -1747,7 +1950,9 @@ pub fn dispatch_config(req: &str) -> String {
             }
         }
         _ => {
-            format!("⚠️ Unknown configuration setting `{key}`. Type `--config list` to view available options.")
+            format!(
+                "⚠️ Unknown configuration setting `{key}`. Type `--config list` to view available options."
+            )
         }
     }
 }
@@ -1756,6 +1961,9 @@ pub fn dispatch_config(req: &str) -> String {
 pub fn dispatch_help(topic: &str) -> String {
     let clean = topic.trim().trim_start_matches('-').to_ascii_lowercase();
     match clean.as_str() {
+        "flow" | "nio-flow" => {
+            "### NioFlow directives\n\nFlow plans the task, invokes useful Echo/Sage/Quill/Scout/Thinker/Nova/Atom/Neon stages, and may ask Nano for bounded project evidence. Helm is the final Go / No-Go gate by default.\n\nUse `--no-helm <task>` or `<task> --no-helm` to skip Helm for one Flow task; the last specialist supplies the final answer. The option persists through that task's tool results. Caller tool permissions still apply.\n\nExamples:\n• `--no-helm suggest a dashboard`\n• `review this change --no-helm`".to_string()
+        }
         "code" | "coding" => {
             "### 🤖 Directive: `--code` (Upstream Coding Consultation)\n\n\
             Run AI-assisted code generation and analysis directly in your session.\n\n\
@@ -1830,6 +2038,7 @@ pub fn dispatch_help(topic: &str) -> String {
         _ => {
             "### ⚡ NioNano MicroLM (μLM) — Companion Directives & Capabilities\n\n\
             #### 🎯 Companion Directives:\n\
+            • `--no-helm <task>` — Flow without the final Helm gate (try `--help flow`)\n\
             • `--code <prompt>` — AI coding consultation with workspace awareness (try `--help code`)\n\
             • `--code @file <prompt>` — Pinpoint specific files for AI consultation\n\
             • `--tools <task>` — 20 local Python utility plugins (try `--help tools`)\n\
@@ -1870,7 +2079,14 @@ pub const TOOL_PLUGINS: &[PluginMeta] = &[
         category: "Assets & Media",
         capability: "Downscales images to target dimensions and converts to WebP.",
         example: "--tools resize assets/banner.png to 800x400",
-        keywords: &["resize", "scale image", "image_scaler", "thumbnail", "webp", "downscale"],
+        keywords: &[
+            "resize",
+            "scale image",
+            "image_scaler",
+            "thumbnail",
+            "webp",
+            "downscale",
+        ],
     },
     PluginMeta {
         name: "style_helper",
@@ -1878,7 +2094,13 @@ pub const TOOL_PLUGINS: &[PluginMeta] = &[
         category: "Assets & Media",
         capability: "Extracts color palettes (HEX/RGB) and font stacks from CSS/SCSS.",
         example: "--tools extract color palette from styles.css",
-        keywords: &["style", "palette", "font stack", "style_helper", "css palette"],
+        keywords: &[
+            "style",
+            "palette",
+            "font stack",
+            "style_helper",
+            "css palette",
+        ],
     },
     PluginMeta {
         name: "color_convert",
@@ -1886,7 +2108,14 @@ pub const TOOL_PLUGINS: &[PluginMeta] = &[
         category: "Assets & Media",
         capability: "Converts colors between HEX, RGB, HSL, and CSS OKLCH formats.",
         example: "--tools convert #3b82f6 to hsl and rgb",
-        keywords: &["color", "hex to rgb", "rgb to hex", "hsl", "oklch", "color_convert"],
+        keywords: &[
+            "color",
+            "hex to rgb",
+            "rgb to hex",
+            "hsl",
+            "oklch",
+            "color_convert",
+        ],
     },
     // --- Data & Formats ---
     PluginMeta {
@@ -1911,7 +2140,14 @@ pub const TOOL_PLUGINS: &[PluginMeta] = &[
         category: "Data & Formats",
         capability: "Encodes or decodes text and binary files to/from Base64 or Data URLs.",
         example: "--tools base64 encode secret.txt",
-        keywords: &["base64", "b64", "base64 encode", "base64 decode", "data url", "base64_tool"],
+        keywords: &[
+            "base64",
+            "b64",
+            "base64 encode",
+            "base64 decode",
+            "data url",
+            "base64_tool",
+        ],
     },
     PluginMeta {
         name: "sql_formatter",
@@ -1936,7 +2172,13 @@ pub const TOOL_PLUGINS: &[PluginMeta] = &[
         category: "Analysis & Security",
         capability: "Tests regex patterns against sample strings, showing match spans and capture groups.",
         example: "--tools test regex '(\\d{4})-(\\d{2})' on '2026-10-12'",
-        keywords: &["regex", "regexp", "regular expression", "regex_tester", "regex test"],
+        keywords: &[
+            "regex",
+            "regexp",
+            "regular expression",
+            "regex_tester",
+            "regex test",
+        ],
     },
     PluginMeta {
         name: "env_auditor",
@@ -1944,7 +2186,14 @@ pub const TOOL_PLUGINS: &[PluginMeta] = &[
         category: "Analysis & Security",
         capability: "Audits .env against .env.example, detects missing vars and duplicate keys.",
         example: "--tools audit env",
-        keywords: &["env", "audit env", "dotenv", "env_auditor", ".env.example", "missing env"],
+        keywords: &[
+            "env",
+            "audit env",
+            "dotenv",
+            "env_auditor",
+            ".env.example",
+            "missing env",
+        ],
     },
     PluginMeta {
         name: "hash_calc",
@@ -1969,7 +2218,13 @@ pub const TOOL_PLUGINS: &[PluginMeta] = &[
         category: "Developer Utilities",
         capability: "Explains 5-field cron expressions in human English and lists the next 5 runs.",
         example: "--tools explain cron '*/15 * * * *'",
-        keywords: &["cron", "crontab", "cron_parser", "cron expression", "schedule cron"],
+        keywords: &[
+            "cron",
+            "crontab",
+            "cron_parser",
+            "cron expression",
+            "schedule cron",
+        ],
     },
     PluginMeta {
         name: "markdown_toc",
@@ -2017,7 +2272,13 @@ pub const TOOL_PLUGINS: &[PluginMeta] = &[
         category: "Developer Utilities",
         capability: "Generates customizable dummy placeholder text, markdown copy, or mock data.",
         example: "--tools generate 3 paragraphs of lorem",
-        keywords: &["lorem", "lorem ipsum", "placeholder text", "lorem_gen", "dummy text"],
+        keywords: &[
+            "lorem",
+            "lorem ipsum",
+            "placeholder text",
+            "lorem_gen",
+            "dummy text",
+        ],
     },
 ];
 
@@ -3148,7 +3409,11 @@ pub fn dispatch_tool(task: &str) -> CompanionResult {
             TOOL_PLUGINS.len()
         );
         for (category, entries) in sections {
-            catalog.push_str(&format!("#### 📁 {}\n{}\n\n", category, entries.join("\n\n")));
+            catalog.push_str(&format!(
+                "#### 📁 {}\n{}\n\n",
+                category,
+                entries.join("\n\n")
+            ));
         }
         catalog.push_str(
             "#### 🛡️ Capability Boundary:\n\
@@ -3452,6 +3717,7 @@ mod tests {
         let config = resolve_coding_config(&|_| None);
         assert_eq!(config.base_url, DEFAULT_CODING_BASE_URL);
         assert_eq!(config.model, DEFAULT_CODING_MODEL);
+        assert!(config.automatic_model);
         assert!(config.api_key.is_none(), "Kilo needs no API key by default");
     }
 
@@ -3466,6 +3732,7 @@ mod tests {
         assert_eq!(config.base_url, "http://127.0.0.1:11434/v1");
         assert_eq!(config.api_key.as_deref(), Some("shared-key"));
         assert_eq!(config.model, "my/model:free");
+        assert!(!config.automatic_model);
     }
 
     #[test]
@@ -3532,12 +3799,7 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            vec![
-                "read_file",
-                "find_files",
-                "search_code",
-                "read_skill_file"
-            ]
+            vec!["read_file", "find_files", "search_code", "read_skill_file"]
         );
         assert!(
             is_coding_tool("read_file")
@@ -3547,7 +3809,36 @@ mod tests {
                 && is_coding_tool("git_diff")
                 && is_coding_tool("read_skill_file")
         );
-        assert!(!is_coding_tool("run_command") && !is_coding_tool("write_file"));
+        assert!(is_coding_tool("run_command") && is_coding_tool("write_file"));
+        assert!(!is_coding_tool("unknown_tool"));
+    }
+
+    #[test]
+    fn replay_repairs_duplicate_call_ids_and_preserves_each_result() {
+        let mut messages = vec![
+            json!({"role":"assistant","tool_calls":[{"id":"call_old","function":{"name":"read_file","arguments":"{}"}}]}),
+            json!({"role":"tool","tool_call_id":"call_old","content":"first result"}),
+            json!({"role":"assistant","tool_calls":[{"id":"call_old","function":{"name":"read_file","arguments":"{}"}}]}),
+            json!({"role":"tool","tool_call_id":"call_old","content":"second result"}),
+        ];
+        repair_tool_call_ids(&mut messages);
+        assert_ne!(
+            messages[0]["tool_calls"][0]["id"],
+            messages[2]["tool_calls"][0]["id"]
+        );
+        assert_eq!(
+            messages[0]["tool_calls"][0]["id"],
+            messages[1]["tool_call_id"]
+        );
+        assert_eq!(
+            messages[2]["tool_calls"][0]["id"],
+            messages[3]["tool_call_id"]
+        );
+        assert_eq!(messages[1]["content"], "first result");
+        assert_eq!(messages[3]["content"], "second result");
+        let once = messages.clone();
+        repair_tool_call_ids(&mut messages);
+        assert_eq!(messages, once);
     }
 
     #[test]
@@ -3628,6 +3919,7 @@ mod tests {
             model: DEFAULT_CODING_MODEL.into(),
             mode: "coding".into(),
             auto_approve: false,
+            automatic_model: false,
         };
         let err = consult_upstream(&config, "hello", "", &[]).unwrap_err();
         assert!(err.contains("failed"), "err: {err}");
@@ -3697,6 +3989,7 @@ mod tests {
             model: "mock/model".into(),
             mode: "coding".into(),
             auto_approve: false,
+            automatic_model: false,
         };
         let draft =
             consult_upstream(&config, "hello", "### src/lib.rs\nfn placeholder() {}", &[]).unwrap();
@@ -3748,6 +4041,7 @@ mod tests {
             model: "kilo-auto/free".into(),
             mode: "coding".into(),
             auto_approve: false,
+            automatic_model: false,
         };
         assert_eq!(
             upstream_chat_url(&config),
@@ -3784,29 +4078,54 @@ mod tests {
             serde_json::from_value::<nioxs_contracts::Message>(serde_json::json!({
                 "role": "user",
                 "content": "--code what is the project layout?"
-            })).unwrap(),
+            }))
+            .unwrap(),
             serde_json::from_value::<nioxs_contracts::Message>(serde_json::json!({
                 "role": "assistant",
                 "content": "The project contains crates/nano and crates/provider."
-            })).unwrap(),
+            }))
+            .unwrap(),
             serde_json::from_value::<nioxs_contracts::Message>(serde_json::json!({
                 "role": "user",
                 "content": "--code where is main defined?"
-            })).unwrap(),
+            }))
+            .unwrap(),
         ];
         let msgs = upstream_messages("where is main defined?", &history);
         assert_eq!(msgs[0]["role"], "system");
         assert_eq!(msgs[1]["role"], "user");
         assert_eq!(msgs[1]["content"], "what is the project layout?");
         assert_eq!(msgs[2]["role"], "assistant");
-        assert_eq!(msgs[2]["content"], "The project contains crates/nano and crates/provider.");
+        assert_eq!(
+            msgs[2]["content"],
+            "The project contains crates/nano and crates/provider."
+        );
         assert_eq!(msgs[3]["role"], "user");
         assert_eq!(msgs[3]["content"], "where is main defined?");
     }
 
     #[test]
+    fn model_statuses_do_not_become_upstream_answer_evidence() {
+        let mut labels: Vec<&str> = nioxs_contracts::MODELS
+            .iter()
+            .filter_map(|model| model_stage(model))
+            .collect();
+        labels.extend(["🧠 NioThinker · Challenging", "🧠 NioThinker · Refining"]);
+        for label in labels {
+            assert!(stage_model(label).is_some());
+            assert!(stage_model(&format!("↪ {label}")).is_some());
+            assert_eq!(
+                strip_trail_segments(&format!("{label}\nActual answer")),
+                "Actual answer"
+            );
+        }
+    }
+
+    #[test]
     fn test_strip_trail_segments_and_has_prior_consult() {
-        let raw = format!("{TRAIL_CONSULT} kilo-auto/free\nHello! I am ready to code.\n{TRAIL_READ} src/lib.rs");
+        let raw = format!(
+            "{TRAIL_CONSULT} kilo-auto/free\nHello! I am ready to code.\n{TRAIL_READ} src/lib.rs"
+        );
         let stripped = strip_trail_segments(&raw);
         assert_eq!(stripped, "Hello! I am ready to code.");
 
@@ -3814,11 +4133,13 @@ mod tests {
             serde_json::from_value::<nioxs_contracts::Message>(serde_json::json!({
                 "role": "user",
                 "content": "hey"
-            })).unwrap(),
+            }))
+            .unwrap(),
             serde_json::from_value::<nioxs_contracts::Message>(serde_json::json!({
                 "role": "assistant",
                 "content": format!("{TRAIL_CONSULT} kilo-auto/free\nHey there! How can I help?")
-            })).unwrap(),
+            }))
+            .unwrap(),
         ];
         assert!(has_prior_consult(&history));
 
@@ -3885,7 +4206,10 @@ mod tests {
         assert_eq!(msgs[2]["content"], serde_json::Value::Null);
         assert_eq!(msgs[3]["role"], "tool");
         assert_eq!(msgs[4]["role"], "user");
-        assert_eq!(msgs[4]["content"], "Your last response completed without answer text. Give a concise answer now.");
+        assert_eq!(
+            msgs[4]["content"],
+            "Your last response completed without answer text. Give a concise answer now."
+        );
     }
 
     #[test]
@@ -3903,7 +4227,8 @@ mod tests {
 
     #[test]
     fn test_extract_pinned_files() {
-        let (cleaned, files) = extract_pinned_files("@src/main.rs please review @Cargo.toml carefully");
+        let (cleaned, files) =
+            extract_pinned_files("@src/main.rs please review @Cargo.toml carefully");
         assert_eq!(files, vec!["src/main.rs", "Cargo.toml"]);
         assert_eq!(cleaned, "please review carefully");
 
@@ -3981,6 +4306,26 @@ mod tests {
     }
 
     #[test]
+    fn caller_persona_overrides_stale_server_persona_and_can_disable_it() {
+        let caller =
+            "Persona & Guidelines (always active):\nIdentity: Your name is Morgan.\nBe concise.";
+        let selected = request_persona(Some(caller), || {
+            panic!("must not read a stale server persona")
+        });
+        assert!(selected.unwrap().contains("Morgan"));
+        assert_eq!(
+            request_persona(Some("You are Nio. No custom persona configured."), || Some(
+                "Taylor".into()
+            )),
+            None
+        );
+        assert_eq!(
+            request_persona(None, || Some("Taylor".into())),
+            Some("Taylor".into())
+        );
+    }
+
+    #[test]
     fn test_persona_preset_expansion_and_injection() {
         // 1. Test preset lookup and expansion for "ex"
         let preset = find_builtin_preset("ex").expect("should find 'ex' preset");
@@ -3998,20 +4343,25 @@ mod tests {
             "preset": "rustacean",
             "instructions": ["Always reference memory safety and zero-cost abstractions."]
         });
-        let custom_str = parse_persona_json_value(&custom_json).expect("should parse custom persona");
+        let custom_str =
+            parse_persona_json_value(&custom_json).expect("should parse custom persona");
         assert!(custom_str.contains("Morgan"));
         assert!(custom_str.contains("zero-cost abstractions"));
 
         // 3. Test extraction from caller_system if config is empty
         let caller_sys = "Persona Instructions (strictly adhere to these across all responses):\nIdentity: Your name is Taylor.\n1. Witty and sharp.";
-        let extracted = extract_persona_from_system(caller_sys).expect("should extract persona from caller_system");
+        let extracted = extract_persona_from_system(caller_sys)
+            .expect("should extract persona from caller_system");
         assert!(extracted.contains("Witty and sharp"));
 
         // 4. Test prompt building with caller_system persona
-        let history = vec![serde_json::from_value::<nioxs_contracts::Message>(serde_json::json!({
-            "role": "system",
-            "content": caller_sys
-        })).unwrap()];
+        let history = vec![
+            serde_json::from_value::<nioxs_contracts::Message>(serde_json::json!({
+                "role": "system",
+                "content": caller_sys
+            }))
+            .unwrap(),
+        ];
         let prompt = build_coding_system_prompt(&history);
         assert!(prompt.contains("### 🎭 Active Persona & Identity Rules (ALWAYS ACTIVE)"));
         assert!(prompt.contains("Witty and sharp"));

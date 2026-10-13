@@ -101,7 +101,11 @@ pub async fn record(app: &App, decision: &mut Decision) -> Result<(), String> {
         .find(|r| r["data"]["revision"] == data["revision"] && r["data"]["state"] == data["state"])
     {
         if essential(&existing["data"]) != data {
-            eprintln!("CONFLICT in journal.rs: existing={:?} vs data={:?}", essential(&existing["data"]), data);
+            eprintln!(
+                "CONFLICT in journal.rs: existing={:?} vs data={:?}",
+                essential(&existing["data"]),
+                data
+            );
             return Err("workflow_revision_conflict".into());
         }
     } else {
@@ -135,8 +139,8 @@ pub fn append_local_turn(root: &std::path::Path, record: &LocalTurnRecord) -> Re
     let dir = root.join(".nioxs");
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("history.jsonl");
-    let line = serde_json::to_string(record)
-        .map_err(|e| format!("cannot serialize local turn: {e}"))?;
+    let line =
+        serde_json::to_string(record).map_err(|e| format!("cannot serialize local turn: {e}"))?;
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new()
         .create(true)

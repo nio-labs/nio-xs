@@ -1,346 +1,244 @@
-# NioXS and NioNano: design and implementation plan
+# NioXS plan and project status
 
-Status: proposed design, not implemented. Revised 2026-10-09. See [ROADMAP.md](ROADMAP.md) for milestones and execution order.
+**AXIS = AI + XS.** AXIS combines the compact MicroLM decision layer, Rust-controlled execution, and language-model reasoning in a bounded assistant for developer tools.
 
-## 1. Product decisions
+This is the single planning document for product direction, architecture, release phases, and open work. The user-facing directives remain in [README.md](../README.md); the API and storage contracts remain in [contracts/README.md](../contracts/README.md) and [contracts/storage.md](../contracts/storage.md); setup steps remain in [DEVELOPMENT.md](DEVELOPMENT.md); evaluation results remain in [Phase 1](../evaluation/PHASE1_EVIDENCE.md) and [Phase 2](../evaluation/PHASE2_EVIDENCE.md); release history remains in [CHANGELOG.md](../CHANGELOG.md).
 
-Naming: **AXIS = AI + XS**. NioAI carries AI; NioXS carries XS. Together, the names express the axis of Nio's non-LLM model family.
+**Current workspace version: v0.4.0** (from the workspace manifest). Change version and capability claims only when their acceptance evidence exists.
 
-- NioAI (`nio`) remains the terminal product and owns project access, approvals, tool execution, sessions, and output.
-- NioNano (`nio-nano`) becomes the default model for new installations and requests without an explicit saved override, selected through the NioXS provider.
-- NioXS is the required provider for NioNano, analogous to Kilo. Nio connects to its configured API endpoint; there is no direct NioNano bypass. The endpoint can be hosted or self-hosted locally. MCP is an additional interface.
-- NioNano is a non-LLM controller: executable workflows, parsers, retrieval, and small predictive ML models. It is not an unrestricted language generator.
-- NioNano executes in the NioXS deployment: local for self-hosting, remote for hosted service. Client project files and commands remain under Nio's tool broker. Unsupported tasks can automatically continue on the user's configured LLM, with a visible handoff.
-- Obscura is the only browser engine. No Chromium installation, download, or fallback.
-- Browser search requires no search API key. Blocked search engines and blocked destination pages are skipped separately.
-- Research page budgets adapt to complexity and observed coverage.
-- NioDB is the persistence service for workflow state, research cache, and optional feedback. Use its core records API, without its assistance or SQL fallback paths.
-- NioJS is excluded from v0.1.0; NioXS and Nano remain Rust with Python used for offline training.
-- Proprietary NioNano/NioXS implementation and training remain in private repositories. Distribute binaries and model artifacts through R2 or S3.
-- NioGuru is a possible future consumer through Nio or NioXS; it is not the initial integration target.
+## Contents
 
-## 2. Component boundaries
+1. [Product direction and roles](#1-product-direction-and-roles)
+2. [Architecture and permissions](#2-architecture-and-permissions)
+3. [Model family and NioFlow cascade](#3-model-family-and-nioflow-cascade)
+4. [Five advancement priorities](#4-five-advancement-priorities)
+5. [Project context and web research](#5-project-context-and-web-research)
+6. [Local learning model and evaluation](#6-local-learning-model-and-evaluation)
+7. [Provider, storage, and distribution](#7-provider-storage-and-distribution)
+8. [Release phases](#8-release-phases)
+9. [Open work](#9-open-work)
+10. [Acceptance and measurement](#10-acceptance-and-measurement)
+11. [Development and sources](#11-development-and-sources)
 
-| Component | Responsibilities | Does not own |
-| --- | --- | --- |
-| Nio | UI, project trust, modes, approval, native tools, session storage, cancellation | Proprietary inference implementation |
-| NioXS | Required provider endpoint, model catalog, request routing, capability metadata, API and MCP adapters | Independent permission to execute client host commands |
-| NioNano | Intent recognition, argument extraction, workflow selection, ranking, completion checks, action proposals | Permission grants or arbitrary LLM-equivalent generation |
-| NioDB | Durable bounded workflow/evidence records, research cache, optional feedback | Nano inference, LLM routing, command execution, or automatic training |
-| Obscura worker | Browser navigation, JavaScript execution, DOM/link/text extraction | Task planning or CAPTCHA solving |
-| Optional Crawl4AI worker | Filtering and structured extraction without LLM extraction | Mandatory Chromium dependency |
-| LLM adapter | Existing configured provider execution after handoff | New or elevated tool permissions |
-| Artifact manager | Signed manifests, download, verification, atomic installation, version selection | Inference or web research routing |
+## 1. Product direction and roles
 
-NioNano proposes typed actions to a tool broker. Nio validates and executes them through its existing restrictions. The closed runtime never needs direct access to provider credentials or unrestricted shell execution in CLI mode.
+NioXS is the OpenAI-compatible provider and workflow layer. Nio remains in charge of the user interface, project trust, approvals, local tools, sessions, and cancellation. NioXS and its models propose typed actions; the caller's tool broker performs project reads, edits, and commands under its existing permission policy.
 
-Nio always requests NioNano through the NioXS provider API. A local deployment still exposes that API on loopback; a hosted deployment exposes a remote endpoint. The provider invokes its private runtime internally. R2/S3 downloads supply self-hosted installations and updates, while hosted clients do not need to download the model. Provider authentication is separate from search API keys; browser search remains keyless.
+**AXIS = AI + XS** describes the product architecture. **MicroLM** is the local, compact learning and decision layer. Hosted or local generative language models provide language generation when a workflow needs it. Nio model names describe roles and behavior, not independently trained weights unless a model actually has its own trained artifact.
 
-Client file and command actions return as provider tool calls for Nio to execute. Provider-side browser research runs only when the caller's web-tool policy permits it. A no-tools request disables both client and provider execution. Treat the two execution locations explicitly in the wire contract and progress events.
+Use Rust for deterministic routing, tool contracts, project evidence, policy, safe patch validation, and outcome checks. Use Python for offline MicroLM training and evaluation. Any user task or project content used for model training requires explicit opt-in; runtime task records are not training consent.
 
-## NioDB persistence contract
-
-NioXS uses a Rust HTTP adapter to NioDB's core records API. Pin a tested NioDB version and use a deployment-owned workspace, persistent data directory, and least-privilege credentials supported by that version. Do not call NioDB's assist/chat endpoints or invoke its SQL/AlaSQL path. Nano does not depend on NioJS or a Node-based SQL worker. Model artifacts remain signed release files on disk/R2/S3, not database-generated weights.
-
-Initial collections: workflow runs, action records, evidence metadata/passages, research cache, and opt-in feedback. Define record schema version, deployment/workspace ownership, correlation IDs, revisions, retention, and byte ceilings before implementation. Nio continues to own its conversation history; do not duplicate raw project files or provider credentials in NioDB. Store only bounded context needed to continue a workflow.
-
-Use NioDB's documented idempotency and record revision mechanisms where applicable, after verifying their exact behavior against the pinned version. Serialize action transitions in NioXS; persistence alone does not guarantee exactly-once external commands. Record intent before dispatch and outcomes after dispatch. If an action's outcome is uncertain after a crash, mark it unknown and inspect current state rather than replaying it automatically.
-
-Cache keys include normalized URL, extraction version, query where needed, and access scope. NioXS enforces expiry, quotas, invalidation, and clearing; do not assume collection storage implements automatic TTL cleanup. Exclude credentials, authenticated/sensitive page content, and CAPTCHA pages from shared cache. Feedback is explicit opt-in and does not trigger automatic retraining.
-
-NioDB is an explicit v0.1.0 runtime dependency. Health/readiness should report storage availability. When persistence is unavailable, reject durable workflow execution with a clear dependency error and do not dispatch side effects; do not invoke database assistance or silently switch to an untracked store. Cache write failures during otherwise tracked research can be reported without losing a useful result if the run/action records remain durable. Recovery and failure semantics are acceptance tests.
-
-Vector search and embedding generation are deferred beyond v0.1.0; use lexical ranking for this release. Deployment owns NioDB backups and coordinated schema migrations. NioXS artifact rollback must not corrupt persistent records or silently downgrade their schema.
-
-## 3. Architecture and Companion Task Flow
-
-```mermaid
-flowchart TD
-    U["Coder in Aider / OpenCode / Cline / TUI"] -->|OpenAI /v1/chat/completions| G["NioXS Gateway"]
-    G --> D["NioNano Decision Model & Router"]
-
-    D -->|Prefix '--bash: <cmd>'| B["In-Session Bash Runner<br/>Runs shell directly without closing TUI"]
-    
-    D -->|Prefix '--tools: <task>'| CHK{"Plugin Locally Installed?"}
-    CHK -->|No| ASK["Prompt User Consent:<br/>'Download and install plugin?'"]
-    ASK -->|User Approves| INST["Download & Register Python Plugin"]
-    INST --> RUN["Execute Python Script / Tool<br/>e.g. SVG Favicon, Asset Scaler"]
-    CHK -->|Yes| RUN
-
-    D -->|Prefix '--code: <req>'| K["Kilo Provider Middleman"]
-    K --> CTX["Bundle Relevant Local Files & Folders"]
-    CTX --> LLM["Consult Kilo Auto Free / Mini Code"]
-    LLM --> VERIFY{"Hallucination & Reality Check<br/>(Symbol/File existence & AST parse)"}
-    VERIFY -->|Valid| RET["Stream Response Back to User"]
-    VERIFY -->|Hallucinated Symbol/API| GATE{"Reroute or Prompt User?<br/>(Decision Model Arbiter)"}
-    GATE -->|Auto-Reroute| REROUTE["Augment Context via Web Scraper / AST & Re-query"]
-    REROUTE --> LLM
-    GATE -->|Ask User| CLARIFY["Ask User: 'Invented symbol detected. Reroute or continue?'"]
-    CLARIFY --> RET
-
-    D -->|Unprefixed / Direct Assist| N["NioNano MicroLM Assist<br/>AST Diagnostics, Label/Color Tweaks, Web Scraper"]
-
-    B --> RESP["Format Output / Stream Response"]
-    RUN --> RESP
-    RET --> RESP
-    N --> RESP
-    RESP --> U
-```
-
-1. **OpenAI Gateway Compatibility**: Coder connects their favorite coding agent (Aider, OpenCode, Cline, Continue, Cursor) to NioXS (`http://127.0.0.1:7460/v1`), selecting `nio-nano` as the model.
-2. **Prefix-Driven Intent Routing**:
-   - `--bash: <cmd>`: Direct terminal execution. The developer never needs to minimize or exit their coding TUI.
-   - `--tools: <task>`: Dispatches to pre-defined Python automation scripts. If the tool/plugin is not locally present, NioNano pauses and asks the user for explicit download confirmation.
-   - `--code: <prompt>`: Dispatches to upstream Kilo provider models (`kilo auto free`, `kilo mini code`). NioXS acts as a middleman, bundling local relevant file contexts, sending the request to Kilo, and returning the synthesis.
-   - Direct Query: NioNano serves as an immediate, lightweight assist for label edits, CSS/style tweaks, AST compiler error triage (`crates/nano/src/brain.rs`), and keyless web lookups.
-3. **Hallucination Prevention & Rerouting Layer**:
-   - Before returning code generated by Kilo, NioXS inspects the output against local symbols, file paths, and syntax constraints.
-   - If Kilo invents non-existent APIs, missing crates/modules, or ghost file paths, the Decision Model intercepts the response:
-     - **Auto-Reroute**: Queries the web scraper (crates.io/npm/docs) or project AST to ground the context and re-prompts Kilo.
-     - **User Prompt Gate**: Prompts the developer: *"Hallucination detected in LLM response: symbol `<foo>` does not exist. Would you like to reroute with live documentation, fix context, or proceed anyway?"*
-4. **Decision Model Arbiter**:
-   - Scores proposals, verifies policy constraints, validates safety of bash invocations, enforces user consent for plugin installations, and prevents uncontrolled autonomous destructive modifications.
-
-## 4. Companion Capabilities & Directives
-
-The **authoritative** directive table lives in [README.md § In-TUI Companion Directives](../README.md#-in-tui-companion-directives) and is not duplicated here. In short, NioNano routes typed prefixes to the native host shell (`--bash`), Python plugins (`--tools`) behind a download-consent gate, configured checks (`--test`), git summaries (`--git`), session config (`--config`), help (`--help`), and the explicit `--code` upstream consultation (guarded with `--code guard` / `--code!`).
-
-## 5. Browser research flow
-
-```mermaid
-flowchart TD
-    Q[Query and requested fields] --> C[Estimate complexity and set budget]
-    C --> S[Open next configured search engine]
-    S --> D{Results page readable?}
-    D -->|CAPTCHA, blocked, or unsupported| N[Record failure and try next engine]
-    N --> S
-    D -->|Yes| E[Extract title, URL, and snippet]
-    E --> R[Normalize, deduplicate, and rank URLs]
-    R --> V[Visit small batch using Obscura]
-    V --> B{Page usable?}
-    B -->|No| K[Skip URL within attempt limit]
-    B -->|Yes| T[Extract passages and requested fields]
-    K --> A[Evaluate coverage and remaining budget]
-    T --> A
-    A -->|Missing evidence and useful candidates remain| V
-    A -->|Needs a revised query within budget| S
-    A -->|Complete or limit reached| O[Return cited result or prepare handoff]
-```
-
-Search-engine adapters are versioned modules with query URL construction, result selectors, challenge detection, and redirect-link normalization. Start by testing Google and alternative engines on actual queries; choose the default order from observed extraction reliability, not assumptions. Require no API keys.
-
-Skip CAPTCHA, access-denied, login-required, and unsupported pages. Do not attempt to solve challenges. Apply a short cooldown to a blocked engine/domain instead of immediately retrying it. If every engine fails, use provided URLs or return the clear limitation. An LLM handoff cannot automatically cure unavailable web access.
-
-Use normal HTTP fetch for simple destination pages when it yields valid readable content; use Obscura for rendered content and browser search. Preserve HTTP status, canonical URL, source URL, and fetch time. Challenge pages must not enter the evidence store as articles.
-
-Initial Obscura integration uses its standalone CLI or CDP endpoint. Obscura documents link, text, HTML, and Markdown output. Keep the worker separate, start it on demand, and terminate it after an idle period.
-
-Crawl4AI is optional. Test its CDP connection against Obscura for navigation, waits, extraction, timeouts, and cleanup. Do not run setup that installs Chromium. If the integration requires unsupported browser behavior, use Obscura extraction and Rust processing; do not introduce Chromium. Disable all Crawl4AI LLM extraction and schema-generation paths for local workflows.
-
-## 6. Adaptive budgets and stopping
-
-Proposed initial limits; tune against measurements before release:
-
-| Complexity | First batch | Successful-page ceiling | Candidate-attempt ceiling | Web deadline |
-| --- | ---: | ---: | ---: | ---: |
-| Lookup | 1 | 2 | 5 | 30 seconds |
-| Explanation/troubleshooting evidence | 2 | 5 | 10 | 60 seconds |
-| Comparison | 3 | 8 | 16 | 90 seconds |
-| Broad research | 4 | 12 | 24 | 120 seconds |
-
-Initial concurrency: 2 destination pages. Search-engine attempts: at most 3 per workflow. Navigation timeout: up to 15 seconds, shortened to fit the remaining deadline. Query refinements, redirects, downloaded bytes, followed links, and extracted text also need caps; successful pages alone are not a sufficient resource limit.
-
-Complexity signals: number of requested entities and fields, explicit comparison, breadth, recency requirements, and research depth. Narrow official-source lookups can stop after one page. Comparisons may require a row for every option and evidence for every requested field. Allow one useful same-site link-following step within the same candidate budget, such as homepage to documentation.
-
-Expansion signals: missing fields, inaccessible primary sources, conflicting extracted values, and uncovered subquestions. Stopping signals: completion checks pass, new pages are repetitive, candidates are exhausted, the deadline expires, or the user cancels.
-
-For open-ended questions, relevance and domain diversity measure retrieval coverage, not truth or complete understanding. Label partial results and delegate synthesis when necessary. Do not claim a precise confidence percentage without calibrated evidence.
-
-## 7. Local ML and training
-
-Bootstrap with explicit intent rules and tested workflows. This creates a useful controller but should not be represented as a trained model before training exists.
-
-The first learned artifact can be a small intent/capability classifier trained in Python, using word/character features and a linear classifier. Export vocabulary, weights, labels, and calibration metadata for Rust inference. Consider a learned relevance ranker only after a lexical retrieval baseline is evaluated. No LLM or generative model is required.
-
-Training examples contain request text, expected workflow, required arguments, completion outcome, and whether fallback was needed. Include unsupported, ambiguous, adversarial, and unrelated requests, not just supported examples. Split evaluation by task families and projects to avoid measuring memorization.
-
-Measure false acceptance of unsupported tasks, workflow success, fallback precision, retrieval relevance, field extraction accuracy, and CPU/memory/latency. Compare the learned classifier with the rule baseline before enabling it. Keep an abstain path for unfamiliar input.
-
-Feedback collection is optional and scoped to the deployment by default. For local deployments, there is no automatic upload of prompts, project files, or tool outputs. Hosted inference necessarily sends request context and client-executed tool results to the NioXS endpoint; that does not authorize retaining them as training data. Retraining and artifact publication are explicit maintainer workflows, not uncontrolled learning during every session.
-
-Implemented (2026-10-12). The classifier is a seven-label multinomial naive Bayes model (`models/nano.json`, 46,894 bytes) trained by [train.py](../training/train.py) and reported in [PHASE2_EVIDENCE.md](../evaluation/PHASE2_EVIDENCE.md). Feature building is mirrored exactly between Rust (`crates/nano/src/model.rs`) and Python (`training/train.py`); the Rust/Python parity fixture (`evaluation/phase2-parity.json`) fails if the two drift. A prompt is forced to `unsupported` only for genuinely out-of-scope or destructive requests (credential theft, CAPTCHA solving, arbitrary uploads, `sudo`/`rm`, and similar); common coding verbs are left to the intent layer and the classifier's own abstention path rather than a hard word list.
-
-## 8. Decision modeling and handoff semantics
-
-> **Directive naming:** the explicit upstream-consultation directive is `--code`
-> (guarded: `--code guard` / `--code!`). The earlier `--coding:` spelling is
-> retired and no longer routes. NioNano's default routing stays local; only an
-> explicit `--code` turn consults the upstream Kilo gateway. See [NEXT.md](NEXT.md).
-
-NioNano acts as a sovereign, bounded decision layer. Rather than yielding the conversation loop to an LLM, NioNano turns intent into typed decisions, and the LLM remains the user's reasoning and authoring partner, consulted only through the explicit `--code` directive.
-
-### Decision Modeling (Small Coding Agent loop)
-
-NioNano remains in the driver's seat throughout the entire turn. The LLM is the user's reasoning partner, not an internal dependency:
-1. **Context & Inspection**: Nano navigates the project, performs symbol search (`search_code`), file reads (`read_file`), and failure inspection (`run_checks`).
-2. **Candidate proposals**: A plan, patch, or tool call may originate from the user's LLM or from Nano's own workflows. Candidates arrive as typed proposals, never as free text to execute blindly.
-3. **Scoring and selection**: Nano scores each candidate against intent match, permissions, evidence coverage, cost, plugin availability, and prior outcomes, then returns `execute`, `clarify`, `abstain`, or `handoff`.
-4. **Validation and execution**: Nano verifies paths against `safe_path`, validates patch syntax, and dispatches bounded modification tools (`edit_file` / `apply_patch`) only for the chosen candidate.
-5. **Verification loop**: Nano verifies changes by executing configured checks (`run_checks`) and reports verified outcomes within the 8-action budget.
-
-This turns NioNano into a fast, transparent **decision layer**: deterministically bounded by budgets and permissions, and complementary to the LLM rather than a substitute for it. The proposal schema, scoring features, and abstention gates are specified in [NEXT.md](NEXT.md).
-
-### Full Handoff (Fallback escape hatch)
-
-When an open-ended conversational task or non-workflow instruction cannot be bounded within Nano's execution budget, NioXS produces a structured handoff.
-
-Fallback triggers: unsupported capability outside coding/inspection, validated classifier abstention, or repeated lack of progress. A single tool failure is not enough.
-
-Do not hand off to evade a denied approval, restricted project scope, user cancellation, or local-only policy. Distinguish missing user input from missing capability: clarify inputs rather than producing a handoff unnecessarily. Network outages and CAPTCHA exhaustion remain partial results.
-
-Handoff packet:
-
-- Original request and relevant conversational context.
-- Allowed tools, project scope, current mode, and remaining turn budget.
-- Completed actions, tool-call IDs, errors, and any side effects already applied.
-- Source-linked excerpts, extracted fields, and timestamps.
-- Explicit gaps and reason for escalation.
-
-Keep complete tool-call/result groups when converting to provider messages. Compact irrelevant output to Nio's existing context budget. Re-read current file state before proposing edits following earlier actions.
-
-Display `NioNano → <configured LLM>: <reason>` as a status event. Automatic means no extra confirmation for each handoff when fallback policy is enabled; existing edit and command approvals still apply. A remote fallback sends relevant context to that configured provider. Local-only users can disable it or choose a local LLM endpoint.
-
-For fallback to an existing user-configured provider, NioXS returns an explicit handoff state and Nio orchestrates continuation through that provider. Keep user provider credentials in Nio rather than forwarding them to NioXS. A separately configured NioXS-managed fallback can be added later. No LLM configured: return supported findings and state the remaining limitation. Limit handoff to one per turn initially, avoid circular gateway routing, and bound subsequent provider retries. Do not silently save the fallback LLM as the new default.
-
-## 9. NioXS API compatibility
-
-NioXS is a mandatory provider boundary for NioNano, with hosted and self-hosted deployment options. It provides a documented subset of the OpenAI-compatible interface; compatibility describes API shapes, not OpenAI-level model intelligence.
-
-First API scope:
-
-- `GET /v1/models`: advertise `nio-nano` and explicitly registered backends.
-- `POST /v1/chat/completions`: text messages, bounded responses, streaming, standard errors, and a documented parameter subset.
-- Capability endpoint: workflow support, modalities, fallback policy, artifact readiness, and tool-execution mode.
-- Nio-specific progress/routing events through a separate event interface, keeping standard Chat Completions chunks interoperable.
-
-Define routing profiles: auto fallback, local-only, and explicit backend. An explicit LLM selection honors that choice. A `nio-nano` request can use configured fallback only where the client/deployment policy permits it; disclose actual execution metadata separately from the requested model identity. Unsupported capabilities and parameters return explicit errors, not silently invented behavior.
-
-Use two tool modes:
-
-1. Client-executed: return typed tool calls; the caller executes them and returns results. NioNano chooses only supported mappings. Unknown caller-provided tools can cause abstention or policy-approved LLM handoff.
-2. Server-executed: run only named workflows and tools enabled for a specific server workspace. Host file and command access is disabled by default for generic API requests.
-
-Do not execute arbitrary client-supplied tool names or let an HTTP request invent a filesystem root. A hosted NioXS accesses its server workspace; it cannot inspect a user's laptop without a separate authorized local worker.
-
-Start with Chat Completions compatibility tests. Add a Responses API adapter later only with separate schema and event tests. Multimodal generation, embeddings, fine-tuning, and every OpenAI parameter are outside the initial compatibility claim. Report actual usage when available; do not fabricate LLM token accounting for a non-generative local controller.
-
-## 10. MCP roles
-
-MCP is a tool protocol, not a replacement model API. Support two distinct roles:
-
-- MCP client: Nio's tool broker connects to configured servers and makes approved tools available to supported workflows or the fallback LLM.
-- MCP server: NioXS exposes a narrow initial tool catalog such as web research and structured extraction to other clients.
-
-Start with stdio for local integrations. Add Streamable HTTP for remote integrations after authentication, workspace isolation, cancellation, and quotas are implemented. Pin and negotiate the supported MCP protocol version against target clients.
-
-Suggested first exported tools: `web_search`, `read_webpage`, and `research_sources`. Project search and check execution require explicit workspace capability. Discovery alone does not teach NioNano how to use an arbitrary tool; unknown schemas need a configured workflow mapping or LLM handoff.
-
-All entry points use the same policy broker. Tool descriptions, pages, files, and results are data, not instructions that can grant permissions. External-tool execution must preserve cancellation and bounded output.
-
-## 11. Nio integration and repository strategy
-
-Existing integration points in `src/main.rs`:
-
-- `UserConfig`: add NioNano/fallback/artifact preferences without leaking private implementation.
-- `chosen_model`, saved-model validation, provider resolution, and model catalogs: register NioXS and discover `nio-nano` through its provider catalog.
-- `run_agent_turn` and `run_agent_turn_inner`: execute the provider tool loop and handle an explicit handoff state with shared lifecycle handling.
-- Tool dispatch and history handling: execute NioXS-returned tool calls through the existing broker.
-- CLI/TUI headers and JSON streams: show requested and active backend, progress, and handoff.
-
-Keep Nio's adapter and wire contracts reviewable in the existing Nio repository; place proprietary runtime, training code, and proprietary weights in private repositories. Do not place secret model implementation in the existing public MIT source and expect binary distribution to conceal it.
-
-Proposed CLI surface, not implemented commands:
-
-```text
-nio run -m nioxs::nio-nano "Find relevant SQLite packages"
-nioxs install
-nioxs status
-nioxs update
-nioxs serve
-nioxs mcp --stdio
-```
-
-Client configuration includes the NioXS provider endpoint, authentication if required, default model, explicit fallback model, and fallback mode. Provider deployment configuration owns search engine order, browser path/version, adaptive budget profile, and extraction backend. Preserve saved explicit LLM preferences during upgrades; only change an existing preference through an intentional user setting. The development build now defaults to NioXS's NioNano by explicit user request. Production release gates still apply.
-
-Honor `--no-tools`, `--no-project-tools`, project trust, Ask/Plan/Build mode, `--auto`, and existing undo behavior. When tools are disabled, NioNano must not fetch, browse, or execute commands through a hidden path.
-
-## 12. Distribution and installation flow
+## 2. Architecture and permissions
 
 ```mermaid
 flowchart LR
-    P[Private source and training] --> B[Platform builds and checks]
-    B --> S[Sign release manifest]
-    S --> R[R2 or S3 artifact storage]
-    R --> D[Nio downloads selected version]
-    D --> V[Verify signature, hashes, and compatibility]
-    V --> I[Atomic installation]
-    I --> X[Run NioXS provider with NioNano and browser worker]
+    USER[Developer / Nio agent] -->|OpenAI-compatible request| API[NioXS provider]
+    API --> FLOW[NioFlow: plan and coordinate]
+    FLOW --> NANO[NioNano: bounded local evidence]
+    FLOW --> NOVA[NioNova: alternatives when useful]
+    FLOW --> ATOM[NioAtom: propose and verify code changes]
+    FLOW --> NEON[NioNeon: inspect evidence and diff]
+    FLOW --> HELM[NioHelm: final Go / No-Go]
+    NANO --> TOOLS[Caller-owned project tools]
+    ATOM --> TOOLS
+    NEON --> TOOLS
+    FLOW --> UPSTREAM[Kilo North Mini Code]
+    UPSTREAM -->|preferred unavailable| FREE[Kilo Auto Free]
+    UPSTREAM -->|high complexity and listed free tool model| STEP[StepFun]
+    STEP -->|unavailable| FREE
+    HELM --> USER
 ```
 
-Package runtime, trained model files, Obscura version, contracts, and notices independently so browser updates do not require redownloading every model. Start with Linux x86_64, then macOS ARM64; add other supported platforms after worker availability and integration checks pass.
+The caller owns host permissions. A tool is usable only when the caller advertises it for that turn. NioXS does not create extra file or command privileges, bypass Ask/Plan/Build policy, replay a mutation after an uncertain outcome, or treat a model's Go as permission to execute.
 
-A signed manifest includes platform, version, artifact URLs, sizes, hashes, minimum Nio version, protocol version, model schema, and dependency versions. Verify against a public key embedded in the installer, extract safely, and install atomically. Keep the last known working version and support explicit version pinning and rollback. Never treat a checksum alone as publisher authentication.
+Project files, tool outputs, and web pages are untrusted data. They cannot change the tool allowlist. Keep action identifiers, arguments, and results correlated. On cancellation, stop pending orchestration and preserve the known results of earlier actions.
 
-Default deployment can use public binary downloads with private source. Restricted downloads can use temporary URLs. Never embed bucket write credentials in a distributed executable. R2/S3 is artifact storage, not the inference gateway.
+## 3. Model family and NioFlow cascade
 
-Bundle dependency licenses and notices for each pinned release. Crawl4AI's current LICENSE includes additional attribution text and calls out CLI help/usage attribution; this affects packaging even if NioNano remains proprietary. Retain Obscura notices as required by its pinned distribution. Validate final redistribution requirements against the actual release artifacts.
-
-## 13. v0.1.0 implementation phases and acceptance gates
-
-Release order and scope are maintained in [ROADMAP.md](ROADMAP.md), with actionable tasks in [TODO_V0.1.0.md](TODO_V0.1.0.md).
-
-| Phase | Deliverable | Completion evidence |
+| Model | Role | Responsibility |
 | --- | --- | --- |
-| 1: Foundations | Contracts, NioDB connectivity/storage schema, minimum provider API, browser feasibility | Provider/tool and durable record round trips work; Obscura feasibility is measured |
-| 2: Nano model | Trained classifier, Rust inference, NioDB-backed project workflow state | Evaluation, permissions, restart recovery, and uncertain-action handling pass |
-| 3: Research | Keyless browser search, NioDB evidence/cache, adaptive budgets, source reports | Early stopping and bounded expansion work; blocked pages are excluded; no Chromium |
-| 4: Handoff and interoperability | Persisted handoff/opt-in feedback, LLM continuation, API, local MCP | No replayed side effects or permission elevation; external clients work |
-| 5: Release | Signed artifacts, NioDB deployment/backup/schema recovery, final evaluation | Clean-machine checks pass before v0.1.0 publication and default activation |
+| `nio-nano` | Local MicroLM assistant | Classify supported bounded work, inspect supplied evidence, run native project workflows |
+| `nio-flow` | Orchestrator | Read the request, prepare a short task plan, route and hand off each bounded stage |
+| `nio-echo` | Answers | Direct questions and conversation without a specialist cascade |
+| `nio-sage` | Teaching | Explain concepts using examples and relevant evidence |
+| `nio-quill` | Writing | Draft and polish prose without applying project changes |
+| `nio-scout` | Research | Investigate available sources with attribution and stated gaps |
+| `nio-thinker` | Reflection | Rust-controlled draft, challenge, and refine phases; bounded read-only evidence; Helm only on explicit opt-in when Thinker is selected directly |
+| `nio-nova` | Exploration | Generate and compare creative alternatives when the task benefits |
+| `nio-atom` | Implementation | Prepare a safe patch, apply it through caller tools, run checks, and repair within limits |
+| `nio-neon` | Review | Check requirements, changed files, risks, and actual verification results |
+| `nio-helm` | Final decision | Give evidence-linked Go, Conditional Go, or No-Go after the other applicable stages |
 
-The user requested NioXS/NioNano as the development default during Phase 1. This setting is implemented; Kilo remains a built-in alternative and saved explicit choices are preserved unless intentionally changed. Production release still requires capability, artifact availability, and fallback acceptance.
+**NioFlow starts with Kilo North Mini Code by default.** If the Kilo catalog does not offer it or the request fails before any output is relayed, use Kilo Auto Free. For a high-complexity plan, check the live Kilo `/models` catalog for a free, tool-capable StepFun model and use it when available. If it fails before a response, fall back to Auto Free. Respect explicitly configured upstream choices.
 
-## 14. Validation and operational limits
+### NioFlow stage rules
 
-Use deterministic fixtures for parser and state-machine tests; opt-in live-site smoke tests for engine compatibility. Live web tests are observations, not deterministic correctness guarantees.
+1. Prepare a compact plan from the prompt, constraints, and available caller tools.
+2. Ask NioNano for bounded reads, searches, symbol information, or diagnostic triage whenever useful. Nano may help any specialist; its evidence follows the task.
+3. Use Echo for direct answers, Sage for teaching, Quill for writing, Scout for source research, and Thinker for bounded assumption checking when useful. Direct selection of these profiles does not invoke Helm. Route creative exploration to Nova only when alternatives or a prototype are useful.
+4. Route code changes through Atom. Route completed changes and verification evidence through Neon.
+5. Ask Helm for the final Go / No-Go after the applicable specialist stages by default. A user-selected `--no-helm` directive skips that gate for the current task and lets the final specialist answer. Helm is not the initial planner and cannot grant a missing permission.
+6. Stop within fixed stage and tool budgets. If a stage fails, a tool is unavailable, checks fail, evidence is incomplete, or input is missing, pass the limitation forward and let Helm report No-Go or Needs Input.
+7. Preserve the plan and bounded evidence across client handoffs. Reuse identical tool results. A repeated tool request must not execute the same mutation again.
 
-Required meaningful checks cover:
+The planner may propose only known stages. Rust validates stage names, order, per-stage limits, required tools, and criteria. If a generated plan is malformed, use a safe bounded route or ask for clarification; never run unvalidated plan text as a command.
 
-- Routing supported/unsupported/ambiguous requests and respecting explicit model selection.
-- Tool restrictions across CLI, API, and MCP; denied approvals do not cause a bypass.
-- CAPTCHA at search and destination stages, redirects, duplicate pages, robots handling, and unusable content.
-- Adaptive expansion, early stopping, candidate ceilings, deadlines, extraction byte limits, and cancellation.
-- Handoff preserves tool groups, side effects, history, and the existing context budget.
-- Streaming emits valid NDJSON for Nio and valid SSE for the compatibility API, with completion and error behavior distinguished.
-- Worker failure or missing artifacts yields a clear result or configured fallback, never an installation loop.
-- Clean installation contains no Chromium; optional Crawl4AI never triggers a browser download.
-- Manifest verification, corrupt/incompatible artifacts, interrupted updates, and rollback.
+### Go / No-Go evidence
 
-Measure local workflow completion, incorrect capability acceptance, fallback rate/reason, useful sources per visited page, blocked-page rate, median/tail latency, installation size, and peak memory. Browser and extraction dependencies determine actual footprint; avoid claiming a size or speed before measurement.
+Helm reports **Go** only when every stated requirement has evidence and every required check has a successful result after the latest change. Failed checks, missing permissions, unfinished repair, or missing evidence mean **No-Go**. Missing user decisions mean **Needs Input**. A Go result describes readiness against the listed criteria and does not replace caller approval or claim unrun tests passed.
 
-Keep local caches bounded, scoped appropriately, timestamped, and clearable. Do not persist credentials, sensitive pages, or raw project contents as global research cache entries. Bind local control services to loopback by default. Remote services need explicit access controls and per-workspace limits.
+## 4. Five advancement priorities
 
-## 15. Dependencies and sources checked
+Implement in this order. Each item must have observable acceptance evidence before it is described as complete.
 
-- [Local NioDB documentation](../nio-db/README.md) and [records/storage implementation](../nio-db/src/storage.rs).
+### 1. Reliable tools
 
-- [Nio stream contract](../nio/STREAM.md) and [Nio CLI/host protocol](../nio/PROTOCOL.md).
-- [Obscura capabilities and compatibility limitations](https://github.com/h4ckf0r0day/obscura).
-- [Crawl4AI browser/CDP configuration](https://docs.crawl4ai.com/core/browser-crawler-config/).
-- [Crawl4AI license and attribution](https://github.com/unclecode/crawl4ai/blob/main/LICENSE).
-- [Obscura license](https://github.com/h4ckf0r0day/obscura/blob/main/LICENSE).
-- [Official OpenAI Chat Completions API](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
-- [Official MCP architecture](https://modelcontextprotocol.io/docs/learn/architecture).
-- [R2 custom-domain downloads](https://developers.cloudflare.com/r2/buckets/public-buckets/).
-- [S3 object sharing](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html).
+- Reuse identical file, search, and check results already returned in the current task.
+- Do not repeat a read unless its requested range or file version changed.
+- Enforce an explicit per-task tool budget, announce exhaustion, and ask the current specialist to finish from existing evidence.
+- Store action identifiers and outcomes so retries do not replay writes or commands.
 
-Unresolved engineering gates: real search-engine reliability without API keys, Obscura compatibility on the target site corpus, optional Crawl4AI operation without Chromium, trained-model benefit, platform footprint, and exact compatibility scope demanded by initial external clients. Address these in the phases above; none is a promise of universal browsing or LLM-equivalent capability.
+**Done when:** repeated reads reuse evidence; repeated edits/commands are blocked; tool exhaustion ends with an accurate answer; cancellation preserves completed outcomes.
+
+### 2. Real coding
+
+- Let Atom produce bounded patch requests and route them to the caller's existing patch/write tools.
+- Require fresh file content before patching and exact matching before applying changes.
+- Run checks through caller-advertised tools and permissions. Feed failures and parsed compiler diagnostics back to Atom for a bounded repair.
+- Review the resulting diff with Neon, then ask Helm for the final decision.
+
+**Done when:** a real fix can be proposed/applied through the caller, validated by configured checks, reviewed, and reported with the observed result; unavailable edit or command tools never trigger local file or shell access.
+
+### 3. Better context
+
+- Use Rust to index file paths, symbols, references, manifests, and diagnostic locations.
+- Reuse cached data only while its file version remains current; refresh after edits.
+- Rank small, exact excerpts within a declared context budget. Preserve the path and line span for every excerpt.
+
+**Done when:** representative tasks reach the relevant definition and callers with fewer duplicate reads, and every finding points to returned project evidence.
+
+### 4. Smarter decisions
+
+- Improve MicroLM/Helm from fixed prompt keywords toward decisions based on task state, allowed tools, evidence, failed checks, cost, and prior opt-in outcomes.
+- Calibrate confidence and abstain when evaluation does not support a decision.
+- Keep model choice separate from permission policy; measure quality before automatic escalation to a more costly model.
+
+**Done when:** held-out tasks improve stage selection and abstention over the rules baseline without increasing unauthorized actions.
+
+### 5. Measure improvement
+
+- Compare AXIS with the same upstream model, prompt, tools, context, and limits without AXIS.
+- Use independent, real repository tasks and hidden completion checks. Keep training examples separate from acceptance tasks.
+- Report success, regressions, unsupported completion claims, tool calls, repeated reads, latency, tokens, and cost by workflow.
+
+**Done when:** a reproducible report includes the task set, model and versions, harness settings, denominators, failures, and paired results. Existing authored synthetic classifier scores are not broad coding-agent evidence.
+
+## 5. Project context and web research
+
+Use bounded tools selected by task needs. File reads and search results must identify project-relative paths and line ranges. Symbol and diagnostic context should remain compact and refresh after a patch. For a code change, the active plan should name affected files and the check expected to verify each requirement.
+
+The browser worker uses native Rust search/fetch and extraction workflows. Keep page counts, candidate attempts, bytes, concurrency, and deadlines bounded. Skip challenge/login pages without trying to defeat them. Return source URLs and distinguish partial coverage from verified facts. NioDB-backed cache/quota wiring and live research evidence remain open below.
+
+## 6. Local learning model and evaluation
+
+The checked-in Nano artifact is a 46,894-byte multinomial naive Bayes classifier with seven labels. Training runs offline in Python; inference and typed workflows run in Rust. Current specialist prompts share the same upstream model selection; these profiles do not each have separate learned weights. NioHelm's Rust route heuristic uses rules and hand-set weights; these weights are not calibrated probabilities.
+
+Phase 2 reports Rust/Python probability parity within 1e-10 on 280 development fixtures. On the separate small authored frozen holdout, the raw classifier macro F1 is 0.9711 and the typed router macro F1 is 0.9943 with 0/100 unsupported requests accepted. The report explicitly limits those results to that corpus. Read [Phase 2 evidence](../evaluation/PHASE2_EVIDENCE.md) for the split, methods, and caveats.
+
+Use family/project-separated data splits. Keep benchmark tasks frozen before tuning; test on fresh, independently authored repository tasks before claiming AXIS coding gains. Never silently retain prompts, source files, or upstream tool outputs for training.
+
+## 7. Provider, storage, and distribution
+
+The provider exposes the implemented API subset and the current model catalog. Read [provider contract](../contracts/README.md) for schemas, limits, handoff, and endpoints. Read [storage contract](../contracts/storage.md) for NioDB record schemas, idempotency limits, recovery behavior, and retention gates.
+
+The provider journals typed workflow actions in NioDB. Durable intent is not proof that a caller executed a client-side action. Unknown command outcomes must be inspected before retry; do not claim exactly-once execution. Keep project evidence bounded and scoped; never store provider credentials in task records.
+
+Model runner, model-weight downloads, plugins, and dataset packs require compatible manifests, integrity checks, resource limits, license review, and clear capability metadata. Do not advertise a model or capability as shipped when only a draft design or unintegrated module exists. Keep external model terms and the actual upstream model identity visible; profile names are not claims of model ownership.
+
+## 8. Release phases
+
+Phases are engineering gates; workspace tags are releases. A release may deliver multiple phases, and one phase may span releases.
+
+| Phase | Goal | Current state |
+| --- | --- | --- |
+| 1. Foundations | Provider/contracts, persistence boundary, caller tool round trip | Complete with evidence |
+| 2. Nano | Trained classifier, typed workflows, permission and recovery evidence | Complete with evidence |
+| 3. Research | Native search/fetch workflows, scoped cache, quotas, live evidence | Engine exists; cache/quota and evidence gates remain |
+| 4. Coding and interoperability | Safe writes, edit/check flow, handoff, API/MCP loops | Partial; shipped features and remaining gates are listed below |
+| 5. Release quality | Independent evaluation, packaging, install/update, rollback | Open |
+
+Version claims follow the workspace manifest and [CHANGELOG.md](../CHANGELOG.md). Release readiness additionally requires passing phase acceptance gates; a version tag alone is not evidence of product quality.
+
+## 9. Open work
+
+### Current five priorities
+
+The ordered tasks in [§4](#4-five-advancement-priorities) are the main roadmap. Track their implementation here as each phase is authorized and accepted.
+
+### Phase 3 remainder
+
+- Wire bounded research evidence/cache to NioDB with scoped keys, expiry, quotas, clearing, and invalidation.
+- Test workspace isolation, cache reuse/expiry, quota enforcement, write failures, and challenge-page exclusion.
+- Record reproducible live research observations and limitations.
+
+### Phase 4 remainder
+
+- Implemented NioFlow planning, validated specialist stages, native Nano evidence, cached-read reuse, bounded tool-call correction, and a final tool-free Helm stage. Provider tests cover real separate upstream calls, carried-forward drafts, and caller-tool continuations.
+- Persist handoff state beyond the current bounded in-memory cache; provider restarts currently stop continuation without replaying tools.
+- Connect Nio's broker to a configured local MCP server; map known tools and abstain on unknown schemas.
+- Validate external OpenAI-compatible tool loops, SSE behavior, cancellation, and history continuity.
+- Store opt-in outcome feedback with retention/export; no automatic prompt uploads or retraining.
+- Regenerate capability metadata from the actual shipped workflow and model catalog.
+
+### Phase 5
+
+- Evaluate on fresh task families and independent real repositories, with paired same-model AXIS/baseline reports.
+- Measure task success, regressions, false completion, cost, latency, memory, startup, and installed size.
+- Validate clean-machine installation, signed manifests, platform artifacts, NioDB backup/recovery, artifact compatibility, update, and rollback.
+- Publish capability limits, known failures, dependency notices, and a reproducible release report.
+
+### Deferred extension ideas
+
+These are design notes, not shipped features:
+
+- **Plugin runner:** strict JSON-over-stdio subprocesses with versioned `plugin.toml`, runtime, entry point, minimum NioXS version, SPDX license, SHA-256, declared tools, deny-by-default filesystem/network/exec grants, time/CPU/memory caps, journaled install/run/remove, no implicit install or upgrade.
+- **Knowledge packs:** a separate public dataset repository with small inspectable packs, attribution/provenance, pinned content hashes, explicit licensing checks, and opt-in download/cache. The former dataset design has been pruned from the active implementation roadmap; revisit only with a concrete supported workflow.
+- **Local inference:** not included in the current model catalog or runtime. The release uses the configured upstream providers; local model execution remains out of scope until explicitly adopted and fully acceptance-checked.
+- **Additional model roles:** the current supported names and role skills are documented in the table above. Add new names only with distinct behavior and acceptance criteria.
+
+## 10. Acceptance and measurement
+
+For each workflow, measure:
+
+- Completion against hidden or independently checked requirements.
+- Regression rate and failed checks after edits.
+- False Go verdicts and unsupported requests incorrectly accepted.
+- Evidence coverage, repeated tool calls, and unnecessary file reads.
+- Tool/model handoffs, latency percentiles, token use, and cost.
+
+Compare paired runs on the same task, upstream model, project state, caller tools, and resource budget. Publish failures and denominators by task type. Report classifier benchmark scores separately from code-task results. Use SWE-bench-style tasks as one signal, and maintain fresh Nio-owned tasks to reduce benchmark familiarity; never imply a synthetic routing score proves parity with a large generative model.
+
+Security and lifecycle gates: denied approvals never execute; paths stay in the caller's project; tool output is treated as data; side effects are not automatically replayed; expired state cannot authorize a new action; cancellation stops pending work; partial results are labeled; tool limits terminate cleanly.
+
+## 11. Development and sources
+
+Local setup, reproducible build commands, and offline model training instructions live in [DEVELOPMENT.md](DEVELOPMENT.md). API examples and schemas live in [contracts/examples](../contracts/examples). Phase reports are the evidence record; this plan describes goals and acceptance gates.
+
+The upstream model selector checks Kilo's `/models` catalog, prefers `cohere/north-mini-code:free` when present, and falls back to `kilo-auto/free` if absent or unavailable before response output. Explicit model configuration remains respected.
+
+Relevant external protocols and tools: [OpenAI-compatible Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create), [MCP architecture](https://modelcontextprotocol.io/docs/learn/architecture), [GitHub repository social preview settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/customizing-your-repositorys-social-media-preview).
+
+**Plan maintenance:** update this file after accepted code changes; leave contracts, test evidence, developer setup, and release history in their focused files. Do not reintroduce a second roadmap/checklist file.
+## Appendix A. Decision and handoff contract
+
+A decision endpoint can score candidate actions, but scoring is advisory until a caller policy actually authorizes execution. Every candidate should include typed arguments, required fields, permission state, evidence references, and cost. Outcomes are Go/execute, clarify, abstain/No-Go, or handoff. Keep a deterministic safety gate before learned ranking, an explicit abstention path, and a durable action journal around side effects.
+
+A bounded handoff carries the original task reference, the validated subtask, specialist identity, relevant evidence references, allowed tool names, current budget, completed actions, check outcomes, and unresolved questions. Never hand off a denied action or cancellation as a way around policy. Re-read edited files before preparing later patches.
+
+## Appendix B. Deferred plugin and data-pack design
+
+A plugin process should communicate through a strict JSON-over-stdio contract. Start with a local manifest and process supervisor, then permissions, resource caps, and audit before any registry download. A plugin cannot access undeclared paths or hosts, ambient credentials, or shell. Pin hashes and licenses; require consent for installation and never auto-upgrade.
+
+If domain packs are revisited, keep them as data rather than executable code. Record source, provenance, license, and hashes; verify both archive and content before install; bound cache size and expiry; permit offline reuse. A pack must not be used as training data unless its license and provenance allow it.
+
+These designs do not change current runtime claims until implemented and evaluated.

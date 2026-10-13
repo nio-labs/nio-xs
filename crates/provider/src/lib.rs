@@ -10,11 +10,12 @@ use axum::{
 };
 use futures_util::{StreamExt, stream};
 use nioxs_contracts::{
-    ChatRequest, DecideRequest, DurableEvent, MAX_REQUEST_BYTES, MODEL, Outcome, PROVIDER,
+    ChatRequest, DecideRequest, DurableEvent, MAX_REQUEST_BYTES, MODEL, MODELS, Outcome, PROVIDER,
     SCHEMA_VERSION, ToolCall,
 };
 use nioxs_nano::companion::{self, CodingConsult};
 use nioxs_nano::{Model, decide_with_model};
+mod flow;
 pub mod journal;
 pub mod mcp;
 pub mod niodb_supervisor;
@@ -108,7 +109,21 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
             "provider authentication required",
         );
     }
-    Json(json!({"object":"list","data":[{"id":MODEL,"object":"model","created":0,"owned_by":PROVIDER,"name":"NioNano MicroLM (μLM)","type":"language","free":true}]})).into_response()
+    let names = [
+        "NioFlow — Plan and hand off",
+        "NioNano — Assist",
+        "NioEcho — Answer",
+        "NioSage — Explain",
+        "NioQuill — Write",
+        "NioScout — Research",
+        "NioThinker — Reflect and refine",
+        "NioNova — Invent",
+        "NioAtom — Build",
+        "NioNeon — Inspect",
+        "NioHelm — Final Go / No-Go",
+    ];
+    let data: Vec<Value> = MODELS.iter().zip(names).map(|(id, name)| json!({"id":id,"object":"model","created":0,"owned_by":PROVIDER,"name":name,"type":"language","free":true})).collect();
+    Json(json!({"object":"list","data":data})).into_response()
 }
 
 async fn capabilities(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
@@ -119,7 +134,7 @@ async fn capabilities(State(app): State<Arc<App>>, headers: HeaderMap) -> Respon
             "provider authentication required",
         );
     }
-    Json(json!({"schema_version":SCHEMA_VERSION,"provider":PROVIDER,"model":MODEL,"implementation":"trained_naive_bayes_and_typed_workflows","model_version":app.model.model_version,"trained":true,"confidence_threshold":app.model.threshold,"workflows":nioxs_nano::SHIPPED_WORKFLOWS,"client_tools":["read_file","find_files","search_code","run_command","web_fetch"],"server_tools":[],"streaming":true,"automatic_fallback":false,"browser_execution":true,"mcp":true,"decision_contract":true,"storage":"niodb_immutable_action_journal"})).into_response()
+    Json(json!({"schema_version":SCHEMA_VERSION,"provider":PROVIDER,"model":MODEL,"default_model":MODEL,"models":MODELS,"implementation":"trained_naive_bayes_and_typed_workflows","profiles":"shared_engine_with_rust_routing_budgets_and_guards","orchestration":"bounded_rust_flow_cascade","flow_handoff_state":"bounded_memory_32_tasks_10_minutes","reflection":{"model":"nio-thinker","phases":["draft","challenge","refine"],"read_only":true,"refine_tools":false},"legacy_aliases":[nioxs_contracts::MODEL_AUTO],"upstream_default":companion::DEFAULT_CODING_MODEL,"upstream_fallback":companion::FALLBACK_CODING_MODEL,"upstream_catalog_check":true,"model_version":app.model.model_version,"trained":true,"confidence_threshold":app.model.threshold,"workflows":nioxs_nano::SHIPPED_WORKFLOWS,"client_tools":["read_file","find_files","search_code","run_command","web_fetch"],"server_tools":[],"streaming":true,"automatic_fallback":true,"browser_execution":true,"mcp":true,"decision_contract":true,"storage":"niodb_immutable_action_journal"})).into_response()
 }
 
 async fn cancel(
@@ -232,7 +247,7 @@ async fn chat(
         deployment_id: app.deployment.clone(),
         turn_id: decision.execution.turn_id.clone(),
         event: format!("{:?}", decision.execution.outcome).to_lowercase(),
-        model: MODEL.into(),
+        model: decision.execution.model.clone(),
         request_digest: decision.request_digest.clone(),
         action_id: decision.call.as_ref().map(|call| call.id.clone()),
         result_digest: decision.result_digest.clone(),
@@ -324,6 +339,21 @@ async fn chat(
             evidence,
             reason,
         ));
+        let route = nioxs_nano::profiles::route(
+            &request.model,
+            request.messages[request.validate().expect("validated request")]
+                .content
+                .as_str()
+                .unwrap_or(""),
+        );
+        value["routing"] = json!({"requested_model":request.model,"selected_model":route.selected,"skill":nioxs_nano::profiles::skill_name(route.selected),"reason":route.reason,"method":"explicit_profile_or_legacy_alias"});
+        value["progress"] = routing_progress(&request, route.selected);
+        let start = request
+            .messages
+            .iter()
+            .rposition(|message| message.role == "user")
+            .unwrap_or(0);
+        value["status"] = json!({"fallback_announced": request.messages[start + 1..].iter().any(|message| message.role == "assistant" && message.content.as_str().is_some_and(|content| content.lines().any(companion::is_fallback_status)))});
         value
     };
     // A `--code:` turn hands back a pending upstream consultation instead of a
@@ -332,6 +362,36 @@ async fn chat(
     // client executes those reads in the directory it was started in.
     if let Some(consult) = decision.coding.clone() {
         let turn_id = decision.execution.turn_id.clone();
+        if request.model == nioxs_contracts::MODEL_THINKER
+            || (matches!(
+                request.model.as_str(),
+                nioxs_contracts::MODEL_FLOW | nioxs_contracts::MODEL_AUTO
+            ) && (!request.messages[request.validate().expect("validated request")]
+                .content
+                .as_str()
+                .unwrap_or("")
+                .trim()
+                .starts_with("--")
+                || !nioxs_nano::profiles::flow_options(
+                    request.messages[request.validate().expect("validated request")]
+                        .content
+                        .as_str()
+                        .unwrap_or(""),
+                )
+                .1))
+        {
+            return flow::respond(
+                consult,
+                &request,
+                id,
+                nioxs_value,
+                guard,
+                turn_id,
+                &app.instance,
+                &decision.request_digest,
+            )
+            .await;
+        }
         if request.stream {
             return coding_sse(
                 consult,
@@ -351,13 +411,14 @@ async fn chat(
         "stop"
     };
     let mut message = json!({"role":"assistant","content":decision.content});
+    prepend_progress(&mut message, &nioxs_value);
     if let Some(call) = &decision.call {
         message["tool_calls"] = json!([call]);
     }
     if !request.stream {
-        return Json(json!({"id":id,"object":"chat.completion","created":0,"model":MODEL,"choices":[{"index":0,"message":message,"finish_reason":finish}],"nioxs":nioxs_value})).into_response();
+        return Json(json!({"id":id,"object":"chat.completion","created":0,"model":decision.execution.model,"choices":[{"index":0,"message":message,"finish_reason":finish}],"nioxs":nioxs_value})).into_response();
     }
-    let chunk = |delta: Value, finish: Value| json!({"id":id,"object":"chat.completion.chunk","created":0,"model":MODEL,"choices":[{"index":0,"delta":delta,"finish_reason":finish}]});
+    let chunk = |delta: Value, finish: Value| json!({"id":id,"object":"chat.completion.chunk","created":0,"model":decision.execution.model,"choices":[{"index":0,"delta":delta,"finish_reason":finish}]});
     let mut terminal = chunk(json!({}), json!(finish));
     terminal["nioxs"] = nioxs_value;
     // A successful `--code:` turn carries pre-ordered segments: the step trail
@@ -503,9 +564,7 @@ fn xml_tool_leak_pos(text: &str) -> Option<usize> {
         "<function=",
         "<function name=",
     ];
-    tags.iter()
-        .filter_map(|tag| lower.find(tag))
-        .min()
+    tags.iter().filter_map(|tag| lower.find(tag)).min()
 }
 
 /// Recovers tool calls emitted as XML text (such as `<dots_function_call>` or `<invoke>`).
@@ -522,7 +581,9 @@ fn extract_xml_tool_calls(text: &str) -> Vec<RequestedCall> {
         let tag_header = &text[abs_invoke..tag_open_end];
         let name = if let Some(name_pos) = tag_header.find("name=") {
             let after_name = &tag_header[name_pos + 5..];
-            let trimmed = after_name.trim().trim_start_matches(|c| c == '"' || c == '\'');
+            let trimmed = after_name
+                .trim()
+                .trim_start_matches(|c| c == '"' || c == '\'');
             let end = trimmed
                 .find(|c: char| c.is_whitespace() || c == '"' || c == '\'')
                 .unwrap_or(trimmed.len());
@@ -617,7 +678,8 @@ fn extract_xml_tool_calls(text: &str) -> Vec<RequestedCall> {
             } else {
                 abs_func + 10
             };
-            let Some(tag_open_end) = text[tag_name_start..].find('>').map(|i| tag_name_start + i) else {
+            let Some(tag_open_end) = text[tag_name_start..].find('>').map(|i| tag_name_start + i)
+            else {
                 break;
             };
             let name_raw = &text[tag_name_start..tag_open_end];
@@ -638,8 +700,14 @@ fn extract_xml_tool_calls(text: &str) -> Vec<RequestedCall> {
                 {
                     let abs_param = param_cursor + param_pos;
                     let is_attr = block_content[abs_param..].starts_with("<parameter name=");
-                    let tag_start = if is_attr { abs_param + 16 } else { abs_param + 11 };
-                    let Some(tag_end) = block_content[tag_start..].find('>') else { break; };
+                    let tag_start = if is_attr {
+                        abs_param + 16
+                    } else {
+                        abs_param + 11
+                    };
+                    let Some(tag_end) = block_content[tag_start..].find('>') else {
+                        break;
+                    };
                     let param_name = block_content[tag_start..tag_start + tag_end]
                         .trim()
                         .trim_matches(|c| c == '"' || c == '\'');
@@ -653,7 +721,9 @@ fn extract_xml_tool_calls(text: &str) -> Vec<RequestedCall> {
                     args_map.insert(param_name.to_string(), parse_param_value(val_str));
 
                     param_cursor = val_end;
-                    if param_cursor >= block_content.len() { break; }
+                    if param_cursor >= block_content.len() {
+                        break;
+                    }
                 }
 
                 if args_map.is_empty() {
@@ -677,7 +747,11 @@ fn extract_xml_tool_calls(text: &str) -> Vec<RequestedCall> {
                 });
             }
 
-            cur = if block_end < text.len() { block_end + 11 } else { text.len() };
+            cur = if block_end < text.len() {
+                block_end + 11
+            } else {
+                text.len()
+            };
         }
     }
 
@@ -703,7 +777,11 @@ fn extract_xml_tool_calls(text: &str) -> Vec<RequestedCall> {
                     }
                 }
             }
-            cur = if end < text.len() { end + 12 } else { text.len() };
+            cur = if end < text.len() {
+                end + 12
+            } else {
+                text.len()
+            };
         }
     }
 
@@ -821,19 +899,214 @@ fn trail_payloads(
     payloads
 }
 
-fn sse_chunk(id: &str, delta: Value, finish: Value) -> String {
+fn relay_offered_coding_calls(
+    calls: &[RequestedCall],
+    turn: &str,
+    tools: &[Value],
+    messages: &[Value],
+) -> Result<Vec<ClientCall>, String> {
+    if tools.is_empty() && !calls.is_empty() {
+        return Err("the project-inspection tool budget is exhausted; answer using the evidence already provided".into());
+    }
+    for call in calls {
+        if !tools
+            .iter()
+            .any(|tool| tool["function"]["name"] == call.name)
+        {
+            return Err(format!(
+                "the upstream model requested tool `{}` that was not offered this turn",
+                call.name
+            ));
+        }
+    }
+    let calls = normalize_caller_paths(calls, messages)?;
+    let mut relayed = relay_coding_calls(&calls, turn)?;
+    // A call identifies one occurrence, not just its arguments. The history
+    // changes after each result, so repeated reads cannot collide across rounds.
+    let round = nioxs_contracts::digest(
+        &serde_json::to_vec(messages).map_err(|_| "cannot encode tool history")?,
+    );
+    for call in &mut relayed {
+        let schema = tools
+            .iter()
+            .find(|tool| tool["function"]["name"] == call.name)
+            .expect("offered tool");
+        let arguments: Value =
+            serde_json::from_str(&call.arguments).map_err(|_| "invalid tool arguments")?;
+        if let Some(required) = schema["function"]["parameters"]["required"].as_array() {
+            for field in required.iter().filter_map(Value::as_str) {
+                if arguments.get(field).is_none_or(Value::is_null) {
+                    return Err(format!(
+                        "{} is missing required argument `{field}`; no tool was executed",
+                        call.name
+                    ));
+                }
+            }
+        }
+        if let Some(properties) = schema["function"]["parameters"]["properties"].as_object() {
+            for (field, property) in properties {
+                if let Some(value) = arguments.get(field) {
+                    let valid = match property["type"].as_str() {
+                        Some("string") => value.is_string(),
+                        Some("integer") => value.is_i64() || value.is_u64(),
+                        Some("boolean") => value.is_boolean(),
+                        Some("object") => value.is_object(),
+                        Some("array") => value.is_array(),
+                        _ => true,
+                    };
+                    if !valid {
+                        return Err(format!(
+                            "{} has an invalid `{field}` argument; no tool was executed",
+                            call.name
+                        ));
+                    }
+                }
+            }
+        }
+        let occurrence = nioxs_contracts::digest(format!("{}:{round}", call.id).as_bytes());
+        call.id = format!("call_nano_{turn}_{}", &occurrence[..16]);
+    }
+    Ok(relayed)
+}
+
+/// Convert only paths underneath the root declared in the caller's system
+/// context. Do not consult the daemon's filesystem or widen caller permissions.
+fn normalize_caller_paths(
+    calls: &[RequestedCall],
+    messages: &[Value],
+) -> Result<Vec<RequestedCall>, String> {
+    let root = messages
+        .iter()
+        .filter(|message| message["role"] == "system")
+        .filter_map(|message| message["content"].as_str())
+        .find_map(|content| {
+            content
+                .split_once("Project overview:\nRoot: ")
+                .and_then(|(_, rest)| rest.lines().next())
+        })
+        .map(std::path::Path::new)
+        .filter(|root| root.is_absolute());
+    let mut normalized = calls.to_vec();
+    for call in &mut normalized {
+        let Ok(mut arguments) = serde_json::from_str::<Value>(&call.arguments) else {
+            continue;
+        };
+        let Some(path) = arguments["path"].as_str() else {
+            continue;
+        };
+        let absolute = std::path::Path::new(path);
+        if !absolute.is_absolute() {
+            continue;
+        }
+        let Some(root) = root else { continue };
+        if absolute
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+        {
+            return Err(format!(
+                "`{path}` contains parent traversal; use a project-relative path"
+            ));
+        }
+        let relative = absolute
+            .strip_prefix(root)
+            .map_err(|_| format!("`{path}` is outside the caller's project"))?;
+        let relative = relative.to_str().ok_or("invalid project path")?;
+        arguments["path"] = json!(if relative.is_empty() { "." } else { relative });
+        call.arguments = arguments.to_string();
+    }
+    Ok(normalized)
+}
+
+fn routing_progress(request: &ChatRequest, selected: &str) -> Value {
+    let previous = request
+        .messages
+        .iter()
+        .rev()
+        .filter(|message| message.role == "assistant")
+        .filter_map(|message| message.content.as_str())
+        .find_map(|content| content.lines().rev().find_map(companion::stage_model));
+    let start = request
+        .messages
+        .iter()
+        .rposition(|message| message.role == "user")
+        .unwrap_or(0);
+    let continuing = request.messages[start + 1..]
+        .iter()
+        .any(|message| !message.tool_calls.is_empty());
+    if previous == Some(selected) || (previous.is_none() && continuing) {
+        return json!([]);
+    }
+    let message = format!("{}\n", companion::model_stage(selected).unwrap_or(selected));
+    json!([{"kind":if previous.is_some() {"profile_switched"} else {"profile_selected"},"from":previous,"to":selected,"message":message}])
+}
+
+fn progress_text(value: &Value) -> Vec<String> {
+    value["progress"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|event| event["message"].as_str().map(str::to_string))
+        .collect()
+}
+
+fn prepend_progress(message: &mut Value, metadata: &Value) {
+    let prefix = progress_text(metadata).concat();
+    if !prefix.is_empty() {
+        message["content"] = json!(format!(
+            "{prefix}{}",
+            message["content"].as_str().unwrap_or("")
+        ));
+    }
+}
+
+fn record_upstream_fallback(
+    config: &companion::CodingConfig,
+    metadata: &mut Value,
+) -> Option<String> {
+    if !config.automatic_model
+        || config.model != companion::FALLBACK_CODING_MODEL
+        || metadata["status"]["fallback_announced"] == true
+    {
+        return None;
+    }
+    let message = "↪ Using Kilo Auto Free\n".to_string();
+    if !metadata["progress"].is_array() {
+        metadata["progress"] = json!([]);
+    }
+    metadata["progress"].as_array_mut().unwrap().push(json!({"kind":"upstream_fallback","from":companion::DEFAULT_CODING_MODEL,"to":config.model,"message":message}));
+    metadata["status"]["fallback_announced"] = json!(true);
+    Some(message)
+}
+
+fn sse_chunk(id: &str, model: &str, delta: Value, finish: Value) -> String {
     json!({
         "id": id,
         "object": "chat.completion.chunk",
         "created": 0,
-        "model": MODEL,
+        "model": model,
         "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
     })
     .to_string()
 }
 
-fn content_event(id: &str, content: String) -> Result<Event, Infallible> {
-    Ok(Event::default().data(sse_chunk(id, json!({"content": content}), Value::Null)))
+fn content_event(id: &str, model: &str, content: String) -> Result<Event, Infallible> {
+    if companion::stage_model(&content).is_some() || companion::is_fallback_status(&content) {
+        return Ok(Event::default().data(status_chunk(id, model, Some(content), "routing")));
+    }
+    Ok(Event::default().data(sse_chunk(
+        id,
+        model,
+        json!({"content": content}),
+        Value::Null,
+    )))
+}
+
+fn status_chunk(id: &str, model: &str, content: Option<String>, phase: &str) -> String {
+    let delta = content.map_or_else(|| json!({}), |text| json!({"content":text}));
+    let mut chunk: Value =
+        serde_json::from_str(&sse_chunk(id, model, delta, Value::Null)).expect("valid chunk");
+    chunk["nioxs"] = json!({"status":{"phase":phase,"message":if phase == "thinking" { "Thinking…" } else { "Routing" }}});
+    chunk.to_string()
 }
 
 /// Splits buffered SSE bytes into complete, non-terminal `data:` payloads.
@@ -874,9 +1147,50 @@ async fn coding_sse(
     guard: TurnGuard,
     turn_id: String,
 ) -> Response {
+    // Yield routing status before waiting for the upstream HTTP response.
+    let model = nioxs_value["model"].as_str().unwrap_or(MODEL);
+    let prefix: Vec<Result<axum::body::Bytes, axum::Error>> = progress_text(&nioxs_value)
+        .into_iter()
+        .map(|text| {
+            Ok(axum::body::Bytes::from(format!(
+                "data: {}\n\n",
+                status_chunk(&id, model, Some(text), "routing")
+            )))
+        })
+        .chain(std::iter::once(Ok(axum::body::Bytes::from(format!(
+            "data: {}\n\n",
+            status_chunk(&id, model, None, "thinking")
+        )))))
+        .collect();
+    let body = stream::once(async move {
+        coding_sse_inner(consult, trail, id, nioxs_value, guard, turn_id)
+            .await
+            .into_body()
+            .into_data_stream()
+    })
+    .flatten();
+    let mut response = Response::new(axum::body::Body::from_stream(
+        stream::iter(prefix).chain(body),
+    ));
+    response
+        .headers_mut()
+        .insert("content-type", "text/event-stream".parse().unwrap());
+    response
+        .headers_mut()
+        .insert("cache-control", "no-cache".parse().unwrap());
+    response
+}
+
+async fn coding_sse_inner(
+    mut consult: CodingConsult,
+    mut trail: Vec<String>,
+    id: String,
+    mut nioxs_value: Value,
+    guard: TurnGuard,
+    turn_id: String,
+) -> Response {
+    let model = nioxs_value["model"].as_str().unwrap_or(MODEL).to_string();
     let url = companion::upstream_chat_url(&consult.config);
-    let body =
-        companion::upstream_chat_body(&consult.config, &consult.messages, &consult.tools, true);
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
         .build()
@@ -891,11 +1205,15 @@ async fn coding_sse(
             );
         }
     };
-    let mut request = client.post(&url).json(&body);
-    if let Some(key) = consult.config.api_key.as_deref() {
-        request = request.bearer_auth(key);
-    }
-    let response = match request.send().await {
+    let response = match nioxs_nano::upstream::send_chat(
+        &client,
+        &mut consult.config,
+        &consult.messages,
+        &consult.tools,
+        true,
+    )
+    .await
+    {
         Ok(response) if response.status().is_success() => response,
         Ok(response) => {
             let status = response.status();
@@ -925,6 +1243,13 @@ async fn coding_sse(
             );
         }
     };
+    nioxs_value["upstream_model"] = json!(consult.config.model);
+    if let Some(message) = record_upstream_fallback(&consult.config, &mut nioxs_value) {
+        trail.push(message);
+    }
+    // The completed answer already carries an "answered by" footer. Repeating
+    // the consultation banner on every tool-result continuation is noise.
+    trail.retain(|line| !line.starts_with(companion::TRAIL_CONSULT));
 
     // Forward the model's deltas as they arrive. `sink` accumulates the answer
     // so the guarded check and error reporting can run once the stream ends.
@@ -985,10 +1310,11 @@ async fn coding_sse(
     let id_trail = id.clone();
     let trail_events: Vec<Result<Event, Infallible>> = trail
         .into_iter()
-        .map(|segment| content_event(&id_trail, segment))
+        .map(|segment| content_event(&id_trail, &model, segment))
         .collect();
     let id_live = id.clone();
-    let live_events = live.map(move |delta| content_event(&id_live, delta));
+    let live_model = model.clone();
+    let live_events = live.map(move |delta| content_event(&id_live, &live_model, delta));
 
     let tail_sink = sink.clone();
     let tail_consult = consult.clone();
@@ -1007,11 +1333,18 @@ async fn coding_sse(
         // the caller instead of answering, so the next round reaches it with the
         // real contents and it can decide what else it needs.
         if !calls.is_empty() {
-            return match relay_coding_calls(&calls, &tail_turn) {
+            return match relay_offered_coding_calls(
+                &calls,
+                &tail_turn,
+                &tail_consult.tools,
+                &tail_consult.messages,
+            ) {
                 Ok(relayed) => {
                     let mut events: Vec<Result<Event, Infallible>> = Vec::new();
                     for (index, call) in relayed.iter().enumerate() {
-                        events.push(Ok(Event::default().data(call_delta(&id_tail, call, index))));
+                        events.push(Ok(
+                            Event::default().data(call_delta(&id_tail, &model, call, index))
+                        ));
                     }
                     events.push(Ok(Event::default().data(coding_terminal(
                         &id_tail,
@@ -1024,7 +1357,8 @@ async fn coding_sse(
                 Err(reason) => {
                     let mut events = vec![content_event(
                         &id_tail,
-                        format!("\n\n⚠️ {reason}; no files were read."),
+                        &model,
+                        format!("\n\n⚠️ {reason}; no additional files were read."),
                     )];
                     events.push(Ok(Event::default().data(coding_terminal(
                         &id_tail,
@@ -1054,7 +1388,7 @@ async fn coding_sse(
         }
         let mut events = Vec::new();
         if !closing.is_empty() {
-            events.push(content_event(&id_tail, closing));
+            events.push(content_event(&id_tail, &model, closing));
         }
         events.push(Ok(Event::default().data(coding_terminal(
             &id_tail,
@@ -1081,16 +1415,26 @@ async fn coding_sse(
 
 /// Builds the terminal chunk of a coding stream with the given finish reason.
 fn coding_terminal(id: &str, finish: &str, nioxs_value: &Value) -> String {
-    let mut terminal: Value = serde_json::from_str(&sse_chunk(id, json!({}), json!(finish)))
-        .expect("valid terminal chunk");
+    let mut terminal: Value = serde_json::from_str(&sse_chunk(
+        id,
+        nioxs_value["model"].as_str().unwrap_or(MODEL),
+        json!({}),
+        json!(finish),
+    ))
+    .expect("valid terminal chunk");
     terminal["nioxs"] = nioxs_value.clone();
+    if finish == "tool_calls" {
+        terminal["nioxs"]["status"]["phase"] = json!("awaiting_tools");
+        terminal["nioxs"]["status"]["target"] = json!("caller");
+    }
     terminal.to_string()
 }
 
 /// One client-visible `tool_calls` delta for a relayed model request.
-fn call_delta(id: &str, call: &ClientCall, index: usize) -> String {
+fn call_delta(id: &str, model: &str, call: &ClientCall, index: usize) -> String {
     sse_chunk(
         id,
+        model,
         json!({"tool_calls":[{"index":index,"id":call.id,"type":"function","function":{"name":call.name,"arguments":call.arguments}}]}),
         Value::Null,
     )
@@ -1101,14 +1445,12 @@ fn call_delta(id: &str, call: &ClientCall, index: usize) -> String {
 /// The answer is returned as one message, or as the model's own tool calls when
 /// it wants to read the caller's project first.
 async fn coding_response(
-    consult: CodingConsult,
+    mut consult: CodingConsult,
     id: String,
-    nioxs_value: Value,
+    mut nioxs_value: Value,
     turn_id: String,
 ) -> Response {
     let url = companion::upstream_chat_url(&consult.config);
-    let body =
-        companion::upstream_chat_body(&consult.config, &consult.messages, &consult.tools, false);
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
         .build()
@@ -1123,11 +1465,15 @@ async fn coding_response(
             );
         }
     };
-    let mut request = client.post(&url).json(&body);
-    if let Some(key) = consult.config.api_key.as_deref() {
-        request = request.bearer_auth(key);
-    }
-    let value: Value = match request.send().await {
+    let value: Value = match nioxs_nano::upstream::send_chat(
+        &client,
+        &mut consult.config,
+        &consult.messages,
+        &consult.tools,
+        false,
+    )
+    .await
+    {
         Ok(response) if response.status().is_success() => match response.json().await {
             Ok(value) => value,
             Err(error) => {
@@ -1164,6 +1510,9 @@ async fn coding_response(
             );
         }
     };
+    nioxs_value["upstream_model"] = json!(consult.config.model);
+
+    record_upstream_fallback(&consult.config, &mut nioxs_value);
 
     let mut calls = message_tool_calls(&value);
     if calls.is_empty() {
@@ -1172,7 +1521,8 @@ async fn coding_response(
         }
     }
     if !calls.is_empty() {
-        return match relay_coding_calls(&calls, &turn_id) {
+        return match relay_offered_coding_calls(&calls, &turn_id, &consult.tools, &consult.messages)
+        {
             Ok(relayed) => {
                 let tool_calls: Vec<Value> = relayed
                     .iter()
@@ -1190,7 +1540,7 @@ async fn coding_response(
             }
             Err(reason) => coding_json(
                 &id,
-                json!({"role":"assistant","content":format!("⚠️ {reason}; no files were read.")}),
+                json!({"role":"assistant","content":format!("⚠️ {reason}; no additional files were read.")}),
                 "stop",
                 nioxs_value,
             ),
@@ -1222,8 +1572,13 @@ async fn coding_response(
 }
 
 /// Wraps one assistant message in a non-streamed completion envelope.
-fn coding_json(id: &str, message: Value, finish: &str, nioxs_value: Value) -> Response {
-    Json(json!({"id":id,"object":"chat.completion","created":0,"model":MODEL,"choices":[{"index":0,"message":message,"finish_reason":finish}],"nioxs":nioxs_value})).into_response()
+fn coding_json(id: &str, mut message: Value, finish: &str, mut nioxs_value: Value) -> Response {
+    prepend_progress(&mut message, &nioxs_value);
+    if finish == "tool_calls" {
+        nioxs_value["status"]["phase"] = json!("awaiting_tools");
+        nioxs_value["status"]["target"] = json!("caller");
+    }
+    Json(json!({"id":id,"object":"chat.completion","created":0,"model":nioxs_value["model"].as_str().unwrap_or(MODEL),"choices":[{"index":0,"message":message,"finish_reason":finish}],"nioxs":nioxs_value})).into_response()
 }
 
 /// Emits the trail, one explanatory message, and the terminal chunk. Used when
@@ -1234,13 +1589,15 @@ fn coding_static_sse(
     message: String,
     nioxs_value: Value,
 ) -> Response {
+    let model = nioxs_value["model"].as_str().unwrap_or(MODEL);
     let mut events: Vec<Result<Event, Infallible>> = trail
         .into_iter()
-        .map(|segment| content_event(&id, segment))
+        .map(|segment| content_event(&id, model, segment))
         .collect();
-    events.push(content_event(&id, format!("\n\n{message}")));
-    let mut terminal: Value = serde_json::from_str(&sse_chunk(&id, json!({}), json!("stop")))
-        .expect("valid terminal chunk");
+    events.push(content_event(&id, model, format!("\n\n{message}")));
+    let mut terminal: Value =
+        serde_json::from_str(&sse_chunk(&id, model, json!({}), json!("stop")))
+            .expect("valid terminal chunk");
     terminal["nioxs"] = nioxs_value;
     events.push(Ok(Event::default().data(terminal.to_string())));
     events.push(Ok(Event::default().data("[DONE]")));
@@ -1260,6 +1617,126 @@ mod tests {
     use tower::ServiceExt;
 
     #[test]
+    fn caller_absolute_root_and_children_are_relayed_as_relative_paths() {
+        let messages = vec![
+            json!({"role":"system","content":"Project overview:\nRoot: /home/mn/nio-labs\nFiles (partial listing):\nnio/README.md"}),
+        ];
+        let calls = [
+            RequestedCall {
+                id: "root".into(),
+                name: "find_files".into(),
+                arguments: json!({"path":"/home/mn/nio-labs"}).to_string(),
+            },
+            RequestedCall {
+                id: "file".into(),
+                name: "read_file".into(),
+                arguments: json!({"path":"/home/mn/nio-labs/nio/src/main.rs"}).to_string(),
+            },
+        ];
+        let relayed = relay_offered_coding_calls(
+            &calls,
+            "turn_root",
+            &companion::coding_tool_schemas(),
+            &messages,
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&relayed[0].arguments).unwrap()["path"],
+            "."
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&relayed[1].arguments).unwrap()["path"],
+            "nio/src/main.rs"
+        );
+        for path in [
+            "/home/mn/nio-labs-other/file.rs",
+            "/home/mn/nio-labs/../private/file.rs",
+            "/etc/passwd",
+        ] {
+            let bad = [RequestedCall {
+                id: "bad".into(),
+                name: "read_file".into(),
+                arguments: json!({"path":path}).to_string(),
+            }];
+            assert!(
+                relay_offered_coding_calls(
+                    &bad,
+                    "turn_root",
+                    &companion::coding_tool_schemas(),
+                    &messages
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            relay_offered_coding_calls(&calls, "turn_root", &companion::coding_tool_schemas(), &[])
+                .is_err(),
+            "no root must not permit an absolute path"
+        );
+    }
+
+    #[test]
+    fn relay_ids_are_unique_across_repeated_read_rounds() {
+        let calls = [RequestedCall {
+            id: "upstream-reused-id".into(),
+            name: "read_file".into(),
+            arguments: "{\"path\":\"server/src/main.rs\"}".into(),
+        }];
+        let tools = companion::coding_tool_schemas();
+        let first = relay_offered_coding_calls(&calls, "turn_repeat", &tools, &[]).unwrap();
+        let history = vec![
+            json!({"role":"assistant","tool_calls":[{"id":first[0].id,"type":"function","function":{"name":calls[0].name,"arguments":calls[0].arguments}}]}),
+            json!({"role":"tool","tool_call_id":first[0].id,"content":"fn main() {}"}),
+        ];
+        let second = relay_offered_coding_calls(&calls, "turn_repeat", &tools, &history).unwrap();
+        assert_ne!(first[0].id, second[0].id);
+        assert!(second[0].id.starts_with("call_nano_turn_repeat_"));
+    }
+
+    #[test]
+    fn routing_status_reports_changes_without_repeating_on_tool_rounds() {
+        let mut request: ChatRequest = serde_json::from_value(
+            json!({"model":"nio-flow","messages":[{"role":"user","content":"fix this"}]}),
+        )
+        .unwrap();
+        let first = routing_progress(&request, "nio-flow");
+        assert_eq!(first[0]["kind"], "profile_selected");
+        request.messages.push(
+            serde_json::from_value(json!({"role":"assistant","content":first[0]["message"]}))
+                .unwrap(),
+        );
+        assert_eq!(routing_progress(&request, "nio-flow"), json!([]));
+        let switched = routing_progress(&request, "nio-atom");
+        assert_eq!(switched[0]["kind"], "profile_switched");
+        assert_eq!(switched[0]["from"], "nio-flow");
+        assert_eq!(switched[0]["to"], "nio-atom");
+        assert!(
+            companion::strip_trail_segments(switched[0]["message"].as_str().unwrap()).is_empty()
+        );
+    }
+
+    #[test]
+    fn fallback_status_is_announced_once_and_tool_handoff_is_structured() {
+        let config = companion::CodingConfig {
+            base_url: String::new(),
+            api_key: None,
+            model: companion::FALLBACK_CODING_MODEL.into(),
+            mode: "auto".into(),
+            auto_approve: false,
+            automatic_model: true,
+        };
+        let mut metadata =
+            json!({"model":"nio-flow","progress":[],"status":{"fallback_announced":false}});
+        assert!(record_upstream_fallback(&config, &mut metadata).is_some());
+        assert!(record_upstream_fallback(&config, &mut metadata).is_none());
+        assert_eq!(metadata["progress"].as_array().unwrap().len(), 1);
+        let terminal: Value =
+            serde_json::from_str(&coding_terminal("test", "tool_calls", &metadata)).unwrap();
+        assert_eq!(terminal["nioxs"]["status"]["phase"], "awaiting_tools");
+        assert_eq!(terminal["nioxs"]["status"]["target"], "caller");
+    }
+
+    #[test]
     fn take_sse_data_lines_splits_only_complete_payloads() {
         let mut buffer = String::from("data: {\"a\":1}\n\ndata: {\"partial");
         assert_eq!(
@@ -1273,6 +1750,59 @@ mod tests {
             vec!["{\"partial\":2}".to_string()]
         );
         assert!(buffer.is_empty(), "remaining: {buffer:?}");
+    }
+
+    #[tokio::test]
+    async fn routing_banner_arrives_before_upstream_request() {
+        let consult = CodingConsult {
+            config: companion::CodingConfig {
+                base_url: "http://127.0.0.1:1/v1".into(),
+                api_key: None,
+                model: "mock/model".into(),
+                mode: "auto".into(),
+                auto_approve: false,
+                automatic_model: false,
+            },
+            prompt: "fix code".into(),
+            messages: vec![],
+            tools: vec![],
+            files: vec![],
+            guarded: false,
+        };
+        let metadata = json!({"model":"nio-flow","progress":[{"kind":"profile_selected","message":"🌊 NioFlow · Planning\n"}]});
+        let response = coding_sse(
+            consult,
+            vec![],
+            "test".into(),
+            metadata,
+            TurnGuard {
+                active: ActiveTurns::default(),
+                id: "turn_banner".into(),
+            },
+            "turn_banner".into(),
+        )
+        .await;
+        let mut body = response.into_body().into_data_stream();
+        let first = tokio::time::timeout(Duration::from_secs(1), body.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let text = String::from_utf8(first.to_vec()).unwrap();
+        assert!(text.contains("🌊 NioFlow · Planning"));
+        assert!(
+            !text.contains("Request to"),
+            "upstream errors must follow the routing event"
+        );
+        let thinking = body.next().await.unwrap().unwrap();
+        let thinking = String::from_utf8(thinking.to_vec()).unwrap();
+        let thinking: Value =
+            serde_json::from_str(thinking.trim().strip_prefix("data: ").unwrap()).unwrap();
+        assert_eq!(thinking["nioxs"]["status"]["phase"], "thinking");
+        assert!(
+            thinking["choices"][0]["delta"]["content"].is_null(),
+            "loading must not become answer text"
+        );
     }
 
     /// A trail round must still carry the tool call the client executes next,
@@ -1311,7 +1841,7 @@ mod tests {
 
     /// The chunk envelope used by both the handler and `trail_payloads`.
     fn sse_chunk_value(delta: Value, finish: Value) -> Value {
-        serde_json::from_str(&sse_chunk("chatcmpl-test", delta, finish)).unwrap()
+        serde_json::from_str(&sse_chunk("chatcmpl-test", MODEL, delta, finish)).unwrap()
     }
 
     /// Kilo streams tool calls as fragments: the id and name arrive once, the
@@ -1379,7 +1909,7 @@ mod tests {
         );
 
         for bad in [
-            call("run_command", "{\"command\":\"rm -rf /\"}"),
+            call("delete_everything", "{\"command\":\"rm -rf /\"}"),
             call("read_file", "{\"path\":\"../../etc/passwd\"}"),
             call("read_file", "{\"path\":\"/etc/passwd\"}"),
             call("read_file", "{}"),
@@ -1480,6 +2010,7 @@ mod tests {
                 model: "mock/model".into(),
                 mode: "coding".into(),
                 auto_approve: false,
+                automatic_model: false,
             },
             prompt: "analyze my project".into(),
             messages: companion::upstream_messages("analyze my project", &[]),
@@ -1492,7 +2023,7 @@ mod tests {
             consult,
             trail,
             "chatcmpl-test".into(),
-            json!({"intent": "coding"}),
+            json!({"intent": "coding", "model": "nio-neon"}),
             TurnGuard {
                 active: ActiveTurns::default(),
                 id: "turn_stream_test".into(),
@@ -1513,6 +2044,10 @@ mod tests {
             parse.push_str(&text);
             for payload in take_sse_data_lines(&mut parse) {
                 let value: Value = serde_json::from_str(&payload).unwrap();
+                assert_eq!(
+                    value["model"], "nio-neon",
+                    "every stream chunk preserves the profile"
+                );
                 if let Some(content) = value["choices"][0]["delta"]["content"].as_str() {
                     deltas.push(content.to_string());
                     if content.contains("First line.") && !released {
@@ -1533,9 +2068,14 @@ mod tests {
         assert!(raw.contains("\"finish_reason\":\"stop\""));
         assert!(raw.contains("\"coding\""), "decision payload must survive");
         assert_eq!(
-            deltas[..trail_len(&deltas)],
-            ["💭 consulting with LLM: mock/model\n".to_string()][..],
-            "trail lines must stream first, one per event: {deltas:?}"
+            trail_len(&deltas),
+            0,
+            "no progress banner is emitted: {deltas:?}"
+        );
+        assert!(
+            !deltas
+                .iter()
+                .any(|delta| delta.starts_with(companion::TRAIL_CONSULT))
         );
         assert!(deltas.contains(&"First line.\n".to_string()), "{deltas:?}");
         assert!(deltas.contains(&"Second line.\n".to_string()), "{deltas:?}");
@@ -1574,7 +2114,8 @@ src/engine*
         assert_eq!(calls[1].name, "find_files");
         assert_eq!(calls[1].arguments, "{\"glob\":\"src/engine*\"}");
 
-        let single = r#"<invoke name="read_file"><parameter name="path">src/mcp.rs</parameter></invoke>"#;
+        let single =
+            r#"<invoke name="read_file"><parameter name="path">src/mcp.rs</parameter></invoke>"#;
         let read_calls = extract_xml_tool_calls(single);
         assert_eq!(read_calls.len(), 1);
         assert_eq!(read_calls[0].name, "read_file");
@@ -1596,6 +2137,57 @@ src/engine*
             model: Arc::new(Model::embedded().unwrap()),
             instance: "unit-test".into(),
         })
+    }
+    #[tokio::test]
+    async fn model_catalog_exposes_profiles_and_auto() {
+        let response = app()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/models")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let value: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+        let ids: Vec<&str> = value["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, MODELS);
+    }
+
+    #[test]
+    fn profile_identity_survives_terminal_stream_chunks() {
+        let value: Value = serde_json::from_str(&coding_terminal("id", "tool_calls", &json!({"model":"nio-atom","routing":{"selected_model":"nio-atom"},"upstream_model":"cohere/north-mini-code:free"}))).unwrap();
+        assert_eq!(value["model"], "nio-atom");
+        assert_eq!(value["nioxs"]["routing"]["selected_model"], "nio-atom");
+        assert_eq!(
+            value["nioxs"]["upstream_model"],
+            "cohere/north-mini-code:free"
+        );
+    }
+    #[test]
+    fn upstream_cannot_relay_tools_that_were_not_offered() {
+        let call = RequestedCall {
+            name: "read_file".into(),
+            arguments: "{\"path\":\"README.md\"}".into(),
+            ..Default::default()
+        };
+        assert!(relay_offered_coding_calls(&[call.clone()], "turn_test", &[], &[]).is_err());
+        assert!(
+            relay_offered_coding_calls(
+                &[call],
+                "turn_test",
+                &companion::coding_tool_schemas(),
+                &[]
+            )
+            .is_ok()
+        );
     }
     #[tokio::test]
     async fn unavailable_storage_does_not_dispatch_a_tool() {

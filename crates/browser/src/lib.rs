@@ -140,13 +140,23 @@ pub fn is_boilerplate_or_spam(text: &str) -> bool {
         "cookie preferences",
         "feel free to watch! infinite loading",
     ];
-    let count = spam_indicators.iter().filter(|s| lower.contains(*s)).count();
+    let count = spam_indicators
+        .iter()
+        .filter(|s| lower.contains(*s))
+        .count();
     if count >= 2 || lower.contains("infinite loading") {
         return true;
     }
-    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     if lines.len() > 6 {
-        let short_lines = lines.iter().filter(|l| l.split_whitespace().count() <= 3).count();
+        let short_lines = lines
+            .iter()
+            .filter(|l| l.split_whitespace().count() <= 3)
+            .count();
         if (short_lines as f32) / (lines.len() as f32) > 0.65 {
             return true;
         }
@@ -362,14 +372,23 @@ pub fn parse_ddg_html_results(html: &str) -> Vec<SearchResult> {
         };
 
         let final_url = if raw_url.contains("uddg=") {
-            let encoded = raw_url.split("uddg=").nth(1).unwrap_or("").split('&').next().unwrap_or("");
+            let encoded = raw_url
+                .split("uddg=")
+                .nth(1)
+                .unwrap_or("")
+                .split('&')
+                .next()
+                .unwrap_or("");
             // Basic URL percent-decoding
             let mut decoded = String::new();
             let bytes = encoded.as_bytes();
             let mut i = 0;
             while i < bytes.len() {
                 if bytes[i] == b'%' && i + 2 < bytes.len() {
-                    if let Ok(b) = u8::from_str_radix(std::str::from_utf8(&bytes[i+1..i+3]).unwrap_or(""), 16) {
+                    if let Ok(b) = u8::from_str_radix(
+                        std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
+                        16,
+                    ) {
                         decoded.push(b as char);
                         i += 3;
                         continue;
@@ -696,7 +715,9 @@ pub async fn search(query: &str, limit: usize) -> Result<Vec<SearchResult>, Stri
 
     // Tertiary Fallback: Search Wikipedia directly
     let wiki_res = search_wikipedia(query, limit).await;
-    if let Ok(results) = wiki_res && !results.is_empty() {
+    if let Ok(results) = wiki_res
+        && !results.is_empty()
+    {
         return Ok(results);
     }
 
@@ -785,7 +806,10 @@ pub async fn research(query: &str, max_pages: usize) -> Result<ResearchReport, S
             }
         }
         // If the fetched page was SPA, blocked, or pure boilerplate, use the search snippet!
-        if !added_body_passage && !cleaned_snippet.trim().is_empty() && !is_boilerplate_or_spam(&cleaned_snippet) {
+        if !added_body_passage
+            && !cleaned_snippet.trim().is_empty()
+            && !is_boilerplate_or_spam(&cleaned_snippet)
+        {
             let snip_lower = cleaned_snippet.to_ascii_lowercase();
             let mut score = 1;
             for t in &terms {

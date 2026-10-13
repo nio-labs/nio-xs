@@ -82,7 +82,8 @@ pub fn dry_run_multi_patch(
         let full = root.join(&op.file_path);
         let content = std::fs::read_to_string(&full)
             .map_err(|e| format!("cannot read {}: {e}", op.file_path))?;
-        let (patched, _) = apply_patch_to_string(&content, &op.target_text, &op.replacement_text, false)?;
+        let (patched, _) =
+            apply_patch_to_string(&content, &op.target_text, &op.replacement_text, false)?;
         planned.push((op.file_path.clone(), patched));
     }
     Ok(planned)
@@ -132,8 +133,8 @@ pub fn rollback_patch(root: &std::path::Path, patch_id: &str) -> Result<usize, S
     let snap_path = root.join(format!(".nioxs/undo/{patch_id}.json"));
     let data = std::fs::read_to_string(&snap_path)
         .map_err(|_| format!("undo snapshot for '{patch_id}' not found"))?;
-    let snapshot: UndoSnapshot = serde_json::from_str(&data)
-        .map_err(|e| format!("corrupt snapshot: {e}"))?;
+    let snapshot: UndoSnapshot =
+        serde_json::from_str(&data).map_err(|e| format!("corrupt snapshot: {e}"))?;
 
     let count = snapshot.backups.len();
     for (file, original) in snapshot.backups {
@@ -161,7 +162,8 @@ pub fn scaffold_template(template_name: &str) -> Option<(&'static str, &'static 
         )),
         _ => None,
     }
-}/// Represents the result of an automated TDD auto-fix loop
+}
+/// Represents the result of an automated TDD auto-fix loop
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutoFixReport {
     pub success: bool,
@@ -224,7 +226,11 @@ where
 
         let diags = crate::brain::parse_compiler_diagnostics(&full_output);
         let diag_summary = if !diags.is_empty() {
-            diags.iter().map(|d| format!("{:?}: {}", d.code, d.message)).collect::<Vec<_>>().join("; ")
+            diags
+                .iter()
+                .map(|d| format!("{:?}: {}", d.code, d.message))
+                .collect::<Vec<_>>()
+                .join("; ")
         } else {
             full_output.lines().take(5).collect::<Vec<_>>().join("\n")
         };
@@ -292,13 +298,25 @@ mod tests {
 
         let snapshot = apply_multi_patch(&temp_dir, &patch).expect("apply patch");
         assert_eq!(snapshot.backups.len(), 2);
-        assert_eq!(std::fs::read_to_string(temp_dir.join(file_a)).unwrap(), "hello crisp apple\n");
-        assert_eq!(std::fs::read_to_string(temp_dir.join(file_b)).unwrap(), "hello sweet orange\n");
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join(file_a)).unwrap(),
+            "hello crisp apple\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join(file_b)).unwrap(),
+            "hello sweet orange\n"
+        );
 
         let rolled_back = rollback_patch(&temp_dir, "patch_test_1").expect("rollback");
         assert_eq!(rolled_back, 2);
-        assert_eq!(std::fs::read_to_string(temp_dir.join(file_a)).unwrap(), "hello apple\n");
-        assert_eq!(std::fs::read_to_string(temp_dir.join(file_b)).unwrap(), "hello orange\n");
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join(file_a)).unwrap(),
+            "hello apple\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join(file_b)).unwrap(),
+            "hello orange\n"
+        );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
@@ -363,26 +381,29 @@ mod tests {
         let test_cmd = "grep -q 'fixed state' check.txt";
 
         let mut fix_called = 0;
-        let report = execute_autofix_tdd_loop(&temp_dir, &initial_patch, test_cmd, 3, |_out, _diags| {
-            fix_called += 1;
-            Some(MultiFilePatch {
-                id: format!("remedy_{fix_called}"),
-                description: "fix attempt".into(),
-                operations: vec![PatchOperation {
-                    file_path: code_file.into(),
-                    target_text: "intermediate failing state".into(),
-                    replacement_text: "fixed state".into(),
-                }],
+        let report =
+            execute_autofix_tdd_loop(&temp_dir, &initial_patch, test_cmd, 3, |_out, _diags| {
+                fix_called += 1;
+                Some(MultiFilePatch {
+                    id: format!("remedy_{fix_called}"),
+                    description: "fix attempt".into(),
+                    operations: vec![PatchOperation {
+                        file_path: code_file.into(),
+                        target_text: "intermediate failing state".into(),
+                        replacement_text: "fixed state".into(),
+                    }],
+                })
             })
-        })
-        .expect("autofix run");
+            .expect("autofix run");
 
         assert!(report.success);
         assert_eq!(report.attempts, 2);
         assert_eq!(report.applied_patch_ids.len(), 2);
-        assert_eq!(std::fs::read_to_string(temp_dir.join(code_file)).unwrap(), "fixed state");
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.join(code_file)).unwrap(),
+            "fixed state"
+        );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
-

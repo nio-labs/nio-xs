@@ -1,6 +1,6 @@
 # Phase 2 provider contract
 
-Schema version: 1. Provider: `nioxs`. Model: `nio-nano`. Runtime: `0.1.0-alpha.2`.
+Schema version: 1. Provider: `nioxs`. Default model: `nio-flow`. Runtime: `0.1.0-alpha.2`.
 
 NioNano uses trained Naive Bayes inference and typed workflow validation. Read, inspect, filename search, literal code search, and configured checks are supported. The client must offer the required tools and allow automatic choice. Every actual file read/command is performed by Nio’s permission broker. No provider-side browser/shell/filesystem tools are exposed by chat.
 
@@ -10,7 +10,7 @@ NioNano uses trained Naive Bayes inference and typed workflow validation. Read, 
 | --- | --- |
 | GET /health | Public process health, not storage readiness |
 | GET /ready | Authenticated NioDB records access; identifies trained artifact version |
-| GET /v1/models | Model catalog with nio-nano |
+| GET /v1/models | Model catalog with nio-flow, nio-nano, nio-echo, nio-sage, nio-quill, nio-scout, nio-thinker, nio-nova, nio-atom, nio-neon, nio-helm |
 | GET /v1/capabilities | Honest implementation/version/tool capability metadata |
 | POST /v1/chat/completions | Text request, client tool call, correlated result, or capability limitation |
 | POST /v1/turns/{turn_id}/cancel | Explicitly cancel an active request; never undo previous actions |
@@ -29,7 +29,68 @@ If no read_file is offered, or tool_choice prevents automatic tools, Nano return
 
 The standard completion/stream shape is preserved. The additional `nioxs` object appears on the JSON completion or terminal SSE chunk, with schema_version, turn_id, provider, model, outcome, and optional handoff. Outcomes: tool_required, completed, capability_limitation, clarification, tool_failed, unknown_action.
 
-Nano is a decision layer, not an LLM proxy: it does not call an external model and exposes no `consult_llm` tool. Prose that requires reasoning or authoring is answered by the client's own LLM, which may use Nano through this API for typed, verified actions.
+Nano supplies typed workflows and can consult Kilo through `--code`. Helm, Nova,
+Atom, and Neon default to that consultation path, with distinct instructions,
+exploration budgets, and guards controlled by Rust. These are profiles sharing
+the Nano engine, not separate trained weights. Flow invokes distinct bounded
+stages, sharing the configured upstream. Atom can relay offered patch, write,
+and command tools; actual edits and checks still require caller tool results.
+
+`nio-flow` is the default orchestration profile. Existing `nio-auto` requests
+remain a compatibility alias for `nio-flow`. The completion envelope and
+`nioxs.model` identify the selected profile;
+`nioxs.routing` includes `requested_model`, `selected_model`, `reason`, and
+`method`. Streaming chunks preserve the selected profile too. Tool-result
+continuations reuse the latest user prompt, so routing remains stable.
+For proxied responses, `nioxs.upstream_model` identifies the requested Kilo
+model ID. The default checks Kilo's `/models` catalog for
+`cohere/north-mini-code:free` and falls back to `kilo-auto/free`. Explicit
+upstream overrides bypass selection and fallback. No fallback restarts a
+partially emitted stream.
+
+Routing events appear in `nioxs.progress` with `kind`, `from`, `to`, and
+`message`. Kinds currently include `profile_selected`, `profile_switched`, and
+`upstream_fallback`. Streamed routing text arrives before the upstream HTTP
+request; JSON clients receive the same text in assistant content. Profile
+banners are suppressed on continuations using the same profile. Tool-call
+responses carry `nioxs.status.phase: awaiting_tools` and `target: caller`;
+this is a client-tool handoff, not a claim that a specialist model ran.
+
+For `nio-flow` and legacy `nio-auto`, ordinary tasks use the Rust-validated
+cascade. `nioxs.flow` reports the goal, stages, current stage index, and completed
+stage count; `nioxs.routing.method` is `rust_flow_cascade`. `nioxs.progress`
+includes `planning` and `model_handoff` events for actual stage invocations.
+Nano's context stage relays a bounded native `find_files` action. Nova and Neon
+receive read tools, Atom receives offered tools, and Helm is last with no tools
+by default. Flow accepts a standalone leading or trailing `--no-helm` chat
+directive: the last specialist answers instead, `nioxs.flow.helm_enabled` is
+false, and `nioxs.progress` reports `helm_skipped`. The option is saved through
+tool continuations for that task. Other explicit `--` directives retain their
+original behavior.
+
+Handoff state is bounded to 32 tasks with a ten-minute in-memory lifetime.
+Missing state, changed task context, missing tool results, and cancellation do
+not replay pending actions. Identical read requests reuse current-task results
+until a mutating tool invalidates that evidence; malformed tool calls receive
+bounded correction feedback before any client execution. Stage drafts are
+buffered, and the final answer is emitted after Helm completes.
+
+Nonterminal SSE status chunks carry `nioxs.status.phase` as `routing` or
+`thinking`; the thinking event has no answer-content delta. Nio uses these
+events to animate its local loading indicator until substantive output arrives.
+Human stage labels are stripped from history before upstream replay, including
+the legacy `profile:` labels. The caller's current persona is authoritative;
+standalone calls may fall back to the server's persona settings.
+
+Relayed tool-call IDs distinguish occurrences across rounds even when the tool
+name and arguments repeat. Before upstream replay, legacy duplicate IDs are
+renamed along with their corresponding results, preserving the evidence.
+
+When Nio declares its project root in the system context, absolute tool paths
+inside that root are converted to project-relative paths (`.` for the root).
+Sibling-prefix matches, parent traversal, and paths outside that root are
+rejected. The daemon does not inspect its own filesystem for this conversion;
+the caller still validates and executes every relayed tool call.
 
 In **Handoff**, a limitation has an ordinary standard answer explaining the boundary. Nio-aware clients can inspect handoff.reason, continuation_required, and completed_action_ids. No new OpenAI finish_reason is invented. The Nio adapter consumes this metadata to continue the conversation with the user's configured LLM when delegation is desired.
 
@@ -73,3 +134,13 @@ Invalid fields/model/content: HTTP 400. Invalid provider authentication: 401. Du
 See [read-request.json](examples/read-request.json), [tool-continuation.json](examples/tool-continuation.json), and [handoff.json](examples/handoff.json). IDs in examples are illustrative; use the ID actually returned by the provider.
 
 Reference: [official Chat Completions API](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create). This is a declared subset, not universal API or model compatibility.
+
+### Direct answer profiles
+
+Echo, Sage, Quill, and Scout consult the upstream directly without Flow or Helm. They preserve the caller persona and tools' exact schemas, accept tool-less questions, and never dispatch native command directives or mutation tools. Scout can receive an offered `web_fetch`; Echo, Sage, and Quill are limited to project inspection tools.
+
+Thinker uses the same bounded handoff mechanism as Flow for three separate upstream calls: draft, challenge, and refine. Draft and challenge can request offered read-only tools (including `web_fetch`); refinement is tool-free. Intermediate drafts are carried to the next phase but are not streamed as the answer. Status events identify each phase and continue to signal thinking. Direct Thinker does not run Helm by default. Add `--with-helm` before or after its prompt to opt into the final gate. Flow can also choose Thinker as a specialist within Flow’s own final gate. Handoff state shares the existing 32-task / 10-minute memory limit and does not survive a provider restart. No 100% certainty guarantee is made.
+
+### Specialist role isolation
+
+Helm's final synthesis/verdict instruction is inserted only for an actual `nio-helm` stage. Other specialists receive their own role instructions and the assigned task, while prior specialist drafts remain evidence rather than role instructions. Direct Nano, Nova, Atom, Neon, Echo, Sage, Quill, and Scout requests never schedule Helm. Flow schedules its final gate unless `--no-helm` is set; direct Thinker requires `--with-helm`. Standalone model labels have no handoff arrow; an arrow is generated by an actual Flow model transition.

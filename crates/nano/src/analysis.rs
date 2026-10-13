@@ -131,7 +131,9 @@ pub fn analyze_file_content(path: &str, content: &str) -> FileAnalysis {
             "{unwrap_count} instance{} of `.unwrap()` (risk of unhandled runtime panic)",
             if unwrap_count == 1 { "" } else { "s" }
         ));
-        suggestions.push("Replace `.unwrap()` with `?` error propagation or `.expect(\"context\")`.".into());
+        suggestions.push(
+            "Replace `.unwrap()` with `?` error propagation or `.expect(\"context\")`.".into(),
+        );
     }
     if todo_count > 0 {
         bads.push(format!(
@@ -145,13 +147,15 @@ pub fn analyze_file_content(path: &str, content: &str) -> FileAnalysis {
             "{unsafe_count} `unsafe` block{} present",
             if unsafe_count == 1 { "" } else { "s" }
         ));
-        suggestions.push("Ensure all `unsafe` blocks include explicit `// SAFETY:` invariants.".into());
+        suggestions
+            .push("Ensure all `unsafe` blocks include explicit `// SAFETY:` invariants.".into());
     }
     if total_lines > 500 {
         bads.push(format!(
             "Large file size ({total_lines} LOC may indicate mixed responsibilities)"
         ));
-        suggestions.push("Consider modularizing this file into dedicated submodules or traits.".into());
+        suggestions
+            .push("Consider modularizing this file into dedicated submodules or traits.".into());
     }
     if doc_lines == 0 && total_lines > 20 {
         bads.push("Missing doc comments: public functions/types lack API documentation".into());
@@ -159,21 +163,31 @@ pub fn analyze_file_content(path: &str, content: &str) -> FileAnalysis {
     }
     if tests == 0 && (functions > 3 || types > 2) && !path.contains("test") {
         bads.push("No co-located unit tests detected for declared functions/types".into());
-        suggestions.push("Add a `#[cfg(test)] mod tests` module to test core functionality.".into());
+        suggestions
+            .push("Add a `#[cfg(test)] mod tests` module to test core functionality.".into());
     }
     if print_count > 3 && !path.contains("main") && !path.contains("bin") {
-        bads.push(format!("{print_count} raw stdout print statements in library code"));
-        suggestions.push("Use structured logging (`tracing` or `log`) instead of direct stdout prints.".into());
+        bads.push(format!(
+            "{print_count} raw stdout print statements in library code"
+        ));
+        suggestions.push(
+            "Use structured logging (`tracing` or `log`) instead of direct stdout prints.".into(),
+        );
     }
 
     if goods.is_empty() {
         goods.push("Clean file structure with standard syntax".into());
     }
     if bads.is_empty() {
-        goods.push("Clean implementation: zero unwrap panics, zero unsafe blocks, zero unresolved TODOs".into());
+        goods.push(
+            "Clean implementation: zero unwrap panics, zero unsafe blocks, zero unresolved TODOs"
+                .into(),
+        );
     }
     if suggestions.is_empty() {
-        suggestions.push("File is in good health; maintain test coverage when adding new features.".into());
+        suggestions.push(
+            "File is in good health; maintain test coverage when adding new features.".into(),
+        );
     }
 
     FileAnalysis {
@@ -193,7 +207,12 @@ pub fn analyze_file_content(path: &str, content: &str) -> FileAnalysis {
 pub fn format_file_analysis(analysis: &FileAnalysis) -> String {
     let mut out = format!(
         "### Code Analysis: `{}`\n\n**Overview**:\n• **Language**: {}\n• **Lines of Code**: {} LOC\n• **Functions**: {}\n• **Types / Models**: {}\n• **Test Cases**: {}\n\n",
-        analysis.path, analysis.language, analysis.lines, analysis.functions, analysis.types, analysis.tests
+        analysis.path,
+        analysis.language,
+        analysis.lines,
+        analysis.functions,
+        analysis.types,
+        analysis.tests
     );
 
     out.push_str("#### Strengths (Good):\n");
@@ -270,7 +289,9 @@ pub fn format_directory_analysis(dir: &str, paths: &[String]) -> String {
         .iter()
         .any(|p| p.ends_with("Cargo.toml") || p.ends_with("package.json"))
     {
-        goods.push("Standard package manifest detected for declarative dependency management".into());
+        goods.push(
+            "Standard package manifest detected for declarative dependency management".into(),
+        );
     }
     if test_files > 0 {
         goods.push(format!(
@@ -299,9 +320,13 @@ pub fn format_directory_analysis(dir: &str, paths: &[String]) -> String {
     }
     if test_files == 0 {
         bads.push("No dedicated test files discovered in this directory".into());
-        suggestions.push("Add automated unit tests and run `run test check` to verify behavior.".into());
+        suggestions
+            .push("Add automated unit tests and run `run test check` to verify behavior.".into());
     }
-    if !paths.iter().any(|p| p.to_ascii_lowercase().starts_with("readme")) {
+    if !paths
+        .iter()
+        .any(|p| p.to_ascii_lowercase().starts_with("readme"))
+    {
         bads.push("Missing README.md: repository lacks onboarding documentation".into());
         suggestions.push("Create a README.md documenting project goals, setup, and usage.".into());
     }
@@ -373,7 +398,12 @@ fn risky() {
         let analysis = analyze_file_content("src/risky.rs", code);
         assert!(analysis.bads.iter().any(|b| b.contains(".unwrap()")));
         assert!(analysis.bads.iter().any(|b| b.contains("TODO")));
-        assert!(analysis.suggestions.iter().any(|s| s.contains("Replace `.unwrap()`")));
+        assert!(
+            analysis
+                .suggestions
+                .iter()
+                .any(|s| s.contains("Replace `.unwrap()`"))
+        );
     }
 
     #[test]

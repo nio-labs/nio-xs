@@ -441,8 +441,10 @@ pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> Strin
 
     // A genuine definition beats any scored fragment.
     let definition = find_definition(&page_text, &subject);
-    if !matches!(intent, QueryIntent::Why | QueryIntent::HowTo | QueryIntent::Troubleshoot)
-        && let Some(def) = &definition
+    if !matches!(
+        intent,
+        QueryIntent::Why | QueryIntent::HowTo | QueryIntent::Troubleshoot
+    ) && let Some(def) = &definition
     {
         used_sentences.push(def.clone());
         let def_clean = format!("{}.", def.trim_end_matches('.'));
@@ -489,7 +491,10 @@ pub fn synthesize_research_answer(query: &str, report: &ResearchReport) -> Strin
 
     // Why/How-To/Troubleshooting/General fallback: clean concise paragraph
     let body = concise_body(&candidate_sentences, &mut used_sentences)
-        .or_else(|| find_definition(&page_text, &subject).map(|def| format!("{}.", def.trim_end_matches('.'))))
+        .or_else(|| {
+            find_definition(&page_text, &subject)
+                .map(|def| format!("{}.", def.trim_end_matches('.')))
+        })
         .unwrap_or_else(|| {
             "I found related pages, but they did not contain a concrete answer to this question."
                 .to_string()
@@ -905,14 +910,24 @@ mod tests {
             "### Zig\n\nZig is a general-purpose programming language designed by Andrew Kelley and first released in 2016.",
             "definition was not isolated:\n{answer}"
         );
-        for junk in ["Jump to content", "free encyclopedia", "multiple issues", "Learn how", "\u{b7}", "http"] {
+        for junk in [
+            "Jump to content",
+            "free encyclopedia",
+            "multiple issues",
+            "Learn how",
+            "\u{b7}",
+            "http",
+        ] {
             assert!(!answer.contains(junk), "'{junk}' leaked into:\n{answer}");
         }
     }
 
     #[test]
     fn definition_finder_ignores_mid_word_matches() {
-        assert_eq!(find_definition("A zigzag pattern is decorative.", "zig"), None);
+        assert_eq!(
+            find_definition("A zigzag pattern is decorative.", "zig"),
+            None
+        );
         assert_eq!(
             find_definition("Intro text. Zig is a language.", "Zig").as_deref(),
             Some("Zig is a language")

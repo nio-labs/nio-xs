@@ -3,7 +3,34 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 pub const PROVIDER: &str = "nioxs";
-pub const MODEL: &str = "nio-nano";
+pub const MODEL_NANO: &str = "nio-nano";
+pub const MODEL_HELM: &str = "nio-helm";
+pub const MODEL_NOVA: &str = "nio-nova";
+pub const MODEL_ATOM: &str = "nio-atom";
+pub const MODEL_NEON: &str = "nio-neon";
+pub const MODEL_FLOW: &str = "nio-flow";
+pub const MODEL_THINKER: &str = "nio-thinker";
+pub const MODEL_ECHO: &str = "nio-echo";
+pub const MODEL_SAGE: &str = "nio-sage";
+pub const MODEL_QUILL: &str = "nio-quill";
+pub const MODEL_SCOUT: &str = "nio-scout";
+/// Default public model: the task orchestrator.
+pub const MODEL: &str = MODEL_FLOW;
+/// Deprecated request alias; kept for existing clients, but no longer advertised.
+pub const MODEL_AUTO: &str = "nio-auto";
+pub const MODELS: &[&str] = &[
+    MODEL,
+    MODEL_NANO,
+    MODEL_ECHO,
+    MODEL_SAGE,
+    MODEL_QUILL,
+    MODEL_SCOUT,
+    MODEL_THINKER,
+    MODEL_NOVA,
+    MODEL_ATOM,
+    MODEL_NEON,
+    MODEL_HELM,
+];
 pub const SCHEMA_VERSION: u32 = 1;
 pub const MAX_REQUEST_BYTES: usize = 512 * 1024;
 pub const MAX_RESULT_BYTES: usize = 32 * 1024;
@@ -58,8 +85,8 @@ pub struct ChatRequest {
 
 impl ChatRequest {
     pub fn validate(&self) -> Result<usize, String> {
-        if self.model != MODEL {
-            return Err("unsupported model; select nio-nano".into());
+        if !MODELS.contains(&self.model.as_str()) && self.model != MODEL_AUTO {
+            return Err(format!("unsupported model; select {}", MODELS.join(", ")));
         }
         if self.messages.is_empty() || self.messages.len() > 200 {
             return Err("messages must contain 1..200 entries".into());
@@ -283,6 +310,21 @@ pub struct DurableEvent {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn chat_accepts_profiles_and_rejects_unknown_models() {
+        for model in MODELS {
+            let request: ChatRequest = serde_json::from_value(
+                json!({"model":model,"messages":[{"role":"user","content":"hello"}]}),
+            )
+            .unwrap();
+            assert_eq!(request.validate().unwrap(), 0);
+        }
+        let request: ChatRequest = serde_json::from_value(
+            json!({"model":"unknown","messages":[{"role":"user","content":"hello"}]}),
+        )
+        .unwrap();
+        assert!(request.validate().is_err());
+    }
 
     fn request(proposals: Vec<Proposal>) -> DecideRequest {
         DecideRequest {

@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="NioXS is an OpenAI-compatible AI gateway with NioFlow orchestration, caller-owned tools, and NioNano MicroLM workflows.">
+  <meta name="theme-color" content="#f6f8fa">
+  <title>NioXS Docs — AXIS: AI + XS</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="mobile-header">
+    <button class="hamburger-btn" id="menuToggle" type="button" aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <a href="#overview" class="brand-title">
+      <img class="brand-logo" src="logo.svg" alt="">
+      <span class="brand-name">NioXS</span>
+      <span class="badge">v0.4.0</span>
+    </a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <a href="#overview" class="sidebar-brand">
+          <img class="brand-logo" src="logo.svg" alt="">
+          <span>
+            <span class="brand-name">NioXS</span>
+            <span class="brand-sub">AI Gateway &amp; Companion</span>
+          </span>
+        </a>
+      </div>
+      <nav class="sidebar-nav" aria-label="Documentation">
+        <div class="nav-section">
+          <div class="nav-section-title">Start here</div>
+          <a href="#overview" class="nav-link active">1. Overview</a>
+          <a href="#quickstart" class="nav-link">2. Quickstart</a>
+          <a href="#profiles" class="nav-link">3. Model family</a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">How Nio works</div>
+          <a href="#flow" class="nav-link">4. NioFlow routing</a>
+          <a href="#directives" class="nav-link">5. Directives</a>
+          <a href="#permissions" class="nav-link">6. Tools &amp; permissions</a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Project</div>
+          <a href="#axis" class="nav-link">7. AXIS priorities</a>
+          <a href="#faq" class="nav-link">8. FAQ</a>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <a href="https://github.com/nio-labs/nio-xs" target="_blank" rel="noreferrer" class="github-link">
+          <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+          <span>GitHub: nio-labs/nio-xs</span>
+        </a>
+      </div>
+    </aside>
+
+    <main class="content-wrapper">
+      <div class="content-container">
+        <section id="overview" class="doc-section">
+          <div class="hero-header">
+            <div class="hero-badges">
+              <span class="badge badge-accent">Release v0.4.0</span>
+              <span class="badge">AXIS = AI + XS</span>
+              <span class="badge">Rust orchestration</span>
+              <span class="badge">OpenAI-compatible API</span>
+            </div>
+            <h1 class="hero-title">A capable AI workflow, shaped around your tools.</h1>
+            <p class="hero-desc">NioXS is the gateway and orchestration layer for Nio. NioFlow plans and hands work to focused model roles, NioNano supplies bounded local workflows, and Rust keeps routing, tool contracts, and task state under control.</p>
+            <div class="capsule-actions">
+              <a class="capsule-button" href="#quickstart">Get started →</a>
+              <a class="capsule-button capsule-button-secondary" href="https://github.com/nio-labs/nio-xs" target="_blank" rel="noreferrer">View source</a>
+            </div>
+          </div>
+
+          <h2>1. AXIS: AI + XS</h2>
+          <p><strong>AXIS</strong> joins language-model reasoning with Rust-controlled routing and execution. Model names describe NioXS workflow roles; they are not claims of separately trained weights.</p>
+          <div class="architecture-diagram"><pre><code>┌───────────────────────────────────────────────────────────────────┐
+│                         Nio / Coding Agent                        │
+│            Chat · tools · approval · project boundary             │
+└──────────────────────────────┬────────────────────────────────────┘
+                               │ OpenAI-compatible API
+                               ▼
+┌───────────────────────────────────────────────────────────────────┐
+│                       NioXS · Rust / AXIS                         │
+│                                                                   │
+│  NioFlow ── plan ──► Nano evidence ──► useful specialist stages   │
+│     │                                    │                        │
+│     └── Kilo: North Mini Code ──► StepFun when warranted          │
+│                    └────────────► Auto Free on availability       │
+│                                                                   │
+│  Typed tool relay · bounded handoffs · progress · final decision  │
+└───────────────────────────────────────────────────────────────────┘</code></pre></div>
+          <div class="callout callout-info"><strong>One clear boundary:</strong> the caller owns tools and permissions. NioXS can request an advertised action; the caller decides whether and how to execute it.</div>
+        </section>
+
+        <section id="quickstart" class="doc-section">
+          <h2>2. Quickstart</h2>
+          <h3>Install</h3>
+          <p>On Linux, macOS, or Termux:</p>
+          <pre><code class="language-bash">curl -fsSL https://raw.githubusercontent.com/nio-labs/nio-xs/main/install.sh | bash</code></pre>
+          <p>Or run with Docker:</p>
+          <pre><code class="language-bash">docker run -d --name nioxs -p 7460:7460 ghcr.io/nio-labs/nioxs:latest</code></pre>
+          <h3>Connect your agent</h3>
+          <p>Start NioXS and point an OpenAI-compatible client at the local endpoint. Choose <code>nio-flow</code> for the orchestrated profile.</p>
+          <pre><code class="language-bash">nioxs init
+# API base URL: http://127.0.0.1:7460/v1
+# Model ID:     nio-flow</code></pre>
+          <p>For Aider:</p>
+          <pre><code class="language-bash">aider --openai-api-base http://127.0.0.1:7460/v1 \
+  --openai-api-key none --model nio-flow</code></pre>
+          <div class="callout callout-success">The NioXS API follows the OpenAI chat-completions shape at <code>/v1/chat/completions</code>. The available Nio profiles are listed by <code>/v1/models</code>.</div>
+        </section>
+
+        <section id="profiles" class="doc-section">
+          <h2>3. The Nio model family</h2>
+          <p>Each profile has a distinct job. Choose one directly from your client's model picker, or let NioFlow select useful roles for the task.</p>
+          <div class="table-container"><table>
+            <thead><tr><th>Profile</th><th>Role</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><code>nio-flow</code></td><td>Orchestrate</td><td>Plans the task, hands off to relevant roles, then reaches Helm by default.</td></tr>
+              <tr><td><code>nio-nano</code></td><td>Assist</td><td>Local MicroLM workflows for bounded intent classification, project evidence, and actions.</td></tr>
+              <tr><td><code>nio-echo</code></td><td>Answer</td><td>Direct questions and conversation.</td></tr>
+              <tr><td><code>nio-sage</code></td><td>Teach</td><td>Explanations and examples.</td></tr>
+              <tr><td><code>nio-quill</code></td><td>Write</td><td>Documentation, prose, and messages.</td></tr>
+              <tr><td><code>nio-scout</code></td><td>Research</td><td>Evidence-led investigation with sources when available.</td></tr>
+              <tr><td><code>nio-thinker</code></td><td>Reflect</td><td>Bounded Drafting → Challenging → Refining passes; Helm is opt-in.</td></tr>
+              <tr><td><code>nio-nova</code></td><td>Explore</td><td>Creative alternatives and prototypes.</td></tr>
+              <tr><td><code>nio-atom</code></td><td>Build</td><td>Proposes patches and checks through caller-advertised tools.</td></tr>
+              <tr><td><code>nio-neon</code></td><td>Review</td><td>Reviews actual project evidence, edits, and check results.</td></tr>
+              <tr><td><code>nio-helm</code></td><td>Decide</td><td>Final evidence-linked Go, Conditional Go, or No-Go.</td></tr>
+            </tbody>
+          </table></div>
+          <p>Profiles share configured upstream models and Rust workflows. They are not separate hosted model weights.</p>
+        </section>
+
+        <section id="flow" class="doc-section">
+          <h2>4. How NioFlow routes work</h2>
+          <ol>
+            <li><strong>Plan:</strong> NioFlow reads the prompt and available tools, then prepares a bounded plan.</li>
+            <li><strong>Gather context when needed:</strong> Nano can request a native file listing when the answer depends on this project and the caller offers the file tool. If that optional step fails, Flow continues with available evidence and reports the limitation.</li>
+            <li><strong>Hand off by task:</strong> Flow invokes useful answer, teaching, writing, research, reflection, exploration, implementation, or review roles. Status lines show the selected role and upstream model changes.</li>
+            <li><strong>Decide last:</strong> Helm provides the final Go / No-Go by default. Use <code>--no-helm</code> to skip Helm for one Flow task. Direct selection of other profiles does not add a Helm stage.</li>
+          </ol>
+          <h3>Upstream model path</h3>
+          <p>NioFlow starts with Kilo North Mini Code. If it is unavailable, Flow falls back to Kilo Auto Free. When the task has multiple concrete signs of complexity, Flow checks the live Kilo <code>/models</code> catalog and may switch to a free StepFun model that advertises tool support. If StepFun is unavailable, Flow falls back to Auto Free. Explicit model settings are respected.</p>
+          <pre><code>🌊 NioFlow · Planning
+↪ NioAtom · Building
+↪ Upstream: cohere/north-mini-code:free → stepfun/&lt;catalog model&gt; (high task complexity)
+⚖ NioHelm · Go / No-Go</code></pre>
+          <p>General questions, explanations, and feasibility requests do not trigger workspace scans. The caller persona remains active across plans, handoffs, and final answers.</p>
+        </section>
+
+        <section id="directives" class="doc-section">
+          <h2>5. Directives</h2>
+          <div class="table-container"><table>
+            <thead><tr><th>Directive</th><th>Effect</th></tr></thead>
+            <tbody>
+              <tr><td><code>--no-helm &lt;task&gt;</code></td><td>Skip Flow's final Helm decision for this task.</td></tr>
+              <tr><td><code>--with-helm &lt;task&gt;</code></td><td>Opt in to Helm after directly selected NioThinker.</td></tr>
+              <tr><td><code>--code &lt;request&gt;</code></td><td>Send a coding request upstream with caller tools when provided.</td></tr>
+              <tr><td><code>--code guard &lt;request&gt;</code></td><td>Enable the code guard for a coding request.</td></tr>
+              <tr><td><code>--find-files &lt;glob&gt;</code></td><td>Ask Nano for a bounded project file listing, including when code mode is enabled.</td></tr>
+              <tr><td><code>--bash &lt;command&gt;</code></td><td>Use the caller's configured terminal tool and approval flow.</td></tr>
+              <tr><td><code>--test &lt;pattern&gt;</code></td><td>Run a matching supported project test workflow.</td></tr>
+              <tr><td><code>--git</code>, <code>--git:status</code>, <code>--git:diff</code></td><td>Summarize the caller project's Git state.</td></tr>
+              <tr><td><code>--config &lt;key&gt; &lt;on|off&gt;</code></td><td>Set supported session options such as <code>code</code> or <code>guard</code>.</td></tr>
+            </tbody>
+          </table></div>
+          <p>See the <a href="https://github.com/nio-labs/nio-xs/blob/main/README.md#-in-tui-companion-directives" target="_blank" rel="noreferrer">complete directive reference</a> for current behavior and examples.</p>
+        </section>
+
+        <section id="permissions" class="doc-section">
+          <h2>6. Tools, privacy &amp; permissions</h2>
+          <ul>
+            <li>NioXS only relays tools advertised by the caller. The calling agent remains responsible for project access, approvals, and execution.</li>
+            <li>Model output, repository files, tool results, and fetched web content are treated as untrusted input.</li>
+            <li>Flow bounds its stages and tool rounds, carries results across handoffs, and avoids replaying completed actions.</li>
+            <li>StepFun escalation is conditional on task evidence and the live model catalog; it does not override an explicit upstream model choice.</li>
+            <li>Kilo free models may be served by trial providers under their own terms. Review Kilo's <a href="https://kilo.ai/docs/getting-started/using-kilo-for-free" target="_blank" rel="noreferrer">free-model guidance</a> before sending sensitive data.</li>
+          </ul>
+          <div class="callout callout-info">Helm's Go is a readiness assessment against the evidence and criteria. It does not grant tool permission or replace the caller's approval.</div>
+        </section>
+
+        <section id="axis" class="doc-section">
+          <h2>7. AXIS advancement priorities</h2>
+          <p>We are improving the whole system in five measurable areas:</p>
+          <ol>
+            <li><strong>Reliable tools:</strong> reuse results and handle tool limits cleanly.</li>
+            <li><strong>Real coding:</strong> let Atom apply patches, run checks, and repair failures.</li>
+            <li><strong>Better context:</strong> use Rust to find relevant files, symbols, and errors.</li>
+            <li><strong>Smarter decisions:</strong> let Helm choose workflows and models from task evidence.</li>
+            <li><strong>Measure improvement:</strong> compare AXIS against the same model without AXIS on real tasks.</li>
+          </ol>
+          <p>Read the <a href="https://github.com/nio-labs/nio-xs/blob/main/docs/PLAN.md" target="_blank" rel="noreferrer">AXIS plan</a> for architecture, acceptance criteria, and evaluation status.</p>
+          <div class="capsule-benefits">
+            <article><h2>Local control</h2><p>Rust owns orchestration, typed actions, and bounded workflows.</p></article>
+            <article><h2>Useful roles</h2><p>Specialists focus on a task and pass evidence forward.</p></article>
+            <article><h2>Evidence first</h2><p>Decisions depend on supplied files, tool outcomes, and stated criteria.</p></article>
+          </div>
+        </section>
+
+        <section id="faq" class="doc-section">
+          <h2>8. FAQ</h2>
+          <div class="faq-item"><h3>Are NioFlow, NioAtom, and the other profiles separate models?</h3><p>They are role profiles and Rust-controlled workflows that share the configured upstream model. NioNano has a local MicroLM component.</p></div>
+          <div class="faq-item"><h3>Will a general question read my project files?</h3><p>No. NioFlow routes general questions directly and only asks for project evidence when the task depends on the current project.</p></div>
+          <div class="faq-item"><h3>Does NioHelm approve changes?</h3><p>Helm reports Go, Conditional Go, or No-Go from evidence. The calling agent still enforces its approval policy before a tool runs.</p></div>
+          <div class="faq-item"><h3>Can I use NioThinker without Helm?</h3><p>Yes. Direct Thinker runs its bounded three phases without Helm by default. Add <code>--with-helm</code> when you want a final decision.</p></div>
+          <div class="faq-item"><h3>Where can I find the API and setup details?</h3><p>See the <a href="https://github.com/nio-labs/nio-xs/blob/main/README.md" target="_blank" rel="noreferrer">README</a>, <a href="https://github.com/nio-labs/nio-xs/blob/main/docs/DEVELOPMENT.md" target="_blank" rel="noreferrer">development guide</a>, and <a href="https://github.com/nio-labs/nio-xs/blob/main/contracts/README.md" target="_blank" rel="noreferrer">API contracts</a>.</p></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

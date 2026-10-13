@@ -3,6 +3,28 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.4.0
+
+Release theme: **orchestrated model roles with bounded, evidence-led handoffs.**
+
+### Added
+- NioFlow as the default profile, with bounded planning and model-specialist handoffs.
+- NioEcho, NioSage, NioQuill, NioScout, NioThinker, NioNova, NioAtom,
+  NioNeon, and NioHelm workflow profiles alongside NioNano.
+- Optional high-complexity routing from Kilo North Mini Code to a free,
+  tool-capable StepFun model discovered from Kilo's live `/models` catalog.
+- Auto Free availability fallback and visible upstream-switch progress.
+- Role skills, caller-persona preservation, bounded Thinker reflection, and
+  Flow's `--no-helm` directive.
+- Responsive GitHub Pages documentation using the NioJS documentation layout.
+
+### Fixed
+- General questions and feasibility prompts no longer trigger project scans.
+- NioNano's explicit `--find-files` directive works with code mode enabled;
+  Flow continues with a clear limitation when optional evidence gathering fails.
+- Specialist prompts retain the caller persona and keep Helm's decision role
+  out of other profiles' answers.
+
 ## v0.3.3
 
 Release theme: **a tested protocol surface and an honest benchmark.** No
