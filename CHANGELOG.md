@@ -3,6 +3,30 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.3.3
+
+Release theme: **a tested protocol surface and an honest benchmark.** No
+runtime behavior changes; this release hardens what v0.3.x already shipped.
+
+### Added
+- Acceptance coverage for the MCP stdio server in `crates/provider/src/mcp.rs`:
+  the `initialize` handshake (protocol version, `tools` capability, non-empty
+  server version), silent `notifications/initialized`, `tools/list` (including
+  every `plugin_*` tool), `prompts/list`, a real `tools/call`, and the two error
+  paths (unknown method `-32601`, malformed JSON `-32700`).
+
+### Fixed
+- `evaluate` was not hermetic: it read the ambient `.nioxs/config.json`, so a
+  local `code: true` routed every corpus prompt to Coding and reported
+  `acceptance_passed: false` with `f1 0.0`. It now runs the corpus under the
+  default config, so the benchmark measures the model rather than the machine.
+
+### Changed
+- `docs/ROADMAP.md` gained an authoritative release & phase map; `docs/NEXT.md`
+  and `docs/TODO_V0.1.0.md` describe the same state in its terms. Two stale
+  claims were corrected: the upstream consultation is live on `--code` (only the
+  `--coding:` spelling is retired), and edit paths are `safe_path`-gated.
+
 ## v0.3.2
 
 Release theme: **Termux binaries.**
