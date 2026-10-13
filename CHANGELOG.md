@@ -3,6 +3,11 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.4.1
+
+### Fixed
+- Docker builds now copy the model skill files required by the compile-time profile prompts.
+
 ## v0.4.0
 
 Release theme: **orchestrated model roles with bounded, evidence-led handoffs.**

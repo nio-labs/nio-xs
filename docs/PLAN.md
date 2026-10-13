@@ -4,7 +4,7 @@
 
 This is the single planning document for product direction, architecture, release phases, and open work. The user-facing directives remain in [README.md](../README.md); the API and storage contracts remain in [contracts/README.md](../contracts/README.md) and [contracts/storage.md](../contracts/storage.md); setup steps remain in [DEVELOPMENT.md](DEVELOPMENT.md); evaluation results remain in [Phase 1](../evaluation/PHASE1_EVIDENCE.md) and [Phase 2](../evaluation/PHASE2_EVIDENCE.md); release history remains in [CHANGELOG.md](../CHANGELOG.md).
 
-**Current workspace version: v0.4.0** (from the workspace manifest). Change version and capability claims only when their acceptance evidence exists.
+**Current workspace version: v0.4.1** (from the workspace manifest). Change version and capability claims only when their acceptance evidence exists.
 
 ## Contents
 
