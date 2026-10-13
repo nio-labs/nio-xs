@@ -21,6 +21,7 @@ COPY Cargo.toml Cargo.lock dependency-pins.json rust-toolchain.toml ./
 COPY crates ./crates
 COPY contracts ./contracts
 COPY models ./models
+COPY .agents/skills ./.agents/skills
 
 # Compile release binary
 RUN cargo build --release --bin nioxs
