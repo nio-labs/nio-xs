@@ -2,6 +2,13 @@ use nioxs_nano::{Model, parse};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Evaluation must be hermetic: a local `.nioxs/config.json` (which can set
+    // `code: true` and force every prompt to Coding) must not skew the metrics,
+    // so run the whole corpus with the default config.
+    nioxs_nano::companion::with_test_config(nioxs_nano::companion::XsConfig::default(), run)
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let file = std::env::args().nth(1).ok_or("provide a JSONL corpus")?;
     let model = Model::embedded()?;
     let mut raw = BTreeMap::<(String, String), usize>::new();
