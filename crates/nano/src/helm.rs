@@ -21,6 +21,7 @@
 //! This module is advisory: it recommends a route and makes no network or model
 //! calls of its own.
 
+pub use nioxs_contracts::{HelmGateVerdict, HelmVerdictContract};
 use nioxs_contracts::{
     DecideRequest, Decision, DecisionOutcome, DecisionPolicy, MODEL_CODE,
     MODEL_MAX, MODEL_MINI, MODEL_NANO, RankedCandidate, SCHEMA_VERSION,

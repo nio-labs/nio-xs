@@ -60,7 +60,15 @@ fn which(bin: &str) -> Option<PathBuf> {
 
 /// Resolves existing token from disk or returns None
 pub fn resolve_token(dir: &Path) -> Option<String> {
-    // 1. Direct environment variable
+    // 0. Direct environment variable
+    if let Ok(direct) = std::env::var("NIOXS_DB_TOKEN") {
+        let trimmed = direct.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    // 1. Token file environment variable
     if let Ok(explicit) = std::env::var("NIOXS_DB_TOKEN_FILE") {
         if let Ok(content) = std::fs::read_to_string(explicit) {
             let trimmed = content.trim();
@@ -148,9 +156,15 @@ pub async fn ensure_niodb(
     let health_url = format!("{}/health", url.trim_end_matches('/'));
     let already_running = client.get(&health_url).send().await.is_ok();
 
-    if already_running {
-        // Resolve token from token_file or default paths
-        let token = if let Some(tf) = token_file {
+    if already_running || requested_url.is_some() {
+        // Resolve token from NIOXS_DB_TOKEN, token_file or default paths
+        let token = if let Ok(direct) = std::env::var("NIOXS_DB_TOKEN") {
+            let trimmed = direct.trim().to_string();
+            if trimmed.is_empty() {
+                return Err("NIOXS_DB_TOKEN cannot be empty".to_string());
+            }
+            trimmed
+        } else if let Some(tf) = token_file {
             std::fs::read_to_string(tf)
                 .map_err(|e| format!("failed reading token file {tf}: {e}"))?
                 .trim()
@@ -161,8 +175,7 @@ pub async fn ensure_niodb(
                 .unwrap_or_else(|_| ".".into());
             let default_dir = Path::new(&home).join(".nioxs/data");
             resolve_token(&default_dir).ok_or_else(|| {
-                "NioDB is running on 7432, but no token was provided (set NIOXS_DB_TOKEN_FILE)"
-                    .to_string()
+                format!("NioDB is configured at {url}, but no token was provided (set NIOXS_DB_TOKEN or NIOXS_DB_TOKEN_FILE)")
             })?
         };
         return Ok((url, token, None));

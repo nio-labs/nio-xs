@@ -306,6 +306,662 @@ pub struct DurableEvent {
     pub expires_at_unix: u64,
 }
 
+// --- Helm Verdict Contract ------------------------------------------------
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HelmGateVerdict {
+    Go,
+    ConditionalGo,
+    NoGo,
+    NeedsInput,
+}
+
+impl HelmGateVerdict {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Go => "go",
+            Self::ConditionalGo => "conditional_go",
+            Self::NoGo => "no_go",
+            Self::NeedsInput => "needs_input",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct HelmVerdictContract {
+    pub verdict: HelmGateVerdict,
+    pub summary: String,
+    #[serde(default)]
+    pub decisive_evidence: Vec<String>,
+    #[serde(default)]
+    pub unmet_criteria: Vec<String>,
+    #[serde(default)]
+    pub residual_risks: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reversibility: Option<String>,
+}
+
+impl HelmVerdictContract {
+    pub fn parse_from_text(text: &str) -> Option<Self> {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        // 1. Try to find and parse embedded JSON block or raw JSON object
+        if let Some(parsed) = Self::try_parse_json(trimmed) {
+            return Some(parsed);
+        }
+
+        // 2. Fall back to structured natural language / markdown extraction
+        Self::try_parse_markdown(trimmed)
+    }
+
+    fn try_parse_json(text: &str) -> Option<Self> {
+        // Look for ```json or ```json:helm block first
+        if let Some(start_block) = text.find("```json") {
+            let rest = &text[start_block..];
+            if let Some(line_end) = rest.find('\n') {
+                let code_content = &rest[line_end + 1..];
+                if let Some(end_block) = code_content.find("```") {
+                    let json_candidate = code_content[..end_block].trim();
+                    if let Ok(val) = serde_json::from_str::<Value>(json_candidate) {
+                        if let Some(contract) = Self::from_json_value(&val) {
+                            return Some(contract);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Look for naked JSON object containing "verdict"
+        if let Some(start_brace) = text.find('{') {
+            if let Some(end_brace) = text.rfind('}') {
+                if end_brace > start_brace {
+                    let candidate = &text[start_brace..=end_brace];
+                    if let Ok(val) = serde_json::from_str::<Value>(candidate) {
+                        if let Some(contract) = Self::from_json_value(&val) {
+                            return Some(contract);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn from_json_value(val: &Value) -> Option<Self> {
+        let verdict_str = val.get("verdict")?.as_str()?;
+        let verdict = Self::parse_verdict_str(verdict_str)?;
+        let summary = val
+            .get("summary")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let decisive_evidence = extract_string_array(val.get("decisive_evidence"));
+        let unmet_criteria = extract_string_array(val.get("unmet_criteria"));
+        let residual_risks = extract_string_array(val.get("residual_risks"));
+        let reversibility = val
+            .get("reversibility")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+
+        Some(Self {
+            verdict,
+            summary,
+            decisive_evidence,
+            unmet_criteria,
+            residual_risks,
+            reversibility,
+        })
+    }
+
+    fn parse_verdict_str(s: &str) -> Option<HelmGateVerdict> {
+        let normalized = s.to_ascii_lowercase().replace(['-', '_', ' '], "");
+        match normalized.as_str() {
+            "go" => Some(HelmGateVerdict::Go),
+            "conditionalgo" => Some(HelmGateVerdict::ConditionalGo),
+            "nogo" => Some(HelmGateVerdict::NoGo),
+            "needsinput" => Some(HelmGateVerdict::NeedsInput),
+            _ => None,
+        }
+    }
+
+    fn try_parse_markdown(text: &str) -> Option<Self> {
+        let lower = text.to_ascii_lowercase();
+        let verdict = if lower.contains("conditional go")
+            || lower.contains("conditional-go")
+            || lower.contains("conditional_go")
+        {
+            HelmGateVerdict::ConditionalGo
+        } else if lower.contains("no-go") || lower.contains("no go") || lower.contains("no_go") {
+            HelmGateVerdict::NoGo
+        } else if lower.contains("needs input")
+            || lower.contains("needs-input")
+            || lower.contains("needs_input")
+        {
+            HelmGateVerdict::NeedsInput
+        } else {
+            let has_go = text.lines().any(|line| {
+                let l = line.to_ascii_lowercase();
+                l.starts_with("go:")
+                    || l.starts_with("go -")
+                    || l.starts_with("verdict: go")
+                    || l.starts_with("verdict: **go**")
+                    || l.starts_with("**verdict**: go")
+                    || l.starts_with("**verdict**: **go**")
+                    || l == "go"
+                    || l.starts_with("go ")
+            }) || (lower.contains("verdict: go") || lower.contains("**go**"));
+
+            if has_go {
+                HelmGateVerdict::Go
+            } else {
+                return None;
+            }
+        };
+
+        // Extract summary line
+        let mut summary = extract_single_field(text, &["summary"]).unwrap_or_default();
+        if summary.is_empty() {
+            for line in text.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+                let l = trimmed.to_ascii_lowercase();
+                if l.contains("go") || l.contains("verdict") || l.contains("input") {
+                    if let Some((_, after)) = trimmed.split_once(':') {
+                        let after_trimmed = after.trim().trim_matches('*').trim();
+                        // Ignore if it's just repeating the verdict keyword
+                        if !after_trimmed.is_empty()
+                            && Self::parse_verdict_str(after_trimmed).is_none()
+                        {
+                            summary = after_trimmed.to_string();
+                            break;
+                        }
+                    } else if Self::parse_verdict_str(trimmed).is_none() {
+                        summary = trimmed.to_string();
+                        break;
+                    }
+                }
+            }
+        }
+        if summary.is_empty() {
+            summary = text
+                .lines()
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or("")
+                .to_string();
+        }
+
+        let decisive_evidence = extract_markdown_section(text, &["decisive evidence", "evidence"]);
+        let unmet_criteria = extract_markdown_section(
+            text,
+            &["unmet criteria", "unmet completion criteria", "unmet"],
+        );
+        let residual_risks =
+            extract_markdown_section(text, &["residual risks", "unresolved risks", "risks"]);
+        let reversibility = extract_single_field(text, &["reversibility"]);
+
+        Some(Self {
+            verdict,
+            summary,
+            decisive_evidence,
+            unmet_criteria,
+            residual_risks,
+            reversibility,
+        })
+    }
+}
+
+fn extract_string_array(val: Option<&Value>) -> Vec<String> {
+    val.and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn extract_markdown_section(text: &str, headers: &[&str]) -> Vec<String> {
+    let mut items = Vec::new();
+    let mut collecting = false;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        let lower = trimmed.to_ascii_lowercase();
+
+        let is_header = headers.iter().any(|h| {
+            lower.starts_with(&format!("{h}:"))
+                || lower.starts_with(&format!("**{h}**"))
+                || lower.starts_with(&format!("### {h}"))
+                || lower.starts_with(&format!("## {h}"))
+        });
+
+        if is_header {
+            collecting = true;
+            if let Some((_, after)) = trimmed.split_once(':') {
+                let rest = after.trim().trim_matches('*').trim();
+                if !rest.is_empty() && rest.to_ascii_lowercase() != "none" {
+                    items.push(rest.to_string());
+                }
+            }
+            continue;
+        }
+
+        if collecting {
+            if trimmed.starts_with('#')
+                || (trimmed.starts_with("**") && trimmed.contains(':'))
+                || (trimmed.contains(':')
+                    && !trimmed.starts_with("- ")
+                    && !trimmed.starts_with("* "))
+            {
+                break;
+            }
+            if let Some(item) = trimmed
+                .strip_prefix("- ")
+                .or_else(|| trimmed.strip_prefix("* "))
+            {
+                let item = item.trim();
+                if !item.is_empty() && item.to_ascii_lowercase() != "none" {
+                    items.push(item.to_string());
+                }
+            }
+        }
+    }
+
+    items
+}
+
+fn extract_single_field(text: &str, names: &[&str]) -> Option<String> {
+    for line in text.lines() {
+        let trimmed = line.trim();
+        let lower = trimmed.to_ascii_lowercase();
+        for name in names {
+            if lower.contains(name) && trimmed.contains(':') {
+                if let Some((_, after)) = trimmed.split_once(':') {
+                    let field = after.trim().trim_matches('*').trim();
+                    if !field.is_empty() {
+                        return Some(field.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+// --- Atom Implementation Contract ----------------------------------------
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AtomPatchStatus {
+    AppliedCleanly,
+    PartiallyApplied,
+    PatchOnly,
+    Blocked,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct AtomCheckResult {
+    pub command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    pub passed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_summary: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct AtomContract {
+    pub summary: String,
+    pub patch_status: AtomPatchStatus,
+    #[serde(default)]
+    pub modified_files: Vec<String>,
+    #[serde(default)]
+    pub checks_executed: Vec<AtomCheckResult>,
+    #[serde(default)]
+    pub unverified_items: Vec<String>,
+}
+
+impl AtomContract {
+    pub fn parse_from_text(text: &str) -> Option<Self> {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        if let Some(parsed) = Self::try_parse_json(trimmed) {
+            return Some(parsed);
+        }
+
+        Self::try_parse_markdown(trimmed)
+    }
+
+    fn try_parse_json(text: &str) -> Option<Self> {
+        if let Some(start_block) = text.find("```json") {
+            let rest = &text[start_block..];
+            if let Some(line_end) = rest.find('\n') {
+                let code_content = &rest[line_end + 1..];
+                if let Some(end_block) = code_content.find("```") {
+                    let json_candidate = code_content[..end_block].trim();
+                    if let Ok(val) = serde_json::from_str::<Value>(json_candidate) {
+                        if let Some(contract) = Self::from_json_value(&val) {
+                            return Some(contract);
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(start_brace) = text.find('{') {
+            if let Some(end_brace) = text.rfind('}') {
+                if end_brace > start_brace {
+                    let candidate = &text[start_brace..=end_brace];
+                    if let Ok(val) = serde_json::from_str::<Value>(candidate) {
+                        if let Some(contract) = Self::from_json_value(&val) {
+                            return Some(contract);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn from_json_value(val: &Value) -> Option<Self> {
+        let patch_status = val
+            .get("patch_status")
+            .and_then(|v| v.as_str())
+            .and_then(|s| match s.to_ascii_lowercase().replace(['-', ' '], "_").as_str() {
+                "applied_cleanly" | "clean" | "applied" => Some(AtomPatchStatus::AppliedCleanly),
+                "partially_applied" | "partial" => Some(AtomPatchStatus::PartiallyApplied),
+                "patch_only" | "proposed" => Some(AtomPatchStatus::PatchOnly),
+                "blocked" | "failed" => Some(AtomPatchStatus::Blocked),
+                _ => None,
+            })
+            .unwrap_or(AtomPatchStatus::AppliedCleanly);
+
+        let summary = val
+            .get("summary")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let modified_files = extract_string_array(val.get("modified_files"));
+        let unverified_items = extract_string_array(val.get("unverified_items"));
+
+        let mut checks_executed = Vec::new();
+        if let Some(checks) = val.get("checks_executed").and_then(|v| v.as_array()) {
+            for check in checks {
+                let command = check
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if command.is_empty() {
+                    continue;
+                }
+                let exit_code = check.get("exit_code").and_then(|v| v.as_i64()).map(|c| c as i32);
+                let passed = check
+                    .get("passed")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(exit_code == Some(0));
+                let output_summary = check
+                    .get("output_summary")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                checks_executed.push(AtomCheckResult {
+                    command,
+                    exit_code,
+                    passed,
+                    output_summary,
+                });
+            }
+        }
+
+        Some(Self {
+            summary,
+            patch_status,
+            modified_files,
+            checks_executed,
+            unverified_items,
+        })
+    }
+
+    fn try_parse_markdown(text: &str) -> Option<Self> {
+        let lower = text.to_ascii_lowercase();
+        let patch_status = if lower.contains("partially applied") {
+            AtomPatchStatus::PartiallyApplied
+        } else if lower.contains("blocked") || lower.contains("could not apply") {
+            AtomPatchStatus::Blocked
+        } else if lower.contains("patch only")
+            || lower.contains("no edit tools")
+            || lower.contains("draft only")
+        {
+            AtomPatchStatus::PatchOnly
+        } else {
+            AtomPatchStatus::AppliedCleanly
+        };
+
+        let summary = extract_single_field(text, &["summary"]).unwrap_or_else(|| {
+            text.lines()
+                .find(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        });
+
+        let modified_files = extract_markdown_section(
+            text,
+            &["modified files", "changed files", "files modified"],
+        );
+        let unverified_items = extract_markdown_section(
+            text,
+            &["unverified items", "unverified", "unverified requirements"],
+        );
+
+        Some(Self {
+            summary,
+            patch_status,
+            modified_files,
+            checks_executed: Vec::new(),
+            unverified_items,
+        })
+    }
+}
+
+// --- Neon Review Contract ------------------------------------------------
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NeonReviewVerdict {
+    Approve,
+    RequestChanges,
+    Comment,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NeonSeverity {
+    Critical,
+    High,
+    Medium,
+    Low,
+    Info,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct NeonFinding {
+    pub severity: NeonSeverity,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct NeonReviewContract {
+    pub verdict: NeonReviewVerdict,
+    pub summary: String,
+    #[serde(default)]
+    pub findings: Vec<NeonFinding>,
+    pub verification_passed: bool,
+}
+
+impl NeonReviewContract {
+    pub fn parse_from_text(text: &str) -> Option<Self> {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        if let Some(parsed) = Self::try_parse_json(trimmed) {
+            return Some(parsed);
+        }
+
+        Self::try_parse_markdown(trimmed)
+    }
+
+    fn try_parse_json(text: &str) -> Option<Self> {
+        if let Some(start_block) = text.find("```json") {
+            let rest = &text[start_block..];
+            if let Some(line_end) = rest.find('\n') {
+                let code_content = &rest[line_end + 1..];
+                if let Some(end_block) = code_content.find("```") {
+                    let json_candidate = code_content[..end_block].trim();
+                    if let Ok(val) = serde_json::from_str::<Value>(json_candidate) {
+                        if let Some(contract) = Self::from_json_value(&val) {
+                            return Some(contract);
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(start_brace) = text.find('{') {
+            if let Some(end_brace) = text.rfind('}') {
+                if end_brace > start_brace {
+                    let candidate = &text[start_brace..=end_brace];
+                    if let Ok(val) = serde_json::from_str::<Value>(candidate) {
+                        if let Some(contract) = Self::from_json_value(&val) {
+                            return Some(contract);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn from_json_value(val: &Value) -> Option<Self> {
+        let verdict_str = val.get("verdict")?.as_str()?;
+        let verdict = match verdict_str.to_ascii_lowercase().replace(['-', ' '], "_").as_str() {
+            "approve" | "approved" => NeonReviewVerdict::Approve,
+            "request_changes" | "changes_requested" => NeonReviewVerdict::RequestChanges,
+            "comment" | "neutral" => NeonReviewVerdict::Comment,
+            _ => return None,
+        };
+
+        let summary = val
+            .get("summary")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let verification_passed = val
+            .get("verification_passed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(verdict == NeonReviewVerdict::Approve);
+
+        let mut findings = Vec::new();
+        if let Some(arr) = val.get("findings").and_then(|v| v.as_array()) {
+            for item in arr {
+                let severity = item
+                    .get("severity")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| match s.to_ascii_lowercase().as_str() {
+                        "critical" => Some(NeonSeverity::Critical),
+                        "high" => Some(NeonSeverity::High),
+                        "medium" => Some(NeonSeverity::Medium),
+                        "low" => Some(NeonSeverity::Low),
+                        _ => Some(NeonSeverity::Info),
+                    })
+                    .unwrap_or(NeonSeverity::Medium);
+
+                let file = item.get("file").and_then(|v| v.as_str()).map(str::to_string);
+                let line = item.get("line").and_then(|v| v.as_u64()).map(|l| l as usize);
+                let rule = item.get("rule").and_then(|v| v.as_str()).map(str::to_string);
+                let description = item
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                findings.push(NeonFinding {
+                    severity,
+                    file,
+                    line,
+                    rule,
+                    description,
+                });
+            }
+        }
+
+        Some(Self {
+            verdict,
+            summary,
+            findings,
+            verification_passed,
+        })
+    }
+
+    fn try_parse_markdown(text: &str) -> Option<Self> {
+        let lower = text.to_ascii_lowercase();
+        let verdict = if lower.contains("request changes")
+            || lower.contains("changes requested")
+            || lower.contains("defects found")
+            || lower.contains("issues identified")
+        {
+            NeonReviewVerdict::RequestChanges
+        } else if lower.contains("approve")
+            || lower.contains("approved")
+            || lower.contains("no issues found")
+            || lower.contains("looks good")
+        {
+            NeonReviewVerdict::Approve
+        } else {
+            NeonReviewVerdict::Comment
+        };
+
+        let summary = extract_single_field(text, &["summary"]).unwrap_or_else(|| {
+            text.lines()
+                .find(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        });
+
+        let verification_passed = verdict == NeonReviewVerdict::Approve;
+
+        Some(Self {
+            verdict,
+            summary,
+            findings: Vec::new(),
+            verification_passed,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,5 +1039,152 @@ mod tests {
     fn unknown_request_fields_are_rejected_by_serde() {
         let value = json!({"schema_version": 1, "prompt": "read README.md", "extra": true});
         assert!(serde_json::from_value::<DecideRequest>(value).is_err());
+    }
+
+    #[test]
+    fn helm_verdict_contract_parses_json_block() {
+        let text = r#"
+Here is my final synthesis.
+```json:helm
+{
+  "verdict": "conditional_go",
+  "summary": "Proposal ready; implementation unverified",
+  "decisive_evidence": ["cargo test passed"],
+  "unmet_criteria": ["unrun browser checks"],
+  "residual_risks": ["minor UI regression"],
+  "reversibility": "high"
+}
+```
+"#;
+        let contract = HelmVerdictContract::parse_from_text(text).expect("should parse JSON block");
+        assert_eq!(contract.verdict, HelmGateVerdict::ConditionalGo);
+        assert_eq!(
+            contract.summary,
+            "Proposal ready; implementation unverified"
+        );
+        assert_eq!(contract.decisive_evidence, vec!["cargo test passed"]);
+        assert_eq!(contract.unmet_criteria, vec!["unrun browser checks"]);
+        assert_eq!(contract.residual_risks, vec!["minor UI regression"]);
+        assert_eq!(contract.reversibility.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn helm_verdict_contract_parses_prose_and_sections() {
+        let text = "Conditional Go: proposal is ready; implementation is unverified";
+        let contract = HelmVerdictContract::parse_from_text(text).expect("should parse prose");
+        assert_eq!(contract.verdict, HelmGateVerdict::ConditionalGo);
+        assert_eq!(
+            contract.summary,
+            "proposal is ready; implementation is unverified"
+        );
+
+        let markdown = r#"
+### Final Decision
+**Verdict**: No-Go
+**Summary**: Required tests failed
+**Decisive Evidence**:
+- cargo test exited with code 101
+**Unmet Criteria**:
+- all tests must pass
+**Residual Risks**:
+- service crash on startup
+**Reversibility**: low
+"#;
+        let contract_md =
+            HelmVerdictContract::parse_from_text(markdown).expect("should parse markdown");
+        assert_eq!(contract_md.verdict, HelmGateVerdict::NoGo);
+        assert_eq!(contract_md.summary, "Required tests failed");
+        assert_eq!(
+            contract_md.decisive_evidence,
+            vec!["cargo test exited with code 101"]
+        );
+        assert_eq!(contract_md.unmet_criteria, vec!["all tests must pass"]);
+        assert_eq!(contract_md.residual_risks, vec!["service crash on startup"]);
+        assert_eq!(contract_md.reversibility.as_deref(), Some("low"));
+    }
+
+    #[test]
+    fn atom_contract_parses_json_and_markdown() {
+        let json_text = r#"
+Patch applied successfully.
+```json:atom
+{
+  "summary": "Implemented JWT auth middleware",
+  "patch_status": "applied_cleanly",
+  "modified_files": ["src/auth.rs", "src/middleware.rs"],
+  "checks_executed": [
+    {
+      "command": "cargo test test_auth",
+      "exit_code": 0,
+      "passed": true,
+      "output_summary": "1 passed, 0 failed"
+    }
+  ],
+  "unverified_items": ["E2E session expiry"]
+}
+```
+"#;
+        let atom = AtomContract::parse_from_text(json_text).expect("should parse atom json");
+        assert_eq!(atom.summary, "Implemented JWT auth middleware");
+        assert_eq!(atom.patch_status, AtomPatchStatus::AppliedCleanly);
+        assert_eq!(atom.modified_files, vec!["src/auth.rs", "src/middleware.rs"]);
+        assert_eq!(atom.checks_executed.len(), 1);
+        assert_eq!(atom.checks_executed[0].command, "cargo test test_auth");
+        assert!(atom.checks_executed[0].passed);
+        assert_eq!(atom.unverified_items, vec!["E2E session expiry"]);
+
+        let md_text = r#"
+### Implementation Report
+**Summary**: Created scaffold for redis client
+**Modified Files**:
+- src/redis.rs
+**Unverified Items**:
+- connection pooling under load
+"#;
+        let atom_md = AtomContract::parse_from_text(md_text).expect("should parse atom md");
+        assert_eq!(atom_md.summary, "Created scaffold for redis client");
+        assert_eq!(atom_md.patch_status, AtomPatchStatus::AppliedCleanly);
+        assert_eq!(atom_md.modified_files, vec!["src/redis.rs"]);
+        assert_eq!(atom_md.unverified_items, vec!["connection pooling under load"]);
+    }
+
+    #[test]
+    fn neon_review_contract_parses_json_and_markdown() {
+        let json_text = r#"
+Review completed.
+```json:neon
+{
+  "verdict": "request_changes",
+  "summary": "Missing error handling on socket close",
+  "verification_passed": false,
+  "findings": [
+    {
+      "severity": "high",
+      "file": "src/net.rs",
+      "line": 42,
+      "rule": "unhandled_result",
+      "description": "socket.close() can fail silently leaving uncollected descriptors"
+    }
+  ]
+}
+```
+"#;
+        let neon = NeonReviewContract::parse_from_text(json_text).expect("should parse neon json");
+        assert_eq!(neon.verdict, NeonReviewVerdict::RequestChanges);
+        assert_eq!(neon.summary, "Missing error handling on socket close");
+        assert!(!neon.verification_passed);
+        assert_eq!(neon.findings.len(), 1);
+        assert_eq!(neon.findings[0].severity, NeonSeverity::High);
+        assert_eq!(neon.findings[0].file.as_deref(), Some("src/net.rs"));
+        assert_eq!(neon.findings[0].line, Some(42));
+
+        let md_text = r#"
+### Review Assessment
+**Verdict**: Approve
+**Summary**: All changes are safe and correctly typed.
+"#;
+        let neon_md = NeonReviewContract::parse_from_text(md_text).expect("should parse neon md");
+        assert_eq!(neon_md.verdict, NeonReviewVerdict::Approve);
+        assert!(neon_md.verification_passed);
     }
 }

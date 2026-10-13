@@ -635,14 +635,14 @@ dependencies = [
 
 [[package]]
 name = "nioxs-artifacts"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "nioxs-browser"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "futures-util",
  "reqwest",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "nioxs-contracts"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -662,7 +662,7 @@ dependencies = [
 
 [[package]]
 name = "nioxs-nano"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "nioxs-browser",
  "nioxs-contracts",
@@ -678,10 +678,11 @@ dependencies = [
 
 [[package]]
 name = "nioxs-provider"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "axum",
  "futures-util",
+ "nioxs-browser",
  "nioxs-contracts",
  "nioxs-nano",
  "nioxs-storage",
@@ -694,7 +695,7 @@ dependencies = [
 
 [[package]]
 name = "nioxs-storage"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "futures-util",
  "nioxs-contracts",

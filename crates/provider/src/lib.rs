@@ -19,6 +19,9 @@ mod flow;
 pub mod journal;
 pub mod mcp;
 pub mod niodb_supervisor;
+mod research;
+#[cfg(test)]
+mod testdb;
 use nioxs_storage::NioDb;
 use serde_json::{Value, json};
 use std::{
@@ -96,7 +99,12 @@ async fn ready(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         );
     }
     match app.db.ready().await {
-        Ok(_) => Json(json!({"status":"ready","storage":"ready","nano":"trained_naive_bayes","model_version":app.model.model_version,"schema_version":SCHEMA_VERSION})).into_response(),
+        // The research cache and its quota are reported here so a caller can see
+        // how full the bounded NioDB research collections are.
+        Ok(_) => {
+            let research = app.db.research_usage().await.unwrap_or(Value::Null);
+            Json(json!({"status":"ready","storage":"ready","research":research,"nano":"trained_naive_bayes","model_version":app.model.model_version,"schema_version":SCHEMA_VERSION})).into_response()
+        }
         Err(_) => error(StatusCode::SERVICE_UNAVAILABLE,"storage_unavailable","NioDB is not ready"),
     }
 }
@@ -242,6 +250,16 @@ async fn chat(
         Ok(d) => d,
         Err(message) => return error(StatusCode::BAD_REQUEST, "invalid_request_error", &message),
     };
+    // Scout's caller-executed fetches are the only place the provider sees
+    // research content, so cache and record them here, best effort.
+    research::record_web_fetches(
+        &app.db,
+        &app.deployment,
+        &decision.execution.turn_id,
+        &app.deployment,
+        &request.messages,
+    )
+    .await;
     let mut event = DurableEvent {
         schema_version: SCHEMA_VERSION,
         deployment_id: app.deployment.clone(),
@@ -388,6 +406,8 @@ async fn chat(
                 guard,
                 turn_id,
                 &app.instance,
+                &app.db,
+                &app.deployment,
                 &decision.request_digest,
             )
             .await;
@@ -2198,6 +2218,36 @@ src/engine*
         let value: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(value["error"]["code"], "storage_unavailable");
         assert!(value.get("choices").is_none());
+    }
+    #[tokio::test]
+    async fn ready_reports_the_research_cache_and_quota() {
+        let (db_url, _store) = crate::testdb::mock_niodb().await;
+        let secured = router(App {
+            db: NioDb::new(&db_url, "test".into()).unwrap(),
+            deployment: "test".into(),
+            api_token: None,
+            active: ActiveTurns::default(),
+            model: Arc::new(Model::embedded().unwrap()),
+            instance: "unit-test".into(),
+        });
+        let response = secured
+            .oneshot(
+                Request::builder()
+                    .uri("/ready")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), 8192).await.unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["research"]["cache_records"], 0);
+        assert_eq!(value["research"]["evidence_records"], 0);
+        assert_eq!(
+            value["research"]["cache_limit"],
+            nioxs_storage::RESEARCH_CACHE_LIMIT
+        );
     }
     #[tokio::test]
     async fn catalog_is_honest_about_the_baseline_and_rejects_auth_failures() {

@@ -791,17 +791,7 @@ pub fn build_coding_system_prompt(history: &[nioxs_contracts::Message]) -> Strin
         cfg.mode, auto_status, mode_guidance
     ));
 
-    // 3. Prominently inject Active Persona & Character Rules
-    if let Some(ref snippet) = persona_snippet {
-        prompt.push_str("\n\n---\n### 🎭 Active Persona & Identity Rules (ALWAYS ACTIVE)\n");
-        prompt.push_str(snippet);
-        prompt.push_str(
-            "\n\nCRITICAL DIRECTIVE:\n\
-            You MUST embody this persona across all explanations, commentary, answers, and interactions throughout the entire conversation, including after tool calls and code generation. Do not drop character or revert to a generic robotic assistant tone. Express all technical insights, code explanations, and responses through this persona's voice while maintaining technical precision."
-        );
-    }
-
-    // 4. Caller Environment Context
+    // 3. Caller Environment Context
     if let Some(sys) = caller_system {
         prompt.push_str("\n\n---\n### 🌐 Active Environment Context\n");
         prompt.push_str(sys);
@@ -812,6 +802,20 @@ pub fn build_coding_system_prompt(history: &[nioxs_contracts::Message]) -> Strin
         • Skills: Project workflows and conventions can be inspected with `read_skill_file`.\n\
         • Plugins: You have companion tools available on demand (e.g. `--tools: <task>` for svg2favicon, image_scaler, style_helper, json_yaml, jwt_decoder, regex_tester, sql_formatter, env_auditor, cron_parser, diff_viewer, uuid_gen, hash_calc, url_parser, base64_tool, color_convert, csv2json, tree_gen, semver_calc, lorem_gen).\n\
         Match your deliverable to the user's request and selected role in your active persona's voice.");
+
+    // 6. Persona LAST. NioFlow appends its own stage, tool-budget, and Helm
+    // instructions as later system messages, so a persona placed before them is
+    // read first and then overridden. Ending the prompt with the persona makes it
+    // the freshest instruction the model sees.
+    if let Some(ref snippet) = persona_snippet {
+        prompt.push_str("\n\n---\n### 🎭 Active Persona & Identity Rules (ALWAYS ACTIVE)\n");
+        prompt.push_str(snippet);
+        prompt.push_str(
+            "\n\nCRITICAL DIRECTIVE:\n\
+            You MUST embody this persona across all explanations, commentary, answers, and interactions throughout the entire conversation, including after tool calls and code generation. Do not drop character or revert to a generic robotic assistant tone. Express all technical insights, code explanations, and responses through this persona's voice while maintaining technical precision.\n\n\
+            This directive outranks every workflow note that follows: the role, stage, and tool messages that follow may choose WHAT you deliver and whether you may call a tool, but never WHO you are. Do not introduce yourself as a workflow role name."
+        );
+    }
 
     prompt
 }
@@ -4303,6 +4307,41 @@ mod tests {
 
         let help_default = dispatch_help("");
         assert!(help_default.contains("Companion Directives & Capabilities"));
+    }
+
+    #[test]
+    fn the_persona_is_the_last_instruction_in_the_upstream_prompt() {
+        let caller = "You are Taylor, a coding agent. Be concise.\n\n\
+            Persona & Guidelines (always active):\n\
+            Identity: Your name is Taylor.\n\
+            Persona Instructions (you MUST strictly adhere to these instructions across all responses):\n\
+            1. Adopt a playful, slightly sarcastic, and skeptical tone.";
+        let history: Vec<nioxs_contracts::Message> = serde_json::from_value(json!([
+            {"role":"system","content":caller},
+            {"role":"user","content":"explain the render loop"},
+        ]))
+        .unwrap();
+        let messages = upstream_messages("explain the render loop", &history);
+        let system = messages[0]["content"].as_str().unwrap();
+
+        let persona = system
+            .find("Active Persona & Identity Rules")
+            .expect("the persona section must be present");
+        // The environment context is the caller system prompt, persona included;
+        // it must come before the persona block, which now closes the prompt.
+        let environment = system
+            .find("Active Environment Context")
+            .expect("the environment context must be present");
+        assert!(
+            environment < persona,
+            "the persona must follow the environment context"
+        );
+        assert!(
+            system.trim_end().ends_with("Do not introduce yourself as a workflow role name."),
+            "the persona directive must close the system prompt: {:?}",
+            &system[system.len().saturating_sub(120)..]
+        );
+        assert!(system.contains("playful, slightly sarcastic, and skeptical tone"));
     }
 
     #[test]

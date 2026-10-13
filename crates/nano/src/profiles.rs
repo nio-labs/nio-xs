@@ -133,6 +133,29 @@ pub fn project_evidence_relevant(prompt: &str) -> bool {
     if project_scope.iter().any(|scope| lower.contains(scope)) {
         return true;
     }
+    // A request that targets the caller's own files or directories ("check the
+    // nio-guru folder", "list files in src") needs the caller's read tools.
+    // Matched as whole words so "file" does not fire on "profile"; withholding
+    // these tools is worse than offering them, because the stage then answers
+    // from memory instead of inspecting the project.
+    let filesystem_nouns = [
+        "file",
+        "files",
+        "filename",
+        "filenames",
+        "folder",
+        "folders",
+        "directory",
+        "directories",
+        "dir",
+        "dirs",
+    ];
+    if lower
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .any(|word| filesystem_nouns.contains(&word))
+    {
+        return true;
+    }
     if lower.split_whitespace().any(|word| {
         !word.starts_with("http")
             && (word.contains('/')
@@ -182,9 +205,97 @@ pub fn project_evidence_relevant(prompt: &str) -> bool {
     })
 }
 
+/// A request that asks to look at the caller's own files or directories, as
+/// opposed to a request to build, explain, or decide something. These must be
+/// routed to a stage that can read the project, so a filesystem claim is backed
+/// by a real listing rather than an answering profile's memory.
+pub fn inspection_request(prompt: &str) -> bool {
+    let lower = prompt.to_ascii_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|word| !word.is_empty())
+        .collect();
+    let filesystem = [
+        "file",
+        "files",
+        "filename",
+        "filenames",
+        "folder",
+        "folders",
+        "directory",
+        "directories",
+        "dir",
+        "dirs",
+        "path",
+        "paths",
+        "readme",
+        "src",
+        "docs",
+        "tree",
+    ];
+    let inspecting = [
+        "check",
+        "checking",
+        "inspect",
+        "inspecting",
+        "list",
+        "listing",
+        "show",
+        "showing",
+        "read",
+        "reading",
+        "open",
+        "opening",
+        "look",
+        "looking",
+        "review",
+        "reviewing",
+        "examine",
+        "examining",
+        "scan",
+        "scanning",
+        "find",
+        "finding",
+        "search",
+        "searching",
+        "where",
+        "contents",
+        "content",
+        "contains",
+        "browse",
+        "explore",
+        "locate",
+        "see",
+    ];
+    let has_filesystem = words.iter().any(|word| filesystem.contains(word)) || lower.contains('/');
+    has_filesystem && words.iter().any(|word| inspecting.contains(word))
+}
+
 #[cfg(test)]
 mod evidence_scope_tests {
-    use super::project_evidence_relevant;
+    use super::{inspection_request, project_evidence_relevant};
+
+    #[test]
+    fn inspection_requests_are_recognized_and_build_requests_are_not() {
+        for prompt in [
+            "I meant checking nio-guru folder pls.",
+            "check the src directory",
+            "list files in this folder",
+            "inspect the docs folder",
+            "review src/auth.rs",
+        ] {
+            assert!(inspection_request(prompt), "{prompt}");
+        }
+        for prompt in [
+            "Suggest and implement a dashboard",
+            "compare sqlite and postgres",
+            "brainstorm a new dashboard",
+            "fix the login bug",
+            "explain how async runtimes work",
+        ] {
+            assert!(!inspection_request(prompt), "{prompt}");
+        }
+    }
 
     #[test]
     fn general_and_feasibility_questions_do_not_request_workspace_evidence() {
@@ -194,6 +305,18 @@ mod evidence_scope_tests {
             "What is the best model for this idea?",
         ] {
             assert!(!project_evidence_relevant(prompt), "{prompt}");
+        }
+    }
+
+    #[test]
+    fn filesystem_inspection_requests_offer_read_tools() {
+        for prompt in [
+            "I meant checking nio-guru folder pls.",
+            "check the src directory",
+            "list files in this folder",
+            "inspect the docs folder",
+        ] {
+            assert!(project_evidence_relevant(prompt), "{prompt}");
         }
     }
 
@@ -330,6 +453,131 @@ mod tests {
             route(MODEL_NANO, "write a highlighter").selected,
             MODEL_NANO
         );
+    }
+
+    /// A caller system prompt shaped like Nio's: persona last, after the
+    /// environment, skill catalog, plugin catalog, and tool instructions.
+    fn nio_style_system_prompt() -> String {
+        format!(
+            "You are Taylor, a coding agent working in the project at /home/mn/nio-labs. \
+             Read and search tools are automatic. Be concise.\n\n\
+             Project overview:\nRoot: /home/mn/nio-labs\nFiles (partial listing):\nnio/README.md\n\n\
+             Skills: niohelm-decision, nioatom-implementation.\n\n\
+             Plugins: json_yaml, diff_viewer.\n\n\
+             When calling tools, use only the exact function names supplied in the tools schema.\n\n\
+             Persona & Guidelines (always active):\n\
+             Identity: Your name is Taylor. When introducing yourself or stating who you are, identify as \"Taylor\".\n\
+             Persona Instructions (you MUST strictly adhere to these instructions across all responses):\n\
+             1. Adopt a playful, slightly sarcastic, and skeptical tone.\n\
+             2. Act like you're only helping so they don't embarrass themselves.\n\n\
+             Apply this persona to every user-facing assistant response throughout the conversation, \
+             including direct answers, follow-up turns, and responses after tool calls."
+        )
+    }
+
+    /// Every profile must forward the caller's persona in the upstream prompt.
+    /// The caller owns the persona; a stage instruction may add a role, never
+    /// replace the identity the user configured.
+    #[test]
+    fn every_profile_forwards_the_callers_persona_to_the_upstream_prompt() {
+        let prompt = "explain how the render loop works";
+        let history: Vec<nioxs_contracts::Message> = serde_json::from_value(json!([
+            {"role":"system","content":nio_style_system_prompt()},
+            {"role":"user","content":prompt},
+        ]))
+        .unwrap();
+
+        for model in [
+            MODEL_NANO,
+            MODEL_FLOW,
+            MODEL_ECHO,
+            MODEL_SAGE,
+            MODEL_QUILL,
+            MODEL_SCOUT,
+            MODEL_THINKER,
+            MODEL_NOVA,
+            MODEL_ATOM,
+            MODEL_NEON,
+            MODEL_HELM,
+        ] {
+            let messages = messages(
+                model,
+                crate::companion::upstream_messages(prompt, &history),
+            );
+            let systems: Vec<&str> = messages
+                .iter()
+                .filter(|message| message["role"] == "system")
+                .filter_map(|message| message["content"].as_str())
+                .collect();
+            assert!(
+                !systems.is_empty(),
+                "no system prompt sent upstream for {model}"
+            );
+            let joined = systems.join("\n");
+            assert!(
+                joined.contains("Your name is Taylor"),
+                "caller identity lost for {model}"
+            );
+            assert!(
+                joined.contains("playful, slightly sarcastic, and skeptical tone"),
+                "caller persona instructions lost for {model}"
+            );
+        }
+    }
+
+    /// A continuation after a caller tool round rebuilds the prompt from the
+    /// caller history, which must still carry the caller system message, so the
+    /// persona survives every round of a tool loop.
+    #[test]
+    fn the_callers_persona_survives_a_tool_round_continuation() {
+        let history: Vec<nioxs_contracts::Message> = serde_json::from_value(json!([
+            {"role":"system","content":nio_style_system_prompt()},
+            {"role":"user","content":"read nio-guru/README.md"},
+            {"role":"assistant","content":null,"tool_calls":[{
+                "id":"call_1","type":"function",
+                "function":{"name":"read_file","arguments":"{\"path\":\"nio-guru/README.md\"}"}
+            }]},
+            {"role":"tool","tool_call_id":"call_1","content":"# Nio Guru README"},
+        ]))
+        .unwrap();
+
+        for model in [
+            MODEL_NANO,
+            MODEL_FLOW,
+            MODEL_ECHO,
+            MODEL_SAGE,
+            MODEL_QUILL,
+            MODEL_SCOUT,
+            MODEL_THINKER,
+            MODEL_NOVA,
+            MODEL_ATOM,
+            MODEL_NEON,
+            MODEL_HELM,
+        ] {
+            let messages = messages(
+                model,
+                crate::companion::upstream_messages("read nio-guru/README.md", &history),
+            );
+            let joined = messages
+                .iter()
+                .filter_map(|message| message["content"].as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                joined.contains("Your name is Taylor"),
+                "caller identity lost after a tool round for {model}"
+            );
+            assert!(
+                joined.contains("playful, slightly sarcastic, and skeptical tone"),
+                "caller persona instructions lost after a tool round for {model}"
+            );
+            // The tool result itself must also survive, so the persona did not
+            // displace the evidence the round produced.
+            assert!(
+                joined.contains("Nio Guru README"),
+                "tool evidence lost for {model}"
+            );
+        }
     }
 
     #[test]

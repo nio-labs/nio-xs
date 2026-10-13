@@ -120,7 +120,7 @@ Implement in this order. Each item must have observable acceptance evidence befo
 ### 4. Smarter decisions
 
 - Improve MicroLM/Helm from fixed prompt keywords toward decisions based on task state, allowed tools, evidence, failed checks, cost, and prior opt-in outcomes.
-- Calibrate confidence and abstain when evaluation does not support a decision.
+- Calibrate confidence in the live decision layer and abstain when evaluation does not support a decision. Do not fit or claim calibration before the [Phase 5 report](../evaluation/PHASE5_REPORT_TEMPLATE.md) measures it; the orphaned `crates/nano/src/helm.rs` heuristic is not the target.
 - Keep model choice separate from permission policy; measure quality before automatic escalation to a more costly model.
 
 **Done when:** held-out tasks improve stage selection and abstention over the rules baseline without increasing unauthorized actions.
@@ -141,7 +141,7 @@ The browser worker uses native Rust search/fetch and extraction workflows. Keep 
 
 ## 6. Local learning model and evaluation
 
-The checked-in Nano artifact is a 46,894-byte multinomial naive Bayes classifier with seven labels. Training runs offline in Python; inference and typed workflows run in Rust. Current specialist prompts share the same upstream model selection; these profiles do not each have separate learned weights. NioHelm's Rust route heuristic uses rules and hand-set weights; these weights are not calibrated probabilities.
+The checked-in Nano artifact is a 46,894-byte multinomial naive Bayes classifier with seven labels. Training runs offline in Python; inference and typed workflows run in Rust. Current specialist prompts share the same upstream model selection; these profiles do not each have separate learned weights. The live decision confidence is the rule/score value produced by the decision layer in `crates/nano/src/decision.rs`; it is not a calibrated probability. Calibrating it is gated on the [Phase 5 report](../evaluation/PHASE5_REPORT_TEMPLATE.md). A legacy `crates/nano/src/helm.rs` route heuristic remains on disk but is not compiled or wired into routing; do not cite it as the shipped routing surface or as a source of probabilities.
 
 Phase 2 reports Rust/Python probability parity within 1e-10 on 280 development fixtures. On the separate small authored frozen holdout, the raw classifier macro F1 is 0.9711 and the typed router macro F1 is 0.9943 with 0/100 unsupported requests accepted. The report explicitly limits those results to that corpus. Read [Phase 2 evidence](../evaluation/PHASE2_EVIDENCE.md) for the split, methods, and caveats.
 
@@ -177,20 +177,22 @@ The ordered tasks in [§4](#4-five-advancement-priorities) are the main roadmap.
 
 ### Phase 3 remainder
 
-- Wire bounded research evidence/cache to NioDB with scoped keys, expiry, quotas, clearing, and invalidation.
-- Test workspace isolation, cache reuse/expiry, quota enforcement, write failures, and challenge-page exclusion.
-- Record reproducible live research observations and limitations.
+- Implemented: bounded research evidence/cache in NioDB with scoped keys, 24-hour expiry, a 2,000-record quota that fails closed, scope clearing, and expired-record invalidation. The provider caches and records only `web_fetch` results it observes in a returned tool result, excludes challenge/login/denied pages, and treats every write as best effort so an unavailable database never fails a turn. `GET /ready` reports cache and evidence counts against the limit.
+- Implemented: tests for scope isolation, cache reuse and expiry, quota enforcement, write failures, and challenge-page exclusion (`crates/provider/src/research.rs`, `crates/provider/src/testdb.rs`).
+- Record reproducible live research observations against real remote sources and publish the limitations. The cache is verified against a scripted NioDB and a caller-shaped tool result; it has not been measured against live search traffic.
 
 ### Phase 4 remainder
 
-- Implemented NioFlow planning, validated specialist stages, native Nano evidence, cached-read reuse, bounded tool-call correction, and a final tool-free Helm stage. Provider tests cover real separate upstream calls, carried-forward drafts, and caller-tool continuations.
-- Persist handoff state beyond the current bounded in-memory cache; provider restarts currently stop continuation without replaying tools.
+- Implemented NioFlow planning, validated specialist stages, native Nano evidence, cached-read reuse, bounded tool-call correction, a final tool-free Helm stage, and a durable `nano_flow` handoff snapshot (600-second expiry). Provider tests cover real separate upstream calls, carried-forward drafts, caller-tool continuations, and resuming a continuation after a provider restart without replaying tools. Inspection requests put a read-tool stage first (a native Nano listing when the plan has none), each stage is pinned to the caller's current request with earlier turns as context only, internal stage headers are stripped from the final answer, and Helm withholds a verdict whose answer asserts a path or scan with no supporting tool result. Only tokens with a positive path shape count as path claims (a known extension, an explicit `./`, `../`, or `/` prefix, or at least two separators), so a slash-joined pair of concepts is not read as a filesystem fact; the refusal reports how many tool results the turn did supply. An empty file listing never supports a claim that a path or folder is missing, and the native listing is scoped to a folder the caller names instead of sampling the whole project. The caller's persona block closes the upstream system prompt so role and stage messages cannot bury it.
+- A handoff snapshot that exceeds the 16 KiB record cap is not persisted; that handoff stays in memory only, so a restart drops it.
 - Connect Nio's broker to a configured local MCP server; map known tools and abstain on unknown schemas.
 - Validate external OpenAI-compatible tool loops, SSE behavior, cancellation, and history continuity.
 - Store opt-in outcome feedback with retention/export; no automatic prompt uploads or retraining.
 - Regenerate capability metadata from the actual shipped workflow and model catalog.
 
 ### Phase 5
+
+The report structure and acceptance criteria for this phase are fixed in [PHASE5_REPORT_TEMPLATE.md](../evaluation/PHASE5_REPORT_TEMPLATE.md); fill it with a reproducible run before citing any Phase 5 result.
 
 - Evaluate on fresh task families and independent real repositories, with paired same-model AXIS/baseline reports.
 - Measure task success, regressions, false completion, cost, latency, memory, startup, and installed size.

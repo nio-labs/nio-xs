@@ -2,16 +2,54 @@
 //! each stage is a separate call with its own role and carried-forward evidence.
 use super::*;
 use nioxs_contracts::{
-    MODEL_ATOM, MODEL_ECHO, MODEL_FLOW, MODEL_HELM, MODEL_NANO, MODEL_NEON, MODEL_NOVA,
-    MODEL_QUILL, MODEL_SAGE, MODEL_SCOUT, MODEL_THINKER,
+    AtomContract, HelmGateVerdict, HelmVerdictContract, NeonReviewContract, MODEL_ATOM, MODEL_ECHO,
+    MODEL_FLOW, MODEL_HELM, MODEL_NANO, MODEL_NEON, MODEL_NOVA, MODEL_QUILL, MODEL_SAGE,
+    MODEL_SCOUT, MODEL_THINKER,
 };
 use nioxs_nano::profiles;
+use nioxs_storage::NioDb;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::time::Instant;
 
 const MAX_TOOL_ROUNDS: usize = 16;
 const MAX_INTERNAL_ROUNDS: usize = 28;
+/// Durable handoff lifetime; matches the in-memory retention window.
+const FLOW_SESSION_TTL: u64 = 600;
+/// Serialized handoff budget, kept under the 16 KiB NioDB record cap.
+const FLOW_RECORD_BUDGET: usize = 15 * 1024;
+/// Stages that gather project evidence directly. A plan without one of these
+/// cannot back a filesystem claim, so an inspection request is routed to one.
+const READ_TOOL_STAGES: [&str; 5] = [
+    MODEL_NANO,
+    MODEL_NEON,
+    MODEL_SCOUT,
+    MODEL_THINKER,
+    MODEL_ATOM,
+];
+/// Assertions that a project listing or scan actually happened.
+const INSPECTION_MARKERS: [&str; 16] = [
+    "directory scan",
+    "file scan",
+    "filesystem scan",
+    "file system scan",
+    "directory listing",
+    "file listing",
+    "filesystem listing",
+    "file system listing",
+    "listing shows",
+    "scan completed",
+    "scan shows",
+    "comprehensive listing",
+    "was inspected",
+    "was scanned",
+    "i inspected",
+    "i scanned",
+];
+const PATH_EXTENSIONS: [&str; 18] = [
+    "rs", "md", "toml", "json", "jsonl", "ts", "tsx", "js", "py", "go", "yaml", "yml",
+    "txt", "lock", "html", "css", "sh", "java",
+];
 #[derive(Clone, Deserialize, Serialize)]
 struct Stage {
     model: String,
@@ -24,7 +62,7 @@ struct Plan {
     needs_context: bool,
     stages: Vec<Stage>,
 }
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 struct Session {
     fingerprint: String,
     helm: bool,
@@ -38,11 +76,232 @@ struct Session {
     repairs: usize,
     validation_failures: usize,
     reasoning_escalated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    atom_contract: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    neon_contract: Option<Value>,
+    /// Monotonic last-touch time. Never serialized: a restored handoff starts a
+    /// fresh in-memory window, bounded by the durable record's own expiry.
+    #[serde(skip, default = "Instant::now")]
     touched: Instant,
 }
 static SESSIONS: OnceLock<Mutex<HashMap<String, Session>>> = OnceLock::new();
 fn sessions() -> &'static Mutex<HashMap<String, Session>> {
     SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// A size-bounded, serializable snapshot of a handoff session. Returns `None`
+/// when even a trimmed snapshot exceeds the record budget, so an oversized
+/// handoff stays in memory only instead of being stored partially.
+fn persistable_session(session: &Session) -> Option<Value> {
+    let mut value = serde_json::to_value(session).ok()?;
+    if serde_json::to_vec(&value).ok()?.len() <= FLOW_RECORD_BUDGET {
+        return Some(value);
+    }
+    // Tool results are per-stage and re-supplied by the caller on continuation.
+    value["feedback"] = json!([]);
+    if serde_json::to_vec(&value).ok()?.len() <= FLOW_RECORD_BUDGET {
+        return Some(value);
+    }
+    // Drop the oldest carried-forward drafts until the snapshot fits.
+    let mut dropped = false;
+    while serde_json::to_vec(&value).ok()?.len() > FLOW_RECORD_BUDGET {
+        if value["drafts"].as_array_mut()?.is_empty() {
+            return None;
+        }
+        value["drafts"].as_array_mut()?.remove(0);
+        dropped = true;
+    }
+    if dropped {
+        value["truncated"] = json!(true);
+    }
+    Some(value)
+}
+
+/// Tool results a turn actually supplied, the only basis on which a filesystem
+/// claim may be accepted as evidence.
+struct ToolEvidence {
+    text: String,
+    results: usize,
+}
+
+/// Path-like tokens in a sentence: `src/lib.rs`, `nio-guru/apps/server`.
+///
+/// A token only counts as a path claim when it has a positive path shape: a
+/// known file extension, an explicit path prefix, or at least two separators.
+/// Prose that joins two hyphenated concepts with a slash
+/// (`speech-to-text/text-to-speech`) is not a filesystem claim, and treating it
+/// as one withheld an answer that was in fact grounded in a read file.
+fn path_tokens(text: &str) -> Vec<String> {
+    text.split(|c: char| c.is_whitespace() || "()[]{}\"'`,;".contains(c))
+        // Trailing sentence punctuation only: trimming a leading dot turned
+        // `./README.md` into `/readme.md`, which no tool result can contain.
+        .map(|token| token.trim_end_matches(|c: char| ".,;:!?*".contains(c)))
+        .filter(|token| !token.is_empty() && looks_like_path(token))
+        .map(|token| token.to_ascii_lowercase())
+        .collect()
+}
+
+fn looks_like_path(token: &str) -> bool {
+    if token.starts_with("./") || token.starts_with("../") || token.starts_with('/') {
+        return true;
+    }
+    if token.matches('/').count() >= 2 {
+        return true;
+    }
+    token.rsplit_once('.').is_some_and(|(_, ext)| {
+        PATH_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str())
+    })
+}
+
+/// Nouns and verbs that mark the token next to them as a folder being asked about.
+const FOLDER_CUES: [&str; 18] = [
+    "folder",
+    "directory",
+    "dir",
+    "repo",
+    "project",
+    "workspace",
+    "package",
+    "module",
+    "check",
+    "checking",
+    "inspect",
+    "explore",
+    "summarize",
+    "contents",
+    "inside",
+    "under",
+    "list",
+    "files",
+];
+
+/// The caller-project folder a request asks about, when one is named.
+///
+/// `find_files` returns a bounded list of files, so an unscoped `**/*` sample is
+/// a poor evidence basis for a folder question and a directory glob matches no
+/// file at all: both look like "the folder is not there". Scoping the listing to
+/// the named folder returns its actual files instead.
+fn named_folder(prompt: &str) -> Option<String> {
+    let words: Vec<&str> = prompt
+        .split(|c: char| c.is_whitespace() || ",.;:!?()[]{}\"'`".contains(c))
+        .filter(|word| !word.is_empty())
+        .collect();
+    for (index, word) in words.iter().enumerate() {
+        let token = word
+            .trim_matches('*')
+            .trim_end_matches('/')
+            .trim_start_matches("./");
+        // A folder name looks like a project path: hyphen, underscore, or
+        // separator, no file extension, and never a leading flag.
+        let folderish = !token.is_empty()
+            && token.len() <= 64
+            && !token.starts_with('-')
+            && !token.contains('.')
+            && (token.contains('/') || token.contains('-') || token.contains('_'));
+        if !folderish {
+            continue;
+        }
+        let cue_before = index
+            .checked_sub(1)
+            .and_then(|i| words.get(i))
+            .is_some_and(|word| FOLDER_CUES.contains(&word.to_ascii_lowercase().as_str()));
+        let cue_after = words
+            .get(index + 1)
+            .is_some_and(|word| FOLDER_CUES.contains(&word.to_ascii_lowercase().as_str()));
+        if cue_before || cue_after {
+            return Some(token.to_string());
+        }
+    }
+    None
+}
+
+/// Phrases that assert something is missing from the caller's project.
+const ABSENCE_MARKERS: [&str; 10] = [
+    "does not exist",
+    "doesn't exist",
+    "not present",
+    "no such",
+    "was not found",
+    "could not find",
+    "couldn't find",
+    "cannot find",
+    "not found in",
+    "does not contain",
+];
+
+/// Lines that claim a path or folder is absent.
+fn absence_claims(content: &str) -> Vec<String> {
+    let lower = content.to_ascii_lowercase();
+    let mut claims: Vec<String> = lower
+        .lines()
+        .filter(|line| ABSENCE_MARKERS.iter().any(|marker| line.contains(marker)))
+        .map(|line| line.trim().chars().take(200).collect())
+        .filter(|line: &String| !line.is_empty())
+        .collect();
+    claims.dedup();
+    claims
+}
+
+/// Lines that assert an inspection or listing happened.
+fn inspection_claims(content: &str) -> Vec<String> {
+    let lower = content.to_ascii_lowercase();
+    let mut claims: Vec<String> = lower
+        .lines()
+        .filter(|line| INSPECTION_MARKERS.iter().any(|marker| line.contains(marker)))
+        .map(|line| line.trim().chars().take(200).collect())
+        .filter(|line: &String| !line.is_empty())
+        .collect();
+    claims.dedup();
+    claims
+}
+
+/// Drop NioFlow's internal `[<model> completed stage: <task>]` headers from an
+/// answer. They are loop bookkeeping; a model can echo one when a prior draft is
+/// the last assistant turn, and it must never reach the user.
+fn strip_stage_markers(content: &str) -> String {
+    let mut kept = String::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[')
+            && trimmed.ends_with(']')
+            && trimmed.contains(" completed stage: ")
+        {
+            continue;
+        }
+        kept.push_str(line);
+        kept.push('\n');
+    }
+    kept.trim().to_string()
+}
+
+/// The deterministic answer emitted in place of an unbacked Helmet verdict.
+fn withheld_helm_answer(unverified: &[String], tool_results: usize) -> String {
+    let mut answer = String::from(
+        "⚠️ **NioHelm withheld this verdict.** The synthesized answer asserted filesystem facts that this turn never received as tool results, so NioFlow did not accept them as evidence.\n\n**Withheld assertions (unverified):**\n",
+    );
+    for claim in unverified {
+        answer.push_str(&format!("- {claim}\n"));
+    }
+    // State what actually happened: a turn with results is not a turn without
+    // tools, and telling the caller to add read tools would be wrong.
+    if tool_results == 0 {
+        answer.push_str(
+            "\nThis turn supplied no tool result at all. Run the request through a stage with read tools, or share the listing, and ask again.\n",
+        );
+    } else {
+        answer.push_str(&format!(
+            "\n{tool_results} tool result(s) were supplied this turn, but none contained these paths. Ask again with those files read, or share the listing.\n"
+        ));
+    }
+    answer
 }
 
 struct Runner {
@@ -58,6 +317,9 @@ struct Runner {
     done: bool,
     announced: bool,
     internal_rounds: usize,
+    db: NioDb,
+    deployment: String,
+    persist_key: String,
 }
 
 pub(super) async fn respond(
@@ -68,9 +330,12 @@ pub(super) async fn respond(
     guard: TurnGuard,
     turn: String,
     instance: &str,
+    db: &NioDb,
+    deployment: &str,
     fingerprint: &str,
 ) -> Response {
     let key = format!("{instance}:{turn}:{}", request.model);
+    let persist_key = format!("{deployment}:{turn}:{}", request.model);
     let start = request.validate().expect("validated request");
     let thinker = request.model == MODEL_THINKER;
     let source_prompt = request.messages[start].content.as_str().unwrap_or("");
@@ -83,12 +348,11 @@ pub(super) async fn respond(
         .iter()
         .any(|message| !message.tool_calls.is_empty());
     let saved = sessions().lock().ok().and_then(|mut sessions| {
-        sessions.retain(|_, session| session.touched.elapsed() < Duration::from_secs(600));
+        sessions.retain(|_, session| session.touched.elapsed() < Duration::from_secs(FLOW_SESSION_TTL));
         sessions.get(&key).cloned()
     });
-    let mut session = match saved {
-        Some(session) if session.fingerprint == fingerprint => session,
-        Some(_) => {
+    let mut session = if let Some(session) = saved {
+        if session.fingerprint != fingerprint {
             return coding_json(
                 &id,
                 json!({"role":"assistant","content":"⚠️ NioFlow's task context changed during a handoff; no further tools were dispatched. Start a fresh task with the current evidence."}),
@@ -96,15 +360,44 @@ pub(super) async fn respond(
                 metadata,
             );
         }
-        None if continuing => {
-            return coding_json(
-                &id,
-                json!({"role":"assistant","content":"⚠️ NioFlow's handoff state expired or the provider restarted. No tool was replayed. Start a fresh task using the results already collected."}),
-                "stop",
-                metadata,
-            );
+        session
+    } else if continuing {
+        // In-memory state is gone: retention expired or the provider restarted.
+        // Resume only from an unexpired durable handoff whose fingerprint still
+        // matches; otherwise refuse without replaying a captured tool.
+        match db.flow_session_get(&persist_key, now_unix()).await {
+            Ok(Some(record)) => {
+                match serde_json::from_value::<Session>(record["session"].clone()) {
+                    Ok(session) if session.fingerprint == fingerprint => session,
+                    Ok(_) => {
+                        return coding_json(
+                            &id,
+                            json!({"role":"assistant","content":"⚠️ NioFlow's task context changed during a handoff; no further tools were dispatched. Start a fresh task with the current evidence."}),
+                            "stop",
+                            metadata,
+                        );
+                    }
+                    Err(_) => {
+                        return coding_json(
+                            &id,
+                            json!({"role":"assistant","content":"⚠️ NioFlow's handoff state expired or the provider restarted. No tool was replayed. Start a fresh task using the results already collected."}),
+                            "stop",
+                            metadata,
+                        );
+                    }
+                }
+            }
+            _ => {
+                return coding_json(
+                    &id,
+                    json!({"role":"assistant","content":"⚠️ NioFlow's handoff state expired or the provider restarted. No tool was replayed. Start a fresh task using the results already collected."}),
+                    "stop",
+                    metadata,
+                );
+            }
         }
-        None => Session {
+    } else {
+        Session {
             fingerprint: fingerprint.into(),
             helm,
             plan: thinker.then(|| Plan {
@@ -126,8 +419,10 @@ pub(super) async fn respond(
             repairs: 0,
             validation_failures: 0,
             reasoning_escalated: false,
+            atom_contract: None,
+            neon_contract: None,
             touched: Instant::now(),
-        },
+        }
     };
     let mut announced = continuing;
     if !session.pending.is_empty() {
@@ -178,6 +473,9 @@ pub(super) async fn respond(
         done: false,
         announced,
         internal_rounds: 0,
+        db: db.clone(),
+        deployment: deployment.to_string(),
+        persist_key,
     };
     runner.metadata["progress"] = json!([]);
     let model = runner.model().to_string();
@@ -305,9 +603,15 @@ impl Runner {
         let mut messages = profiles::messages(&stage.model, base);
         messages.extend(self.session.drafts.clone());
         messages.extend(self.session.feedback.clone());
-        messages.push(json!({"role":"system","content":format!("NioFlow assigned this bounded stage: {}. Original goal: {}. Success criteria: {}. Reuse all supplied evidence. Complete only your assigned work, preserve the caller persona and permissions, and do not claim another role ran. If a tool is unavailable or its budget is exhausted, finish with the limitation. Do not call another specialist.", stage.task, self.session.plan.as_ref().map_or(self.consult.prompt.as_str(), |plan| plan.goal.as_str()), self.session.plan.as_ref().map_or(String::new(), |plan| plan.success_criteria.join("; ")))}));
+        messages.push(json!({"role":"system","content":format!("NioFlow assigned this bounded stage: {}. The current user request, and the only task you answer, is: \"{}\". Plan goal: {}. Success criteria: {}. Treat earlier user turns as context only; never answer a previous question in their place. Reuse all supplied evidence. Complete only your assigned work, preserve the caller persona and permissions, and do not claim another role ran. If a tool is unavailable or its budget is exhausted, finish with the limitation. Do not call another specialist. Never repeat NioFlow's internal stage headers in your answer.", stage.task, self.consult.prompt, self.session.plan.as_ref().map_or(self.consult.prompt.as_str(), |plan| plan.goal.as_str()), self.session.plan.as_ref().map_or(String::new(), |plan| plan.success_criteria.join("; ")))}));
+        if stage.model == MODEL_ATOM {
+            messages.push(json!({"role":"system","content":"Implement the requested changes using only offered tools. Conclude your report with a structured contract block in JSON (`json:atom`) containing summary, patch_status, modified_files, checks_executed, and unverified_items."}));
+        }
+        if stage.model == MODEL_NEON {
+            messages.push(json!({"role":"system","content":"Review the diff, code, and verification results. Conclude your review with a structured review block in JSON (`json:neon`) containing verdict (approve, request_changes, comment), summary, verification_passed, and findings."}));
+        }
         if stage.model == MODEL_HELM {
-            messages.push(json!({"role":"system","content":"Synthesize a useful final answer to the original user request from the specialist drafts, then give a concise Go / Conditional Go / No-Go grounded in actual results. Do not call another specialist or ask for tools."}));
+            messages.push(json!({"role":"system","content":"Synthesize a useful final answer to the original user request from the specialist drafts, then give a concise Go / Conditional Go / No-Go grounded in actual results formatted with structured verdict fields (verdict, summary, decisive_evidence, unmet_criteria, residual_risks). Do not call another specialist or ask for tools."}));
         }
         if self.is_final()
             && !self.session.helm
@@ -426,7 +730,15 @@ impl Runner {
                 .as_str()
                 .unwrap_or("");
             let mut plan = parse_plan(content, &self.consult.prompt);
+            // `parse_plan` already inserts a native listing stage for an
+            // inspection request, so add one only when the plan has none: two
+            // listing stages made the caller run the same scan twice.
+            let already_lists = plan
+                .stages
+                .iter()
+                .any(|stage| stage.model == MODEL_NANO);
             if plan.needs_context
+                && !already_lists
                 && self
                     .offered
                     .iter()
@@ -457,9 +769,24 @@ impl Runner {
             .get(self.session.stage)
             .ok_or("invalid flow stage")?
             .clone();
-        self.metadata["flow"] = json!({"goal":self.session.plan.as_ref().unwrap().goal,"stages":self.session.plan.as_ref().unwrap().stages,"stage_index":self.session.stage,"completed_stages":self.session.stage,"helm_enabled":self.session.helm});
+        let mut flow_meta = json!({"goal":self.session.plan.as_ref().unwrap().goal,"stages":self.session.plan.as_ref().unwrap().stages,"stage_index":self.session.stage,"completed_stages":self.session.stage,"helm_enabled":self.session.helm});
+        if let Some(ref atom) = self.session.atom_contract {
+            flow_meta["atom_contract"] = atom.clone();
+        }
+        if let Some(ref neon) = self.session.neon_contract {
+            flow_meta["neon_contract"] = neon.clone();
+        }
+        self.metadata["flow"] = flow_meta;
         if stage.model == MODEL_NANO {
-            let native: ChatRequest = serde_json::from_value(json!({"model":MODEL_NANO,"messages":[{"role":"user","content":"--find-files **/*"}],"tools":self.offered.iter().filter(|tool| tool["function"]["name"] == "find_files").collect::<Vec<_>>(),"tool_choice":"auto"})).map_err(|_| "cannot construct Nano evidence request")?;
+            // Scope the listing to a folder the caller named, so the evidence is
+            // about that folder instead of a bounded sample of the whole project.
+            let glob = match named_folder(&self.consult.prompt) {
+                Some(folder) => format!("{folder}/**/*"),
+                None => "**/*".to_string(),
+            };
+            self.metadata["flow"]["evidence_glob"] = json!(glob);
+            let directive = format!("--find-files {glob}");
+            let native: ChatRequest = serde_json::from_value(json!({"model":MODEL_NANO,"messages":[{"role":"user","content":directive}],"tools":self.offered.iter().filter(|tool| tool["function"]["name"] == "find_files").collect::<Vec<_>>(),"tool_choice":"auto"})).map_err(|_| "cannot construct Nano evidence request")?;
             let decision = match nioxs_nano::decide_with_turn(
                 &native,
                 "nioflow-evidence",
@@ -489,7 +816,7 @@ impl Runner {
                 &self.offered,
                 &self.consult.messages,
             )?;
-            return self.handoff_tools(relayed);
+            return self.handoff_tools(relayed).await;
         }
         let messages = self.messages(&stage);
         let tools: Vec<Value> = if stage.model == MODEL_HELM
@@ -551,7 +878,7 @@ impl Runner {
                         fresh.push(call);
                     }
                     if !fresh.is_empty() {
-                        return self.handoff_tools(fresh);
+                        return self.handoff_tools(fresh).await;
                     }
                     self.session.repairs += 1;
                     self.session.stage_rounds += 1;
@@ -576,11 +903,36 @@ impl Runner {
                 }
             }
         }
+        if stage.model == MODEL_ATOM {
+            if let Some(contract) = AtomContract::parse_from_text(&content) {
+                let val = json!(contract);
+                self.session.atom_contract = Some(val.clone());
+                self.metadata["flow"]["atom_contract"] = val;
+            }
+        }
+        if stage.model == MODEL_NEON {
+            if let Some(contract) = NeonReviewContract::parse_from_text(&content) {
+                let val = json!(contract);
+                self.session.neon_contract = Some(val.clone());
+                self.metadata["flow"]["neon_contract"] = val;
+            }
+        }
         if self.is_final() {
             if content.trim().is_empty() {
                 return Err("The final stage returned no answer; completion is unverified".into());
             }
-            self.finish(content);
+            let content = if stage.model == MODEL_HELM {
+                self.guard_helm(content)
+            } else {
+                content
+            };
+            // Internal stage headers are loop bookkeeping, never user output.
+            let stripped = strip_stage_markers(&content);
+            self.finish(if stripped.trim().is_empty() {
+                content
+            } else {
+                stripped
+            });
         } else {
             self.session.drafts.push(json!({"role":"assistant","content":format!("[{} completed stage: {}]\n{}", stage.model, stage.task, content.chars().take(12000).collect::<String>())}));
             self.next_stage();
@@ -598,23 +950,25 @@ impl Runner {
         self.session.feedback.clear();
         self.announced = false;
     }
-    fn handoff_tools(&mut self, calls: Vec<ClientCall>) -> Result<(), String> {
+    async fn handoff_tools(&mut self, calls: Vec<ClientCall>) -> Result<(), String> {
         self.session.pending = calls.iter().map(|call| call.id.clone()).collect();
         self.session.total_rounds += 1;
         self.session.stage_rounds += 1;
         self.session.touched = Instant::now();
-        let mut stored = sessions().lock().map_err(|_| "flow state unavailable")?;
-        if stored.len() >= 32 && !stored.contains_key(&self.key) {
-            if let Some(oldest) = stored
-                .iter()
-                .min_by_key(|(_, session)| session.touched)
-                .map(|(key, _)| key.clone())
-            {
-                stored.remove(&oldest);
+        {
+            let mut stored = sessions().lock().map_err(|_| "flow state unavailable")?;
+            if stored.len() >= 32 && !stored.contains_key(&self.key) {
+                if let Some(oldest) = stored
+                    .iter()
+                    .min_by_key(|(_, session)| session.touched)
+                    .map(|(key, _)| key.clone())
+                {
+                    stored.remove(&oldest);
+                }
             }
+            stored.insert(self.key.clone(), self.session.clone());
         }
-        stored.insert(self.key.clone(), self.session.clone());
-        drop(stored);
+        self.persist().await;
         let model = self.model().to_string();
         for (index, call) in calls.iter().enumerate() {
             self.queue
@@ -642,6 +996,12 @@ impl Runner {
             Value::Null,
         ));
         self.metadata["flow"]["completed_stages"] = json!(self.session.stage + 1);
+        if let Some(ref atom) = self.session.atom_contract {
+            self.metadata["flow"]["atom_contract"] = atom.clone();
+        }
+        if let Some(ref neon) = self.session.neon_contract {
+            self.metadata["flow"]["neon_contract"] = neon.clone();
+        }
         self.metadata["flow_message"] = json!({"role":"assistant","content":answer});
         self.metadata["flow_finish"] = json!("stop");
         self.queue.push_back(coding_terminal(
@@ -653,6 +1013,7 @@ impl Runner {
         if let Ok(mut sessions) = sessions().lock() {
             sessions.remove(&self.key);
         }
+        self.clear_persisted();
         self.done = true;
     }
     fn fail(&mut self, error: &str) {
@@ -669,7 +1030,110 @@ impl Runner {
         if let Ok(mut sessions) = sessions().lock() {
             sessions.remove(&self.key);
         }
+        self.clear_persisted();
         self.done = true;
+    }
+    /// Best-effort durable snapshot of the current handoff. A storage failure or
+    /// an oversized record leaves the in-memory state authoritative; the turn
+    /// never fails because persistence did.
+    async fn persist(&self) {
+        let Some(session) = persistable_session(&self.session) else {
+            return;
+        };
+        let _ = self
+            .db
+            .flow_session_set(
+                &self.deployment,
+                &self.persist_key,
+                &session,
+                now_unix(),
+                FLOW_SESSION_TTL,
+            )
+            .await;
+    }
+    /// Tool results this turn supplied, as the evidence basis for Helm.
+    fn supplied_tool_evidence(&self) -> ToolEvidence {
+        let mut text = String::new();
+        let mut results = 0usize;
+        for message in self.consult.messages.iter().chain(self.session.feedback.iter()) {
+            if message["role"] != "tool" {
+                continue;
+            }
+            let Some(content) = message["content"]
+                .as_str()
+                .filter(|content| !content.trim().is_empty())
+            else {
+                continue;
+            };
+            results += 1;
+            text.push_str(content);
+            text.push('\n');
+        }
+        ToolEvidence {
+            text: text.to_ascii_lowercase(),
+            results,
+        }
+    }
+
+    /// Rejects a Helm answer that asserts filesystem facts this turn was never
+    /// given evidence for. Returns the answer to emit: the original when every
+    /// claim is backed by a supplied tool result, otherwise a deterministic
+    /// refusal that replaces it. Helm runs without tools, so this is the one
+    /// stage where a fabricated inspection could otherwise reach the user.
+    fn guard_helm(&mut self, content: String) -> String {
+        let evidence = self.supplied_tool_evidence();
+        let mut unverified: Vec<String> = Vec::new();
+        if evidence.results == 0 {
+            unverified.extend(inspection_claims(&content));
+        }
+        let verdict = HelmVerdictContract::parse_from_text(&content);
+        if let Some(verdict) = &verdict {
+            for supporting in &verdict.decisive_evidence {
+                for path in path_tokens(supporting) {
+                    if !evidence.text.contains(&path) {
+                        unverified.push(format!("path `{path}` asserted as evidence"));
+                    }
+                }
+            }
+        }
+        // `find_files` lists files, so an empty result says "no files matched",
+        // never "no such folder". A claim that something is missing, supported
+        // only by an empty listing, is not evidence.
+        if evidence.text.contains("\"files\":[]") || evidence.text.contains("\"files\": []") {
+            unverified.extend(absence_claims(&content));
+        }
+        if unverified.is_empty() {
+            if let Some(verdict) = verdict {
+                self.metadata["flow"]["helm_verdict"] = json!(verdict);
+            }
+            return content;
+        }
+        unverified.sort();
+        unverified.dedup();
+        self.metadata["flow"]["helm_verdict"] = json!(HelmVerdictContract {
+            verdict: HelmGateVerdict::NoGo,
+            summary:
+                "Withheld: the final answer asserted filesystem facts with no supporting tool result"
+                    .into(),
+            decisive_evidence: Vec::new(),
+            unmet_criteria: unverified.clone(),
+            residual_risks: vec![
+                "NioHelm's synthesized answer was replaced by a deterministic evidence guard".into(),
+            ],
+            reversibility: Some("high".into()),
+        });
+        self.metadata["flow"]["helm_guard"] =
+            json!({"withheld_claims": unverified, "tool_results": evidence.results});
+        withheld_helm_answer(&unverified, evidence.results)
+    }
+
+    /// Best-effort durable cleanup once a turn ends.
+    fn clear_persisted(&self) {
+        let db = self.db.clone();
+        let key = self.persist_key.clone();
+        tokio::spawn(async move {
+            let _ = db.flow_session_remove(&key).await;
+        });
     }
 }
 fn public_metadata(metadata: &Value) -> Value {
@@ -790,7 +1254,34 @@ fn parse_plan(content: &str, prompt: &str) -> Plan {
             }],
         }
     });
-    plan.needs_context &= profiles::project_evidence_relevant(prompt);
+    let project_evidence = profiles::project_evidence_relevant(prompt);
+    let inspection = profiles::inspection_request(prompt);
+    // An inspection request ("check the nio-guru folder") must READ the project
+    // before any answer exists. An answering profile placed first would answer
+    // from memory, and its draft then primes every later stage, so a read-tool
+    // stage is moved (or inserted) to the front.
+    if inspection {
+        match plan
+            .stages
+            .iter()
+            .position(|stage| READ_TOOL_STAGES.contains(&stage.model.as_str()))
+        {
+            Some(index) if index > 0 => {
+                let read_stage = plan.stages.remove(index);
+                plan.stages.insert(0, read_stage);
+            }
+            None => plan.stages.insert(
+                0,
+                Stage {
+                    model: MODEL_NANO.into(),
+                    task: "Gather a bounded caller-project listing as evidence for this request"
+                        .into(),
+                },
+            ),
+            _ => {}
+        }
+    }
+    plan.needs_context = (plan.needs_context && project_evidence) || inspection;
     let mut seen = std::collections::HashSet::new();
     plan.stages.retain(|stage| seen.insert(stage.model.clone()));
     if plan.stages.iter().any(|stage| stage.model == MODEL_ATOM)
@@ -959,6 +1450,16 @@ mod tests {
         serde_json::from_value(json!({"model":"nio-flow","stream":stream,"messages":[{"role":"system","content":"Persona & Guidelines (always active):\nIdentity: Your name is Morgan."},{"role":"user","content":"Suggest and implement a dashboard"}],"tools":companion::coding_tool_schemas()})).unwrap()
     }
     async fn run(base: &str, request: &ChatRequest, turn: &str) -> Value {
+        let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
+        run_flow(&db, base, "flow-tests", request, turn).await
+    }
+    async fn run_flow(
+        db: &NioDb,
+        base: &str,
+        instance: &str,
+        request: &ChatRequest,
+        turn: &str,
+    ) -> Value {
         let consult = CodingConsult {
             config: companion::CodingConfig {
                 base_url: base.into(),
@@ -980,7 +1481,7 @@ mod tests {
             files: vec![],
             guarded: false,
         };
-        let response = respond(consult, request, "chat-test".into(), json!({"model":request.model,"routing":{"requested_model":request.model,"selected_model":request.model},"progress":[],"status":{}}), TurnGuard { active:ActiveTurns::default(), id:turn.into() }, turn.into(), "flow-tests", "stable-task").await;
+        let response = respond(consult, request, "chat-test".into(), json!({"model":request.model,"routing":{"requested_model":request.model,"selected_model":request.model},"progress":[],"status":{}}), TurnGuard { active:ActiveTurns::default(), id:turn.into() }, turn.into(), instance, db, "test", "stable-task").await;
         let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
         if request.stream {
             let text = String::from_utf8(bytes.to_vec()).unwrap();
@@ -1011,6 +1512,579 @@ mod tests {
             );
         }
     }
+
+    fn session_snapshot() -> Session {
+        Session {
+            fingerprint: "f".into(),
+            helm: true,
+            plan: None,
+            stage: 0,
+            drafts: vec![],
+            feedback: vec![],
+            pending: vec![],
+            stage_rounds: 0,
+            total_rounds: 0,
+            repairs: 0,
+            validation_failures: 0,
+            reasoning_escalated: false,
+            atom_contract: None,
+            neon_contract: None,
+            touched: Instant::now(),
+        }
+    }
+
+    #[test]
+    fn persistable_session_bounds_the_durable_snapshot() {
+        let value = persistable_session(&session_snapshot()).expect("a small session fits");
+        assert!(value.get("truncated").is_none());
+
+        // A large per-stage tool result is dropped before carried-forward work.
+        let mut feedback = session_snapshot();
+        feedback.feedback = vec![json!({"role":"tool","content":"x".repeat(20_000)})];
+        let value = persistable_session(&feedback).expect("feedback dropped to fit");
+        assert_eq!(value["feedback"].as_array().unwrap().len(), 0);
+        assert!(value.get("truncated").is_none());
+
+        // Drafts are trimmed only as far as the budget requires, and flagged.
+        let mut drafts = session_snapshot();
+        drafts.drafts = (0..3)
+            .map(|i| json!({"role":"assistant","content":format!("{i}").repeat(8_000)}))
+            .collect();
+        let value = persistable_session(&drafts).expect("drafts trimmed to fit");
+        assert_eq!(value["truncated"], json!(true));
+        assert!(value["drafts"].as_array().unwrap().len() < 3);
+
+        // When even an empty snapshot is too large, nothing is persisted.
+        let mut oversized = session_snapshot();
+        oversized.fingerprint = "f".repeat(20_000);
+        assert!(persistable_session(&oversized).is_none());
+    }
+
+    #[tokio::test]
+    async fn flow_handoff_survives_a_provider_restart_without_replaying_tools() {
+        let (upstream, server) = gateway(vec![
+            plan(false, &[MODEL_NEON]),
+            call("read_file", json!({"path":"README.md"})),
+            answer("Neon reviewed the actual README"),
+            answer("Go based on the actual README"),
+        ])
+        .await;
+        let (db_url, store) = crate::testdb::mock_niodb().await;
+        let db = NioDb::new(&db_url, "test".into()).unwrap();
+        let mut request = request(false);
+
+        let first = run_flow(&db, &upstream, "flow-tests", &request, "turn_restart").await;
+        assert_eq!(first["choices"][0]["finish_reason"], "tool_calls");
+        assert_eq!(
+            first["choices"][0]["message"]["tool_calls"][0]["function"]["name"],
+            "read_file"
+        );
+        assert_eq!(store.lock().await.len(), 1, "the handoff is stored durably");
+
+        replay(&mut request, &first, "Actual README contents for the task");
+        // A restarted provider has an empty in-memory map: the continuation must
+        // resume from the durable handoff instead of replanning from scratch.
+        let second = run_flow(
+            &db,
+            &upstream,
+            "flow-restarted",
+            &request,
+            "turn_restart",
+        )
+        .await;
+        assert_eq!(second["choices"][0]["finish_reason"], "stop");
+        let content = second["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            content.contains("Go based on the actual README"),
+            "resumed answer: {content}"
+        );
+        // plan + read + Neon + Helm: the restart resumed, it did not replan.
+        assert_eq!(server.await.unwrap().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn flow_handoff_with_a_changed_fingerprint_is_refused_after_restart() {
+        let (upstream, _server) = gateway(vec![
+            plan(false, &[MODEL_NEON]),
+            call("read_file", json!({"path":"README.md"})),
+        ])
+        .await;
+        let (db_url, _store) = crate::testdb::mock_niodb().await;
+        let db = NioDb::new(&db_url, "test".into()).unwrap();
+        let mut request = request(false);
+        let first = run_flow(&db, &upstream, "flow-tests", &request, "turn_changed").await;
+        replay(&mut request, &first, "Actual README contents for the task");
+
+        // Same turn and model, but the caller's task context changed.
+        let db_restart = db.clone();
+        let response = respond(
+            CodingConsult {
+                config: companion::CodingConfig {
+                    base_url: upstream.clone(),
+                    api_key: None,
+                    model: "mock/model".into(),
+                    mode: "ask".into(),
+                    auto_approve: false,
+                    automatic_model: false,
+                },
+                prompt: "Suggest and implement a dashboard".into(),
+                messages: profiles::messages(
+                    request.model.as_str(),
+                    companion::upstream_messages(
+                        "Suggest and implement a dashboard",
+                        &request.messages,
+                    ),
+                ),
+                tools: request.tools.clone(),
+                files: vec![],
+                guarded: false,
+            },
+            &request,
+            "chat-test".into(),
+            json!({}),
+            TurnGuard { active: ActiveTurns::default(), id: "turn_changed".into() },
+            "turn_changed".into(),
+            "flow-restarted",
+            &db_restart,
+            "test",
+            "different-task",
+        )
+        .await;
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        let content = value["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            content.contains("task context changed"),
+            "unexpected refusal: {content}"
+        );
+    }
+
+    #[tokio::test]
+    async fn folder_inspection_dispatches_a_read_tool_before_answering() {
+        // The planner put an answering profile first; the inspection must still
+        // read the project before any answer is produced.
+        let (upstream, server) = gateway(vec![plan(false, &[MODEL_ECHO, MODEL_SCOUT])]).await;
+        let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
+        let prompt = "I meant checking nio-guru folder pls.";
+        let request: ChatRequest = serde_json::from_value(json!({
+            "model": "nio-flow",
+            "stream": false,
+            "messages": [
+                {"role":"system","content":"Identity: Your name is Morgan."},
+                {"role":"user","content":prompt}
+            ],
+            "tools": companion::coding_tool_schemas()
+        }))
+        .unwrap();
+        let consult = CodingConsult {
+            config: companion::CodingConfig {
+                base_url: upstream.clone(),
+                api_key: None,
+                model: "mock/model".into(),
+                mode: "ask".into(),
+                auto_approve: false,
+                automatic_model: false,
+            },
+            prompt: prompt.into(),
+            messages: profiles::messages(
+                request.model.as_str(),
+                companion::upstream_messages(prompt, &request.messages),
+            ),
+            tools: request.tools.clone(),
+            files: vec![],
+            guarded: false,
+        };
+        let response = respond(
+            consult,
+            &request,
+            "chat-test".into(),
+            json!({"model":request.model,"routing":{"requested_model":request.model,"selected_model":request.model},"progress":[],"status":{}}),
+            TurnGuard { active: ActiveTurns::default(), id: "turn_inspect".into() },
+            "turn_inspect".into(),
+            "flow-inspect",
+            &db,
+            "test",
+            "stable-task",
+        )
+        .await;
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        // The inspection is routed to a native read-tool stage instead of the
+        // answering profile, so a call is dispatched before any answer exists.
+        assert_eq!(value["choices"][0]["finish_reason"], "tool_calls");
+        assert_eq!(
+            value["choices"][0]["message"]["tool_calls"][0]["function"]["name"],
+            "find_files"
+        );
+        // The listing stage is native Rust: the plan was the only upstream call.
+        assert_eq!(server.await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn flow_stage_pins_the_current_request_over_earlier_turns() {
+        let (upstream, server) = gateway(vec![
+            plan(false, &[MODEL_ECHO]),
+            answer("Answer for the current request"),
+            answer("Go based on the current request"),
+        ])
+        .await;
+        let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
+        let request = request(false);
+        let _ = run_flow(&db, &upstream, "flow-anchor", &request, "turn_anchor").await;
+        let requests = server.await.unwrap();
+        // requests[0] is the plan; the specialist stages follow.
+        for index in [1, 2] {
+            let messages = requests[index]["messages"].to_string();
+            assert!(
+                messages.contains("earlier user turns as context only"),
+                "stage {index} lost the anchor: {messages}"
+            );
+            assert!(
+                messages.contains("Suggest and implement a dashboard"),
+                "stage {index} lost the request: {messages}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn flow_strips_internal_stage_markers_from_the_final_answer() {
+        let (upstream, _server) = gateway(vec![
+            plan(false, &[MODEL_ECHO]),
+            answer("Here is an answer"),
+            answer("[nio-echo completed stage: Synthesize] \nReal final answer\n\n```json:helm\n{\"verdict\":\"go\",\"summary\":\"ok\",\"decisive_evidence\":[],\"unmet_criteria\":[],\"residual_risks\":[],\"reversibility\":\"high\"}\n```"),
+        ])
+        .await;
+        let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
+        let request = request(false);
+        let result = run_flow(&db, &upstream, "flow-strip", &request, "turn_strip").await;
+        let content = result["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("");
+        assert!(!content.contains("completed stage:"), "marker leaked: {content}");
+        assert!(content.contains("Real final answer"), "answer lost: {content}");
+        assert_eq!(result["nioxs"]["flow"]["helm_verdict"]["verdict"], "go");
+    }
+
+    #[tokio::test]
+    async fn helm_withholds_a_fabricated_scan_with_no_tool_results() {
+        let fabricated = "Directory scan completed and returned comprehensive project structure.\n\n```json:helm\n{\"verdict\":\"no_go\",\"summary\":\"Cannot check nio-guru folder as it does not exist in the workspace\",\"decisive_evidence\":[\"File system listing shows only nio/ and nio-cm/ directories\",\"No nio-guru folder present in any location\"],\"unmet_criteria\":[\"Target folder existence confirmed missing\"],\"residual_risks\":[\"Potential confusion about project structure\"],\"reversibility\":\"high\"}\n```";
+        let (upstream, _server) = gateway(vec![
+            plan(false, &[MODEL_ECHO]),
+            answer("Here is the assessment"),
+            answer(fabricated),
+        ])
+        .await;
+        let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
+        let request = request(false);
+        let result = run_flow(&db, &upstream, "flow-guard", &request, "turn_guard").await;
+        let content = result["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("");
+        assert!(content.contains("withheld"), "guard did not fire: {content}");
+        assert_eq!(result["nioxs"]["flow"]["helm_verdict"]["verdict"], "no_go");
+        assert!(
+            !result["nioxs"]["flow"]["helm_guard"]["withheld_claims"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn helm_keeps_a_verdict_backed_by_an_actual_listing() {
+        let verdict = "The listing was reviewed.\n\n```json:helm\n{\"verdict\":\"go\",\"summary\":\"nio-guru contains the expected files\",\"decisive_evidence\":[\"find_files returned nio-guru/src/lib.rs\"],\"unmet_criteria\":[],\"residual_risks\":[],\"reversibility\":\"high\"}\n```";
+        let (upstream, _server) = gateway(vec![
+            plan(false, &[MODEL_NEON]),
+            call("find_files", json!({"glob":"**/*"})),
+            answer("Neon has the listing"),
+            answer(verdict),
+        ])
+        .await;
+        let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
+        let mut request = request(false);
+        let first = run_flow(&db, &upstream, "flow-guard", &request, "turn_backed").await;
+        assert_eq!(first["choices"][0]["finish_reason"], "tool_calls");
+        replay(&mut request, &first, "nio-guru/src/lib.rs\naio-cm/src/lib.rs");
+        let second = run_flow(&db, &upstream, "flow-guard", &request, "turn_backed").await;
+        let content = second["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("");
+        assert!(!content.contains("withheld"), "guard misfired: {content}");
+        assert_eq!(second["nioxs"]["flow"]["helm_verdict"]["verdict"], "go");
+    }
+
+    #[test]
+    fn a_named_folder_scopes_the_evidence_listing() {
+        assert_eq!(
+            named_folder("I meant checking nio-guru folder pls.").as_deref(),
+            Some("nio-guru")
+        );
+        assert_eq!(
+            named_folder("check the nio-cm directory").as_deref(),
+            Some("nio-cm")
+        );
+        assert_eq!(
+            named_folder("inspect nio-xs").as_deref(),
+            Some("nio-xs")
+        );
+        // No folder named, or a bare word with no folder shape.
+        assert_eq!(named_folder("summarize this project").as_deref(), None);
+        assert_eq!(named_folder("what do you think of our project?").as_deref(), None);
+        // A file path is not a folder request.
+        assert_eq!(named_folder("read src/main.rs").as_deref(), None);
+    }
+
+    #[tokio::test]
+    async fn a_flow_continuation_forwards_the_callers_tool_result_to_the_stage() {
+        // The caller answered the relayed listing on the continuation. The stage
+        // must see it, or the model re-asks and concludes the folder is missing.
+        let (upstream, server) = gateway(vec![
+            plan(true, &[MODEL_ECHO]),
+            answer("Echo answered from the listing"),
+            answer("Go: the folder is present"),
+        ])
+        .await;
+        let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
+        let prompt = "I meant checking nio-guru folder pls.";
+        let mut request: ChatRequest = serde_json::from_value(json!({
+            "model": "nio-flow",
+            "stream": false,
+            "messages": [
+                {"role":"system","content":"Identity: Your name is Morgan."},
+                {"role":"user","content":prompt}
+            ],
+            "tools": companion::coding_tool_schemas()
+        }))
+        .unwrap();
+        let first = run_flow(&db, &upstream, "flow-tools", &request, "turn_tools").await;
+        assert_eq!(
+            first["choices"][0]["finish_reason"], "tool_calls",
+            "the listing stage must dispatch a scan: {first}"
+        );
+        replay(
+            &mut request,
+            &first,
+            "{\"files\":[\"nio-guru/README.md\"],\"next_offset\":null,\"scan_limited\":false}",
+        );
+        let second = run_flow(&db, &upstream, "flow-tools", &request, "turn_tools").await;
+        assert_eq!(second["choices"][0]["finish_reason"], "stop");
+
+        let requests = server.await.unwrap();
+        // plan, then the stage that runs after the continuation.
+        let stage = requests
+            .iter()
+            .skip(1)
+            .find(|request| {
+                request["messages"].as_array().is_some_and(|messages| {
+                    messages.iter().any(|message| message["role"] == "tool")
+                })
+            })
+            .expect("a stage after the continuation must carry the caller's tool result");
+        let tool = stage["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|message| message["role"] == "tool")
+            .unwrap();
+        assert!(
+            tool["content"]
+                .as_str()
+                .unwrap()
+                .contains("nio-guru/README.md"),
+            "the caller's listing must reach the stage: {tool}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_folder_request_lists_that_folder_instead_of_a_whole_project_sample() {
+        let (upstream, server) = gateway(vec![plan(true, &[MODEL_ECHO])]).await;
+        let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
+        let prompt = "I meant checking nio-guru folder pls.";
+        let request: ChatRequest = serde_json::from_value(json!({
+            "model": "nio-flow",
+            "stream": false,
+            "messages": [
+                {"role":"system","content":"Identity: Your name is Taylor."},
+                {"role":"user","content":prompt}
+            ],
+            "tools": companion::coding_tool_schemas()
+        }))
+        .unwrap();
+        let consult = CodingConsult {
+            config: companion::CodingConfig {
+                base_url: upstream.clone(),
+                api_key: None,
+                model: "mock/model".into(),
+                mode: "ask".into(),
+                auto_approve: false,
+                automatic_model: false,
+            },
+            prompt: prompt.into(),
+            messages: profiles::messages(
+                request.model.as_str(),
+                companion::upstream_messages(prompt, &request.messages),
+            ),
+            tools: request.tools.clone(),
+            files: vec![],
+            guarded: false,
+        };
+        let response = respond(
+            consult,
+            &request,
+            "chat-test".into(),
+            json!({"model":request.model,"routing":{"requested_model":request.model,"selected_model":request.model},"progress":[],"status":{}}),
+            TurnGuard { active: ActiveTurns::default(), id: "turn_scope".into() },
+            "turn_scope".into(),
+            "flow-scope",
+            &db,
+            "test",
+            "stable-task",
+        )
+        .await;
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        let call = &value["choices"][0]["message"]["tool_calls"][0]["function"];
+        assert_eq!(call["name"], "find_files");
+        assert_eq!(
+            serde_json::from_str::<Value>(call["arguments"].as_str().unwrap()).unwrap()["glob"],
+            "nio-guru/**/*",
+            "the listing must be scoped to the folder the caller named"
+        );
+        // One listing stage only: a duplicated scan wasted a caller round.
+        let stages = value["nioxs"]["flow"]["stages"].as_array().unwrap();
+        assert_eq!(
+            stages
+                .iter()
+                .filter(|stage| stage["model"] == MODEL_NANO)
+                .count(),
+            1,
+            "the listing stage must not be duplicated: {stages:?}"
+        );
+        // The plan was the only upstream call; the listing stage is native Rust.
+        assert_eq!(server.await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn helm_withholds_a_missing_folder_claim_built_on_an_empty_listing() {
+        let verdict = "nio-guru does not exist in this project.\n\n```json:helm\n{\"verdict\":\"no_go\",\"summary\":\"The nio-guru folder does not exist in the current project structure.\",\"decisive_evidence\":[\"Directory scan of the project root found only nio/ and nio-cm/ directories; no nio-guru folder present\"],\"unmet_criteria\":[\"Requested folder nio-guru was not found in the project\"],\"residual_risks\":[\"The folder may exist in a different project path or have been renamed\"],\"reversibility\":\"high\"}\n```";
+        let (upstream, _server) = gateway(vec![
+            plan(false, &[MODEL_NEON]),
+            call("find_files", json!({"glob":"**/*"})),
+            answer("Neon has the listing"),
+            answer(verdict),
+        ])
+        .await;
+        let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
+        let mut request = request(false);
+        let first = run_flow(&db, &upstream, "flow-absent", &request, "turn_absent").await;
+        // The caller's listing matched no files, which is not proof of absence.
+        replay(&mut request, &first, "{\"files\":[],\"next_offset\":null,\"scan_limited\":false}");
+        let second = run_flow(&db, &upstream, "flow-absent", &request, "turn_absent").await;
+        let content = second["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            content.contains("withheld"),
+            "an empty listing must not support a missing-folder claim: {content}"
+        );
+        assert_eq!(second["nioxs"]["flow"]["helm_verdict"]["verdict"], "no_go");
+        let withheld = second["nioxs"]["flow"]["helm_guard"]["withheld_claims"]
+            .as_array()
+            .unwrap()
+            .clone();
+        assert!(
+            withheld.iter().any(|claim| claim
+                .as_str()
+                .is_some_and(|claim| claim.contains("does not exist"))),
+            "the absence claim must be listed: {withheld:?}"
+        );
+    }
+
+    #[test]
+    fn concept_pairs_are_not_path_claims() {
+        // A slash-joined pair of concepts is prose, not a filesystem claim.
+        assert!(path_tokens("The README covers speech-to-text/text-to-speech.").is_empty());
+        assert!(path_tokens("cost/benefit and read/write windows").is_empty());
+        // Real path shapes are still claims.
+        assert_eq!(
+            path_tokens("Read src/lib.rs and nio-guru/apps/server"),
+            vec!["src/lib.rs", "nio-guru/apps/server"]
+        );
+        assert_eq!(path_tokens("See ./README.md"), vec!["./readme.md"]);
+    }
+
+    #[tokio::test]
+    async fn helm_keeps_a_verdict_that_names_concepts_with_a_slash() {
+        let verdict = "nio-guru documents its features.\n\n```json:helm\n{\"verdict\":\"go\",\"summary\":\"nio-guru covers speech-to-text/text-to-speech dictation\",\"decisive_evidence\":[\"README.md documents speech-to-text/text-to-speech support\"],\"unmet_criteria\":[],\"residual_risks\":[],\"reversibility\":\"high\"}\n```";
+        let (upstream, _server) = gateway(vec![
+            plan(false, &[MODEL_NEON]),
+            call("read_file", json!({"path":"nio-guru/README.md"})),
+            answer("Neon read the README"),
+            answer(verdict),
+        ])
+        .await;
+        let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
+        let mut request = request(false);
+        let first = run_flow(&db, &upstream, "flow-concepts", &request, "turn_concepts").await;
+        assert_eq!(first["choices"][0]["finish_reason"], "tool_calls");
+        // The real nio-guru/README.md text the model was working from: the two
+        // concepts are separate bullets, so the joined pair is the model's own.
+        replay(
+            &mut request,
+            &first,
+            "nio-guru/README.md\n- **Speech-to-Text Voice Dictation (Composer Mic):** Dictate your prompts hands-free directly into the composer with live browser Speech Recognition.\n- **Text-to-Speech Message Reading (Assistant Speak):** Listen to Guru responses with one-click voice reading powered by SpeechSynthesis.",
+        );
+        let second = run_flow(&db, &upstream, "flow-concepts", &request, "turn_concepts").await;
+        let content = second["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            !content.contains("withheld"),
+            "a concept pair must not read as a path claim: {content}"
+        );
+        assert!(content.contains("speech-to-text/text-to-speech"));
+        assert_eq!(second["nioxs"]["flow"]["helm_verdict"]["verdict"], "go");
+    }
+
+    #[tokio::test]
+    async fn helm_withholds_a_fabricated_path_even_when_other_results_were_supplied() {
+        let verdict = "The listing was reviewed.\n\n```json:helm\n{\"verdict\":\"go\",\"summary\":\"nio-guru contains the expected files\",\"decisive_evidence\":[\"The listing shows nio-guru/src/ghost.rs\"],\"unmet_criteria\":[],\"residual_risks\":[],\"reversibility\":\"high\"}\n```";
+        let (upstream, _server) = gateway(vec![
+            plan(false, &[MODEL_NEON]),
+            call("find_files", json!({"glob":"**/*"})),
+            answer("Neon has the listing"),
+            answer(verdict),
+        ])
+        .await;
+        let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
+        let mut request = request(false);
+        let first = run_flow(&db, &upstream, "flow-ghost", &request, "turn_ghost").await;
+        replay(&mut request, &first, "nio-guru/README.md\nnio-guru/PLAN.md");
+        let second = run_flow(&db, &upstream, "flow-ghost", &request, "turn_ghost").await;
+        let content = second["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("");
+        assert!(content.contains("withheld"), "guard did not fire: {content}");
+        let withheld = second["nioxs"]["flow"]["helm_guard"]["withheld_claims"]
+            .as_array()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            withheld,
+            vec![json!("path `nio-guru/src/ghost.rs` asserted as evidence")]
+        );
+        // With results supplied, the reason must not claim that none were.
+        assert!(
+            content.contains("tool result(s) were supplied this turn"),
+            "misleading reason: {content}"
+        );
+        assert!(!content.contains("supplied no tool result at all"));
+    }
+
     #[tokio::test]
     async fn thinker_carries_draft_objections_and_actual_evidence_across_tool_handoffs() {
         let (base, server) = gateway(vec![
@@ -1289,7 +2363,129 @@ mod tests {
             final_event["nioxs"]["routing"]["selected_model"],
             MODEL_HELM
         );
+        assert_eq!(
+            final_event["nioxs"]["flow"]["helm_verdict"]["verdict"],
+            "conditional_go"
+        );
+        assert_eq!(
+            final_event["nioxs"]["flow"]["helm_verdict"]["summary"],
+            "proposal is ready; implementation is unverified"
+        );
+        assert_eq!(
+            final_event["nioxs"]["flow"]["atom_contract"]["patch_status"],
+            "patch_only"
+        );
+        assert_eq!(
+            final_event["nioxs"]["flow"]["neon_contract"]["verdict"],
+            "comment"
+        );
     }
+
+    #[tokio::test]
+    async fn helm_attaches_structured_json_verdict_to_flow_metadata() {
+        let helm_answer = r#"
+Here is the synthesized final assessment.
+
+```json:helm
+{
+  "verdict": "go",
+  "summary": "Implementation verified and all tests pass",
+  "decisive_evidence": ["cargo test passed with exit code 0"],
+  "unmet_criteria": [],
+  "residual_risks": [],
+  "reversibility": "high"
+}
+```
+"#;
+        let (base, _server) = gateway(vec![
+            plan(false, &[MODEL_NOVA]),
+            answer("Nova design"),
+            answer(helm_answer),
+        ])
+        .await;
+        let output = run(&base, &request(true), "turn_structured_helm").await;
+        let final_event = output["events"].as_array().unwrap().last().unwrap();
+        assert_eq!(
+            final_event["nioxs"]["flow"]["helm_verdict"]["verdict"],
+            "go"
+        );
+        assert_eq!(
+            final_event["nioxs"]["flow"]["helm_verdict"]["summary"],
+            "Implementation verified and all tests pass"
+        );
+        assert_eq!(
+            final_event["nioxs"]["flow"]["helm_verdict"]["decisive_evidence"][0],
+            "cargo test passed with exit code 0"
+        );
+        assert_eq!(
+            final_event["nioxs"]["flow"]["helm_verdict"]["reversibility"],
+            "high"
+        );
+    }
+
+    #[tokio::test]
+    async fn atom_and_neon_structured_contracts_are_recorded_in_metadata() {
+        let atom_answer = r#"
+Implementation complete.
+```json:atom
+{
+  "summary": "Added connection retry logic",
+  "patch_status": "applied_cleanly",
+  "modified_files": ["src/client.rs"],
+  "checks_executed": [
+    {
+      "command": "cargo test test_retry",
+      "exit_code": 0,
+      "passed": true,
+      "output_summary": "ok"
+    }
+  ],
+  "unverified_items": []
+}
+```
+"#;
+        let neon_answer = r#"
+Review complete.
+```json:neon
+{
+  "verdict": "approve",
+  "summary": "Retry logic is safe and bounded",
+  "verification_passed": true,
+  "findings": []
+}
+```
+"#;
+        let (base, _server) = gateway(vec![
+            plan(false, &[MODEL_ATOM, MODEL_NEON]),
+            answer(atom_answer),
+            answer(neon_answer),
+            answer("Go: verified and approved"),
+        ])
+        .await;
+        let output = run(&base, &request(true), "turn_atom_neon_contracts").await;
+        let final_event = output["events"].as_array().unwrap().last().unwrap();
+        assert_eq!(
+            final_event["nioxs"]["flow"]["atom_contract"]["summary"],
+            "Added connection retry logic"
+        );
+        assert_eq!(
+            final_event["nioxs"]["flow"]["atom_contract"]["patch_status"],
+            "applied_cleanly"
+        );
+        assert_eq!(
+            final_event["nioxs"]["flow"]["atom_contract"]["modified_files"][0],
+            "src/client.rs"
+        );
+        assert_eq!(
+            final_event["nioxs"]["flow"]["neon_contract"]["verdict"],
+            "approve"
+        );
+        assert_eq!(
+            final_event["nioxs"]["flow"]["neon_contract"]["verification_passed"],
+            true
+        );
+    }
+
     #[tokio::test]
     async fn no_helm_persists_across_nano_continuation_and_last_specialist_answers() {
         let (base, server) = gateway(vec![

@@ -3,9 +3,42 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.4.2
+
+### Added
+- One-click cloud deployments for Railway (`railway.json`) and Koyeb (`koyeb.yaml`) with unauthenticated `/health` endpoints and deploy buttons in README.
+- Container and cloud environment variable support: `PORT` (fallback `0.0.0.0:$PORT`), direct `NIOXS_API_TOKEN`, and `NIOXS_ALLOW_UNAUTHENTICATED=true`.
+- Direct `NIOXS_DB_TOKEN` environment variable support and remote `NIOXS_DB_URL` supervisor bypass.
+- Automated npm publishing via GitHub Actions release workflow (`scripts/publish-npm.mjs`).
+- Typed decision, build, and review contracts for NioHelm, NioAtom, and NioNeon (`HelmVerdictContract`, `AtomContract`, `NeonReviewContract`) emitted in NioFlow metadata.
+- Pre-installed bundled NioDB in runtime Docker image.
+
 ## v0.4.1
 
+### Added
+- NioDB-backed research cache and quota for NioScout: caller-observed `web_fetch`
+  results are cached in `nano_cache` with evidence in `nano_evidence`, scoped per
+  access, expiring after 24 hours, and failing closed at 2,000 records. Challenge
+  and denied pages are never cached, writes never fail a turn, and `GET /ready`
+  reports cache/evidence counts against the limit.
+
 ### Fixed
+- NioFlow scopes its native file listing to a folder the caller names, so
+  "check the nio-guru folder" lists that folder's files instead of a bounded
+  sample of the whole project that could miss it and read as "the folder is not
+  there". A duplicated listing stage no longer makes the caller scan twice.
+- NioHelm's evidence guard withholds a claim that a path or folder is missing
+  when the only support is an empty file listing: `find_files` lists files, so an
+  empty result means no files matched, never "no such folder".
+- The persona block now closes the upstream system prompt instead of sitting
+  mid-prompt, and the duplicated copy in the environment-context section is gone,
+  so the caller's persona is not buried behind role, stage, and tool messages.
+- NioHelm's evidence guard no longer reads a slash-joined pair of concepts
+  (for example `speech-to-text/text-to-speech`) as a filesystem path, which had
+  withheld an answer that was in fact grounded in a file the turn had read. A
+  token is now a path claim only with a known extension, an explicit `./`,
+  `../`, or `/` prefix, or at least two separators, and the refusal reports how
+  many tool results the turn did supply instead of claiming none were.
 - Docker builds now copy the model skill files required by the compile-time profile prompts.
 
 ## v0.4.0

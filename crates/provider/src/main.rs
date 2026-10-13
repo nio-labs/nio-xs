@@ -168,25 +168,43 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
     if arg.is_some() && arg.as_deref() != Some("serve") {
         return Err("unknown command; expected 'nioxs', 'nioxs serve', 'nioxs init', 'nioxs mcp', 'nioxs undo', or 'nioxs history'".into());
     }
-    let listen: std::net::SocketAddr = std::env::var("NIOXS_LISTEN")
-        .unwrap_or_else(|_| "127.0.0.1:7460".into())
-        .parse()?;
+    let listen: std::net::SocketAddr = if let Ok(listen_str) = std::env::var("NIOXS_LISTEN") {
+        listen_str.parse()?
+    } else if let Ok(port_str) = std::env::var("PORT") {
+        let port: u16 = port_str.parse()?;
+        std::net::SocketAddr::from(([0, 0, 0, 0], port))
+    } else {
+        "127.0.0.1:7460".parse()?
+    };
     let (db_url, db_token, _niodb_proc) = nioxs_provider::niodb_supervisor::ensure_niodb(
         std::env::var("NIOXS_DB_URL").ok().as_deref(),
         std::env::var("NIOXS_DB_TOKEN_FILE").ok().as_deref(),
     )
     .await?;
 
-    let api_token = std::env::var("NIOXS_API_TOKEN_FILE")
-        .ok()
-        .map(std::fs::read_to_string)
-        .transpose()?
-        .map(|s| s.trim().to_string());
-    if api_token.as_ref().is_some_and(String::is_empty) {
-        return Err("provider token cannot be empty".into());
-    }
-    if !listen.ip().is_loopback() && api_token.is_none() {
-        return Err("non-loopback deployment requires NIOXS_API_TOKEN_FILE".into());
+    let api_token = if let Ok(direct) = std::env::var("NIOXS_API_TOKEN") {
+        let trimmed = direct.trim().to_string();
+        if trimmed.is_empty() {
+            return Err("provider token cannot be empty".into());
+        }
+        Some(trimmed)
+    } else if let Ok(file) = std::env::var("NIOXS_API_TOKEN_FILE") {
+        let content = std::fs::read_to_string(file)?;
+        let trimmed = content.trim().to_string();
+        if trimmed.is_empty() {
+            return Err("provider token cannot be empty".into());
+        }
+        Some(trimmed)
+    } else {
+        None
+    };
+
+    let allow_unauthenticated = std::env::var("NIOXS_ALLOW_UNAUTHENTICATED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    if !listen.ip().is_loopback() && api_token.is_none() && !allow_unauthenticated {
+        return Err("non-loopback deployment requires NIOXS_API_TOKEN or NIOXS_API_TOKEN_FILE (or set NIOXS_ALLOW_UNAUTHENTICATED=true)".into());
     }
     let deployment = std::env::var("NIOXS_DEPLOYMENT_ID").unwrap_or_else(|_| "local".into());
     if deployment.is_empty()

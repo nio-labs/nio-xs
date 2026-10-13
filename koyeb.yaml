@@ -1,0 +1,28 @@
+name: nio-xs
+services:
+  - name: nio-xs
+    type: web
+    routes:
+      - path: /
+        port: 7460
+    regions:
+      - fra
+    ports:
+      - port: 7460
+        protocol: http
+    scalings:
+      - min: 1
+        max: 1
+    health_checks:
+      - http:
+          path: /health
+          port: 7460
+        interval: 10
+        timeout: 5
+        healthy_threshold: 1
+        unhealthy_threshold: 3
+    env:
+      - key: PORT
+        value: "7460"
+      - key: NIOXS_ALLOW_UNAUTHENTICATED
+        value: "true"

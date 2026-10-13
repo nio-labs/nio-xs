@@ -9,6 +9,7 @@ license.workspace = true
 name = "nioxs"
 path = "src/main.rs"
 [dependencies]
+nioxs-browser = { path = "../browser" }
 nioxs-contracts = { path = "../contracts" }
 nioxs-nano = { path = "../nano" }
 nioxs-storage = { path = "../storage" }

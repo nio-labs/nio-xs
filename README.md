@@ -1,6 +1,20 @@
 # NioXS (Nio Axis)
 
-**The Lightweight Coding Companion & AI Gateway orchestrated by NioFlow, with NioNano MicroLM (Micro Learning Model) for local evidence and actions.**
+<p align="center">
+  <strong>The Lightweight Coding Companion & AI Gateway orchestrated by NioFlow, with NioNano MicroLM for local evidence and actions.</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@nio-labs/nio-xs"><img src="https://img.shields.io/npm/v/@nio-labs/nio-xs.svg?style=flat-square" alt="npm version"></a>
+  <a href="https://github.com/nio-labs/nio-xs/actions/workflows/ci.yml"><img src="https://github.com/nio-labs/nio-xs/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  <a href="https://railway.app/new/template?template=https%3A%2F%2Fgithub.com%2Fnio-labs%2Fnio-xs"><img src="https://railway.app/button.svg" alt="Deploy on Railway" height="30"></a>
+  &nbsp;&nbsp;
+  <a href="https://app.koyeb.com/deploy?type=git&repository=github.com/nio-labs/nio-xs&branch=main&name=nioxs"><img src="https://www.koyeb.com/static/images/deploy/button.svg" alt="Deploy to Koyeb" height="30"></a>
+</p>
 
 > **AXIS = AI + XS**: NioXS serves as the operational axis and in-TUI coding companion—providing OpenAI-compatible gateway routing, an in-session bash runner, Python tool plugins, compiler diagnostic triage, and anti-hallucination guardrails for coding agents.
 
@@ -59,10 +73,14 @@ curl -fsSL https://raw.githubusercontent.com/nio-labs/nio-xs/main/install.sh | b
 irm https://raw.githubusercontent.com/nio-labs/nio-xs/main/install.ps1 | iex
 ```
 
-### 4. Docker
+### 4. Docker & Cloud Deployment
 ```bash
 docker run -d --name nioxs -p 7460:7460 ghcr.io/nio-labs/nioxs:latest
 ```
+
+Deploy instantly to cloud platforms:
+- **Railway**: Click the [Deploy on Railway](https://railway.app/new/template?template=https%3A%2F%2Fgithub.com%2Fnio-labs%2Fnio-xs) button or deploy using the included `railway.json`.
+- **Koyeb**: Click the [Deploy to Koyeb](https://app.koyeb.com/deploy?type=git&repository=github.com/nio-labs/nio-xs&branch=main&name=nioxs) button or deploy using `koyeb.yaml`.
 
 ---
 
@@ -139,16 +157,36 @@ catalog advertises tool support. If that model is unavailable before it responds
 Flow falls back to Auto Free. Explicit upstream model settings are respected.
 
 Flow prepares a bounded plan and hands off only to useful specialists. It asks
-Nano for a native project listing only when project context is needed and the
-caller offers the required file tool; if that optional listing fails, Flow
-continues with available evidence and reports the gap. General questions,
+Nano for a native project listing when project context is needed or when the
+request inspects the caller's own files or directories ("check the nio-guru
+folder") and the caller offers the required file tool, so the inspection reads
+the project before any answer is produced instead of an answering profile
+guessing. If that optional listing fails, Flow continues with available evidence
+and reports the gap. Every stage is pinned to the caller's current request
+(earlier user turns are context only), and NioFlow's internal
+`[<model> completed stage: …]` headers are stripped from the final answer. General questions,
 explanations, and feasibility requests do not trigger workspace scans. Prior
 drafts and actual tool results follow the task. Helm gives the final Go / No-Go
 by default. Caller tool permissions still decide what can run: Atom receives
 only offered tools; Neon and Nova receive read tools; Helm receives no tools.
 Echo, Sage, and Quill receive project inspection tools only; Scout and Thinker
 can also use an offered `web_fetch` tool. These five profiles cannot execute
-commands or apply edits.
+commands or apply edits. Because Helm runs without tools, NioXS withholds its
+verdict when the synthesized answer asserts a path or scan that the turn never
+received as a tool result: the answer is replaced by a deterministic refusal and
+`nioxs.flow.helm_guard` lists the withheld assertions. Only tokens with a
+positive path shape count — a known file extension, an explicit `./`, `../`, or
+`/` prefix, or at least two separators — so prose that joins two hyphenated
+concepts with a slash (`speech-to-text/text-to-speech`) is not treated as a
+filesystem claim. The refusal states how many tool results the turn did supply,
+so a turn with results is never reported as one without tools. An empty file
+listing never supports a claim that a path or folder is missing: `find_files`
+lists files, so an empty result means no file matched. When a request names a
+folder, NioFlow scopes its native listing to that folder instead of sampling the
+whole project, so a folder that exists cannot be missed by a bounded sample.
+The caller's persona block closes the upstream system prompt, after the
+environment and tool sections, so the role and stage messages that follow cannot
+bury it.
 
 Selecting Nano, Echo, Sage, Quill, Scout, Nova, Atom, or Neon directly runs the selected role without scheduling Helm. Shared stage instructions keep final approval guidance exclusive to Helm; each specialist returns its own deliverable. Selecting Thinker directly runs a bounded three-phase review of its own answer, with visible Drafting → Challenging → Refining statuses and carried-forward evidence. It does not run Helm by default; add `--with-helm` before or after the task to request Helm’s final verdict. Only the refined answer is shown; it states unresolved uncertainty rather than promising 100% correctness. A Flow-owned Thinker stage uses the same three phases and still ends with Helm by default. These profiles share the configured upstream and are not separate trained model weights.
 
@@ -168,9 +206,21 @@ stage selections and specialist invocations, including automatic Flow handoffs.
 API clients can read `nioxs.progress` and `nioxs.status` for routing events and
 the `awaiting_tools` handoff to the caller.
 
-Flow keeps bounded handoff state in memory for 10 minutes (up to 32 tasks).
-If that state expires or the provider restarts, it stops the continuation
+Flow keeps bounded handoff state in memory for 10 minutes (up to 32 tasks) and
+snapshots it to the NioDB `nano_flow` collection (600-second expiry), so a
+provider restart can resume a continuation instead of dropping it. A resumed
+handoff must still match the current task fingerprint. If the durable record is
+absent, expired, unreadable, or the context changed, Flow stops the continuation
 without replaying tools and asks for a fresh task using the collected evidence.
+A handoff snapshot too large for the 16 KiB record cap stays in memory only.
+NioScout research is caller-executed: NioXS relays `web_fetch` and the client
+fetches, so the provider caches and records only the tool results it actually
+observes. Cached excerpts live in NioDB `nano_cache` with evidence in
+`nano_evidence`, expire after 24 hours, are isolated per access scope, and fail
+closed at 2,000 records; challenge, login, and denied pages are never cached.
+Every write is best effort, so an unavailable database degrades to no cache
+rather than a failed turn, and `GET /ready` reports cache/evidence counts
+against the limit. Live remote research observations remain open work.
 Stage drafts are buffered; the final answer is emitted after Helm completes.
 Direct specialist requests retain their existing live upstream streaming. The
 caller's persona stays active through planning, handoffs, and final answers;

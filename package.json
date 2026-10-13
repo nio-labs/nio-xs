@@ -1,6 +1,6 @@
 {
   "name": "@nio-labs/nio-xs",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "NioXS: AI Gateway & Companion for Coding Agents with NioNano MicroLM",
   "main": "bin/nioxs.js",
   "bin": {
@@ -10,6 +10,11 @@
   "publishConfig": {
     "access": "public"
   },
+  "files": [
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "node ./bin/nioxs.js",
     "test": "cargo test --workspace"
