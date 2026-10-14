@@ -197,6 +197,9 @@ body {
 .sidebar-footer {
   padding: 14px 18px;
   border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .github-link {
@@ -626,23 +629,6 @@ tr:nth-child(even) td {
   --code-bg: #161b22;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg-primary: #0d1117;
-    --bg-secondary: #161b22;
-    --bg-tertiary: #21262d;
-    --border-color: #30363d;
-    --text-primary: #e6edf3;
-    --text-secondary: #8b949e;
-    --text-muted: #6e7681;
-    --accent-color: #2f81f7;
-    --accent-hover: #58a6ff;
-    --accent-glow: rgba(47, 129, 247, 0.15);
-    --success-color: #3fb950;
-    --code-bg: #161b22;
-  }
-}
-
 [data-theme="dark"] pre,
 [data-theme="dark"] code {
   background-color: var(--code-bg) !important;
@@ -656,28 +642,40 @@ tr:nth-child(even) td {
 
 /* Theme toggle button */
 .theme-toggle-btn {
-  background: transparent;
+  background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 6px 10px;
+  padding: 8px 12px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 8px;
   font-size: 12px;
   font-family: inherit;
+  font-weight: 500;
   transition: all 0.2s ease;
+  width: 100%;
 }
 .theme-toggle-btn:hover {
   color: var(--text-primary);
-  border-color: var(--text-secondary);
+  border-color: var(--accent-color);
   background: var(--bg-tertiary);
+}
+.theme-toggle-btn .theme-icon {
+  display: flex;
+  align-items: center;
 }
 .theme-toggle-btn svg {
   width: 14px;
   height: 14px;
   fill: currentColor;
+}
+
+.mobile-header .theme-toggle-btn {
+  width: auto;
+  padding: 6px 10px;
 }
 
 /* Tab groups for agent configs & snippets */
