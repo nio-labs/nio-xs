@@ -247,8 +247,8 @@ pub fn execute_in_session_bash(cmd: &str) -> CompanionResult {
 /// `kilo-auto/free` are served without an API key, matching the `nio` TUI.
 pub const DEFAULT_CODING_BASE_URL: &str = "https://api.kilo.ai/api/gateway";
 /// Default upstream model when the user has not selected one.
-pub const DEFAULT_CODING_MODEL: &str = "cohere/north-mini-code:free";
-pub const FALLBACK_CODING_MODEL: &str = "kilo-auto/free";
+pub const DEFAULT_CODING_MODEL: &str = "openrouter/free";
+pub const FALLBACK_CODING_MODEL: &str = "cohere/north-mini-code:free";
 
 /// Upstream configuration for `--code:` consultations.
 ///

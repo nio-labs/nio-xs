@@ -242,8 +242,8 @@ associated skill, and routing reason in `nioxs.routing`; the completion's
 
 With no upstream model override, NioXS checks Kilo's
 `https://api.kilo.ai/api/gateway/models` and prefers
-`cohere/north-mini-code:free`. If that ID is absent or the catalog check fails,
-it uses `kilo-auto/free`. For high-complexity NioFlow work, the catalog is also
+`openrouter/free`. If that ID is absent or the catalog check fails,
+it falls back to `cohere/north-mini-code:free` and `kilo-auto/free`. For high-complexity NioFlow work, the catalog is also
 checked for a free StepFun model that advertises tool support. Catalog checks
 have a 3-second timeout; successful results are cached for 5 minutes and
 failures for 30 seconds. If North Mini Code or a selected StepFun model is
