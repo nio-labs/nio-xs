@@ -19,10 +19,13 @@
       <span></span><span></span><span></span>
     </button>
     <a href="#overview" class="brand-title">
-      <img class="brand-logo" src="logo.svg" alt="">
+      <img class="brand-logo" src="logo.svg" alt="NioXS logo">
       <span class="brand-name">NioXS</span>
       <span class="badge">v0.4.2</span>
     </a>
+    <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">
+      <svg viewBox="0 0 16 16"><path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0zm0 13a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13zM2.343 2.343a.75.75 0 0 1 1.061 0l1.06 1.061a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.061zm9.193 9.193a.75.75 0 0 1 1.06 0l1.061 1.06a.75.75 0 0 1-1.06 1.061l-1.061-1.06a.75.75 0 0 1 0-1.061zM0 8a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5H.75A.75.75 0 0 1 0 8zm13 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 13 8zM2.343 13.657a.75.75 0 0 1 0-1.06l1.06-1.061a.75.75 0 1 1 1.061 1.06l-1.06 1.061a.75.75 0 0 1-1.061 0zm9.193-9.193a.75.75 0 0 1 0-1.06l1.061-1.061a.75.75 0 0 1 1.06 1.06l-1.06 1.061a.75.75 0 0 1-1.061 0z"/></svg>
+    </button>
   </header>
 
   <div class="layout">
@@ -41,22 +44,33 @@
           <div class="nav-section-title">Start here</div>
           <a href="#overview" class="nav-link active">1. Overview</a>
           <a href="#quickstart" class="nav-link">2. Quickstart</a>
-          <a href="#profiles" class="nav-link">3. Model family</a>
+          <a href="#agents" class="nav-link">3. Coding agents</a>
+          <a href="#cloud" class="nav-link">4. Cloud deploy</a>
         </div>
         <div class="nav-section">
-          <div class="nav-section-title">How Nio works</div>
-          <a href="#nionano" class="nav-link">4. NioNano MicroLM</a>
-          <a href="#flow" class="nav-link">5. NioFlow routing</a>
-          <a href="#directives" class="nav-link">6. Directives</a>
-          <a href="#permissions" class="nav-link">7. Tools &amp; permissions</a>
+          <div class="nav-section-title">Architecture &amp; models</div>
+          <a href="#profiles" class="nav-link">5. Model family</a>
+          <a href="#nionano" class="nav-link">6. NioNano MicroLM</a>
+          <a href="#flow" class="nav-link">7. NioFlow routing</a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Protocols &amp; tools</div>
+          <a href="#mcp" class="nav-link">8. MCP server</a>
+          <a href="#directives" class="nav-link">9. Directives</a>
+          <a href="#plugins" class="nav-link">10. Python plugins</a>
+          <a href="#permissions" class="nav-link">11. Tools &amp; permissions</a>
         </div>
         <div class="nav-section">
           <div class="nav-section-title">Project</div>
-          <a href="#axis" class="nav-link">8. AXIS priorities</a>
-          <a href="#faq" class="nav-link">9. FAQ</a>
+          <a href="#axis" class="nav-link">12. AXIS priorities</a>
+          <a href="#faq" class="nav-link">13. FAQ</a>
         </div>
       </nav>
       <div class="sidebar-footer">
+        <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">
+          <svg viewBox="0 0 16 16"><path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0zm0 13a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13zM2.343 2.343a.75.75 0 0 1 1.061 0l1.06 1.061a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.061zm9.193 9.193a.75.75 0 0 1 1.06 0l1.061 1.06a.75.75 0 0 1-1.06 1.061l-1.061-1.06a.75.75 0 0 1 0-1.061zM0 8a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5H.75A.75.75 0 0 1 0 8zm13 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 13 8zM2.343 13.657a.75.75 0 0 1 0-1.06l1.06-1.061a.75.75 0 1 1 1.061 1.06l-1.06 1.061a.75.75 0 0 1-1.061 0zm9.193-9.193a.75.75 0 0 1 0-1.06l1.061-1.061a.75.75 0 0 1 1.06 1.06l-1.06 1.061a.75.75 0 0 1-1.061 0z"/></svg>
+          <span class="theme-text">Toggle theme</span>
+        </button>
         <a href="https://github.com/nio-labs/nio-xs" target="_blank" rel="noreferrer" class="github-link">
           <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
           <span>GitHub: nio-labs/nio-xs</span>
@@ -66,6 +80,7 @@
 
     <main class="content-wrapper">
       <div class="content-container">
+        <!-- 1. OVERVIEW -->
         <section id="overview" class="doc-section">
           <div class="hero-header">
             <div class="hero-badges">
@@ -75,7 +90,7 @@
               <span class="badge">OpenAI-compatible API</span>
             </div>
             <h1 class="hero-title">A capable AI workflow, shaped around your tools.</h1>
-            <p class="hero-desc">NioXS is the gateway and orchestration layer for Nio. NioFlow plans and hands work to focused model roles, NioNano supplies bounded local workflows, and Rust keeps routing, tool contracts, and task state under control.</p>
+            <p class="hero-desc">NioXS is the gateway and orchestration layer for Nio. NioFlow plans and hands work to focused model roles, NioNano supplies bounded local MicroLM workflows, and Rust keeps routing, tool contracts, and task state under control.</p>
             <div class="capsule-actions">
               <a class="capsule-button" href="#quickstart">Get started →</a>
               <a class="capsule-button capsule-button-secondary" href="https://github.com/nio-labs/nio-xs" target="_blank" rel="noreferrer">View source</a>
@@ -88,7 +103,7 @@
 │                         Nio / Coding Agent                        │
 │            Chat · tools · approval · project boundary             │
 └──────────────────────────────┬────────────────────────────────────┘
-                               │ OpenAI-compatible API
+                               │ OpenAI-compatible API (:7460)
                                ▼
 ┌───────────────────────────────────────────────────────────────────┐
 │                       NioXS · Rust / AXIS                         │
@@ -103,48 +118,253 @@
           <div class="callout callout-info"><strong>One clear boundary:</strong> the caller owns tools and permissions. NioXS can request an advertised action; the caller decides whether and how to execute it.</div>
         </section>
 
+        <!-- 2. QUICKSTART -->
         <section id="quickstart" class="doc-section">
           <h2>2. Quickstart</h2>
-          <h3>Install</h3>
-          <p>On Linux, macOS, or Termux:</p>
-          <pre><code class="language-bash">curl -fsSL https://raw.githubusercontent.com/nio-labs/nio-xs/main/install.sh | bash</code></pre>
-          <p>Or run with Docker:</p>
-          <pre><code class="language-bash">docker run -d --name nioxs -p 7460:7460 ghcr.io/nio-labs/nioxs:latest</code></pre>
-          <h3>Connect your agent</h3>
-          <p>Start NioXS and point an OpenAI-compatible client at the local endpoint. Choose <code>nio-flow</code> for the orchestrated profile.</p>
-          <pre><code class="language-bash">nioxs init
-# API base URL: http://127.0.0.1:7460/v1
-# Model ID:     nio-flow</code></pre>
-          <p>For Aider:</p>
-          <pre><code class="language-bash">aider --openai-api-base http://127.0.0.1:7460/v1 \
-  --openai-api-key none --model nio-flow</code></pre>
-          <div class="callout callout-success">The NioXS API follows the OpenAI chat-completions shape at <code>/v1/chat/completions</code>. The available Nio profiles are listed by <code>/v1/models</code>.</div>
+          <h3>Zero-Install Run via NPX</h3>
+          <p>Runs on any machine with Node.js (Linux, macOS, Windows, Termux):</p>
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-bash">npx @nio-labs/nio-xs</code></pre>
+          </div>
+
+          <h3>Universal Binary Installer (Linux &amp; macOS)</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-bash">curl -fsSL https://raw.githubusercontent.com/nio-labs/nio-xs/main/install.sh | bash</code></pre>
+          </div>
+
+          <h3>Native Windows (PowerShell)</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-powershell">irm https://raw.githubusercontent.com/nio-labs/nio-xs/main/install.ps1 | iex</code></pre>
+          </div>
         </section>
 
-        <section id="profiles" class="doc-section">
-          <h2>3. The Nio model family</h2>
-          <p>Each profile has a distinct job. Choose one directly from your client's model picker, or let NioFlow select useful roles for the task.</p>
+        <!-- 3. CODING AGENTS (TABS) -->
+        <section id="agents" class="doc-section">
+          <h2>3. Connect Your Coding Agents (`nioxs init`)</h2>
+          <p>NioXS exposes a standard OpenAI-compatible completions endpoint on <code>http://127.0.0.1:7460/v1</code>. You can auto-configure your current workspace or select your editor below:</p>
+
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-bash"># Auto-detect and configure all agents in the current project
+nioxs init</code></pre>
+          </div>
+
+          <div class="tabs-container">
+            <div class="tabs-nav">
+              <button class="tab-btn active" type="button">Aider</button>
+              <button class="tab-btn" type="button">Cursor</button>
+              <button class="tab-btn" type="button">Cline / Roo Code</button>
+              <button class="tab-btn" type="button">OpenCode</button>
+              <button class="tab-btn" type="button">Continue.dev</button>
+            </div>
+
+            <!-- Aider Panel -->
+            <div class="tab-panel active">
+              <p>Run Aider directly against NioFlow, or write an <code>.aider.conf.yml</code> file:</p>
+              <div class="code-wrapper">
+                <button class="copy-btn" type="button">Copy</button>
+                <pre><code class="language-bash">aider --openai-api-base http://127.0.0.1:7460/v1 --openai-api-key none --model nio-flow</code></pre>
+              </div>
+              <p>Or in <code>.aider.conf.yml</code>:</p>
+              <div class="code-wrapper">
+                <button class="copy-btn" type="button">Copy</button>
+                <pre><code class="language-yaml">openai-api-base: http://127.0.0.1:7460/v1
+openai-api-key: none
+model: openai/nio-flow</code></pre>
+              </div>
+            </div>
+
+            <!-- Cursor Panel -->
+            <div class="tab-panel">
+              <p>In Cursor: Navigate to <strong>Settings</strong> ➔ <strong>Models</strong> ➔ <strong>OpenAI API Key</strong>:</p>
+              <ol>
+                <li>Enable <strong>Override OpenAI Base URL</strong> and enter: <code>http://127.0.0.1:7460/v1</code></li>
+                <li>Enter any dummy key (e.g. <code>none</code>) if <code>NIOXS_ALLOW_UNAUTHENTICATED=true</code>, or your <code>NIOXS_API_TOKEN</code>.</li>
+                <li>Add Model Name: <code>nio-flow</code>.</li>
+              </ol>
+            </div>
+
+            <!-- Cline / Roo Code Panel -->
+            <div class="tab-panel">
+              <p>In Cline or Roo Code, select <strong>OpenAI Compatible</strong> provider in settings, or configure <code>cline_mcp_settings.json</code>:</p>
+              <div class="code-wrapper">
+                <button class="copy-btn" type="button">Copy</button>
+                <pre><code class="language-json">{
+  "apiProvider": "openai",
+  "openAiBaseUrl": "http://127.0.0.1:7460/v1",
+  "openAiApiKey": "none",
+  "openAiModelId": "nio-flow"
+}</code></pre>
+              </div>
+            </div>
+
+            <!-- OpenCode Panel -->
+            <div class="tab-panel">
+              <p>Auto-generate <code>opencode.json</code> using <code>nioxs init --opencode</code> or save:</p>
+              <div class="code-wrapper">
+                <button class="copy-btn" type="button">Copy</button>
+                <pre><code class="language-json">{
+  "model": "nio-flow",
+  "apiBase": "http://127.0.0.1:7460/v1",
+  "apiKey": "none"
+}</code></pre>
+              </div>
+            </div>
+
+            <!-- Continue.dev Panel -->
+            <div class="tab-panel">
+              <p>Add NioXS to your <code>~/.continue/config.json</code> under the <code>models</code> array:</p>
+              <div class="code-wrapper">
+                <button class="copy-btn" type="button">Copy</button>
+                <pre><code class="language-json">{
+  "title": "NioXS (NioFlow)",
+  "provider": "openai",
+  "model": "nio-flow",
+  "apiBase": "http://127.0.0.1:7460/v1",
+  "apiKey": "none"
+}</code></pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. CLOUD DEPLOYMENT -->
+        <section id="cloud" class="doc-section">
+          <h2>4. One-Click Cloud &amp; Production Deployment</h2>
+          <p>Deploy NioXS as a dedicated team gateway or remote cloud proxy with instant 1-click templates:</p>
+
+          <div class="cloud-deploy-banner">
+            <a href="https://railway.app/new/template?template=https%3A%2F%2Fgithub.com%2Fnio-labs%2Fnio-xs" target="_blank" rel="noreferrer">
+              <img src="https://railway.app/button.svg" alt="Deploy on Railway">
+            </a>
+            <a href="https://app.koyeb.com/deploy?type=git&repository=github.com/nio-labs/nio-xs&branch=main&name=nioxs" target="_blank" rel="noreferrer">
+              <img src="https://www.koyeb.com/static/images/deploy/button.svg" alt="Deploy to Koyeb">
+            </a>
+          </div>
+
+          <h3>Docker Container</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-bash">docker run -d --name nioxs -p 7460:7460 -e NIOXS_ALLOW_UNAUTHENTICATED=true ghcr.io/nio-labs/nioxs:latest</code></pre>
+          </div>
+
+          <h3>Docker Compose</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-yaml">services:
+  nioxs:
+    image: ghcr.io/nio-labs/nioxs:latest
+    ports:
+      - "7460:7460"
+    environment:
+      - PORT=7460
+      - NIOXS_ALLOW_UNAUTHENTICATED=true
+    volumes:
+      - nioxs_data:/root/.nioxs/data
+volumes:
+  nioxs_data:</code></pre>
+          </div>
+
+          <h3>Environment Variables Reference</h3>
           <div class="table-container"><table>
-            <thead><tr><th>Profile</th><th>Role</th><th>What it does</th></tr></thead>
+            <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
             <tbody>
-              <tr><td><code>nio-flow</code></td><td>Orchestrate</td><td>Plans the task, hands off to relevant roles, then reaches Helm by default.</td></tr>
-              <tr><td><code>nio-nano</code></td><td>Assist</td><td>Local MicroLM workflows for bounded intent classification, project evidence, and actions.</td></tr>
-              <tr><td><code>nio-echo</code></td><td>Answer</td><td>Direct questions and conversation.</td></tr>
-              <tr><td><code>nio-sage</code></td><td>Teach</td><td>Explanations and examples.</td></tr>
-              <tr><td><code>nio-quill</code></td><td>Write</td><td>Documentation, prose, and messages.</td></tr>
-              <tr><td><code>nio-scout</code></td><td>Research</td><td>Evidence-led investigation with sources when available.</td></tr>
-              <tr><td><code>nio-thinker</code></td><td>Reflect</td><td>Bounded Drafting → Challenging → Refining passes; Helm is opt-in.</td></tr>
-              <tr><td><code>nio-nova</code></td><td>Explore</td><td>Creative alternatives and prototypes.</td></tr>
-              <tr><td><code>nio-atom</code></td><td>Build</td><td>Proposes patches and checks through caller-advertised tools.</td></tr>
-              <tr><td><code>nio-neon</code></td><td>Review</td><td>Reviews actual project evidence, edits, and check results.</td></tr>
-              <tr><td><code>nio-helm</code></td><td>Decide</td><td>Final evidence-linked Go, Conditional Go, or No-Go.</td></tr>
+              <tr><td><code>PORT</code></td><td><code>7460</code></td><td>Binds to <code>0.0.0.0:$PORT</code> on cloud hosts (Railway, Koyeb).</td></tr>
+              <tr><td><code>NIOXS_LISTEN</code></td><td><code>127.0.0.1:7460</code></td><td>Explicit host:port binding string.</td></tr>
+              <tr><td><code>NIOXS_API_TOKEN</code></td><td><em>None</em></td><td>Enforces HTTP Bearer token authentication.</td></tr>
+              <tr><td><code>NIOXS_ALLOW_UNAUTHENTICATED</code></td><td><code>false</code></td><td>Set <code>true</code> to permit non-loopback connections without token files.</td></tr>
+              <tr><td><code>NIOXS_DB_URL</code></td><td><code>http://127.0.0.1:7432</code></td><td>Remote or external NioDB state store endpoint.</td></tr>
+              <tr><td><code>NIOXS_DB_TOKEN</code></td><td><em>None</em></td><td>Client auth token for connecting to remote NioDB.</td></tr>
             </tbody>
           </table></div>
-          <p>Profiles share configured upstream models and Rust workflows. They are not separate hosted model weights.</p>
         </section>
 
+        <!-- 5. MODEL FAMILY -->
+        <section id="profiles" class="doc-section">
+          <h2>5. The Nio Model Family</h2>
+          <p>Each profile represents a specialized operational workflow and role contract. Choose one directly in your agent's model picker, or let <code>nio-flow</code> orchestrate them automatically:</p>
+
+          <div class="profile-grid">
+            <div class="profile-card">
+              <div class="profile-header">
+                <span class="profile-title">nio-flow</span>
+                <span class="profile-role-badge">Orchestrator</span>
+              </div>
+              <p class="profile-desc">Default plan-first entry point. Decomposes coding goals, delegates to specialized profiles, and routes to Helm for final sign-off.</p>
+              <div class="profile-contract">Handoff: Bounded Memory (32 tasks / 10m)</div>
+            </div>
+
+            <div class="profile-card">
+              <div class="profile-header">
+                <span class="profile-title">nio-nano</span>
+                <span class="profile-role-badge">MicroLM</span>
+              </div>
+              <p class="profile-desc">46 KB local CPU-native model. Runs &lt;0.5ms intent triage, compiler diagnostic analysis, symbol search, and in-TUI directives.</p>
+              <div class="profile-contract">Engine: Multinomial Naive Bayes</div>
+            </div>
+
+            <div class="profile-card">
+              <div class="profile-header">
+                <span class="profile-title">nio-atom</span>
+                <span class="profile-role-badge">Builder</span>
+              </div>
+              <p class="profile-desc">Constructs code changes and builds verification pipelines. Emits structured patch contracts and sanity checks.</p>
+              <div class="profile-contract">Contract: AtomContract { edits, checks }</div>
+            </div>
+
+            <div class="profile-card">
+              <div class="profile-header">
+                <span class="profile-title">nio-neon</span>
+                <span class="profile-role-badge">Inspector</span>
+              </div>
+              <p class="profile-desc">Deep code review and root-cause bug diagnosis. Audits actual project evidence against proposed mutations without hallucinated paths.</p>
+              <div class="profile-contract">Contract: NeonReviewContract { verdict, findings }</div>
+            </div>
+
+            <div class="profile-card">
+              <div class="profile-header">
+                <span class="profile-title">nio-helm</span>
+                <span class="profile-role-badge">Decision Arbiter</span>
+              </div>
+              <p class="profile-desc">The final gatekeeper. Issues evidence-backed Go, Conditional Go, or No-Go decisions with specific blockers and criteria.</p>
+              <div class="profile-contract">Verdict: Go | ConditionalGo | NoGo</div>
+            </div>
+
+            <div class="profile-card">
+              <div class="profile-header">
+                <span class="profile-title">nio-thinker</span>
+                <span class="profile-role-badge">Reflector</span>
+              </div>
+              <p class="profile-desc">Deep reflection loop across three phases: Draft ➔ Challenge ➔ Refine. Tests assumptions and exposes blind spots.</p>
+              <div class="profile-contract">Phases: Draft ➔ Challenge ➔ Refine</div>
+            </div>
+
+            <div class="profile-card">
+              <div class="profile-header">
+                <span class="profile-title">nio-scout</span>
+                <span class="profile-role-badge">Researcher</span>
+              </div>
+              <p class="profile-desc">Autonomous web &amp; documentation investigator. Caches verified excerpts in NioDB with durable cryptographic evidence.</p>
+              <div class="profile-contract">Store: nano_cache (2,000 quota, 24h TTL)</div>
+            </div>
+
+            <div class="profile-card">
+              <div class="profile-header">
+                <span class="profile-title">nio-nova</span>
+                <span class="profile-role-badge">Explorer</span>
+              </div>
+              <p class="profile-desc">Creative brainstorming and architecture alternatives. Produces distinct, feasible prototypes before locking in an implementation.</p>
+              <div class="profile-contract">Mode: Exploratory &amp; Divergent Design</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 6. NIONANO MICROLM -->
         <section id="nionano" class="doc-section">
-          <h2>4. NioNano: MicroLM (Micro Learning Model)</h2>
+          <h2>6. NioNano: MicroLM (Micro Learning Model)</h2>
           <p><strong>NioNano</strong> is the core differentiator in AXIS. While large foundation models (LLMs) require gigabytes of VRAM, introduce latency, and risk hallucination, NioNano is a <strong>46 KB deterministic learning model</strong> running natively inside the compiled Rust binary. It executes sub-millisecond local intent classification, verified evidence collection, compiler diagnostic triage, and anti-hallucination guardrails right in your developer terminal or TUI companion.</p>
 
           <div class="callout callout-info">
@@ -217,44 +437,157 @@
           </table></div>
         </section>
 
+        <!-- 7. NIOFLOW ROUTING -->
         <section id="flow" class="doc-section">
-          <h2>5. How NioFlow routes work</h2>
-          <ol>
-            <li><strong>Plan:</strong> NioFlow reads the prompt and available tools, then prepares a bounded plan.</li>
-            <li><strong>Gather context when needed:</strong> Nano can request a native file listing when the answer depends on this project and the caller offers the file tool. If that optional step fails, Flow continues with available evidence and reports the limitation.</li>
-            <li><strong>Hand off by task:</strong> Flow invokes useful answer, teaching, writing, research, reflection, exploration, implementation, or review roles. Status lines show the selected role and upstream model changes.</li>
-            <li><strong>Decide last:</strong> Helm provides the final Go / No-Go by default. Use <code>--no-helm</code> to skip Helm for one Flow task. Direct selection of other profiles does not add a Helm stage.</li>
-          </ol>
-          <h3>Upstream model path</h3>
-          <p>NioFlow starts with Kilo North Mini Code. If it is unavailable, Flow falls back to Kilo Auto Free. When the task has multiple concrete signs of complexity, Flow checks the live Kilo <code>/models</code> catalog and may switch to a free StepFun model that advertises tool support. If StepFun is unavailable, Flow falls back to Auto Free. Explicit model settings are respected.</p>
+          <h2>7. How NioFlow Routes Work</h2>
+          <p>Every turn processed by NioXS passes through an end-to-end, bounded lifecycle flow:</p>
+
+          <div class="lifecycle-diagram">
+            <div class="lifecycle-step">
+              <div class="lifecycle-step-icon">1</div>
+              <div class="lifecycle-step-body">
+                <h4>Prompt Arrival &amp; MicroLM Triage</h4>
+                <p>NioNano evaluates incoming input in &lt;0.5ms. Directives (e.g. <code>--bash</code>, <code>--test</code>) execute locally without touching cloud models. General queries bypass project file scans.</p>
+              </div>
+            </div>
+
+            <div class="lifecycle-step">
+              <div class="lifecycle-step-icon">2</div>
+              <div class="lifecycle-step-body">
+                <h4>Bounded Task Planning (`NioFlow`)</h4>
+                <p>Flow maps the objective into focused specialist roles. It preserves caller context and pins active turn constraints across handoffs.</p>
+              </div>
+            </div>
+
+            <div class="lifecycle-step">
+              <div class="lifecycle-step-icon">3</div>
+              <div class="lifecycle-step-body">
+                <h4>Specialist Execution (`Atom` / `Neon` / `Scout`)</h4>
+                <p>Specialists generate patches (<code>AtomContract</code>), audit code changes (<code>NeonReviewContract</code>), or fetch documentation with BM25 lexical ranking.</p>
+              </div>
+            </div>
+
+            <div class="lifecycle-step">
+              <div class="lifecycle-step-icon">4</div>
+              <div class="lifecycle-step-body">
+                <h4>Anti-Hallucination AST Guard</h4>
+                <p>Candidate modifications are checked against actual AST symbols in Rust, TypeScript, Python, and Go, refusing non-existent paths.</p>
+              </div>
+            </div>
+
+            <div class="lifecycle-step">
+              <div class="lifecycle-step-icon">5</div>
+              <div class="lifecycle-step-body">
+                <h4>Final Evidence Gate (`NioHelm`)</h4>
+                <p>Helm evaluates the gathered evidence and returns an authoritative <strong>Go</strong>, <strong>Conditional Go</strong>, or <strong>No-Go</strong> verdict before relaying results to the caller.</p>
+              </div>
+            </div>
+
+            <div class="lifecycle-step">
+              <div class="lifecycle-step-icon">6</div>
+              <div class="lifecycle-step-body">
+                <h4>Cryptographic State Journal (`NioDB`)</h4>
+                <p>Actions, turns, and evidence digests are immutably persisted in NioDB, enabling state rollback (<code>nioxs undo</code>) and audit histories (<code>nioxs history</code>).</p>
+              </div>
+            </div>
+          </div>
+
+          <h3>Upstream Model Path</h3>
+          <p>NioFlow starts with Kilo North Mini Code. If it is unavailable, Flow falls back to Kilo Auto Free. When the task has multiple concrete signs of complexity, Flow checks the live Kilo <code>/models</code> catalog and can escalate to a free StepFun model that advertises tool support.</p>
           <pre><code>🌊 NioFlow · Planning
 ↪ NioAtom · Building
 ↪ Upstream: cohere/north-mini-code:free → stepfun/&lt;catalog model&gt; (high task complexity)
 ⚖ NioHelm · Go / No-Go</code></pre>
-          <p>General questions, explanations, and feasibility requests do not trigger workspace scans. The caller persona remains active across plans, handoffs, and final answers.</p>
         </section>
 
-        <section id="directives" class="doc-section">
-          <h2>6. Directives</h2>
+        <!-- 8. MCP SERVER -->
+        <section id="mcp" class="doc-section">
+          <h2>8. Model Context Protocol (MCP) Server</h2>
+          <p>NioXS can be operated as a native stdio Model Context Protocol (MCP) server, offering tools to Claude Desktop, Cursor, Cline, and any other MCP-compatible host:</p>
+
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-bash">nioxs mcp</code></pre>
+          </div>
+
+          <h3>Claude Desktop Configuration</h3>
+          <p>Add NioXS to your <code>claude_desktop_config.json</code>:</p>
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-json">{
+  "mcpServers": {
+    "nioxs": {
+      "command": "nioxs",
+      "args": ["mcp"]
+    }
+  }
+}</code></pre>
+          </div>
+
+          <h3>Advertised MCP Tools</h3>
           <div class="table-container"><table>
-            <thead><tr><th>Directive</th><th>Effect</th></tr></thead>
+            <thead><tr><th>Tool Name</th><th>Category</th><th>Description</th></tr></thead>
             <tbody>
-              <tr><td><code>--no-helm &lt;task&gt;</code></td><td>Skip Flow's final Helm decision for this task.</td></tr>
-              <tr><td><code>--with-helm &lt;task&gt;</code></td><td>Opt in to Helm after directly selected NioThinker.</td></tr>
-              <tr><td><code>--code &lt;request&gt;</code></td><td>Send a coding request upstream with caller tools when provided.</td></tr>
-              <tr><td><code>--code guard &lt;request&gt;</code></td><td>Enable the code guard for a coding request.</td></tr>
-              <tr><td><code>--find-files &lt;glob&gt;</code></td><td>Ask Nano for a bounded project file listing, including when code mode is enabled.</td></tr>
-              <tr><td><code>--bash &lt;command&gt;</code></td><td>Use the caller's configured terminal tool and approval flow.</td></tr>
-              <tr><td><code>--test &lt;pattern&gt;</code></td><td>Run a matching supported project test workflow.</td></tr>
-              <tr><td><code>--git</code>, <code>--git:status</code>, <code>--git:diff</code></td><td>Summarize the caller project's Git state.</td></tr>
-              <tr><td><code>--config &lt;key&gt; &lt;on|off&gt;</code></td><td>Set supported session options such as <code>code</code> or <code>guard</code>.</td></tr>
+              <tr><td><code>apply_patch</code></td><td>Workspace</td><td>Applies precise diff patches against project files.</td></tr>
+              <tr><td><code>find_files</code></td><td>Navigation</td><td>Bounded file globbing across workspace root.</td></tr>
+              <tr><td><code>search_code</code></td><td>Inspection</td><td>Regex and AST symbol searches.</td></tr>
+              <tr><td><code>run_command</code></td><td>Execution</td><td>Runs shell commands with caller approval safety.</td></tr>
+              <tr><td><code>web_fetch</code></td><td>Research</td><td>Headless web excerpt retrieval with BM25 ranking.</td></tr>
+              <tr><td><code>scaffold</code></td><td>Generation</td><td>Creates initial project structures and templates.</td></tr>
             </tbody>
           </table></div>
-          <p>See the <a href="https://github.com/nio-labs/nio-xs/blob/main/README.md#-in-tui-companion-directives" target="_blank" rel="noreferrer">complete directive reference</a> for current behavior and examples.</p>
         </section>
 
+        <!-- 9. DIRECTIVES -->
+        <section id="directives" class="doc-section">
+          <h2>9. Directives</h2>
+          <p>Directives allow developers to trigger instant in-TUI actions directly in conversation without exiting or minimizing the coding agent:</p>
+          <div class="table-container"><table>
+            <thead><tr><th>Directive</th><th>Purpose</th><th>Behavior</th></tr></thead>
+            <tbody>
+              <tr><td><code>--no-helm &lt;task&gt;</code></td><td>Flow without Helm</td><td>Skips Flow's final Helm gate and lets the last specialist answer.</td></tr>
+              <tr><td><code>--with-helm &lt;task&gt;</code></td><td>Thinker with Helm</td><td>Opts in to Helm after directly selected NioThinker.</td></tr>
+              <tr><td><code>--code &lt;request&gt;</code></td><td>LLM Middleman</td><td>Hands the request upstream with caller tools when provided.</td></tr>
+              <tr><td><code>--code guard &lt;request&gt;</code></td><td>AST Guard</td><td>Verifies generated code against Rust, TS, Python, and Go symbols.</td></tr>
+              <tr><td><code>--find-files &lt;glob&gt;</code></td><td>Local Search</td><td>Asks Nano for a bounded project file listing.</td></tr>
+              <tr><td><code>--bash &lt;command&gt;</code></td><td>In-TUI Terminal</td><td>Runs shell commands directly inside your coding agent conversation.</td></tr>
+              <tr><td><code>--test [pattern]</code></td><td>Auto Test Runner</td><td>Detects test runner (cargo, npm, pytest, go test) and returns trimmed traces.</td></tr>
+              <tr><td><code>--git</code> / <code>--git:status</code> / <code>--git:diff</code></td><td>Git Summary</td><td>Summarizes project git status and diffs.</td></tr>
+              <tr><td><code>--tools &lt;task&gt;</code></td><td>Python Plugins</td><td>Dispatches specialized automation via installed companion plugins.</td></tr>
+              <tr><td><code>--config &lt;key&gt; &lt;on|off&gt;</code></td><td>Session Options</td><td>Configures runtime session flags such as <code>code</code> or <code>guard</code>.</td></tr>
+            </tbody>
+          </table></div>
+        </section>
+
+        <!-- 10. PYTHON PLUGINS -->
+        <section id="plugins" class="doc-section">
+          <h2>10. Python Tool Plugins Ecosystem (`--tools`)</h2>
+          <p>NioXS supports dropping modular Python plugins into <code>~/.nioxs/plugins/</code> to extend coding agent capabilities with zero server recompilation.</p>
+
+          <h3>How Plugins Work</h3>
+          <ol>
+            <li>Create a <code>.py</code> file in <code>~/.nioxs/plugins/my_plugin.py</code>.</li>
+            <li>Define a top-level <code>def run(prompt: str) -&gt; str</code> function.</li>
+            <li>NioNano detects the plugin and advertises it to calling agents and MCP.</li>
+            <li>Before executing any newly installed or downloaded plugin, NioXS prompts the developer for explicit consent.</li>
+          </ol>
+
+          <h3>Example Plugin</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-python"># ~/.nioxs/plugins/extract_colors.py
+import re, json
+
+def run(prompt: str) -> str:
+    """Extracts hex color codes from text or CSS strings."""
+    hex_colors = re.findall(r'#(?:[0-9a-fA-F]{3}){1,2}\b', prompt)
+    return json.dumps({"colors": list(set(hex_colors))})</code></pre>
+          </div>
+        </section>
+
+        <!-- 11. TOOLS & PERMISSIONS -->
         <section id="permissions" class="doc-section">
-          <h2>7. Tools, privacy &amp; permissions</h2>
+          <h2>11. Tools, Privacy &amp; Permissions</h2>
           <ul>
             <li>NioXS only relays tools advertised by the caller. The calling agent remains responsible for project access, approvals, and execution.</li>
             <li>Model output, repository files, tool results, and fetched web content are treated as untrusted input.</li>
@@ -265,8 +598,9 @@
           <div class="callout callout-info">Helm's Go is a readiness assessment against the evidence and criteria. It does not grant tool permission or replace the caller's approval.</div>
         </section>
 
+        <!-- 12. AXIS PRIORITIES -->
         <section id="axis" class="doc-section">
-          <h2>8. AXIS advancement priorities</h2>
+          <h2>12. AXIS Advancement Priorities</h2>
           <p>We are improving the whole system in five measurable areas:</p>
           <ol>
             <li><strong>Reliable tools:</strong> reuse results and handle tool limits cleanly.</li>
@@ -283,12 +617,14 @@
           </div>
         </section>
 
+        <!-- 13. FAQ -->
         <section id="faq" class="doc-section">
-          <h2>9. FAQ</h2>
+          <h2>13. FAQ</h2>
           <div class="faq-item"><h3>Are NioFlow, NioAtom, and the other profiles separate models?</h3><p>They are role profiles and Rust-controlled workflows that share the configured upstream model. NioNano has a local MicroLM component.</p></div>
           <div class="faq-item"><h3>Will a general question read my project files?</h3><p>No. NioFlow routes general questions directly and only asks for project evidence when the task depends on the current project.</p></div>
           <div class="faq-item"><h3>Does NioHelm approve changes?</h3><p>Helm reports Go, Conditional Go, or No-Go from evidence. The calling agent still enforces its approval policy before a tool runs.</p></div>
           <div class="faq-item"><h3>Can I use NioThinker without Helm?</h3><p>Yes. Direct Thinker runs its bounded three phases without Helm by default. Add <code>--with-helm</code> when you want a final decision.</p></div>
+          <div class="faq-item"><h3>How does NioXS compare to a traditional reverse proxy?</h3><p>Unlike raw proxies, NioXS embeds NioNano (&lt;0.5ms intent triage), Anti-Hallucination AST symbol validation, native web research, and cryptographic action logging in NioDB.</p></div>
           <div class="faq-item"><h3>Where can I find the API and setup details?</h3><p>See the <a href="https://github.com/nio-labs/nio-xs/blob/main/README.md" target="_blank" rel="noreferrer">README</a>, <a href="https://github.com/nio-labs/nio-xs/blob/main/docs/DEVELOPMENT.md" target="_blank" rel="noreferrer">development guide</a>, and <a href="https://github.com/nio-labs/nio-xs/blob/main/contracts/README.md" target="_blank" rel="noreferrer">API contracts</a>.</p></div>
         </section>
       </div>
@@ -297,6 +633,9 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
