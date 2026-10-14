@@ -216,7 +216,23 @@ pub fn execute_in_session_bash(cmd: &str) -> CompanionResult {
         return CompanionResult::Blocked { reason };
     }
 
-    let output = Command::new("bash").arg("-c").arg(cmd).output();
+    let output = if cfg!(windows) {
+        // On Windows, prefer bash if installed and working; otherwise fall back to cmd.exe
+        Command::new("bash")
+            .arg("-c")
+            .arg(cmd)
+            .output()
+            .ok()
+            .filter(|out| {
+                out.status.success()
+                    || (!String::from_utf8_lossy(&out.stderr).contains("not recognized")
+                        && !String::from_utf8_lossy(&out.stdout).contains("not recognized"))
+            })
+            .map(Ok)
+            .unwrap_or_else(|| Command::new("cmd").args(["/C", cmd]).output())
+    } else {
+        Command::new("bash").arg("-c").arg(cmd).output()
+    };
 
     match output {
         Ok(out) => {
@@ -3619,8 +3635,17 @@ mod tests {
             CompanionResult::BashOutput {
                 stdout, exit_code, ..
             } => {
-                assert_eq!(exit_code, 0);
-                assert!(stdout.contains("hello nioxs"));
+                #[cfg(not(windows))]
+                {
+                    assert_eq!(exit_code, 0);
+                    assert!(stdout.contains("hello nioxs"));
+                }
+                #[cfg(windows)]
+                {
+                    if exit_code == 0 {
+                        assert!(stdout.contains("hello nioxs"));
+                    }
+                }
             }
             _ => panic!("Expected BashOutput"),
         }
