@@ -394,13 +394,12 @@ async fn chat(
                 .unwrap_or("")
                 .trim()
                 .starts_with("--")
-                || !nioxs_nano::profiles::flow_options(
+                || nioxs_nano::profiles::is_flow_directive(
                     request.messages[request.validate().expect("validated request")]
                         .content
                         .as_str()
                         .unwrap_or(""),
-                )
-                .1))
+                )))
         {
             return flow::respond(
                 consult,
@@ -1664,6 +1663,41 @@ async fn coding_sse_inner(
                     events.push(Ok(Event::default().data("[DONE]")));
                     events
                 }
+                Err(reason) if tail_consult.tools.is_empty() => {
+                    let mut recovery_messages = tail_consult.messages.clone();
+                    recovery_messages.push(json!({
+                        "role": "user",
+                        "content": "The tool inspection budget is reached. You cannot execute more tools. Provide your complete final answer now using the files and evidence already inspected above."
+                    }));
+                    let client = reqwest::Client::new();
+                    let mut config = tail_consult.config.clone();
+                    if let Ok(res) = nioxs_nano::upstream::send_chat(&client, &mut config, &recovery_messages, &[], false).await {
+                        if let Ok(val) = res.json::<Value>().await {
+                            if let Some(ans) = val["choices"][0]["message"]["content"].as_str().filter(|s| !s.trim().is_empty()) {
+                                let mut events = vec![content_event(&id_tail, &model, ans.to_string())];
+                                events.push(Ok(Event::default().data(coding_terminal(
+                                    &id_tail,
+                                    "stop",
+                                    &tail_value,
+                                ))));
+                                events.push(Ok(Event::default().data("[DONE]")));
+                                return events;
+                            }
+                        }
+                    }
+                    let mut events = vec![content_event(
+                        &id_tail,
+                        &model,
+                        format!("\n\n⚠️ {reason}; no additional files were read."),
+                    )];
+                    events.push(Ok(Event::default().data(coding_terminal(
+                        &id_tail,
+                        "stop",
+                        &tail_value,
+                    ))));
+                    events.push(Ok(Event::default().data("[DONE]")));
+                    events
+                }
                 Err(reason) => {
                     let mut events = vec![content_event(
                         &id_tail,
@@ -1845,6 +1879,32 @@ async fn coding_response(
                     &id,
                     json!({"role":"assistant","content":null,"tool_calls":tool_calls}),
                     "tool_calls",
+                    nioxs_value,
+                )
+            }
+            Err(reason) if consult.tools.is_empty() => {
+                let mut recovery_messages = consult.messages.clone();
+                recovery_messages.push(json!({
+                    "role": "user",
+                    "content": "The tool inspection budget is reached. You cannot execute more tools. Provide your complete final answer now using the files and evidence already inspected above."
+                }));
+                let mut config = consult.config.clone();
+                if let Ok(res) = nioxs_nano::upstream::send_chat(&client, &mut config, &recovery_messages, &[], false).await {
+                    if let Ok(val) = res.json::<Value>().await {
+                        if let Some(ans) = val["choices"][0]["message"]["content"].as_str().filter(|s| !s.trim().is_empty()) {
+                            return coding_json(
+                                &id,
+                                json!({"role":"assistant","content":ans}),
+                                "stop",
+                                nioxs_value,
+                            );
+                        }
+                    }
+                }
+                coding_json(
+                    &id,
+                    json!({"role":"assistant","content":format!("⚠️ {reason}; no additional files were read.")}),
+                    "stop",
                     nioxs_value,
                 )
             }

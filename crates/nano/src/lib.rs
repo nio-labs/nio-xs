@@ -1345,12 +1345,12 @@ pub fn decide_with_model(
         }
     }
     let flow_options = profiles::flow_options(&prompt);
-    let no_helm = route.selected == nioxs_contracts::MODEL_FLOW && !flow_options.1;
+    let is_flow = route.selected == nioxs_contracts::MODEL_FLOW;
     let thinker_options = profiles::thinker_options(&prompt);
     let thinker_with_helm = route.selected == nioxs_contracts::MODEL_THINKER && thinker_options.1;
-    let intent = if no_helm && flow_options.0.is_empty() {
+    let intent = if is_flow && flow_options.0.is_empty() {
         Intent::Clarify(
-            "Usage: --no-helm <task>. Flow uses its specialists without the final Helm gate."
+            "Usage: --no-helm <task> or --helm <task>. Flow uses its specialists without the final Helm gate by default."
                 .into(),
         )
     } else if route.selected == nioxs_contracts::MODEL_THINKER
@@ -1377,11 +1377,11 @@ pub fn decide_with_model(
     } else {
         let parsed = parse(model, &prompt);
         if route.selected != MODEL_NANO
-            && (!prompt.starts_with("--") || no_helm)
+            && (!prompt.starts_with("--") || is_flow)
             && !matches!(parsed, Intent::Help | Intent::Config(_))
         {
             Intent::Coding {
-                prompt: if no_helm {
+                prompt: if is_flow {
                     flow_options.0
                 } else {
                     prompt.clone()

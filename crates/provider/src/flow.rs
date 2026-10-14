@@ -1454,6 +1454,9 @@ mod tests {
         (base, server)
     }
     fn request(stream: bool) -> ChatRequest {
+        serde_json::from_value(json!({"model":"nio-flow","stream":stream,"messages":[{"role":"system","content":"Persona & Guidelines (always active):\nIdentity: Your name is Morgan."},{"role":"user","content":"--helm Suggest and implement a dashboard"}],"tools":companion::coding_tool_schemas()})).unwrap()
+    }
+    fn request_default(stream: bool) -> ChatRequest {
         serde_json::from_value(json!({"model":"nio-flow","stream":stream,"messages":[{"role":"system","content":"Persona & Guidelines (always active):\nIdentity: Your name is Morgan."},{"role":"user","content":"Suggest and implement a dashboard"}],"tools":companion::coding_tool_schemas()})).unwrap()
     }
     async fn run(base: &str, request: &ChatRequest, turn: &str) -> Value {
@@ -1861,7 +1864,6 @@ mod tests {
         let (upstream, server) = gateway(vec![
             plan(true, &[MODEL_ECHO]),
             answer("Echo answered from the listing"),
-            answer("Go: the folder is present"),
         ])
         .await;
         let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
@@ -1890,6 +1892,7 @@ mod tests {
         assert_eq!(second["choices"][0]["finish_reason"], "stop");
 
         let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 2);
         // plan, then the stage that runs after the continuation.
         let stage = requests
             .iter()
@@ -2732,5 +2735,22 @@ Review complete.
                 .any(|message| message["role"] == "tool"
                     && message["content"] == "Actual README contents for the task")
         );
+    }
+
+    #[tokio::test]
+    async fn flow_defaults_to_running_without_helm() {
+        let (base, server) = gateway(vec![
+            plan(false, &[MODEL_NOVA, MODEL_NEON]),
+            answer("Nova's plan"),
+            answer("Neon's final review and answer"),
+        ])
+        .await;
+        let request = request_default(false);
+        let result = run(&base, &request, "turn_default_no_helm").await;
+        assert_eq!(result["nioxs"]["flow"]["helm_enabled"], false);
+        assert_eq!(result["model"], MODEL_NEON);
+        assert_eq!(result["choices"][0]["finish_reason"], "stop");
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 3, "Helm must not be invoked under default settings");
     }
 }

@@ -307,8 +307,8 @@ pub fn coding_tool_schemas() -> Vec<serde_json::Value> {
                     "type": "object",
                     "properties": {
                         "path": {"type": "string", "description": "Project-relative file path"},
-                        "start_line": {"type": "integer", "minimum": 1},
-                        "line_count": {"type": "integer", "minimum": 1, "maximum": 300}
+                        "start_line": {"type": "integer", "minimum": 1, "description": "1-based line number to start reading from. When reading subsequent lines of a large file, pass the next line number (e.g. 201)."},
+                        "line_count": {"type": "integer", "minimum": 1, "maximum": 300, "description": "Number of lines to read (default 200)."}
                     },
                     "required": ["path"],
                     "additionalProperties": false
@@ -1966,7 +1966,7 @@ pub fn dispatch_help(topic: &str) -> String {
     let clean = topic.trim().trim_start_matches('-').to_ascii_lowercase();
     match clean.as_str() {
         "flow" | "nio-flow" => {
-            "### NioFlow directives\n\nFlow plans the task, invokes useful Echo/Sage/Quill/Scout/Thinker/Nova/Atom/Neon stages, and may ask Nano for bounded project evidence. Helm is the final Go / No-Go gate by default.\n\nUse `--no-helm <task>` or `<task> --no-helm` to skip Helm for one Flow task; the last specialist supplies the final answer. The option persists through that task's tool results. Caller tool permissions still apply.\n\nExamples:\n• `--no-helm suggest a dashboard`\n• `review this change --no-helm`".to_string()
+            "### NioFlow directives\n\nFlow plans the task and invokes useful Echo/Sage/Quill/Scout/Thinker/Nova/Atom/Neon stages. Running without Helm is the default.\n\nUse `--helm <task>` or `<task> --helm` (or `--with-helm`) to add NioHelm as the final Go / No-Go gate. Caller tool permissions still apply.\n\nExamples:\n• `suggest a dashboard`\n• `--helm suggest a dashboard`\n• `review this change --helm`".to_string()
         }
         "code" | "coding" => {
             "### 🤖 Directive: `--code` (Upstream Coding Consultation)\n\n\
@@ -2042,7 +2042,7 @@ pub fn dispatch_help(topic: &str) -> String {
         _ => {
             "### ⚡ NioNano MicroLM (μLM) — Companion Directives & Capabilities\n\n\
             #### 🎯 Companion Directives:\n\
-            • `--no-helm <task>` — Flow without the final Helm gate (try `--help flow`)\n\
+            • `--helm <task>` — Flow with the final Helm gate (default runs without Helm; try `--help flow`)\n\
             • `--code <prompt>` — AI coding consultation with workspace awareness (try `--help code`)\n\
             • `--code @file <prompt>` — Pinpoint specific files for AI consultation\n\
             • `--tools <task>` — 20 local Python utility plugins (try `--help tools`)\n\

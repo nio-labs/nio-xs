@@ -32,6 +32,18 @@ pub fn thinker_options(prompt: &str) -> (String, bool) {
 
 pub fn flow_options(prompt: &str) -> (String, bool) {
     let text = prompt.trim();
+    for flag in ["--with-helm", "--helm"] {
+        if let Some(rest) = text.strip_prefix(flag)
+            && (rest.is_empty() || rest.starts_with(|c: char| c.is_whitespace() || c == ':'))
+        {
+            return (rest.trim_start_matches(':').trim().to_string(), true);
+        }
+        if let Some(rest) = text.strip_suffix(flag)
+            && (rest.is_empty() || rest.ends_with(char::is_whitespace))
+        {
+            return (rest.trim().to_string(), true);
+        }
+    }
     let flag = "--no-helm";
     if let Some(rest) = text.strip_prefix(flag)
         && (rest.is_empty() || rest.starts_with(|c: char| c.is_whitespace() || c == ':'))
@@ -43,7 +55,17 @@ pub fn flow_options(prompt: &str) -> (String, bool) {
     {
         return (rest.trim().to_string(), false);
     }
-    (text.to_string(), true)
+    (text.to_string(), false)
+}
+
+pub fn is_flow_directive(prompt: &str) -> bool {
+    let text = prompt.trim();
+    for flag in ["--with-helm", "--helm", "--no-helm"] {
+        if text.starts_with(flag) {
+            return true;
+        }
+    }
+    false
 }
 
 const HELM_SKILL: &str = include_str!("../../../.agents/skills/niohelm-decision/SKILL.md");
@@ -423,15 +445,23 @@ mod tests {
     #[test]
     fn no_helm_is_scoped_to_standalone_flow_directives() {
         for prompt in [
+            "suggest a site",
             "--no-helm suggest a site",
             "--no-helm: suggest a site",
             "suggest a site --no-helm",
+            "Explain --no-helm usage",
+            "--no-helmet test",
         ] {
-            assert_eq!(flow_options(prompt), ("suggest a site".into(), false));
+            assert_eq!(flow_options(prompt).1, false, "default flow runs without Helm");
         }
-        assert!(flow_options("Explain --no-helm usage").1);
-        assert!(flow_options("--no-helmet test").1);
-        assert!(!flow_options("--no-helm").1);
+        for prompt in [
+            "--helm suggest a site",
+            "--with-helm suggest a site",
+            "--helm: suggest a site",
+            "suggest a site --helm",
+        ] {
+            assert_eq!(flow_options(prompt), ("suggest a site".into(), true));
+        }
     }
 
     #[test]
