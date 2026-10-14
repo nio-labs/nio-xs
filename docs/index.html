@@ -482,8 +482,8 @@ volumes:
             <div class="lifecycle-step">
               <div class="lifecycle-step-icon">5</div>
               <div class="lifecycle-step-body">
-                <h4>Final Evidence Gate (`NioHelm`)</h4>
-                <p>Helm evaluates the gathered evidence and returns an authoritative <strong>Go</strong>, <strong>Conditional Go</strong>, or <strong>No-Go</strong> verdict before relaying results to the caller.</p>
+                <h4>Answer Delivery &amp; Optional Helm Gate (<code>NioHelm</code>)</h4>
+                <p>By default, Flow delivers the final specialist's verified answer directly without extra delay. When opted in via <code>--helm</code> or <code>--with-helm</code>, Helm evaluates gathered evidence and returns an authoritative <strong>Go</strong>, <strong>Conditional Go</strong>, or <strong>No-Go</strong> verdict.</p>
               </div>
             </div>
 
@@ -500,8 +500,8 @@ volumes:
           <p>NioFlow starts with OpenRouter/free via Kilo. If it is unavailable, Flow falls back to Auto Free. When the task has multiple concrete signs of complexity, Flow checks the live Kilo <code>/models</code> catalog and can escalate to a free StepFun model that advertises tool support.</p>
           <pre><code>NioFlow · Planning
 ↪ NioAtom · Building
-↪ Upstream: cohere/north-mini-code:free → stepfun/&lt;catalog model&gt; (high task complexity)
-⚖ NioHelm · Go / No-Go</code></pre>
+↪ Upstream: openrouter/free → stepfun/&lt;catalog model&gt; (high task complexity)
+↪ Final Specialist Answer (or ⚖ NioHelm · Go / No-Go with --helm)</code></pre>
         </section>
 
         <!-- 8. MCP SERVER -->

@@ -189,18 +189,15 @@ The caller's persona block closes the upstream system prompt, after the
 environment and tool sections, so the role and stage messages that follow cannot
 bury it.
 
-Selecting Nano, Echo, Sage, Quill, Scout, Nova, Atom, or Neon directly runs the selected role without scheduling Helm. Shared stage instructions keep final approval guidance exclusive to Helm; each specialist returns its own deliverable. Selecting Thinker directly runs a bounded three-phase review of its own answer, with visible Drafting → Challenging → Refining statuses and carried-forward evidence. It does not run Helm by default; add `--with-helm` before or after the task to request Helm’s final verdict. Only the refined answer is shown; it states unresolved uncertainty rather than promising 100% correctness. A Flow-owned Thinker stage uses the same three phases and still ends with Helm by default. These profiles share the configured upstream and are not separate trained model weights.
+Selecting Nano, Echo, Sage, Quill, Scout, Nova, Atom, or Neon directly runs the selected role without scheduling Helm. Shared stage instructions keep final approval guidance exclusive to Helm; each specialist returns its own deliverable. Selecting Thinker directly runs a bounded three-phase review of its own answer, with visible Drafting → Challenging → Refining statuses and carried-forward evidence. It does not run Helm by default; add `--with-helm` before or after the task to request Helm’s final verdict. Only the refined answer is shown; it states unresolved uncertainty rather than promising 100% correctness. A Flow-owned Thinker stage uses the same three phases and also runs without Helm by default. These profiles share the configured upstream and are not separate trained model weights.
 
-To skip that gate for one task, enter `--no-helm suggest a dashboard` in the
-NioFlow chat (or add `--no-helm` after the task). The UI shows
-`↪ Helm skipped (--no-helm)`; the last specialist supplies the final answer.
-The choice persists through that task's tool rounds and resets for the next task.
+NioFlow runs without Helm by default; the last specialist supplies the final answer directly without extra delay. To opt in to Helm verification for a task, enter `--helm suggest a dashboard` or `--with-helm suggest a dashboard` in the NioFlow chat (or add `--helm` after the task). The UI shows `⚖ NioHelm · Go / No-Go`. The choice persists through that task's tool rounds and resets for the next task.
 Existing `nio-auto` requests remain a compatibility alias for `nio-flow`.
 
 Routing status names the active model and role: `🌊 NioFlow · Planning`,
 `↪ NioAtom · Building`, `↪ NioNeon · Reviewing`, or `⚖ NioHelm · Go / No-Go`.
 An upstream model switch is shown in progress (for example,
-`↪ Upstream: cohere/north-mini-code:free → stepfun/...:free (high task complexity)`);
+`↪ Upstream: openrouter/free → stepfun/...:free (high task complexity)`);
 an availability fallback displays `↪ Using Kilo Auto Free`. Tool-result
 continuations do not repeat the stage label. These lines report actual
 stage selections and specialist invocations, including automatic Flow handoffs.
@@ -222,7 +219,7 @@ closed at 2,000 records; challenge, login, and denied pages are never cached.
 Every write is best effort, so an unavailable database degrades to no cache
 rather than a failed turn, and `GET /ready` reports cache/evidence counts
 against the limit. Live remote research observations remain open work.
-Stage drafts are buffered; the final answer is emitted after Helm completes.
+Stage drafts are buffered; the final answer is emitted after the specialist stage (or Helm when opted in) completes.
 Direct specialist requests retain their existing live upstream streaming. The
 caller's persona stays active through planning, handoffs, and final answers;
 model names describe workflow roles and do not replace that persona.
