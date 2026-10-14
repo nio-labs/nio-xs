@@ -247,7 +247,11 @@ impl NioDb {
     /// serialized handoff), `Ok(None)` is absent or expired, and `Err` means
     /// NioDB is unavailable — the caller then keeps its in-memory state and
     /// refuses to resume rather than guessing.
-    pub async fn flow_session_get(&self, key: &str, now_unix: u64) -> Result<Option<Value>, String> {
+    pub async fn flow_session_get(
+        &self,
+        key: &str,
+        now_unix: u64,
+    ) -> Result<Option<Value>, String> {
         let digest_key = digest(key.as_bytes());
         for offset in (0..1000).step_by(50) {
             let page = self
@@ -396,7 +400,9 @@ impl NioDb {
         let key = research_key(entry.scope, entry.canonical_url);
         // Re-fetching a URL refreshes its entry instead of adding a duplicate, so
         // the quota counts distinct cached URLs and reuse cannot inflate it.
-        let existing = self.scan_collection("nano_cache", RESEARCH_CACHE_LIMIT).await?;
+        let existing = self
+            .scan_collection("nano_cache", RESEARCH_CACHE_LIMIT)
+            .await?;
         let mut replaced = false;
         if let Some(record) = existing
             .iter()

@@ -4337,7 +4337,9 @@ mod tests {
             "the persona must follow the environment context"
         );
         assert!(
-            system.trim_end().ends_with("Do not introduce yourself as a workflow role name."),
+            system
+                .trim_end()
+                .ends_with("Do not introduce yourself as a workflow role name."),
             "the persona directive must close the system prompt: {:?}",
             &system[system.len().saturating_sub(120)..]
         );

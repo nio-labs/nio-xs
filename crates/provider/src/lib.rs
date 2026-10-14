@@ -105,7 +105,11 @@ async fn ready(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
             let research = app.db.research_usage().await.unwrap_or(Value::Null);
             Json(json!({"status":"ready","storage":"ready","research":research,"nano":"trained_naive_bayes","model_version":app.model.model_version,"schema_version":SCHEMA_VERSION})).into_response()
         }
-        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE,"storage_unavailable","NioDB is not ready"),
+        Err(_) => error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "storage_unavailable",
+            "NioDB is not ready",
+        ),
     }
 }
 

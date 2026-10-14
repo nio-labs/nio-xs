@@ -55,14 +55,14 @@ pub async fn record_web_fetches(
         if message.role != "tool" {
             continue;
         }
-        let Some(url) = message
-            .tool_call_id
-            .as_deref()
-            .and_then(|id| urls.get(id))
-        else {
+        let Some(url) = message.tool_call_id.as_deref().and_then(|id| urls.get(id)) else {
             continue;
         };
-        let Some(content) = message.content.as_str().filter(|text| !text.trim().is_empty()) else {
+        let Some(content) = message
+            .content
+            .as_str()
+            .filter(|text| !text.trim().is_empty())
+        else {
             continue;
         };
         // A challenge, login, or access-denied page is not evidence.
@@ -153,7 +153,12 @@ mod tests {
             .unwrap()
             .expect("cached excerpt");
         assert_eq!(cached["title"], "Rust Guide");
-        assert!(cached["excerpt"].as_str().unwrap().contains("async runtime"));
+        assert!(
+            cached["excerpt"]
+                .as_str()
+                .unwrap()
+                .contains("async runtime")
+        );
         assert_eq!(cached["access_scope"], "workspace");
 
         let usage = db.research_usage().await.unwrap();

@@ -2,9 +2,9 @@
 //! each stage is a separate call with its own role and carried-forward evidence.
 use super::*;
 use nioxs_contracts::{
-    AtomContract, HelmGateVerdict, HelmVerdictContract, NeonReviewContract, MODEL_ATOM, MODEL_ECHO,
-    MODEL_FLOW, MODEL_HELM, MODEL_NANO, MODEL_NEON, MODEL_NOVA, MODEL_QUILL, MODEL_SAGE,
-    MODEL_SCOUT, MODEL_THINKER,
+    AtomContract, HelmGateVerdict, HelmVerdictContract, MODEL_ATOM, MODEL_ECHO, MODEL_FLOW,
+    MODEL_HELM, MODEL_NANO, MODEL_NEON, MODEL_NOVA, MODEL_QUILL, MODEL_SAGE, MODEL_SCOUT,
+    MODEL_THINKER, NeonReviewContract,
 };
 use nioxs_nano::profiles;
 use nioxs_storage::NioDb;
@@ -47,8 +47,8 @@ const INSPECTION_MARKERS: [&str; 16] = [
     "i scanned",
 ];
 const PATH_EXTENSIONS: [&str; 18] = [
-    "rs", "md", "toml", "json", "jsonl", "ts", "tsx", "js", "py", "go", "yaml", "yml",
-    "txt", "lock", "html", "css", "sh", "java",
+    "rs", "md", "toml", "json", "jsonl", "ts", "tsx", "js", "py", "go", "yaml", "yml", "txt",
+    "lock", "html", "css", "sh", "java",
 ];
 #[derive(Clone, Deserialize, Serialize)]
 struct Stage {
@@ -156,9 +156,9 @@ fn looks_like_path(token: &str) -> bool {
     if token.matches('/').count() >= 2 {
         return true;
     }
-    token.rsplit_once('.').is_some_and(|(_, ext)| {
-        PATH_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str())
-    })
+    token
+        .rsplit_once('.')
+        .is_some_and(|(_, ext)| PATH_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
 }
 
 /// Nouns and verbs that mark the token next to them as a folder being asked about.
@@ -255,7 +255,11 @@ fn inspection_claims(content: &str) -> Vec<String> {
     let lower = content.to_ascii_lowercase();
     let mut claims: Vec<String> = lower
         .lines()
-        .filter(|line| INSPECTION_MARKERS.iter().any(|marker| line.contains(marker)))
+        .filter(|line| {
+            INSPECTION_MARKERS
+                .iter()
+                .any(|marker| line.contains(marker))
+        })
         .map(|line| line.trim().chars().take(200).collect())
         .filter(|line: &String| !line.is_empty())
         .collect();
@@ -348,7 +352,8 @@ pub(super) async fn respond(
         .iter()
         .any(|message| !message.tool_calls.is_empty());
     let saved = sessions().lock().ok().and_then(|mut sessions| {
-        sessions.retain(|_, session| session.touched.elapsed() < Duration::from_secs(FLOW_SESSION_TTL));
+        sessions
+            .retain(|_, session| session.touched.elapsed() < Duration::from_secs(FLOW_SESSION_TTL));
         sessions.get(&key).cloned()
     });
     let mut session = if let Some(session) = saved {
@@ -733,10 +738,7 @@ impl Runner {
             // `parse_plan` already inserts a native listing stage for an
             // inspection request, so add one only when the plan has none: two
             // listing stages made the caller run the same scan twice.
-            let already_lists = plan
-                .stages
-                .iter()
-                .any(|stage| stage.model == MODEL_NANO);
+            let already_lists = plan.stages.iter().any(|stage| stage.model == MODEL_NANO);
             if plan.needs_context
                 && !already_lists
                 && self
@@ -1055,7 +1057,12 @@ impl Runner {
     fn supplied_tool_evidence(&self) -> ToolEvidence {
         let mut text = String::new();
         let mut results = 0usize;
-        for message in self.consult.messages.iter().chain(self.session.feedback.iter()) {
+        for message in self
+            .consult
+            .messages
+            .iter()
+            .chain(self.session.feedback.iter())
+        {
             if message["role"] != "tool" {
                 continue;
             }
@@ -1584,14 +1591,7 @@ mod tests {
         replay(&mut request, &first, "Actual README contents for the task");
         // A restarted provider has an empty in-memory map: the continuation must
         // resume from the durable handoff instead of replanning from scratch.
-        let second = run_flow(
-            &db,
-            &upstream,
-            "flow-restarted",
-            &request,
-            "turn_restart",
-        )
-        .await;
+        let second = run_flow(&db, &upstream, "flow-restarted", &request, "turn_restart").await;
         assert_eq!(second["choices"][0]["finish_reason"], "stop");
         let content = second["choices"][0]["message"]["content"]
             .as_str()
@@ -1644,7 +1644,10 @@ mod tests {
             &request,
             "chat-test".into(),
             json!({}),
-            TurnGuard { active: ActiveTurns::default(), id: "turn_changed".into() },
+            TurnGuard {
+                active: ActiveTurns::default(),
+                id: "turn_changed".into(),
+            },
             "turn_changed".into(),
             "flow-restarted",
             &db_restart,
@@ -1764,8 +1767,14 @@ mod tests {
         let content = result["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("");
-        assert!(!content.contains("completed stage:"), "marker leaked: {content}");
-        assert!(content.contains("Real final answer"), "answer lost: {content}");
+        assert!(
+            !content.contains("completed stage:"),
+            "marker leaked: {content}"
+        );
+        assert!(
+            content.contains("Real final answer"),
+            "answer lost: {content}"
+        );
         assert_eq!(result["nioxs"]["flow"]["helm_verdict"]["verdict"], "go");
     }
 
@@ -1784,7 +1793,10 @@ mod tests {
         let content = result["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("");
-        assert!(content.contains("withheld"), "guard did not fire: {content}");
+        assert!(
+            content.contains("withheld"),
+            "guard did not fire: {content}"
+        );
         assert_eq!(result["nioxs"]["flow"]["helm_verdict"]["verdict"], "no_go");
         assert!(
             !result["nioxs"]["flow"]["helm_guard"]["withheld_claims"]
@@ -1808,7 +1820,11 @@ mod tests {
         let mut request = request(false);
         let first = run_flow(&db, &upstream, "flow-guard", &request, "turn_backed").await;
         assert_eq!(first["choices"][0]["finish_reason"], "tool_calls");
-        replay(&mut request, &first, "nio-guru/src/lib.rs\naio-cm/src/lib.rs");
+        replay(
+            &mut request,
+            &first,
+            "nio-guru/src/lib.rs\naio-cm/src/lib.rs",
+        );
         let second = run_flow(&db, &upstream, "flow-guard", &request, "turn_backed").await;
         let content = second["choices"][0]["message"]["content"]
             .as_str()
@@ -1827,13 +1843,13 @@ mod tests {
             named_folder("check the nio-cm directory").as_deref(),
             Some("nio-cm")
         );
-        assert_eq!(
-            named_folder("inspect nio-xs").as_deref(),
-            Some("nio-xs")
-        );
+        assert_eq!(named_folder("inspect nio-xs").as_deref(), Some("nio-xs"));
         // No folder named, or a bare word with no folder shape.
         assert_eq!(named_folder("summarize this project").as_deref(), None);
-        assert_eq!(named_folder("what do you think of our project?").as_deref(), None);
+        assert_eq!(
+            named_folder("what do you think of our project?").as_deref(),
+            None
+        );
         // A file path is not a folder request.
         assert_eq!(named_folder("read src/main.rs").as_deref(), None);
     }
@@ -1982,7 +1998,11 @@ mod tests {
         let mut request = request(false);
         let first = run_flow(&db, &upstream, "flow-absent", &request, "turn_absent").await;
         // The caller's listing matched no files, which is not proof of absence.
-        replay(&mut request, &first, "{\"files\":[],\"next_offset\":null,\"scan_limited\":false}");
+        replay(
+            &mut request,
+            &first,
+            "{\"files\":[],\"next_offset\":null,\"scan_limited\":false}",
+        );
         let second = run_flow(&db, &upstream, "flow-absent", &request, "turn_absent").await;
         let content = second["choices"][0]["message"]["content"]
             .as_str()
@@ -2068,7 +2088,10 @@ mod tests {
         let content = second["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("");
-        assert!(content.contains("withheld"), "guard did not fire: {content}");
+        assert!(
+            content.contains("withheld"),
+            "guard did not fire: {content}"
+        );
         let withheld = second["nioxs"]["flow"]["helm_guard"]["withheld_claims"]
             .as_array()
             .unwrap()

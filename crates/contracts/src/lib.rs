@@ -678,13 +678,17 @@ impl AtomContract {
         let patch_status = val
             .get("patch_status")
             .and_then(|v| v.as_str())
-            .and_then(|s| match s.to_ascii_lowercase().replace(['-', ' '], "_").as_str() {
-                "applied_cleanly" | "clean" | "applied" => Some(AtomPatchStatus::AppliedCleanly),
-                "partially_applied" | "partial" => Some(AtomPatchStatus::PartiallyApplied),
-                "patch_only" | "proposed" => Some(AtomPatchStatus::PatchOnly),
-                "blocked" | "failed" => Some(AtomPatchStatus::Blocked),
-                _ => None,
-            })
+            .and_then(
+                |s| match s.to_ascii_lowercase().replace(['-', ' '], "_").as_str() {
+                    "applied_cleanly" | "clean" | "applied" => {
+                        Some(AtomPatchStatus::AppliedCleanly)
+                    }
+                    "partially_applied" | "partial" => Some(AtomPatchStatus::PartiallyApplied),
+                    "patch_only" | "proposed" => Some(AtomPatchStatus::PatchOnly),
+                    "blocked" | "failed" => Some(AtomPatchStatus::Blocked),
+                    _ => None,
+                },
+            )
             .unwrap_or(AtomPatchStatus::AppliedCleanly);
 
         let summary = val
@@ -707,7 +711,10 @@ impl AtomContract {
                 if command.is_empty() {
                     continue;
                 }
-                let exit_code = check.get("exit_code").and_then(|v| v.as_i64()).map(|c| c as i32);
+                let exit_code = check
+                    .get("exit_code")
+                    .and_then(|v| v.as_i64())
+                    .map(|c| c as i32);
                 let passed = check
                     .get("passed")
                     .and_then(|v| v.as_bool())
@@ -757,10 +764,8 @@ impl AtomContract {
                 .to_string()
         });
 
-        let modified_files = extract_markdown_section(
-            text,
-            &["modified files", "changed files", "files modified"],
-        );
+        let modified_files =
+            extract_markdown_section(text, &["modified files", "changed files", "files modified"]);
         let unverified_items = extract_markdown_section(
             text,
             &["unverified items", "unverified", "unverified requirements"],
@@ -865,7 +870,11 @@ impl NeonReviewContract {
 
     fn from_json_value(val: &Value) -> Option<Self> {
         let verdict_str = val.get("verdict")?.as_str()?;
-        let verdict = match verdict_str.to_ascii_lowercase().replace(['-', ' '], "_").as_str() {
+        let verdict = match verdict_str
+            .to_ascii_lowercase()
+            .replace(['-', ' '], "_")
+            .as_str()
+        {
             "approve" | "approved" => NeonReviewVerdict::Approve,
             "request_changes" | "changes_requested" => NeonReviewVerdict::RequestChanges,
             "comment" | "neutral" => NeonReviewVerdict::Comment,
@@ -898,9 +907,18 @@ impl NeonReviewContract {
                     })
                     .unwrap_or(NeonSeverity::Medium);
 
-                let file = item.get("file").and_then(|v| v.as_str()).map(str::to_string);
-                let line = item.get("line").and_then(|v| v.as_u64()).map(|l| l as usize);
-                let rule = item.get("rule").and_then(|v| v.as_str()).map(str::to_string);
+                let file = item
+                    .get("file")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                let line = item
+                    .get("line")
+                    .and_then(|v| v.as_u64())
+                    .map(|l| l as usize);
+                let rule = item
+                    .get("rule")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
                 let description = item
                     .get("description")
                     .and_then(|v| v.as_str())
@@ -1127,7 +1145,10 @@ Patch applied successfully.
         let atom = AtomContract::parse_from_text(json_text).expect("should parse atom json");
         assert_eq!(atom.summary, "Implemented JWT auth middleware");
         assert_eq!(atom.patch_status, AtomPatchStatus::AppliedCleanly);
-        assert_eq!(atom.modified_files, vec!["src/auth.rs", "src/middleware.rs"]);
+        assert_eq!(
+            atom.modified_files,
+            vec!["src/auth.rs", "src/middleware.rs"]
+        );
         assert_eq!(atom.checks_executed.len(), 1);
         assert_eq!(atom.checks_executed[0].command, "cargo test test_auth");
         assert!(atom.checks_executed[0].passed);
@@ -1145,7 +1166,10 @@ Patch applied successfully.
         assert_eq!(atom_md.summary, "Created scaffold for redis client");
         assert_eq!(atom_md.patch_status, AtomPatchStatus::AppliedCleanly);
         assert_eq!(atom_md.modified_files, vec!["src/redis.rs"]);
-        assert_eq!(atom_md.unverified_items, vec!["connection pooling under load"]);
+        assert_eq!(
+            atom_md.unverified_items,
+            vec!["connection pooling under load"]
+        );
     }
 
     #[test]

@@ -500,10 +500,7 @@ mod tests {
             MODEL_NEON,
             MODEL_HELM,
         ] {
-            let messages = messages(
-                model,
-                crate::companion::upstream_messages(prompt, &history),
-            );
+            let messages = messages(model, crate::companion::upstream_messages(prompt, &history));
             let systems: Vec<&str> = messages
                 .iter()
                 .filter(|message| message["role"] == "system")
