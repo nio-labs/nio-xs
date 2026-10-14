@@ -1279,6 +1279,22 @@ fn relay_offered_coding_calls(
     Ok(relayed)
 }
 
+fn is_caller_path_absolute(path: &std::path::Path) -> bool {
+    if path.is_absolute() || path.has_root() {
+        return true;
+    }
+    let s = path.to_string_lossy();
+    let b = s.as_bytes();
+    if b.starts_with(b"/") || b.starts_with(b"\\") {
+        return true;
+    }
+    if b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'/' || b[2] == b'\\')
+    {
+        return true;
+    }
+    false
+}
+
 /// Convert only paths underneath the root declared in the caller's system
 /// context. Do not consult the daemon's filesystem or widen caller permissions.
 fn normalize_caller_paths(
@@ -1294,8 +1310,10 @@ fn normalize_caller_paths(
                 .split_once("Project overview:\nRoot: ")
                 .and_then(|(_, rest)| rest.lines().next())
         })
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
         .map(std::path::Path::new)
-        .filter(|root| root.is_absolute());
+        .filter(|root| is_caller_path_absolute(root));
     let mut normalized = calls.to_vec();
     for call in &mut normalized {
         let Ok(mut arguments) = serde_json::from_str::<Value>(&call.arguments) else {
@@ -1305,7 +1323,7 @@ fn normalize_caller_paths(
             continue;
         };
         let absolute = std::path::Path::new(path);
-        if !absolute.is_absolute() {
+        if !is_caller_path_absolute(absolute) {
             continue;
         }
         let Some(root) = root else { continue };
@@ -1317,11 +1335,32 @@ fn normalize_caller_paths(
                 "`{path}` contains parent traversal; use a project-relative path"
             ));
         }
-        let relative = absolute
-            .strip_prefix(root)
-            .map_err(|_| format!("`{path}` is outside the caller's project"))?;
-        let relative = relative.to_str().ok_or("invalid project path")?;
-        arguments["path"] = json!(if relative.is_empty() { "." } else { relative });
+        let rel_str = if let Ok(rel) = absolute.strip_prefix(root) {
+            rel.to_string_lossy().replace('\\', "/")
+        } else {
+            let clean_root = root.to_string_lossy().replace('\\', "/");
+            let clean_path = absolute.to_string_lossy().replace('\\', "/");
+            let root_clean = clean_root.trim_end_matches('/');
+            if clean_path == root_clean {
+                String::new()
+            } else if clean_path.starts_with(&format!("{root_clean}/")) {
+                clean_path[root_clean.len() + 1..].to_string()
+            } else if cfg!(windows)
+                && clean_path
+                    .to_ascii_lowercase()
+                    .starts_with(&format!("{}/", root_clean.to_ascii_lowercase()))
+            {
+                clean_path[root_clean.len() + 1..].to_string()
+            } else {
+                return Err(format!("`{path}` is outside the caller's project"));
+            }
+        };
+        let rel_trimmed = rel_str.trim_matches('/');
+        arguments["path"] = json!(if rel_trimmed.is_empty() {
+            "."
+        } else {
+            rel_trimmed
+        });
         call.arguments = arguments.to_string();
     }
     Ok(normalized)
@@ -2054,6 +2093,40 @@ mod tests {
             relay_offered_coding_calls(&calls, "turn_root", &companion::coding_tool_schemas(), &[])
                 .is_err(),
             "no root must not permit an absolute path"
+        );
+    }
+
+    #[test]
+    fn caller_windows_absolute_paths_are_relayed_as_relative_paths() {
+        let messages = vec![
+            json!({"role":"system","content":"Project overview:\nRoot: C:\\Users\\mn\\nio-labs\nFiles (partial listing):\nnio/README.md"}),
+        ];
+        let calls = [
+            RequestedCall {
+                id: "root".into(),
+                name: "find_files".into(),
+                arguments: json!({"path":"C:\\Users\\mn\\nio-labs"}).to_string(),
+            },
+            RequestedCall {
+                id: "file".into(),
+                name: "read_file".into(),
+                arguments: json!({"path":"C:\\Users\\mn\\nio-labs\\nio\\src\\main.rs"}).to_string(),
+            },
+        ];
+        let relayed = relay_offered_coding_calls(
+            &calls,
+            "turn_root",
+            &companion::coding_tool_schemas(),
+            &messages,
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&relayed[0].arguments).unwrap()["path"],
+            "."
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&relayed[1].arguments).unwrap()["path"],
+            "nio/src/main.rs"
         );
     }
 
