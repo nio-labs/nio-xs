@@ -21,7 +21,7 @@
     <a href="#overview" class="brand-title">
       <img class="brand-logo" src="logo.svg" alt="NioXS logo">
       <span class="brand-name">NioXS</span>
-      <span class="badge">v0.4.2</span>
+      <span class="badge">v0.4.3</span>
     </a>
     <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">
       <span class="theme-icon">
@@ -88,7 +88,7 @@
         <section id="overview" class="doc-section">
           <div class="hero-header">
             <div class="hero-badges">
-              <span class="badge badge-accent">Release v0.4.2</span>
+              <span class="badge badge-accent">Release v0.4.3</span>
               <span class="badge">AXIS = AI + XS</span>
               <span class="badge">Rust orchestration</span>
               <span class="badge">OpenAI-compatible API</span>
@@ -114,7 +114,7 @@
 │                                                                   │
 │  NioFlow ── plan ──► Nano evidence ──► useful specialist stages   │
 │     │                                    │                        │
-│     └── Kilo: North Mini Code ──► StepFun when warranted          │
+│     └── Kilo: OpenRouter / Free ──► StepFun when warranted        │
 │                    └────────────► Auto Free on availability       │
 │                                                                   │
 │  Typed tool relay · bounded handoffs · progress · final decision  │
@@ -297,7 +297,7 @@ volumes:
                 <span class="profile-title">nio-flow</span>
                 <span class="profile-role-badge">Orchestrator</span>
               </div>
-              <p class="profile-desc">Default plan-first entry point. Decomposes coding goals, delegates to specialized profiles, and routes to Helm for final sign-off.</p>
+              <p class="profile-desc">Default plan-first entry point. Decomposes coding goals, delegates to specialized profiles, and lets the final specialist answer (runs without Helm by default; opt in via <code>--helm</code>).</p>
               <div class="profile-contract">Handoff: Bounded Memory (32 tasks / 10m)</div>
             </div>
 
@@ -497,7 +497,7 @@ volumes:
           </div>
 
           <h3>Upstream Model Path</h3>
-          <p>NioFlow starts with Kilo North Mini Code. If it is unavailable, Flow falls back to Kilo Auto Free. When the task has multiple concrete signs of complexity, Flow checks the live Kilo <code>/models</code> catalog and can escalate to a free StepFun model that advertises tool support.</p>
+          <p>NioFlow starts with OpenRouter/free via Kilo. If it is unavailable, Flow falls back to Auto Free. When the task has multiple concrete signs of complexity, Flow checks the live Kilo <code>/models</code> catalog and can escalate to a free StepFun model that advertises tool support.</p>
           <pre><code>NioFlow · Planning
 ↪ NioAtom · Building
 ↪ Upstream: cohere/north-mini-code:free → stepfun/&lt;catalog model&gt; (high task complexity)
@@ -549,7 +549,8 @@ volumes:
           <div class="table-container"><table>
             <thead><tr><th>Directive</th><th>Purpose</th><th>Behavior</th></tr></thead>
             <tbody>
-              <tr><td><code>--no-helm &lt;task&gt;</code></td><td>Flow without Helm</td><td>Skips Flow's final Helm gate and lets the last specialist answer.</td></tr>
+              <tr><td><code>--helm &lt;task&gt;</code> / <code>--with-helm</code></td><td>Flow with Helm</td><td>Opts in to Helm Go/No-Go verification after Flow's specialist stages.</td></tr>
+              <tr><td><code>--no-helm &lt;task&gt;</code></td><td>Flow without Helm</td><td>Explicitly runs without Helm (already the default).</td></tr>
               <tr><td><code>--with-helm &lt;task&gt;</code></td><td>Thinker with Helm</td><td>Opts in to Helm after directly selected NioThinker.</td></tr>
               <tr><td><code>--code &lt;request&gt;</code></td><td>LLM Middleman</td><td>Hands the request upstream with caller tools when provided.</td></tr>
               <tr><td><code>--code guard &lt;request&gt;</code></td><td>AST Guard</td><td>Verifies generated code against Rust, TS, Python, and Go symbols.</td></tr>

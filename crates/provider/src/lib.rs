@@ -621,7 +621,8 @@ fn parse_pythonic_calls(input: &str) -> Vec<(String, Value)> {
         }
 
         let name_start = i;
-        while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-') {
+        while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-')
+        {
             i += 1;
         }
         let name = &content[name_start..i];
@@ -1889,9 +1890,20 @@ async fn coding_response(
                     "content": "The tool inspection budget is reached. You cannot execute more tools. Provide your complete final answer now using the files and evidence already inspected above."
                 }));
                 let mut config = consult.config.clone();
-                if let Ok(res) = nioxs_nano::upstream::send_chat(&client, &mut config, &recovery_messages, &[], false).await {
+                if let Ok(res) = nioxs_nano::upstream::send_chat(
+                    &client,
+                    &mut config,
+                    &recovery_messages,
+                    &[],
+                    false,
+                )
+                .await
+                {
                     if let Ok(val) = res.json::<Value>().await {
-                        if let Some(ans) = val["choices"][0]["message"]["content"].as_str().filter(|s| !s.trim().is_empty()) {
+                        if let Some(ans) = val["choices"][0]["message"]["content"]
+                            .as_str()
+                            .filter(|s| !s.trim().is_empty())
+                        {
                             return coding_json(
                                 &id,
                                 json!({"role":"assistant","content":ans}),
@@ -2492,11 +2504,15 @@ src/engine*
         assert_eq!(read_calls[0].arguments, "{\"path\":\"src/mcp.rs\"}");
 
         // ChatML / Qwen <|tool_call_start|> pythonic syntax
-        let chatml_sample = "<|tool_call_start|>[read_file(path='README.md', limit=50)]<|tool_call_end|>";
+        let chatml_sample =
+            "<|tool_call_start|>[read_file(path='README.md', limit=50)]<|tool_call_end|>";
         let chatml_calls = extract_xml_tool_calls(chatml_sample);
         assert_eq!(chatml_calls.len(), 1);
         assert_eq!(chatml_calls[0].name, "read_file");
-        assert_eq!(chatml_calls[0].arguments, "{\"limit\":50,\"path\":\"README.md\"}");
+        assert_eq!(
+            chatml_calls[0].arguments,
+            "{\"limit\":50,\"path\":\"README.md\"}"
+        );
 
         // Multiple pythonic calls in <|tool_call_start|>
         let multi_sample = "<|tool_call_start|>[read_file(path='a.txt'), list_dir(path='crates')]<|tool_call_end|>";
@@ -2510,7 +2526,10 @@ src/engine*
         let json_calls = extract_xml_tool_calls(json_chatml);
         assert_eq!(json_calls.len(), 1);
         assert_eq!(json_calls[0].name, "read_file");
-        assert_eq!(json_calls[0].arguments, "{\"limit\":50,\"path\":\"README.md\"}");
+        assert_eq!(
+            json_calls[0].arguments,
+            "{\"limit\":50,\"path\":\"README.md\"}"
+        );
     }
 
     fn trail_len(deltas: &[String]) -> usize {

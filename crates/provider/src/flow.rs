@@ -2751,6 +2751,10 @@ Review complete.
         assert_eq!(result["model"], MODEL_NEON);
         assert_eq!(result["choices"][0]["finish_reason"], "stop");
         let requests = server.await.unwrap();
-        assert_eq!(requests.len(), 3, "Helm must not be invoked under default settings");
+        assert_eq!(
+            requests.len(),
+            3,
+            "Helm must not be invoked under default settings"
+        );
     }
 }

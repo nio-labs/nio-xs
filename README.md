@@ -36,9 +36,9 @@
                  ▼                                         ▼
    ┌───────────────────────────┐             ┌───────────────────────────┐
    │   NioFlow (Orchestrator)  │────────────▶│    Upstream LLM (Kilo)    │
-   │  • Plans and hands off    │             │  • North Mini Code first  │
-   │  • Helm is final gate     │             │  • StepFun for hard tasks │
-   │                           │             │  • Auto Free fallback     │
+   │  • Plans and hands off    │             │  • OpenRouter / Free      │
+   │  • Default runs no Helm   │             │  • StepFun for hard tasks │
+   │  • --helm for final gate  │             │  • Auto Free fallback     │
    └──────────────┬────────────┘             └───────────────────────────┘
                   │
         ┌─────────┼─────────────┬───────────────┐
@@ -118,13 +118,14 @@ Developers can switch to NioNano along their project lifecycle or trigger in-ses
 
 | Directive | Purpose | Behavior |
 |---|---|---|
-| *(Direct / Unprefixed)* | **NioFlow** | Default plan-first model profile. Use `nio-nano` explicitly for the local MicroLM's bounded workflows. |
-| `--no-helm <task>` | **Flow without Helm** | Runs Flow's useful specialists and lets the last specialist answer, skipping the final Helm gate. Also accepts `<task> --no-helm`. |
+| *(Direct / Unprefixed)* | **NioFlow** | Default plan-first model profile. Runs without Helm verification by default. Use `--helm` to opt in to Helm review. |
+| `--helm <task>` / `--with-helm <task>` | **Flow with Helm** | Opts in to final Helm Go / No-Go verification after Flow's specialist stages. |
+| `--no-helm <task>` | **Flow without Helm** | Explicitly runs without Helm (already the default). Also accepts `<task> --no-helm`. |
 | `--bash: <cmd>` | **In-TUI Terminal** | Run shell commands (e.g. `--bash: cargo test`) directly in conversation without exiting or minimizing the coding agent TUI. |
 | `--test: [pattern]` | **Auto Test Runner** | Automatically detects test suite (`cargo test`, `npm test`, `pytest`, `go test`), runs matching pattern, and feeds back trimmed traces. |
 | `--git` / `--git:status` / `--git:diff` | **Git Summary** | Runs `git status -s` and/or `git diff --stat` (bare `--git` runs both); an unknown subcommand clarifies instead of guessing. |
 | `--tools: <task>` | **Python Plugins** | Specialized automation (e.g. real SVG-to-favicon generator via `resvg`, honest CSS color extraction, Pillow-based image scaling). Prompts for download consent before installing new plugins; a reply of `yes` confirms the plugin that prompt named. |
-| `--code: <prompt>` | **Kilo LLM Middleman** | Hands the request to Kilo with the caller's available tools. Tool calls return to the client for execution in its project directory, and results are handed back to the model. North Mini Code is preferred; Auto Free is the availability fallback. Progress identifies availability fallbacks, and the final `answered by` footer names the responding upstream model. The model reuses supplied file contents; general questions do not trigger project inspection. |
+| `--code: <prompt>` | **Kilo LLM Middleman** | Hands the request to Kilo with the caller's available tools. Tool calls return to the client for execution in its project directory, and results are handed back to the model. OpenRouter / Free is preferred; Auto Free is the availability fallback. Progress identifies availability fallbacks, and the final `answered by` footer names the responding upstream model. The model reuses supplied file contents; general questions do not trigger project inspection. |
 | `--code guard <req>`<br/>*or* `--code! <req>` | **Anti-Hallucination Guard** | Verifies generated code against Rust, TypeScript, Python, and Go AST symbols. Catches ghost APIs and non-existent files; prompts to reroute. |
 | `--config <key> <on\|off>` | **Session Config** | Toggles `code`, `guard`, `auto`, or `mode` for the current session. |
 | `--help [topic]` | **Help** | Prints the directive list, or focused help for one topic (e.g. `--help code`). |
@@ -138,7 +139,7 @@ Select a model through your client's model picker or the `model` field of
 
 | Model ID | Purpose | Rust-controlled behavior |
 |---|---|---|
-| `nio-flow` | Plan and hand off | Rust validates a plan and invokes the useful specialists, ending with Helm |
+| `nio-flow` | Plan and hand off | Rust validates a plan and invokes the useful specialists (runs without Helm by default; opt in via `--helm`) |
 | `nio-nano` | Assist | Existing trained intent classification and bounded workflows |
 | `nio-echo` | Answer | Direct Q&A and conversation; 2 read-only inspection rounds |
 | `nio-sage` | Explain | Teaching and examples; read-only project evidence |

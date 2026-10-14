@@ -452,7 +452,11 @@ mod tests {
             "Explain --no-helm usage",
             "--no-helmet test",
         ] {
-            assert_eq!(flow_options(prompt).1, false, "default flow runs without Helm");
+            assert_eq!(
+                flow_options(prompt).1,
+                false,
+                "default flow runs without Helm"
+            );
         }
         for prompt in [
             "--helm suggest a site",
