@@ -506,7 +506,7 @@ pub(super) async fn respond(
                     return None;
                 }
                 if let Err(error) = runner.advance().await {
-                    runner.fail(&error);
+                    runner.fail(&error).await;
                 }
             }
         });
@@ -514,7 +514,7 @@ pub(super) async fn respond(
     } else {
         while !runner.done {
             if let Err(error) = runner.advance().await {
-                runner.fail(&error);
+                runner.fail(&error).await;
             }
             runner.queue.clear();
         }
@@ -1018,8 +1018,12 @@ impl Runner {
         self.clear_persisted();
         self.done = true;
     }
-    fn fail(&mut self, error: &str) {
+    async fn fail(&mut self, error: &str) {
         self.metadata["outcome"] = json!("capability_limitation");
+        let retryable = error == "The final stage returned no answer; completion is unverified";
+        self.metadata["flow"]["status"] = json!("failed");
+        self.metadata["flow"]["error"] = json!(error);
+        self.metadata["flow"]["retryable"] = json!(retryable);
         self.queue.push_back(sse_chunk(&self.id, self.model(), json!({"content":format!("⚠️ {error}. NioFlow stopped without dispatching further tools.")}), Value::Null));
         self.metadata["flow_message"] = json!({"role":"assistant","content":format!("⚠️ {error}. NioFlow stopped without dispatching further tools.")});
         self.metadata["flow_finish"] = json!("stop");
@@ -1030,9 +1034,19 @@ impl Runner {
         ));
         self.queue.push_back("[DONE]".into());
         if let Ok(mut sessions) = sessions().lock() {
-            sessions.remove(&self.key);
+            if retryable {
+                self.session.touched = Instant::now();
+                if sessions.len() >= 32 && !sessions.contains_key(&self.key) {
+                    if let Some(oldest) = sessions.iter().min_by_key(|(_, session)| session.touched).map(|(key,_)|key.clone()) {
+                        sessions.remove(&oldest);
+                    }
+                }
+                sessions.insert(self.key.clone(), self.session.clone());
+            } else {
+                sessions.remove(&self.key);
+            }
         }
-        self.clear_persisted();
+        if retryable { self.persist().await; } else { self.clear_persisted(); }
         self.done = true;
     }
     /// Best-effort durable snapshot of the current handoff. A storage failure or
@@ -1458,6 +1472,23 @@ mod tests {
     }
     fn request_default(stream: bool) -> ChatRequest {
         serde_json::from_value(json!({"model":"nio-flow","stream":stream,"messages":[{"role":"system","content":"Persona & Guidelines (always active):\nIdentity: Your name is Morgan."},{"role":"user","content":"Suggest and implement a dashboard"}],"tools":companion::coding_tool_schemas()})).unwrap()
+    }
+    #[tokio::test]
+    async fn empty_final_answer_is_retryable_without_replanning_or_replaying_tools() {
+        let (base, server) = gateway(vec![plan(true, &[MODEL_ECHO]), answer(""), answer("Recovered final answer")]).await;
+        let mut request=request_default(false);
+        request.messages.last_mut().unwrap().content=json!("--no-helm inspect this project");
+        let first=run(&base,&request,"turn_empty_final_retry").await;
+        assert_eq!(first["choices"][0]["finish_reason"],"tool_calls");
+        replay(&mut request,&first,r#"{"files":["README.md"]}"#);
+        let failed=run(&base,&request,"turn_empty_final_retry").await;
+        assert_eq!(failed["nioxs"]["flow"]["status"],"failed");
+        assert_eq!(failed["nioxs"]["flow"]["retryable"],true);
+        let recovered=run(&base,&request,"turn_empty_final_retry").await;
+        assert!(recovered["choices"][0]["message"]["content"].as_str().unwrap().contains("Recovered final answer"));
+        assert!(recovered["choices"][0]["message"].get("tool_calls").is_none());
+        let requests=tokio::time::timeout(std::time::Duration::from_secs(3),server).await.unwrap().unwrap();
+        assert_eq!(requests.len(),3,"plan once, then retry only the failed final stage");
     }
     async fn run(base: &str, request: &ChatRequest, turn: &str) -> Value {
         let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();

@@ -3,6 +3,13 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.4.5
+
+### Added
+- Direct companion bundling with NioAI autonomous agent.
+- Windows path normalization and cross-platform companion shell fallback enhancements.
+- Verified workspace test suite across all crates.
+
 ## v0.4.4
 
 ### Added
