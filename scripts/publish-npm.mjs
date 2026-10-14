@@ -5,6 +5,11 @@ const { name, version } = JSON.parse(readFileSync('package.json', 'utf8'));
 const spec = `${name}@${version}`;
 const registry = 'https://registry.npmjs.org/';
 
+if (!process.env.NODE_AUTH_TOKEN && !process.env.NPM_TOKEN) {
+  console.log('No NPM_TOKEN / NODE_AUTH_TOKEN provided; skipping npm publish.');
+  process.exit(0);
+}
+
 function npm(args) {
   const result = spawnSync('npm', args, { encoding: 'utf8' });
   if (result.error) throw result.error;

@@ -180,7 +180,6 @@ jobs:
           fi
 
       - name: Setup Node for npm publish
-        if: ${{ secrets.NPM_TOKEN != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -189,7 +188,6 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm
-        if: ${{ secrets.NPM_TOKEN != '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
