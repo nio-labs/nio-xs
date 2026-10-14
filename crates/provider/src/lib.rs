@@ -587,8 +587,201 @@ fn xml_tool_leak_pos(text: &str) -> Option<usize> {
         "<function_call",
         "<function=",
         "<function name=",
+        "<|tool_call",
     ];
     tags.iter().filter_map(|tag| lower.find(tag)).min()
+}
+
+/// Parses pythonic tool call syntax like `[read_file(path='README.md', limit=50)]` or `read_file(...)`.
+fn parse_pythonic_calls(input: &str) -> Vec<(String, Value)> {
+    let mut results = Vec::new();
+    let trimmed = input.trim();
+    let content = if trimmed.starts_with('[') && trimmed.ends_with(']') {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+
+    let bytes = content.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i < len {
+        // Skip whitespace, commas, brackets
+        while i < len && (bytes[i].is_ascii_whitespace() || bytes[i] == b',' || bytes[i] == b'[') {
+            i += 1;
+        }
+        if i >= len {
+            break;
+        }
+
+        // Identifier start: [a-zA-Z_]
+        if !bytes[i].is_ascii_alphabetic() && bytes[i] != b'_' {
+            i += 1;
+            continue;
+        }
+
+        let name_start = i;
+        while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-') {
+            i += 1;
+        }
+        let name = &content[name_start..i];
+
+        // Skip whitespace before '('
+        while i < len && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+
+        if i >= len || bytes[i] != b'(' {
+            continue;
+        }
+        i += 1; // skip '('
+
+        // Parse arguments inside (...)
+        let mut args_map = serde_json::Map::new();
+        while i < len {
+            // Skip whitespace and commas
+            while i < len && (bytes[i].is_ascii_whitespace() || bytes[i] == b',') {
+                i += 1;
+            }
+            if i >= len || bytes[i] == b')' {
+                break;
+            }
+
+            // Arg name: [a-zA-Z0-9_]
+            let arg_start = i;
+            while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                i += 1;
+            }
+            let arg_name = &content[arg_start..i];
+            if arg_name.is_empty() {
+                while i < len && bytes[i] != b',' && bytes[i] != b')' {
+                    i += 1;
+                }
+                continue;
+            }
+
+            // Skip whitespace before '='
+            while i < len && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if i < len && bytes[i] == b'=' {
+                i += 1; // skip '='
+            } else {
+                while i < len && bytes[i] != b',' && bytes[i] != b')' {
+                    i += 1;
+                }
+                continue;
+            }
+
+            // Skip whitespace before value
+            while i < len && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if i >= len {
+                break;
+            }
+
+            // Parse value
+            let parsed_val = if bytes[i] == b'\'' || bytes[i] == b'"' {
+                let quote = bytes[i];
+                i += 1;
+                let mut escaped = false;
+                let mut s = String::new();
+                while i < len {
+                    let b = bytes[i];
+                    if escaped {
+                        match b {
+                            b'n' => s.push('\n'),
+                            b'r' => s.push('\r'),
+                            b't' => s.push('\t'),
+                            b'\\' => s.push('\\'),
+                            q if q == quote => s.push(quote as char),
+                            other => {
+                                s.push('\\');
+                                s.push(other as char);
+                            }
+                        }
+                        escaped = false;
+                    } else if b == b'\\' {
+                        escaped = true;
+                    } else if b == quote {
+                        break;
+                    } else {
+                        s.push(b as char);
+                    }
+                    i += 1;
+                }
+                if i < len && bytes[i] == quote {
+                    i += 1;
+                }
+                Value::String(s)
+            } else if bytes[i] == b'{' || bytes[i] == b'[' {
+                let open = bytes[i];
+                let close = if open == b'{' { b'}' } else { b']' };
+                let val_start = i;
+                let mut depth = 0;
+                let mut in_str: Option<u8> = None;
+                let mut esc = false;
+                while i < len {
+                    let b = bytes[i];
+                    if let Some(q) = in_str {
+                        if esc {
+                            esc = false;
+                        } else if b == b'\\' {
+                            esc = true;
+                        } else if b == q {
+                            in_str = None;
+                        }
+                    } else if b == b'\'' || b == b'"' {
+                        in_str = Some(b);
+                    } else if b == open {
+                        depth += 1;
+                    } else if b == close {
+                        depth -= 1;
+                        if depth == 0 {
+                            i += 1;
+                            break;
+                        }
+                    }
+                    i += 1;
+                }
+                let raw_val = &content[val_start..i];
+                serde_json::from_str::<Value>(raw_val)
+                    .unwrap_or_else(|_| Value::String(raw_val.to_string()))
+            } else {
+                let val_start = i;
+                while i < len && bytes[i] != b',' && bytes[i] != b')' && bytes[i] != b']' {
+                    i += 1;
+                }
+                let raw = content[val_start..i].trim();
+                let lower = raw.to_ascii_lowercase();
+                if lower == "true" {
+                    Value::Bool(true)
+                } else if lower == "false" {
+                    Value::Bool(false)
+                } else if lower == "none" || lower == "null" {
+                    Value::Null
+                } else if let Ok(num) = raw.parse::<i64>() {
+                    json!(num)
+                } else if let Ok(num) = raw.parse::<f64>() {
+                    json!(num)
+                } else {
+                    Value::String(raw.to_string())
+                }
+            };
+
+            args_map.insert(arg_name.to_string(), parsed_val);
+        }
+
+        if i < len && bytes[i] == b')' {
+            i += 1; // skip ')'
+        }
+
+        results.push((name.to_string(), Value::Object(args_map)));
+    }
+
+    results
 }
 
 /// Recovers tool calls emitted as XML text (such as `<dots_function_call>` or `<invoke>`).
@@ -789,6 +982,7 @@ fn extract_xml_tool_calls(text: &str) -> Vec<RequestedCall> {
                 None => text.len(),
             };
             let block = text[abs_start..end].trim();
+            let mut found_call = false;
             if block.starts_with('{') {
                 if let Ok(val) = serde_json::from_str::<Value>(block) {
                     if let Some(name) = val.get("name").and_then(Value::as_str) {
@@ -798,11 +992,103 @@ fn extract_xml_tool_calls(text: &str) -> Vec<RequestedCall> {
                             name: name.to_string(),
                             arguments: arguments.to_string(),
                         });
+                        found_call = true;
                     }
+                }
+            } else if block.starts_with('[') {
+                if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(block) {
+                    for item in items {
+                        if let Some(name) = item.get("name").and_then(Value::as_str) {
+                            let arguments = item.get("arguments").cloned().unwrap_or(json!({}));
+                            calls.push(RequestedCall {
+                                id: format!("call_xml_{}", calls.len()),
+                                name: name.to_string(),
+                                arguments: arguments.to_string(),
+                            });
+                            found_call = true;
+                        }
+                    }
+                }
+            }
+            if !found_call {
+                for (name, args) in parse_pythonic_calls(block) {
+                    calls.push(RequestedCall {
+                        id: format!("call_xml_{}", calls.len()),
+                        name,
+                        arguments: args.to_string(),
+                    });
                 }
             }
             cur = if end < text.len() {
                 end + 12
+            } else {
+                text.len()
+            };
+        }
+    }
+
+    // 4. Also support ChatML / Qwen <|tool_call_start|> ... <|tool_call_end|>
+    if calls.is_empty() {
+        let mut cur = 0;
+        while let Some(start) = text[cur..]
+            .find("<|tool_call_start|>")
+            .or_else(|| text[cur..].find("<|tool_call"))
+        {
+            let abs_start = cur + start;
+            let tag_open_end = match text[abs_start..].find('>') {
+                Some(i) => abs_start + i + 1,
+                None => abs_start + 19,
+            };
+            let end = match text[tag_open_end..].find("<|tool_call_end|>") {
+                Some(i) => tag_open_end + i,
+                None => match text[tag_open_end..].find("<|tool_call_end") {
+                    Some(i) => tag_open_end + i,
+                    None => match text[tag_open_end..].find("|>") {
+                        Some(i) => tag_open_end + i,
+                        None => text.len(),
+                    },
+                },
+            };
+            let block = text[tag_open_end..end].trim();
+            let mut found_call = false;
+            if block.starts_with('{') {
+                if let Ok(val) = serde_json::from_str::<Value>(block) {
+                    if let Some(name) = val.get("name").and_then(Value::as_str) {
+                        let arguments = val.get("arguments").cloned().unwrap_or(json!({}));
+                        calls.push(RequestedCall {
+                            id: format!("call_xml_{}", calls.len()),
+                            name: name.to_string(),
+                            arguments: arguments.to_string(),
+                        });
+                        found_call = true;
+                    }
+                }
+            } else if block.starts_with('[') {
+                if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(block) {
+                    for item in items {
+                        if let Some(name) = item.get("name").and_then(Value::as_str) {
+                            let arguments = item.get("arguments").cloned().unwrap_or(json!({}));
+                            calls.push(RequestedCall {
+                                id: format!("call_xml_{}", calls.len()),
+                                name: name.to_string(),
+                                arguments: arguments.to_string(),
+                            });
+                            found_call = true;
+                        }
+                    }
+                }
+            }
+            if !found_call {
+                for (name, args) in parse_pythonic_calls(block) {
+                    calls.push(RequestedCall {
+                        id: format!("call_xml_{}", calls.len()),
+                        name,
+                        arguments: args.to_string(),
+                    });
+                }
+            }
+            cur = if end < text.len() {
+                end + 17
             } else {
                 text.len()
             };
@@ -2144,6 +2430,27 @@ src/engine*
         assert_eq!(read_calls.len(), 1);
         assert_eq!(read_calls[0].name, "read_file");
         assert_eq!(read_calls[0].arguments, "{\"path\":\"src/mcp.rs\"}");
+
+        // ChatML / Qwen <|tool_call_start|> pythonic syntax
+        let chatml_sample = "<|tool_call_start|>[read_file(path='README.md', limit=50)]<|tool_call_end|>";
+        let chatml_calls = extract_xml_tool_calls(chatml_sample);
+        assert_eq!(chatml_calls.len(), 1);
+        assert_eq!(chatml_calls[0].name, "read_file");
+        assert_eq!(chatml_calls[0].arguments, "{\"limit\":50,\"path\":\"README.md\"}");
+
+        // Multiple pythonic calls in <|tool_call_start|>
+        let multi_sample = "<|tool_call_start|>[read_file(path='a.txt'), list_dir(path='crates')]<|tool_call_end|>";
+        let multi_calls = extract_xml_tool_calls(multi_sample);
+        assert_eq!(multi_calls.len(), 2);
+        assert_eq!(multi_calls[0].name, "read_file");
+        assert_eq!(multi_calls[1].name, "list_dir");
+
+        // JSON inside <|tool_call_start|>
+        let json_chatml = r#"<|tool_call_start|>[{"name": "read_file", "arguments": {"path": "README.md", "limit": 50}}]<|tool_call_end|>"#;
+        let json_calls = extract_xml_tool_calls(json_chatml);
+        assert_eq!(json_calls.len(), 1);
+        assert_eq!(json_calls[0].name, "read_file");
+        assert_eq!(json_calls[0].arguments, "{\"limit\":50,\"path\":\"README.md\"}");
     }
 
     fn trail_len(deltas: &[String]) -> usize {
