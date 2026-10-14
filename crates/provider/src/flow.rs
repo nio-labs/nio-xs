@@ -1037,7 +1037,11 @@ impl Runner {
             if retryable {
                 self.session.touched = Instant::now();
                 if sessions.len() >= 32 && !sessions.contains_key(&self.key) {
-                    if let Some(oldest) = sessions.iter().min_by_key(|(_, session)| session.touched).map(|(key,_)|key.clone()) {
+                    if let Some(oldest) = sessions
+                        .iter()
+                        .min_by_key(|(_, session)| session.touched)
+                        .map(|(key, _)| key.clone())
+                    {
                         sessions.remove(&oldest);
                     }
                 }
@@ -1046,7 +1050,11 @@ impl Runner {
                 sessions.remove(&self.key);
             }
         }
-        if retryable { self.persist().await; } else { self.clear_persisted(); }
+        if retryable {
+            self.persist().await;
+        } else {
+            self.clear_persisted();
+        }
         self.done = true;
     }
     /// Best-effort durable snapshot of the current handoff. A storage failure or
@@ -1475,20 +1483,43 @@ mod tests {
     }
     #[tokio::test]
     async fn empty_final_answer_is_retryable_without_replanning_or_replaying_tools() {
-        let (base, server) = gateway(vec![plan(true, &[MODEL_ECHO]), answer(""), answer("Recovered final answer")]).await;
-        let mut request=request_default(false);
-        request.messages.last_mut().unwrap().content=json!("--no-helm inspect this project");
-        let first=run(&base,&request,"turn_empty_final_retry").await;
-        assert_eq!(first["choices"][0]["finish_reason"],"tool_calls");
-        replay(&mut request,&first,r#"{"files":["README.md"]}"#);
-        let failed=run(&base,&request,"turn_empty_final_retry").await;
-        assert_eq!(failed["nioxs"]["flow"]["status"],"failed");
-        assert_eq!(failed["nioxs"]["flow"]["retryable"],true);
-        let recovered=run(&base,&request,"turn_empty_final_retry").await;
-        assert!(recovered["choices"][0]["message"]["content"].as_str().unwrap().contains("Recovered final answer"));
-        assert!(recovered["choices"][0]["message"].get("tool_calls").is_none());
-        let requests=tokio::time::timeout(std::time::Duration::from_secs(3),server).await.unwrap().unwrap();
-        assert_eq!(requests.len(),3,"plan once, then retry only the failed final stage");
+        let (base, server) = gateway(vec![
+            plan(true, &[MODEL_ECHO]),
+            answer(""),
+            answer("Recovered final answer"),
+        ])
+        .await;
+        let mut request = request_default(false);
+        request.messages.last_mut().unwrap().content = json!("--no-helm inspect this project");
+        let first = run(&base, &request, "turn_empty_final_retry").await;
+        assert_eq!(first["choices"][0]["finish_reason"], "tool_calls");
+        replay(&mut request, &first, r#"{"files":["README.md"]}"#);
+        let failed = run(&base, &request, "turn_empty_final_retry").await;
+        assert_eq!(failed["nioxs"]["flow"]["status"], "failed");
+        assert_eq!(failed["nioxs"]["flow"]["retryable"], true);
+        assert_eq!(failed["nioxs"]["flow"]["helm_enabled"], false);
+        let recovered = run(&base, &request, "turn_empty_final_retry").await;
+        assert!(
+            recovered["choices"][0]["message"]["content"]
+                .as_str()
+                .unwrap()
+                .contains("Recovered final answer")
+        );
+        assert!(
+            recovered["choices"][0]["message"]
+                .get("tool_calls")
+                .is_none()
+        );
+        assert_eq!(recovered["nioxs"]["flow"]["helm_enabled"], false);
+        let requests = tokio::time::timeout(std::time::Duration::from_secs(3), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            requests.len(),
+            3,
+            "plan once, then retry only the failed final stage"
+        );
     }
     async fn run(base: &str, request: &ChatRequest, turn: &str) -> Value {
         let db = NioDb::new("http://127.0.0.1:9", "test".into()).unwrap();
