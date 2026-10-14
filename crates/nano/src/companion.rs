@@ -358,6 +358,8 @@ pub fn coding_tool_schemas() -> Vec<serde_json::Value> {
                         "query": {"type": "string", "description": "Search query or regex"},
                         "path": {"type": "string", "description": "Project-relative directory, default ."},
                         "glob": {"type": "string", "description": "Glob filter such as *.rs or src/**/*.ts"},
+                        "regex": {"type": "boolean", "description": "Whether query is a regular expression"},
+                        "context_lines": {"type": "integer", "minimum": 0, "maximum": 5},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 50}
                     },
                     "required": ["query"],
@@ -2052,7 +2054,10 @@ pub fn dispatch_help(topic: &str) -> String {
             "### 📊 Directive: `--git` (Working Tree & Status Summary)\n\n\
             Quick insight into repository state.\n\n\
             #### 💡 Syntax:\n\
-            • `--git` or `--git status` — Compact status and modified files diffstat"
+            • `--git` or `--git status` — Compact status and modified files diffstat\n\
+            • `--git full-diff` — Full unstaged diff through caller command approval\n\
+            • `--git staged` — Full staged diff through caller command approval\n\
+            • `--git history` — Latest 20 commits through caller command approval"
                 .to_string()
         }
         _ => {
@@ -2065,7 +2070,17 @@ pub fn dispatch_help(topic: &str) -> String {
             • `--config <setting> <value>` — Companion settings & presets (try `--help config`)\n\
             • `--bash <cmd>` — In-session terminal execution (try `--help bash`)\n\
             • `--test [pattern]` — Smart test runner across Rust, TS, Py, Go (try `--help test`)\n\
-            • `--git` — Working tree diff & status summary (try `--help git`)\n\n\
+            • `--git` — Working tree diff & status summary (try `--help git`)\n\
+            • `--git full-diff`, `--git staged`, `--git history` — Caller-approved Git inspection\n\
+            • `--diagnostics [compiler|lint]` — Rust compiler or lint evidence through caller tools\n\
+            • `--tasks` — Discover Cargo tasks and package.json scripts without running them\n\
+            • `--patch <JSON>` — Caller-approved exact edit with verified read-back\n\
+            • `--format <file.rs>`, `--rename <old> <new> <file.rs>` — Selected Rust editing\n\
+            • `--workflow <JSON>` — Connected typed steps with evidence and caller permissions\n\
+            • `--docs <query>`, `--fetch <url>` — Caller Markdown search and reference fetch\n\
+            • `--definitions <symbol>`, `--references <symbol>` — Rust declarations and usages from caller evidence\n\
+            • `--callers <symbol>`, `--implementations <symbol>` — Rust call sites and impl blocks (syntax name matching)\n\
+            • `--capabilities` — Show registered tools and current caller availability\n\n\
             #### 💡 Topic Help:\n\
             Type `--help <directive>` (e.g. `--help code`, `--help tools`, `--help config`)."
                 .to_string()

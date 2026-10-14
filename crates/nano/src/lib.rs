@@ -13,11 +13,14 @@ pub mod compiler;
 pub mod dag;
 pub mod decision;
 pub mod model;
+pub mod navigation;
 pub mod patch;
 pub mod profiles;
 pub mod synthesize;
+pub mod tools;
 pub mod upstream;
 pub mod watcher;
+pub mod workflows;
 
 pub use model::Model;
 use nioxs_contracts::{
@@ -33,6 +36,11 @@ static GREETING_ROTATION: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Intent {
+    Connected(Vec<workflows::Step>),
+    Capabilities,
+    GitInspect(tools::GitView),
+    Diagnostics(tools::DiagnosticsKind),
+    ProjectTasks,
     Read(String),
     Inspect,
     Files(String),
@@ -52,6 +60,8 @@ pub enum Intent {
     AnalyzeDir(String),
     SymbolDef(String),
     SymbolRefs(String),
+    SymbolCallers(String),
+    SymbolImplementations(String),
     RefactorPatch {
         file: String,
         old: String,
@@ -85,6 +95,11 @@ pub enum Intent {
 impl Intent {
     pub fn label(&self) -> &str {
         match self {
+            Self::Connected(_) => "connected_workflow",
+            Self::Capabilities => "capabilities",
+            Self::GitInspect(_) => "git_inspect",
+            Self::Diagnostics(_) => "diagnostics",
+            Self::ProjectTasks => "project_tasks",
             Self::Bash(_) => "bash_command",
             Self::Tool(_) => "run_tool",
             Self::Config(_) => "config",
@@ -109,10 +124,12 @@ impl Intent {
             Self::Plan(_) => "plan",
             Self::AnalyzeFile(_) => "analyze_file",
             Self::AnalyzeDir(_) => "analyze_dir",
-            Self::SymbolDef(_) => "search_code",
-            Self::SymbolRefs(_) => "search_code",
-            Self::RefactorPatch { .. } => "scaffold_template",
-            Self::TddRefactor { .. } => "run_checks",
+            Self::SymbolDef(_) => "symbol_definitions",
+            Self::SymbolRefs(_) => "symbol_references",
+            Self::SymbolCallers(_) => "symbol_callers",
+            Self::SymbolImplementations(_) => "symbol_implementations",
+            Self::RefactorPatch { .. } => "apply_exact_patch",
+            Self::TddRefactor { .. } => "connected_workflow",
             Self::ScaffoldTest { .. } => "scaffold_template",
             Self::ReviewDiff => "inspect_project",
             Self::SuggestCommit => "inspect_project",
@@ -127,6 +144,20 @@ impl Intent {
 /// The informational and abstain labels (`greeting`, `help`, `clarify`,
 /// `unsupported`) are intentionally excluded.
 pub const SHIPPED_WORKFLOWS: &[&str] = &[
+    "connected_workflow",
+    "apply_exact_patch",
+    "format_file",
+    "rename_symbol",
+    "search_docs",
+    "fetch_reference",
+    "capabilities",
+    "git_inspect",
+    "diagnostics",
+    "project_tasks",
+    "symbol_definitions",
+    "symbol_references",
+    "symbol_callers",
+    "symbol_implementations",
     "bash_command",
     "run_tool",
     "config",
@@ -282,6 +313,12 @@ fn split_compound_prompt(prompt: &str) -> Option<Vec<&str>> {
 }
 
 pub fn parse(model: &Model, prompt: &str) -> Intent {
+    if let Some(result) = workflows::parse(prompt.trim()) {
+        return match result {
+            Ok(steps) => Intent::Connected(steps),
+            Err(reason) => Intent::Clarify(reason),
+        };
+    }
     if prompt.len() > 1024 || !prompt.is_ascii() {
         return Intent::Unsupported;
     }
@@ -596,6 +633,64 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         return Intent::Unsupported;
     }
     let trimmed_prompt = prompt.trim();
+    if let Some(result) = workflows::parse(trimmed_prompt) {
+        return match result {
+            Ok(steps) => Intent::Connected(steps),
+            Err(reason) => Intent::Clarify(reason),
+        };
+    }
+    if let Some(result) = navigation::parse_request(trimmed_prompt) {
+        return match result {
+            Ok((kind, symbol)) => match kind {
+                navigation::NavigationKind::Definitions => Intent::SymbolDef(symbol),
+                navigation::NavigationKind::References => Intent::SymbolRefs(symbol),
+                navigation::NavigationKind::Callers => Intent::SymbolCallers(symbol),
+                navigation::NavigationKind::Implementations => {
+                    Intent::SymbolImplementations(symbol)
+                }
+            },
+            Err(reason) => Intent::Clarify(reason),
+        };
+    }
+    let normalized = trimmed_prompt.to_ascii_lowercase();
+    match normalized.as_str() {
+        "--capabilities"
+        | "capabilities"
+        | "what tools are available?"
+        | "list available tools" => return Intent::Capabilities,
+        "--git full-diff" | "--git:full-diff" | "show full git diff" | "what changed?" => {
+            return Intent::GitInspect(tools::GitView::Diff);
+        }
+        "--git staged" | "--git:staged" | "show staged diff" => {
+            return Intent::GitInspect(tools::GitView::Staged);
+        }
+        "--git history" | "--git:history" | "show git history" | "show recent commits" => {
+            return Intent::GitInspect(tools::GitView::History);
+        }
+        "--diagnostics"
+        | "--diagnostics compiler"
+        | "--diagnostics:compiler"
+        | "show compiler diagnostics"
+        | "check compiler errors"
+        | "what failed?" => return Intent::Diagnostics(tools::DiagnosticsKind::Compiler),
+        "--diagnostics lint" | "--diagnostics:lint" | "show lint diagnostics" => {
+            return Intent::Diagnostics(tools::DiagnosticsKind::Lint);
+        }
+        "--tasks" | "list project tasks" | "show project scripts" | "what tasks can i run?" => {
+            return Intent::ProjectTasks;
+        }
+        _ => {}
+    }
+    if strip_directive(trimmed_prompt, "--diagnostics").is_some() {
+        return Intent::Clarify(
+            "Use --diagnostics compiler or --diagnostics lint (Rust projects).".into(),
+        );
+    }
+    if strip_directive(trimmed_prompt, "--tasks").is_some() {
+        return Intent::Clarify(
+            "Use --tasks to discover project tasks without executing them.".into(),
+        );
+    }
     if let Some(cmd) = strip_directive(trimmed_prompt, "--bash") {
         return Intent::Bash(cmd.to_string());
     }
@@ -623,7 +718,7 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             "status" => Intent::GitSummary("status".into()),
             "diff" => Intent::GitSummary("diff".into()),
             other => Intent::Clarify(format!(
-                "Unknown `--git` subcommand `{other}`. Use `--git`, `--git:status`, or `--git:diff`."
+                "Unknown `--git` subcommand `{other}`. Use `--git`, `--git:status`, `--git:diff`, `--git:full-diff`, `--git:staged`, or `--git:history`."
             )),
         };
     }
@@ -1256,6 +1351,126 @@ macro_rules! tool {
         }
     };
 }
+/// One search plus at most six file windows leaves space within Nano's
+/// eight-action turn budget. No persisted index can outlive caller evidence.
+fn rust_navigation(
+    w: &mut Workflow<'_>,
+    symbol: &str,
+    kind: navigation::NavigationKind,
+) -> Result<Decision, String> {
+    if !navigation::valid_symbol(symbol) {
+        return Ok(w.end(
+            "Specify one Rust identifier; qualified paths and expressions are not supported."
+                .into(),
+            Outcome::Clarification,
+        ));
+    }
+    for required in ["search_code", "read_file"] {
+        if !w.request.permits_tool(required) {
+            return Ok(w.limitation(&format!("Rust navigation requires an offered {required} tool under the caller's current policy."), false));
+        }
+    }
+    let search = tool!(
+        w,
+        "search_code",
+        json!({"query":symbol.trim_start_matches("r#"),"path":".","glob":"**/*.rs","regex":false,"context_lines":0,"limit":50})
+    );
+    let search: Value =
+        serde_json::from_str(&search).map_err(|_| "invalid navigation search result")?;
+    let mut paths = std::collections::BTreeSet::new();
+    for hit in search["matches"]
+        .as_array()
+        .ok_or("navigation search result has no matches")?
+    {
+        let path = hit["path"]
+            .as_str()
+            .filter(|p| safe_path(p, false) && p.ends_with(".rs"))
+            .ok_or("invalid Rust navigation search path")?;
+        paths.insert(path.to_string());
+    }
+    let mut incomplete = search["scan_limited"] == true || !search["next_offset"].is_null();
+    let mut skipped = Vec::new();
+    let mut results = Vec::new();
+    let mut parsed_files = Vec::new();
+    let mut reads = 0;
+    for path in paths {
+        let mut source = String::new();
+        let mut start = 1;
+        let mut expected_total = None;
+        loop {
+            if reads >= 6 {
+                incomplete = true;
+                skipped.push(json!({"path":path,"reason":"six-window navigation budget reached"}));
+                break;
+            }
+            let text = tool!(
+                w,
+                "read_file",
+                json!({"path":path,"start_line":start,"line_count":300})
+            );
+            reads += 1;
+            let (window, end, total) = match navigation::read_window(&text, start) {
+                Ok(window) => window,
+                Err(reason) => {
+                    incomplete = true;
+                    skipped.push(json!({"path":path,"reason":reason}));
+                    break;
+                }
+            };
+            if expected_total.is_some_and(|previous| previous != total) {
+                incomplete = true;
+                skipped
+                    .push(json!({"path":path,"reason":"file line count changed between windows"}));
+                break;
+            }
+            expected_total = Some(total);
+            source.push_str(window);
+            if !source.ends_with('\n') {
+                source.push('\n');
+            }
+            if end == total {
+                match navigation::analyze(&path, &source, symbol, &kind) {
+                    Ok(matches) => {
+                        results.extend(matches);
+                        parsed_files.push(path.clone());
+                    }
+                    Err(reason) => {
+                        incomplete = true;
+                        skipped.push(json!({"path":path,"reason":reason}));
+                    }
+                }
+                break;
+            }
+            start = end + 1;
+        }
+    }
+    let results_truncated = results.len() > 50;
+    results.truncate(50);
+    let mut report = json!({"workflow":kind.label(),"symbol":symbol,"language":"rust",
+        "resolution":"syntax_name_match","matches":results,"parsed_files":parsed_files,
+        "coverage_incomplete":incomplete,"results_truncated":results_truncated,"skipped_files":skipped,
+        "limitations":["Same-name symbols may refer to different definitions; types and imports are not resolved.","Macros are not expanded and conditional compilation is not evaluated.","Only searched files fully read and parsed are analyzed; zero matches does not prove absence outside this coverage."]});
+    // Keep the report valid JSON and preserve coverage warnings under output limits.
+    while serde_json::to_string_pretty(&report).unwrap().len() > 8000 {
+        if !report["matches"].as_array().unwrap().is_empty() {
+            report["matches"].as_array_mut().unwrap().pop();
+            report["results_truncated"] = json!(true);
+        } else if !report["skipped_files"].as_array().unwrap().is_empty() {
+            report["skipped_files"].as_array_mut().unwrap().pop();
+            report["coverage_details_truncated"] = json!(true);
+        } else if !report["parsed_files"].as_array().unwrap().is_empty() {
+            report["parsed_files"].as_array_mut().unwrap().pop();
+            report["coverage_details_truncated"] = json!(true);
+        } else {
+            break;
+        }
+    }
+    Ok(w.end(
+        serde_json::to_string_pretty(&report).unwrap(),
+        Outcome::Completed,
+    ))
+}
+
 pub fn excerpt(text: &str, limit: usize) -> String {
     let out: String = text.chars().take(limit).collect();
     if text.chars().count() > limit {
@@ -1458,6 +1673,39 @@ pub fn decide_with_model(
         coding: None,
     };
     match intent {
+
+        Intent::Connected(steps) => workflows::execute(&mut w, &steps),
+        Intent::Capabilities => Ok(w.end(
+            serde_json::to_string_pretty(&tools::session_capabilities(request)).unwrap(),
+            Outcome::Completed,
+        )),
+        Intent::GitInspect(view) => {
+            let command = view.command();
+            let result = tool!(w, "run_command", json!({"command":command}));
+            Ok(w.end(format!("Git inspection (`{command}`):\n\n{}", excerpt(&result, 6500)), Outcome::Completed))
+        }
+        Intent::Diagnostics(kind) => {
+            if !request.permits_tool("run_command") {
+                return Ok(w.limitation("Rust diagnostics require an offered run_command tool and caller command approval.", false));
+            }
+            let inventory = tool!(w, "find_files", json!({"path":".","glob":"Cargo.toml","limit":50}));
+            let (paths, limited) = files(&inventory)?;
+            if !paths.iter().any(|p| p == "Cargo.toml") {
+                return Ok(w.limitation(if limited { "Cargo.toml was not found in the incomplete inventory; Rust diagnostics are unavailable." } else { "Rust diagnostics require a root Cargo.toml; other languages are not supported yet." }, false));
+            }
+            let command = kind.command();
+            let result = tool!(w, "run_command", json!({"command":command}));
+            Ok(w.end(format!("Rust diagnostics (`{command}`):\n\n{}", excerpt(&result, 6500)), Outcome::Completed))
+        }
+        Intent::ProjectTasks => {
+            let inventory = tool!(w, "find_files", json!({"path":".","glob":"{Cargo.toml,package.json}","limit":50}));
+            let (paths, limited) = files(&inventory)?;
+            let package = if paths.iter().any(|p| p == "package.json") {
+                Some(tool!(w, "read_file", json!({"path":"package.json","line_count":200})))
+            } else { None };
+            let tasks = tools::project_tasks(&paths, package.as_deref().map(payload), limited)?;
+            Ok(w.end(excerpt(&serde_json::to_string_pretty(&tasks).unwrap(), 8000), Outcome::Completed))
+        }
 
         Intent::Unsupported => Ok(w.limitation(
             "⚡ **NioNano Companion Ready.** I couldn't identify a direct matching programming action for that phrasing.\n\n\
@@ -1883,51 +2131,12 @@ pub fn decide_with_model(
             let report = analysis::format_directory_analysis(&dir, &filtered);
             Ok(w.end(report, Outcome::Completed))
         }
-        Intent::SymbolDef(symbol) => {
-            let defs = coder::find_symbol_definitions(&symbol, ".");
-            if defs.is_empty() {
-                Ok(w.end(
-                    format!("No declaration or definition found for symbol `{symbol}` across project source files."),
-                    Outcome::Completed,
-                ))
-            } else {
-                let mut out = format!("### Symbol Definition: `{symbol}`\n\nFound {} declaration{}:\n\n", defs.len(), if defs.len() == 1 { "" } else { "s" });
-                for def in defs {
-                    out.push_str(&format!("• `{}:{}` ({})\n```\n{}\n```\n\n", def.file, def.line_number, def.kind, def.line_text));
-                }
-                Ok(w.end(out.trim().to_string(), Outcome::Completed))
-            }
-        }
-        Intent::SymbolRefs(symbol) => {
-            let refs = coder::find_symbol_references(&symbol, ".");
-            if refs.is_empty() {
-                Ok(w.end(
-                    format!("No call sites or usages found for symbol `{symbol}` across project source files."),
-                    Outcome::Completed,
-                ))
-            } else {
-                let mut out = format!("### Symbol Usages & Call Sites: `{symbol}`\n\nFound {} reference{}:\n\n", refs.len(), if refs.len() == 1 { "" } else { "s" });
-                for r in refs.iter().take(25) {
-                    out.push_str(&format!("• `{}:{}`\n```\n{}\n```\n", r.file, r.line_number, r.line_text));
-                }
-                if refs.len() > 25 {
-                    out.push_str(&format!("\n*(Showing first 25 of {} references)*", refs.len()));
-                }
-                Ok(w.end(out.trim().to_string(), Outcome::Completed))
-            }
-        }
-        Intent::RefactorPatch { file, old, new } => {
-            match coder::refactor_file(&file, &old, &new) {
-                Ok(report) => Ok(w.end(report, Outcome::Completed)),
-                Err(err) => Ok(w.end(format!("Refactoring failed: {err}"), Outcome::Completed)),
-            }
-        }
-        Intent::TddRefactor { file, old, new } => {
-            match coder::tdd_refactor_and_test(&file, &old, &new) {
-                Ok(report) => Ok(w.end(report, Outcome::Completed)),
-                Err(err) => Ok(w.end(err, Outcome::Completed)),
-            }
-        }
+        Intent::SymbolDef(symbol) => rust_navigation(&mut w, &symbol, navigation::NavigationKind::Definitions),
+        Intent::SymbolRefs(symbol) => rust_navigation(&mut w, &symbol, navigation::NavigationKind::References),
+        Intent::SymbolCallers(symbol) => rust_navigation(&mut w, &symbol, navigation::NavigationKind::Callers),
+        Intent::SymbolImplementations(symbol) => rust_navigation(&mut w, &symbol, navigation::NavigationKind::Implementations),
+        Intent::RefactorPatch { file, old, new } => workflows::execute(&mut w, &[workflows::Step::Patch { path:file, old, new }]),
+        Intent::TddRefactor { file, old, new } => workflows::execute(&mut w, &[workflows::Step::Patch { path:file, old, new }, workflows::Step::Check {kind:"test".into()}]),
         Intent::ScaffoldTest { file, function } => {
             match coder::scaffold_test_for_function(&file, &function) {
                 Ok(code) => Ok(w.end(
@@ -1958,6 +2167,9 @@ pub fn decide_with_model(
             Ok(w.end(plan, Outcome::Completed))
         }
         Intent::Plan(steps) => {
+            if let Some(connected) = workflows::from_intents(&steps) {
+                return workflows::execute(&mut w, &connected);
+            }
             let mut summary = format!("Decomposed and executing {} task steps:\n\n", steps.len());
             for (idx, step) in steps.iter().enumerate() {
                 let step_num = idx + 1;
@@ -2051,6 +2263,291 @@ pub fn decide_with_model(
 mod tests {
     use super::*;
     use nioxs_contracts::MODEL_NANO;
+
+    fn inspection_request(prompt: &str) -> ChatRequest {
+        serde_json::from_value(json!({"model":MODEL_NANO,"messages":[{"role":"user","content":prompt}],
+            "tools":tools::registry().iter().map(|entry| entry["schema"].clone()).collect::<Vec<_>>()
+        })).unwrap()
+    }
+
+    fn return_result(request: &mut ChatRequest, decision: &Decision, result: &str) {
+        let call = decision.call.as_ref().expect("caller tool call");
+        request.messages.push(assistant_action(call));
+        request.messages.push(tool_response(call, result));
+    }
+
+    #[test]
+    fn navigation_uses_caller_evidence_for_all_four_views() {
+        let source = "trait Service { fn ping(&self); }\nstruct Worker;\nimpl Service for Worker { fn ping(&self) {} }\nfn caller() { ping(); }";
+        for (prompt, count, expected_label) in [
+            ("--definitions ping", 2, "symbol_definitions"),
+            ("--references ping", 1, "symbol_references"),
+            ("who calls ping?", 1, "symbol_callers"),
+            ("--implementations Service", 1, "symbol_implementations"),
+        ] {
+            let mut request = inspection_request(prompt);
+            let search = decide(&request, "test").unwrap();
+            assert_eq!(search.call.as_ref().unwrap().function.name, "search_code");
+            return_result(
+                &mut request,
+                &search,
+                r#"{"matches":[{"path":"caller_project/lib.rs"},{"path":"caller_project/lib.rs"}]}"#,
+            );
+            let read = decide(&request, "test").unwrap();
+            assert_eq!(read.call.as_ref().unwrap().function.name, "read_file");
+            let args: Value =
+                serde_json::from_str(&read.call.as_ref().unwrap().function.arguments).unwrap();
+            assert_eq!(args["path"], "caller_project/lib.rs");
+            return_result(&mut request, &read, &format!("Lines 1-4 of 4:\n{source}"));
+            let completed = decide(&request, "test").unwrap();
+            assert_eq!(completed.execution.outcome, Outcome::Completed);
+            assert_eq!(completed.observed.len(), 2);
+            let report: Value = serde_json::from_str(&completed.content.unwrap()).unwrap();
+            assert_eq!(report["workflow"], expected_label);
+            assert_eq!(report["matches"].as_array().unwrap().len(), count);
+            assert_eq!(report["coverage_incomplete"], false);
+        }
+    }
+
+    #[test]
+    fn navigation_reads_later_windows_and_keeps_line_numbers() {
+        let mut request = inspection_request("--definitions late");
+        let search = decide(&request, "test").unwrap();
+        return_result(
+            &mut request,
+            &search,
+            r#"{"matches":[{"path":"src/lib.rs"}],"scan_limited":true}"#,
+        );
+        let first = decide(&request, "test").unwrap();
+        let window = "// padding\n".repeat(300);
+        return_result(
+            &mut request,
+            &first,
+            &format!("Lines 1-300 of 301:\n{window}"),
+        );
+        let next = decide(&request, "test").unwrap();
+        let args: Value =
+            serde_json::from_str(&next.call.as_ref().unwrap().function.arguments).unwrap();
+        assert_eq!(args["start_line"], 301);
+        return_result(&mut request, &next, "Lines 301-301 of 301:\nfn late() {}");
+        let done = decide(&request, "test").unwrap();
+        let report: Value = serde_json::from_str(&done.content.unwrap()).unwrap();
+        assert_eq!(report["matches"][0]["line"], 301);
+        assert_eq!(report["coverage_incomplete"], true);
+    }
+
+    #[test]
+    fn navigation_budget_and_incomplete_reads_are_explicit() {
+        let mut request = inspection_request("--callers target");
+        let search = decide(&request, "test").unwrap();
+        let hits: Vec<Value> = (0..8)
+            .map(|i| json!({"path":format!("src/{i}.rs")}))
+            .collect();
+        return_result(&mut request, &search, &json!({"matches":hits}).to_string());
+        for _ in 0..6 {
+            let read = decide(&request, "test").unwrap();
+            return_result(
+                &mut request,
+                &read,
+                "Lines 1-1 of 1:\nfn caller() { target(); }",
+            );
+        }
+        let done = decide(&request, "test").unwrap();
+        assert!(done.call.is_none());
+        assert_eq!(done.observed.len(), 7);
+        let report: Value = serde_json::from_str(&done.content.unwrap()).unwrap();
+        assert_eq!(report["matches"].as_array().unwrap().len(), 6);
+        assert_eq!(report["skipped_files"].as_array().unwrap().len(), 2);
+        assert_eq!(report["coverage_incomplete"], true);
+        let mut request = inspection_request("--definitions target");
+        let search = decide(&request, "test").unwrap();
+        return_result(&mut request, &search, r#"{"matches":[{"path":"lib.rs"}]}"#);
+        let read = decide(&request, "test").unwrap();
+        return_result(&mut request, &read, "fn target() {}");
+        let report: Value =
+            serde_json::from_str(&decide(&request, "test").unwrap().content.unwrap()).unwrap();
+        assert_eq!(report["coverage_incomplete"], true);
+        assert!(report["matches"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn navigation_permissions_paths_and_tool_failures_fail_closed() {
+        for prompt in [
+            "--definitions target",
+            "--references target",
+            "--callers target",
+            "--implementations Target",
+        ] {
+            for absent in ["read_file", "search_code"] {
+                let mut request = inspection_request(prompt);
+                request.tools.retain(|t| t["function"]["name"] != absent);
+                let blocked = decide(&request, "test").unwrap();
+                assert_eq!(blocked.execution.outcome, Outcome::CapabilityLimitation);
+                assert!(blocked.call.is_none());
+            }
+        }
+        let mut request = inspection_request("--references target");
+        request.tool_choice = Some(json!("none"));
+        assert!(decide(&request, "test").unwrap().call.is_none());
+        request.tool_choice = None;
+        let search = decide(&request, "test").unwrap();
+        return_result(
+            &mut request,
+            &search,
+            r#"{"matches":[{"path":"../outside.rs"}]}"#,
+        );
+        assert!(decide(&request, "test").is_err());
+        request.messages.last_mut().unwrap().content = json!("Error: user denied");
+        let failed = decide(&request, "test").unwrap();
+        assert_eq!(failed.execution.outcome, Outcome::ToolFailed);
+        assert!(failed.call.is_none());
+    }
+
+    #[test]
+    fn navigation_output_limits_preserve_json_and_coverage_flags() {
+        let mut request = inspection_request("--callers target");
+        let search = decide(&request, "test").unwrap();
+        return_result(&mut request, &search, r#"{"matches":[{"path":"lib.rs"}]}"#);
+        let read = decide(&request, "test").unwrap();
+        let calls = "target(); ".repeat(40);
+        return_result(
+            &mut request,
+            &read,
+            &format!("Lines 1-1 of 1:\nfn caller() {{ {calls} }}"),
+        );
+        let content = decide(&request, "test").unwrap().content.unwrap();
+        assert!(content.len() <= 8000);
+        let report: Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(report["results_truncated"], true);
+        assert_eq!(report["coverage_incomplete"], false);
+        assert!(!report["limitations"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn inspection_capabilities_follow_caller_policy() {
+        let mut request = inspection_request("--capabilities");
+        request
+            .tools
+            .push(json!({"type":"function","function":{"name":"custom_plugin"}}));
+        let decision = decide(&request, "test").unwrap();
+        assert!(decision.call.is_none());
+        let caps: Value = serde_json::from_str(decision.content.as_ref().unwrap()).unwrap();
+        assert!(
+            caps["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|t| t["available"] == true)
+        );
+        assert!(
+            caps["caller_offered_tools"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("custom_plugin"))
+        );
+        request.tool_choice = Some(json!("none"));
+        let caps = tools::session_capabilities(&request);
+        assert!(
+            caps["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|t| t["available"] == false)
+        );
+        request.messages[0].content = json!("--git full-diff");
+        let blocked = decide(&request, "test").unwrap();
+        assert_eq!(blocked.execution.outcome, Outcome::CapabilityLimitation);
+        assert!(blocked.call.is_none());
+    }
+
+    #[test]
+    fn git_inspection_returns_caller_evidence_and_never_retries_failure() {
+        for (prompt, command) in [
+            ("what changed?", tools::GitView::Diff.command()),
+            ("--git staged", tools::GitView::Staged.command()),
+            ("show recent commits", tools::GitView::History.command()),
+        ] {
+            let mut request = inspection_request(prompt);
+            let first = decide(&request, "test").unwrap();
+            assert_eq!(first.call.as_ref().unwrap().function.name, "run_command");
+            let args: Value =
+                serde_json::from_str(&first.call.as_ref().unwrap().function.arguments).unwrap();
+            assert_eq!(args["command"], command);
+            return_result(&mut request, &first, "exit code: 0\nACTUAL GIT EVIDENCE");
+            let completed = decide(&request, "test").unwrap();
+            assert_eq!(completed.execution.outcome, Outcome::Completed);
+            assert!(completed.content.unwrap().contains("ACTUAL GIT EVIDENCE"));
+            request.messages.last_mut().unwrap().content =
+                json!("exit code: 128\nfatal: not a git repository");
+            let failed = decide(&request, "test").unwrap();
+            assert_eq!(failed.execution.outcome, Outcome::ToolFailed);
+            assert!(failed.call.is_none());
+        }
+        assert!(matches!(
+            parse_atomic(&Model::embedded().unwrap(), "--git history; rm file"),
+            Intent::Clarify(_)
+        ));
+    }
+
+    #[test]
+    fn rust_diagnostics_preserve_nonzero_compiler_output() {
+        for (prompt, kind) in [
+            ("--diagnostics", tools::DiagnosticsKind::Compiler),
+            ("show lint diagnostics", tools::DiagnosticsKind::Lint),
+        ] {
+            let mut request = inspection_request(prompt);
+            let inventory = decide(&request, "test").unwrap();
+            return_result(&mut request, &inventory, r#"{"files":["Cargo.toml"]}"#);
+            let command = decide(&request, "test").unwrap();
+            let args: Value =
+                serde_json::from_str(&command.call.as_ref().unwrap().function.arguments).unwrap();
+            assert_eq!(args["command"], kind.command());
+            return_result(
+                &mut request,
+                &command,
+                "exit code: 101\n{\"reason\":\"compiler-message\",\"message\":\"missing type\"}",
+            );
+            let failed = decide(&request, "test").unwrap();
+            assert_eq!(failed.execution.outcome, Outcome::ToolFailed);
+            assert!(failed.content.unwrap().contains("missing type"));
+            assert!(failed.call.is_none());
+        }
+        let mut request = inspection_request("--diagnostics");
+        let inventory = decide(&request, "test").unwrap();
+        return_result(&mut request, &inventory, r#"{"files":["package.json"]}"#);
+        let unsupported = decide(&request, "test").unwrap();
+        assert_eq!(unsupported.execution.outcome, Outcome::CapabilityLimitation);
+        assert!(unsupported.call.is_none());
+    }
+
+    #[test]
+    fn task_discovery_reads_scripts_without_executing_them() {
+        let mut request = inspection_request("list project tasks");
+        request
+            .tools
+            .retain(|tool| tool["function"]["name"] != "run_command");
+        let inventory = decide(&request, "test").unwrap();
+        return_result(
+            &mut request,
+            &inventory,
+            r#"{"files":["Cargo.toml","package.json"],"scan_limited":true}"#,
+        );
+        let read = decide(&request, "test").unwrap();
+        assert_eq!(read.call.as_ref().unwrap().function.name, "read_file");
+        return_result(
+            &mut request,
+            &read,
+            "Lines 1-1 of 1:\n{\"scripts\":{\"custom\":\"echo untrusted; rm file\"}}",
+        );
+        let completed = decide(&request, "test").unwrap();
+        assert!(completed.call.is_none());
+        let tasks: Value = serde_json::from_str(completed.content.as_ref().unwrap()).unwrap();
+        assert_eq!(tasks["executed"], false);
+        assert_eq!(tasks["inventory_truncated"], true);
+        assert_eq!(tasks["tasks"].as_array().unwrap().len(), 5);
+        assert!(tools::project_tasks(&[], Some("{invalid"), false).is_err());
+        assert!(tools::project_tasks(&[], Some(r#"{"scripts":{"bad":42}}"#), false).is_err());
+    }
     #[test]
     fn answer_profiles_consult_with_persona_and_never_dispatch_native_mutations() {
         for name in [
@@ -2634,7 +3131,7 @@ mod tests {
         );
         assert_eq!(
             parse(&model, "who calls apply_patch_to_string?"),
-            Intent::SymbolRefs("apply_patch_to_string".into())
+            Intent::SymbolCallers("apply_patch_to_string".into())
         );
 
         // Phase 4: Deterministic Code Refactoring

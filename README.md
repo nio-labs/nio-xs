@@ -124,6 +124,16 @@ Developers can switch to NioNano along their project lifecycle or trigger in-ses
 | `--bash: <cmd>` | **In-TUI Terminal** | Run shell commands (e.g. `--bash: cargo test`) directly in conversation without exiting or minimizing the coding agent TUI. |
 | `--test: [pattern]` | **Auto Test Runner** | Automatically detects test suite (`cargo test`, `npm test`, `pytest`, `go test`), runs matching pattern, and feeds back trimmed traces. |
 | `--git` / `--git:status` / `--git:diff` | **Git Summary** | Runs `git status -s` and/or `git diff --stat` (bare `--git` runs both); an unknown subcommand clarifies instead of guessing. |
+| `--capabilities` | **Tool Discovery** | Lists registered tool schemas, permissions, caller-offered tools, and availability under the current tool policy. |
+| `--git full-diff` / `--git staged` / `--git history` | **Git Inspection** | Relays fixed commands through the caller's `run_command` tool for full unstaged/staged diffs or the latest 20 commits. Colon syntax is also supported. |
+| `--diagnostics [compiler\|lint]` | **Rust Diagnostics** | Discovers a root Cargo.toml and relays `cargo check` or `cargo clippy` with JSON diagnostics. Compiler failures retain their output and are not retried. |
+| `--tasks` | **Task Discovery** | Lists fixed Cargo task mappings and actual package.json scripts through caller file tools; does not run scripts. |
+| `--definitions <symbol>` / `--references <symbol>` | **Rust Navigation** | Searches caller project files and parses fully read Rust source for declarations or identifier usages. Reports locations and incomplete coverage. |
+| `--callers <symbol>` / `--implementations <symbol>` | **Rust Callers & Implementations** | Finds syntactic function/method call sites with enclosing function names, or trait/inherent `impl` blocks. Names are matched without compiler type resolution. |
+| `--patch {"path":"file","old":"target","new":"replacement"}` | **Exact Editing** | Reads a complete selected file, requests a caller-approved exact `edit_file`, verifies read-back, and reports a diff. |
+| `--format <file.rs>` / `--rename <old> <new> <file.rs>` | **Selected Rust Editing** | Formats one file without following child modules, or renames identifiers within one Rust file. Refuses detected collisions, shadowing, and opaque macro usages. |
+| `--workflow {"steps":[...]}` | **Connected Workflows** | Chains typed search/read/patch/rename/format/check/docs/fetch steps, with `$selected` file context, tool preflight, and an eight-action budget. See the roadmap for an example. |
+| `--docs <query>` / `--fetch <url>` | **Documentation** | Searches caller Markdown files or fetches a reference through the caller's `web_fetch` tool. |
 | `--tools: <task>` | **Python Plugins** | Specialized automation (e.g. real SVG-to-favicon generator via `resvg`, honest CSS color extraction, Pillow-based image scaling). Prompts for download consent before installing new plugins; a reply of `yes` confirms the plugin that prompt named. |
 | `--code: <prompt>` | **Kilo LLM Middleman** | Hands the request to Kilo with the caller's available tools. Tool calls return to the client for execution in its project directory, and results are handed back to the model. OpenRouter / Free is preferred; Auto Free is the availability fallback. Progress identifies availability fallbacks, and the final `answered by` footer names the responding upstream model. The model reuses supplied file contents; general questions do not trigger project inspection. |
 | `--code guard <req>`<br/>*or* `--code! <req>` | **Anti-Hallucination Guard** | Verifies generated code against Rust, TypeScript, Python, and Go AST symbols. Catches ghost APIs and non-existent files; prompts to reroute. |
@@ -133,6 +143,8 @@ Developers can switch to NioNano along their project lifecycle or trigger in-ses
 ---
 
 ## Model profiles and automatic routing
+
+The [Nano tool expansion roadmap](docs/NANO-TOOLS.md) documents delivered Phases 1–5, examples, and current scope limits.
 
 Select a model through your client's model picker or the `model` field of
 `POST /v1/chat/completions`. `GET /v1/models` lists all eleven options:

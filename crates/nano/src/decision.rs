@@ -20,6 +20,7 @@ fn is_answer_intent(intent: &Intent) -> bool {
     matches!(
         intent,
         Intent::Greeting
+            | Intent::Capabilities
             | Intent::Help
             | Intent::Clarify(_)
             | Intent::Plan(_)

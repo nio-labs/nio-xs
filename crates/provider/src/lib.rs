@@ -146,7 +146,7 @@ async fn capabilities(State(app): State<Arc<App>>, headers: HeaderMap) -> Respon
             "provider authentication required",
         );
     }
-    Json(json!({"schema_version":SCHEMA_VERSION,"provider":PROVIDER,"model":MODEL,"default_model":MODEL,"models":MODELS,"implementation":"trained_naive_bayes_and_typed_workflows","profiles":"shared_engine_with_rust_routing_budgets_and_guards","orchestration":"bounded_rust_flow_cascade","flow_handoff_state":"bounded_memory_32_tasks_10_minutes","reflection":{"model":"nio-thinker","phases":["draft","challenge","refine"],"read_only":true,"refine_tools":false},"legacy_aliases":[nioxs_contracts::MODEL_AUTO],"upstream_default":companion::DEFAULT_CODING_MODEL,"upstream_fallback":companion::FALLBACK_CODING_MODEL,"upstream_catalog_check":true,"model_version":app.model.model_version,"trained":true,"confidence_threshold":app.model.threshold,"workflows":nioxs_nano::SHIPPED_WORKFLOWS,"client_tools":["read_file","find_files","search_code","run_command","web_fetch"],"server_tools":[],"streaming":true,"automatic_fallback":true,"browser_execution":true,"mcp":true,"decision_contract":true,"storage":"niodb_immutable_action_journal"})).into_response()
+    Json(json!({"schema_version":SCHEMA_VERSION,"provider":PROVIDER,"model":MODEL,"default_model":MODEL,"models":MODELS,"implementation":"trained_naive_bayes_and_typed_workflows","profiles":"shared_engine_with_rust_routing_budgets_and_guards","orchestration":"bounded_rust_flow_cascade","flow_handoff_state":"bounded_memory_32_tasks_10_minutes","reflection":{"model":"nio-thinker","phases":["draft","challenge","refine"],"read_only":true,"refine_tools":false},"legacy_aliases":[nioxs_contracts::MODEL_AUTO],"upstream_default":companion::DEFAULT_CODING_MODEL,"upstream_fallback":companion::FALLBACK_CODING_MODEL,"upstream_catalog_check":true,"model_version":app.model.model_version,"trained":true,"confidence_threshold":app.model.threshold,"workflows":nioxs_nano::SHIPPED_WORKFLOWS,"client_tools":["read_file","find_files","search_code","run_command","edit_file","web_fetch"],"tool_registry":nioxs_nano::tools::registry(),"workflow_registry":nioxs_nano::tools::workflow_registry(),"server_tools":[],"streaming":true,"automatic_fallback":true,"browser_execution":true,"mcp":true,"decision_contract":true,"storage":"niodb_immutable_action_journal"})).into_response()
 }
 
 async fn cancel(
@@ -2723,16 +2723,50 @@ src/engine*
             )
             .await
             .unwrap();
-        let bytes = to_bytes(response.into_body(), 8192).await.unwrap();
+        let bytes = to_bytes(response.into_body(), 16384).await.unwrap();
         let caps: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(caps["trained"], true);
         // The advertised surface must match what actually shipped, including MCP.
         assert_eq!(caps["mcp"], true);
         let workflows = caps["workflows"].as_array().expect("workflows array");
-        for expected in ["coding", "git_summary", "project_suggestions", "task_plan"] {
+        for expected in [
+            "coding",
+            "git_summary",
+            "project_suggestions",
+            "task_plan",
+            "capabilities",
+            "git_inspect",
+            "diagnostics",
+            "project_tasks",
+        ] {
             assert!(
                 workflows.iter().any(|w| w == expected),
                 "capabilities must advertise the shipped workflow '{expected}': {workflows:?}"
+            );
+        }
+        let registry = caps["tool_registry"]
+            .as_array()
+            .expect("typed tool registry");
+        assert!(registry.iter().all(|entry| entry["execution"] == "caller"));
+        assert!(
+            registry
+                .iter()
+                .any(|entry| entry["schema"]["function"]["name"] == "run_command"
+                    && entry["permission"] == "command_approval")
+        );
+        assert_eq!(caps["workflow_registry"].as_array().unwrap().len(), 13);
+        for name in [
+            "symbol_definitions",
+            "symbol_references",
+            "symbol_callers",
+            "symbol_implementations",
+        ] {
+            assert!(
+                caps["workflow_registry"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|w| w["name"] == name && w["permission"] == "read")
             );
         }
         let secure = router(App {

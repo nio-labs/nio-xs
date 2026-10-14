@@ -3,9 +3,23 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.4.4
+
+### Added
+- Phases 4–5 caller-approved exact patches, selected Rust formatting/renaming, evidence-backed follow-up selection, typed connected workflows, local Markdown searches, and caller reference fetching. Edit results are read back, mutation caches are invalidated, and partial progress is reported on failure.
+- Default NioFlow execution runs without Helm (`--no-helm` default), requiring explicit `--helm` flag for gating verification.
+- Cross-platform caller root path normalization for absolute and Windows-style paths.
+- Fallback command shell execution (`cmd.exe`) on Windows when bash is unavailable.
+- Phase 3 Rust navigation directives for definitions, references, callers, and implementations with AST symbol analysis.
+- Companion gateway architecture proposal documentation in `docs/nioxs-companion-proposal.md`.
+
 ## v0.4.3
 
+### Added
+- Phase 3 Rust navigation directives for definitions, references, callers, and implementations, using caller-owned search/read tools and parsed source. Reports include locations, syntactic call owners, and explicit coverage limits.
+
 ### Fixed
+- Definition/reference navigation no longer scans the provider's working directory; it uses only the caller's returned project evidence and read permissions.
 - Fixed automated npm publishing condition in GitHub Actions release workflow.
 - Dynamically resolve release asset tag from `package.json` in `bin/nioxs.js`.
 
