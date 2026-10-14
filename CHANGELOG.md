@@ -3,6 +3,12 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.4.3
+
+### Fixed
+- Fixed automated npm publishing condition in GitHub Actions release workflow.
+- Dynamically resolve release asset tag from `package.json` in `bin/nioxs.js`.
+
 ## v0.4.2
 
 ### Added

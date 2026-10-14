@@ -1,6 +1,6 @@
 {
   "name": "@nio-labs/nio-xs",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "NioXS: AI Gateway & Companion for Coding Agents with NioNano MicroLM",
   "main": "bin/nioxs.js",
   "bin": {
