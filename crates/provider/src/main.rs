@@ -19,9 +19,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|ray <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve     Start HTTP OpenAI-compatible AI gateway (default)\n\
+  ray       Run local in-process NioRay predator inference on prompt\n\
   mcp       Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
   init      Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
   undo      Rollback last applied multi-file patch (or specific patch_id)\n\
@@ -29,6 +30,22 @@ Commands:\n\
 \n\
 Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID, NIOXS_API_TOKEN_FILE (optional on loopback)."
         );
+        return Ok(());
+    }
+    if arg.as_deref() == Some("ray") {
+        let prompt = std::env::args().skip(2).collect::<Vec<_>>().join(" ");
+        if prompt.is_empty() {
+            eprintln!("Usage: nioxs ray <prompt>");
+            return Ok(());
+        }
+        let engine = nioxs_engine::RayEngine::new()?;
+        let mut rx = engine.generate_stream(prompt, 512, 0.7, 0.9).await?;
+        use std::io::Write;
+        while let Some(chunk) = rx.recv().await {
+            print!("{chunk}");
+            let _ = std::io::stdout().flush();
+        }
+        println!();
         return Ok(());
     }
     if arg.as_deref() == Some("init") {
@@ -235,6 +252,12 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
             .duration_since(std::time::UNIX_EPOCH)?
             .as_nanos()
     );
+    let ray_engine = nioxs_engine::RayEngine::new().ok();
+    let microlm_banner = if ray_engine.is_some() {
+        "NioRay (In-Process Predator, Candle GGUF)"
+    } else {
+        "NioNano (<0.5ms decision triage)"
+    };
     let listener = tokio::net::TcpListener::bind(listen).await?;
     let addr = listener.local_addr()?;
     eprintln!(
@@ -244,12 +267,13 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
   ├──────────────────────────────────────────────────────────┤\n\
   │  • Gateway API : http://{:<33} │\n\
   │  • NioDB Store : {:<40} │\n\
-  │  • MicroLM     : NioNano (<0.5ms decision triage)        │\n\
+  │  • MicroLM     : {:<40} │\n\
   │  • Directives  : --bash, --tools, --code, --test         │\n\
   ╰──────────────────────────────────────────────────────────╯\n",
         env!("CARGO_PKG_VERSION"),
         addr,
         db_url,
+        microlm_banner,
     );
     axum::serve(
         listener,
@@ -259,6 +283,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
             api_token,
             active: ActiveTurns::default(),
             model: Arc::new(model),
+            ray_engine,
             instance,
         }),
     )

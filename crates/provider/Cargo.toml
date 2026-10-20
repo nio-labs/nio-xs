@@ -13,6 +13,7 @@ nioxs-browser = { path = "../browser" }
 nioxs-contracts = { path = "../contracts" }
 nioxs-nano = { path = "../nano" }
 nioxs-storage = { path = "../storage" }
+nioxs-engine = { path = "../engine" }
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true

@@ -53,6 +53,7 @@ pub struct App {
     pub api_token: Option<String>,
     pub active: ActiveTurns,
     pub model: Arc<Model>,
+    pub ray_engine: Option<nioxs_engine::RayEngine>,
     pub instance: String,
 }
 
@@ -123,6 +124,11 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
     }
     let names = [
         "NioFlow — Plan and hand off",
+        "NioRay — Electric Keystroke Reflex (In-Process Predator)",
+        "NioCuda — Tactical Ambush Conductor (In-Process Predator)",
+        "NioApex — Abyssal Reasoning Mind (In-Process Predator)",
+        "NioManta — Conversational Glider (In-Process Predator)",
+        "NioViper — Abyssal Micro-Predator (In-Process)",
         "NioNano — Assist",
         "NioEcho — Answer",
         "NioSage — Explain",
@@ -214,6 +220,108 @@ async fn decide(
     Json(nioxs_nano::decision::decide(&app.model, &request)).into_response()
 }
 
+async fn ray_chat_handler(app: &App, request: ChatRequest) -> Response {
+    let Some(engine) = &app.ray_engine else {
+        return error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "engine_unavailable",
+            "NioRay in-process engine is not loaded. Ensure nio-ray.Q4_K_M.gguf and tokenizer.json exist in ~/.nioxs/models/ or ./models/",
+        );
+    };
+
+    let mut prompt = String::new();
+    prompt.push_str("<|im_start|>system\nYou are NioRay, a concise and lightning-fast coding reflex engine.<|im_end|>\n");
+    for msg in &request.messages {
+        if msg.role == "system" {
+            continue; // Bypass heavy multi-kilobyte orchestrator context for reflex predator
+        }
+        let role = &msg.role;
+        let content = msg.content.as_str().unwrap_or("");
+        prompt.push_str(&format!("<|im_start|>{role}\n{content}<|im_end|>\n"));
+    }
+    prompt.push_str("<|im_start|>assistant\n");
+
+    let id = format!(
+        "chatcmpl-ray-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let model = nioxs_contracts::MODEL_RAY;
+
+    if !request.stream {
+        match engine.generate(prompt, 512, 0.7, 0.9).await {
+            Ok(content) => Json(json!({
+                "id": id,
+                "object": "chat.completion",
+                "created": 0,
+                "model": model,
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": content},
+                    "finish_reason": "stop"
+                }]
+            }))
+            .into_response(),
+            Err(e) => error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "inference_error",
+                &format!("NioRay inference failed: {e}"),
+            ),
+        }
+    } else {
+        match engine.generate_stream(prompt, 512, 0.7, 0.9).await {
+            Ok(rx) => {
+                let id_clone = id.clone();
+                let live = stream::unfold(rx, move |mut rx| {
+                    let id_item = id_clone.clone();
+                    async move {
+                        match rx.recv().await {
+                            Some(chunk) => {
+                                let payload = sse_chunk(
+                                    &id_item,
+                                    model,
+                                    json!({"content": chunk}),
+                                    Value::Null,
+                                );
+                                Some((
+                                    Ok::<axum::body::Bytes, Infallible>(axum::body::Bytes::from(
+                                        format!("data: {payload}\n\n"),
+                                    )),
+                                    rx,
+                                ))
+                            }
+                            None => None,
+                        }
+                    }
+                });
+                let tail = stream::iter(vec![
+                    Ok(axum::body::Bytes::from(format!(
+                        "data: {}\n\n",
+                        sse_chunk(&id, model, json!({}), json!("stop"))
+                    ))),
+                    Ok(axum::body::Bytes::from("data: [DONE]\n\n")),
+                ]);
+                let full_body = axum::body::Body::from_stream(live.chain(tail));
+                let mut response = Response::new(full_body);
+                response
+                    .headers_mut()
+                    .insert("content-type", "text/event-stream".parse().unwrap());
+                response
+                    .headers_mut()
+                    .insert("cache-control", "no-cache".parse().unwrap());
+                response
+            }
+            Err(e) => error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "inference_error",
+                &format!("NioRay stream failed: {e}"),
+            ),
+        }
+    }
+}
+
 async fn chat(
     State(app): State<Arc<App>>,
     headers: HeaderMap,
@@ -236,6 +344,9 @@ async fn chat(
             );
         }
     };
+    if request.model == nioxs_contracts::MODEL_RAY || request.model == "ray" {
+        return ray_chat_handler(&app, request).await;
+    }
     let turn_override = match headers.get("x-nioxs-turn-id") {
         Some(value) => match value.to_str() {
             Ok(id) => Some(id),
@@ -2618,6 +2729,7 @@ src/engine*
             api_token: None,
             active: ActiveTurns::default(),
             model: Arc::new(Model::embedded().unwrap()),
+            ray_engine: None,
             instance: "unit-test".into(),
         })
     }
@@ -2691,6 +2803,7 @@ src/engine*
             api_token: None,
             active: ActiveTurns::default(),
             model: Arc::new(Model::embedded().unwrap()),
+            ray_engine: None,
             instance: "unit-test".into(),
         });
         let response = secured
@@ -2775,6 +2888,7 @@ src/engine*
             api_token: Some("private".into()),
             active: ActiveTurns::default(),
             model: Arc::new(Model::embedded().unwrap()),
+            ray_engine: None,
             instance: "unit-test".into(),
         });
         assert_eq!(
@@ -2895,6 +3009,7 @@ src/engine*
             api_token: Some("private".into()),
             active: ActiveTurns::default(),
             model: Arc::new(Model::embedded().unwrap()),
+            ray_engine: None,
             instance: "unit-test".into(),
         });
         let response = secure

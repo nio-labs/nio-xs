@@ -14,12 +14,22 @@ pub const MODEL_ECHO: &str = "nio-echo";
 pub const MODEL_SAGE: &str = "nio-sage";
 pub const MODEL_QUILL: &str = "nio-quill";
 pub const MODEL_SCOUT: &str = "nio-scout";
+pub const MODEL_RAY: &str = "nio-ray";
+pub const MODEL_CUDA: &str = "nio-cuda";
+pub const MODEL_APEX: &str = "nio-apex";
+pub const MODEL_MANTA: &str = "nio-manta";
+pub const MODEL_VIPER: &str = "nio-viper";
 /// Default public model: the task orchestrator.
 pub const MODEL: &str = MODEL_FLOW;
 /// Deprecated request alias; kept for existing clients, but no longer advertised.
 pub const MODEL_AUTO: &str = "nio-auto";
 pub const MODELS: &[&str] = &[
     MODEL,
+    MODEL_RAY,
+    MODEL_CUDA,
+    MODEL_APEX,
+    MODEL_MANTA,
+    MODEL_VIPER,
     MODEL_NANO,
     MODEL_ECHO,
     MODEL_SAGE,
