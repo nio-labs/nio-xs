@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use candle_core::quantized::gguf_file;
 use candle_core::{Device, Tensor};
 use candle_transformers::generation::LogitsProcessor;
@@ -6,8 +6,8 @@ use candle_transformers::models::quantized_qwen2::ModelWeights;
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
 use tokenizers::Tokenizer;
+use tokio::sync::{Mutex, mpsc};
 
 pub struct TokenOutputStream {
     tokenizer: Tokenizer,
@@ -108,66 +108,77 @@ impl RayEngine {
     }
 
     pub fn find_model_paths() -> Result<(PathBuf, PathBuf)> {
-        if let (Ok(m), Ok(t)) = (
-            std::env::var("NIOXS_RAY_MODEL"),
-            std::env::var("NIOXS_TOKENIZER"),
-        ) {
-            let mp = PathBuf::from(m);
-            let tp = PathBuf::from(t);
-            if mp.is_file() && tp.is_file() {
-                return Ok((mp, tp));
+        if let Ok(model) = std::env::var("NIOXS_RAY_MODEL") {
+            let model = PathBuf::from(model);
+            let tokenizer = std::env::var_os("NIOXS_TOKENIZER")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| Self::tokenizer_for_model(&model));
+            if model.is_file() && tokenizer.is_file() {
+                return Ok((model, tokenizer));
             }
+            return Err(anyhow!(
+                "Configured NioRay model or matching tokenizer is missing: {:?}, {:?}",
+                model,
+                tokenizer
+            ));
+        }
+        if std::env::var_os("NIOXS_TOKENIZER").is_some() {
+            return Err(anyhow!("Set NIOXS_RAY_MODEL together with NIOXS_TOKENIZER"));
         }
 
         let home = std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
             .map(PathBuf::from);
-
-        let candidates = [
-            // User cached dir
-            home.as_ref()
-                .map(|h| h.join(".nioxs").join("models").join("nio-ray.Q4_K_M.gguf")),
-            // Current dir models
-            Some(PathBuf::from("models/nio-ray.Q4_K_M.gguf")),
-            Some(PathBuf::from("../models/nio-ray.Q4_K_M.gguf")),
-            Some(PathBuf::from("../../models/nio-ray.Q4_K_M.gguf")),
-            // nio-ideas dev path
-            Some(PathBuf::from("/home/mn/nio-labs/nio-ideas/models/nio-ray.Q4_K_M.gguf")),
-            Some(PathBuf::from("/home/mn/nio-labs/nio-xs/models/nio-ray.Q4_K_M.gguf")),
+        let directories = [
+            home.map(|h| h.join(".nioxs").join("models")),
+            Some(PathBuf::from("models")),
+            Some(PathBuf::from("../models")),
+            Some(PathBuf::from("../../models")),
         ];
-
-        let tokenizer_candidates = [
-            home.as_ref()
-                .map(|h| h.join(".nioxs").join("models").join("tokenizer.json")),
-            Some(PathBuf::from("models/tokenizer.json")),
-            Some(PathBuf::from("../models/tokenizer.json")),
-            Some(PathBuf::from("../../models/tokenizer.json")),
-            Some(PathBuf::from("/home/mn/nio-labs/nio-ideas/models/tokenizer.json")),
-            Some(PathBuf::from("/home/mn/nio-labs/nio-xs/models/tokenizer.json")),
-        ];
-
-        let mut found_model = None;
-        for c in candidates.into_iter().flatten() {
-            if c.is_file() {
-                found_model = Some(c);
-                break;
+        for directory in directories.into_iter().flatten() {
+            for name in ["nio-ray.Q4_K_M.gguf", "nio-ray-dev.Q4_K_M.gguf"] {
+                let model = directory.join(name);
+                let tokenizer = Self::tokenizer_for_model(&model);
+                if model.is_file() && tokenizer.is_file() {
+                    return Ok((model, tokenizer));
+                }
             }
         }
+        Err(anyhow!(
+            "NioRay model/tokenizer pair not found. Install nio-ray.Q4_K_M.gguf with tokenizer.json, or nio-ray-dev.Q4_K_M.gguf with nio-ray-dev-tokenizer.json, in ~/.nioxs/models/ or ./models/"
+        ))
+    }
 
-        let mut found_tokenizer = None;
-        for c in tokenizer_candidates.into_iter().flatten() {
-            if c.is_file() {
-                found_tokenizer = Some(c);
-                break;
+    fn tokenizer_for_model(model: &std::path::Path) -> PathBuf {
+        let name = if model.file_name().and_then(|s| s.to_str()) == Some("nio-ray-dev.Q4_K_M.gguf")
+        {
+            "nio-ray-dev-tokenizer.json"
+        } else {
+            "tokenizer.json"
+        };
+        model.with_file_name(name)
+    }
+
+    fn validate_tokenizer(tokenizer: &Tokenizer, tokens: &[gguf_file::Value]) -> Result<()> {
+        let vocab = tokenizer.get_vocab(true);
+        for (token, id) in &vocab {
+            let expected = tokens.get(*id as usize).and_then(|v| v.to_string().ok());
+            if expected.map(String::as_str) != Some(token.as_str()) {
+                return Err(anyhow!(
+                    "NioRay tokenizer mismatch at token ID {id}: {token:?}. Use the tokenizer shipped for this model variant."
+                ));
             }
         }
-
-        match (found_model, found_tokenizer) {
-            (Some(m), Some(t)) => Ok((m, t)),
-            _ => Err(anyhow!(
-                "NioRay model or tokenizer not found. Place nio-ray.Q4_K_M.gguf and tokenizer.json in ~/.nioxs/models/ or ./models/"
-            )),
+        for (id, value) in tokens.iter().enumerate() {
+            let token = value.to_string()?;
+            // Full-vocabulary Qwen GGUFs contain unused padding entries.
+            if !token.starts_with("[PAD") && vocab.get(token).copied() != Some(id as u32) {
+                return Err(anyhow!(
+                    "NioRay tokenizer is missing model token {token:?} at ID {id}"
+                ));
+            }
         }
+        Ok(())
     }
 
     async fn ensure_loaded(&self) -> Result<()> {
@@ -187,6 +198,12 @@ impl RayEngine {
             let mut file = File::open(&model_path)
                 .map_err(|e| anyhow!("Failed opening model at {:?}: {e}", model_path))?;
             let content = gguf_file::Content::read(&mut file)?;
+            let tokens = content
+                .metadata
+                .get("tokenizer.ggml.tokens")
+                .ok_or_else(|| anyhow!("NioRay GGUF is missing its tokenizer vocabulary"))?
+                .to_vec()?;
+            Self::validate_tokenizer(&tokenizer, tokens)?;
             let model = ModelWeights::from_gguf(content, &mut file, &device)?;
 
             Ok(ModelBundle {
@@ -206,7 +223,10 @@ impl RayEngine {
         if raw_prompt.contains("<|im_start|>") {
             raw_prompt.to_string()
         } else {
-            format!("<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n", raw_prompt.trim())
+            format!(
+                "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                raw_prompt.trim()
+            )
         }
     }
 
@@ -246,15 +266,24 @@ impl RayEngine {
             let seed = rand::random::<u64>();
             let mut logits_processor = LogitsProcessor::new(
                 seed,
-                Some(if temperature <= 0.01 { 0.01 } else { temperature }),
+                Some(if temperature <= 0.01 {
+                    0.01
+                } else {
+                    temperature
+                }),
                 Some(top_p),
             );
             let eos_token_id = bundle.tokenizer.token_to_id("<|im_end|>").unwrap_or(151645);
-            let eot_token_id = bundle.tokenizer.token_to_id("<|endoftext|>").unwrap_or(151643);
+            let eot_token_id = bundle
+                .tokenizer
+                .token_to_id("<|endoftext|>")
+                .unwrap_or(151643);
             let is_eos = |tok: u32| tok == eos_token_id || tok == eot_token_id;
 
             // Prefill pass at index_pos = 0 (resets KV cache)
-            let input = match Tensor::new(&prompt_tokens[..], &bundle.device).and_then(|t| t.unsqueeze(0)) {
+            let input = match Tensor::new(&prompt_tokens[..], &bundle.device)
+                .and_then(|t| t.unsqueeze(0))
+            {
                 Ok(t) => t,
                 Err(e) => {
                     let _ = tx.send(format!("Tensor error: {e}")).await;
@@ -290,12 +319,17 @@ impl RayEngine {
 
             // Generation loop
             for index_pos in prompt_tokens.len()..(prompt_tokens.len() + max_tokens.max(1) - 1) {
-                let input = match Tensor::new(&[next_token], &bundle.device).and_then(|t| t.unsqueeze(0)) {
-                    Ok(t) => t,
-                    Err(_) => break,
-                };
+                let input =
+                    match Tensor::new(&[next_token], &bundle.device).and_then(|t| t.unsqueeze(0)) {
+                        Ok(t) => t,
+                        Err(_) => break,
+                    };
 
-                let logits = match bundle.model.forward(&input, index_pos).and_then(|l| l.squeeze(0)) {
+                let logits = match bundle
+                    .model
+                    .forward(&input, index_pos)
+                    .and_then(|l| l.squeeze(0))
+                {
                     Ok(l) => l,
                     Err(_) => break,
                 };
@@ -331,11 +365,99 @@ impl RayEngine {
         temperature: f64,
         top_p: f64,
     ) -> Result<String> {
-        let mut rx = self.generate_stream(prompt, max_tokens, temperature, top_p).await?;
+        let mut rx = self
+            .generate_stream(prompt, max_tokens, temperature, top_p)
+            .await?;
         let mut result = String::new();
         while let Some(chunk) = rx.recv().await {
             result.push_str(&chunk);
         }
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokenizers::models::wordlevel::WordLevel;
+
+    fn tokenizer() -> Tokenizer {
+        let model = WordLevel::builder()
+            .vocab(
+                [(String::from("hello"), 0), (String::from("<|im_end|>"), 1)]
+                    .into_iter()
+                    .collect(),
+            )
+            .unk_token(String::from("hello"))
+            .build()
+            .unwrap();
+        Tokenizer::new(model)
+    }
+
+    #[test]
+    fn matching_tokenizer_accepts_unused_gguf_padding() {
+        let tokens = ["hello", "<|im_end|>", "[PAD2]"].map(|s| gguf_file::Value::String(s.into()));
+        RayEngine::validate_tokenizer(&tokenizer(), &tokens).unwrap();
+    }
+
+    #[test]
+    fn rejects_remapped_special_tokens_and_out_of_range_ids() {
+        let tokens = ["<|im_end|>", "hello"].map(|s| gguf_file::Value::String(s.into()));
+        assert!(RayEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
+        let tokens = [gguf_file::Value::String("hello".into())];
+        assert!(RayEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
+    }
+
+    #[test]
+    fn rejects_missing_model_tokens() {
+        let tokens = ["hello", "<|im_end|>", "world"].map(|s| gguf_file::Value::String(s.into()));
+        assert!(RayEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
+    }
+
+    #[test]
+    fn variant_tokenizers_stay_beside_the_model() {
+        assert_eq!(
+            RayEngine::tokenizer_for_model(std::path::Path::new("/cache/nio-ray-dev.Q4_K_M.gguf")),
+            PathBuf::from("/cache/nio-ray-dev-tokenizer.json")
+        );
+        assert_eq!(
+            RayEngine::tokenizer_for_model(std::path::Path::new("/cache/nio-ray.Q4_K_M.gguf")),
+            PathBuf::from("/cache/tokenizer.json")
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires release assets in NIOXS_RAY_TEST_MODELS"]
+    async fn release_models_load_and_prefill_with_matching_tokenizers() {
+        let directory = PathBuf::from(std::env::var("NIOXS_RAY_TEST_MODELS").unwrap());
+        for name in ["nio-ray.Q4_K_M.gguf", "nio-ray-dev.Q4_K_M.gguf"] {
+            let model_path = directory.join(name);
+            let tokenizer_path = RayEngine::tokenizer_for_model(&model_path);
+            let engine = RayEngine {
+                bundle: Arc::new(Mutex::new(None)),
+                model_path,
+                tokenizer_path,
+            };
+            engine.ensure_loaded().await.unwrap();
+            let mut guard = engine.bundle.lock().await;
+            let bundle = guard.as_mut().unwrap();
+            let prompt = RayEngine::format_prompt("Write a Rust function.");
+            let encoded = bundle.tokenizer.encode(prompt, true).unwrap();
+            let input = Tensor::new(encoded.get_ids(), &bundle.device)
+                .unwrap()
+                .unsqueeze(0)
+                .unwrap();
+            let logits = bundle.model.forward(&input, 0).unwrap();
+            let (_, vocabulary_size) = logits.dims2().unwrap();
+            assert_eq!(
+                vocabulary_size,
+                if name.contains("-dev") { 32000 } else { 151936 }
+            );
+        }
+        let mut model = File::open(directory.join("nio-ray-dev.Q4_K_M.gguf")).unwrap();
+        let content = gguf_file::Content::read(&mut model).unwrap();
+        let tokens = content.metadata["tokenizer.ggml.tokens"].to_vec().unwrap();
+        let wrong = Tokenizer::from_file(directory.join("tokenizer.json")).unwrap();
+        assert!(RayEngine::validate_tokenizer(&wrong, tokens).is_err());
     }
 }
