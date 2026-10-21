@@ -155,9 +155,7 @@ impl RayEngine {
 
     fn tokenizer_for_model(model: &std::path::Path) -> PathBuf {
         let name = match model.file_name().and_then(|s| s.to_str()) {
-            Some("nio-ray-dev.Q4_K_M.gguf") | Some("nio-ray-moe.Q4_K_M.gguf") => {
-                "nio-ray-dev-tokenizer.json"
-            }
+            Some("nio-ray-dev.Q4_K_M.gguf") => "nio-ray-dev-tokenizer.json",
             _ => "tokenizer.json",
         };
         model.with_file_name(name)
