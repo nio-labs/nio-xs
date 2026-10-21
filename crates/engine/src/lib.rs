@@ -136,7 +136,11 @@ impl RayEngine {
             Some(PathBuf::from("../../models")),
         ];
         for directory in directories.into_iter().flatten() {
-            for name in ["nio-ray.Q4_K_M.gguf", "nio-ray-dev.Q4_K_M.gguf"] {
+            for name in [
+                "nio-ray-moe.Q4_K_M.gguf",
+                "nio-ray-dev.Q4_K_M.gguf",
+                "nio-ray.Q4_K_M.gguf",
+            ] {
                 let model = directory.join(name);
                 let tokenizer = Self::tokenizer_for_model(&model);
                 if model.is_file() && tokenizer.is_file() {
@@ -145,16 +149,16 @@ impl RayEngine {
             }
         }
         Err(anyhow!(
-            "NioRay model/tokenizer pair not found. Install nio-ray.Q4_K_M.gguf with tokenizer.json, or nio-ray-dev.Q4_K_M.gguf with nio-ray-dev-tokenizer.json, in ~/.nioxs/models/ or ./models/"
+            "NioRay model/tokenizer pair not found. Install nio-ray-moe.Q4_K_M.gguf, nio-ray-dev.Q4_K_M.gguf with nio-ray-dev-tokenizer.json, or nio-ray.Q4_K_M.gguf with tokenizer.json, in ~/.nioxs/models/ or ./models/"
         ))
     }
 
     fn tokenizer_for_model(model: &std::path::Path) -> PathBuf {
-        let name = if model.file_name().and_then(|s| s.to_str()) == Some("nio-ray-dev.Q4_K_M.gguf")
-        {
-            "nio-ray-dev-tokenizer.json"
-        } else {
-            "tokenizer.json"
+        let name = match model.file_name().and_then(|s| s.to_str()) {
+            Some("nio-ray-dev.Q4_K_M.gguf") | Some("nio-ray-moe.Q4_K_M.gguf") => {
+                "nio-ray-dev-tokenizer.json"
+            }
+            _ => "tokenizer.json",
         };
         model.with_file_name(name)
     }
