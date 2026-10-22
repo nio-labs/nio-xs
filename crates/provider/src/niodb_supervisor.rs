@@ -17,6 +17,93 @@ impl Drop for NioDbProcess {
     }
 }
 
+/// Finds the `niodb` executable across standard locations, or auto-downloads it if missing.
+pub fn find_or_download_niodb() -> Option<PathBuf> {
+    find_niodb_binary().or_else(auto_download_niodb)
+}
+
+/// Auto-downloads NioDB binary into ~/.nioxs/bin if not found locally.
+pub fn auto_download_niodb() -> Option<PathBuf> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .ok()?;
+    let bin_dir = Path::new(&home).join(".nioxs").join("bin");
+    let _ = std::fs::create_dir_all(&bin_dir);
+
+    let is_windows = cfg!(target_os = "windows");
+    let binary_name = if is_windows { "niodb.exe" } else { "niodb" };
+    let target_path = bin_dir.join(binary_name);
+    if target_path.is_file() {
+        return Some(target_path);
+    }
+
+    let os_str = if cfg!(target_os = "macos") {
+        "darwin"
+    } else if is_windows {
+        "win32"
+    } else {
+        "linux"
+    };
+
+    let arch_str = if cfg!(target_arch = "aarch64") {
+        "arm64"
+    } else {
+        "x64"
+    };
+
+    let ext = if is_windows { ".exe" } else { "" };
+    let asset = format!("niodb-{os_str}-{arch_str}{ext}");
+    let url = format!("https://github.com/nio-labs/nio-db/releases/latest/download/{asset}");
+
+    eprintln!("📦 Auto-installing NioDB sovereign state engine ({asset})...");
+
+    let downloaded = if is_windows {
+        let script = format!(
+            "Invoke-WebRequest -Uri '{url}' -OutFile '{}'",
+            target_path.display()
+        );
+        Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    } else {
+        let curl_ok = Command::new("curl")
+            .args([
+                "--connect-timeout",
+                "10",
+                "--max-time",
+                "120",
+                "-fsSL",
+                &url,
+                "-o",
+                target_path.to_str().unwrap_or(""),
+            ])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+        if curl_ok {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ =
+                    std::fs::set_permissions(&target_path, std::fs::Permissions::from_mode(0o755));
+            }
+            true
+        } else {
+            false
+        }
+    };
+
+    if downloaded && target_path.is_file() {
+        eprintln!("✅ Installed NioDB to {}", target_path.display());
+        Some(target_path)
+    } else {
+        None
+    }
+}
+
 /// Finds the `niodb` executable across standard locations, or returns None.
 pub fn find_niodb_binary() -> Option<PathBuf> {
     if let Ok(explicit) = std::env::var("NIOXS_NIODB_BIN") {
@@ -182,8 +269,8 @@ pub async fn ensure_niodb(
     }
 
     // Not running: Locate or spawn bundled niodb
-    let niodb_bin = find_niodb_binary()
-        .ok_or_else(|| "NioDB executable not found. Please install via install.sh or run 'npx @nio-labs/nio-xs'.".to_string())?;
+    let niodb_bin = find_or_download_niodb()
+        .ok_or_else(|| "NioDB executable not found and auto-download failed. Please install via install.sh or run 'npx @nio-labs/nio-xs'.".to_string())?;
 
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))

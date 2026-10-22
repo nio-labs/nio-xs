@@ -66,7 +66,9 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
 }
 
 pub fn get_manifest_entry(model_id: &str) -> Option<ModelArtifactEntry> {
-    default_manifest().into_iter().find(|e| e.model_id == model_id)
+    default_manifest()
+        .into_iter()
+        .find(|e| e.model_id == model_id)
 }
 
 /// Resolves the local models cache directory (`~/.nioxs/models/` by default).
@@ -191,11 +193,12 @@ pub async fn download_and_verify_model<P: ProgressListener>(
     let tmp_path = target_dir.join(format!("{}.download.tmp", entry.filename));
     listener.on_start(&entry.brand_name, entry.size_bytes);
 
-    let response = client
-        .get(&entry.download_url)
-        .send()
-        .await
-        .map_err(|e| format!("failed to connect to download URL {}: {e}", entry.download_url))?;
+    let response = client.get(&entry.download_url).send().await.map_err(|e| {
+        format!(
+            "failed to connect to download URL {}: {e}",
+            entry.download_url
+        )
+    })?;
 
     if !response.status().is_success() {
         return Err(format!(
@@ -204,9 +207,7 @@ pub async fn download_and_verify_model<P: ProgressListener>(
         ));
     }
 
-    let total_size = response
-        .content_length()
-        .unwrap_or(entry.size_bytes);
+    let total_size = response.content_length().unwrap_or(entry.size_bytes);
 
     let mut file = File::create(&tmp_path)
         .map_err(|e| format!("failed to create temp file {}: {e}", tmp_path.display()))?;
@@ -256,15 +257,12 @@ pub async fn download_and_verify_model<P: ProgressListener>(
 }
 
 /// Synchronous entrypoint to ensure model is present on disk.
-pub fn ensure_model_ready(
-    model_id: &str,
-    custom_dir: Option<&Path>,
-) -> Result<PathBuf, String> {
+pub fn ensure_model_ready(model_id: &str, custom_dir: Option<&Path>) -> Result<PathBuf, String> {
     if model_id == MODEL_NANO {
         return Ok(PathBuf::from("embedded://nio-nano"));
     }
-    let entry = get_manifest_entry(model_id)
-        .ok_or_else(|| format!("unknown model id '{model_id}'"))?;
+    let entry =
+        get_manifest_entry(model_id).ok_or_else(|| format!("unknown model id '{model_id}'"))?;
 
     let dir = match custom_dir {
         Some(d) => d.to_path_buf(),
@@ -284,8 +282,8 @@ pub fn ensure_model_ready(
         }
     }
 
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| format!("failed to create runtime: {e}"))?;
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| format!("failed to create runtime: {e}"))?;
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(600))
@@ -310,8 +308,8 @@ pub fn prompt_and_pull_if_needed(model_id: &str, auto_yes: bool) -> Result<PathB
     if model_id == MODEL_NANO {
         return Ok(PathBuf::from("embedded://nio-nano"));
     }
-    let entry = get_manifest_entry(model_id)
-        .ok_or_else(|| format!("unknown model id '{model_id}'"))?;
+    let entry =
+        get_manifest_entry(model_id).ok_or_else(|| format!("unknown model id '{model_id}'"))?;
 
     let dir = resolve_models_dir();
     let final_path = dir.join(&entry.filename);
@@ -340,7 +338,10 @@ pub fn prompt_and_pull_if_needed(model_id: &str, auto_yes: bool) -> Result<PathB
         if std::io::stdin().is_terminal() {
             eprintln!();
             eprintln!("  ┌─────────────────────────────────────────────────────────────┐");
-            eprintln!("  │ 📦 Model '{}' is not downloaded locally ({size_mb:.1} MB).", entry.model_id);
+            eprintln!(
+                "  │ 📦 Model '{}' is not downloaded locally ({size_mb:.1} MB).",
+                entry.model_id
+            );
             eprintln!("  │    • Role     : {}", entry.brand_name);
             eprintln!("  │    • Base     : {}", entry.base_model);
             eprintln!("  │    • Target   : {}", final_path.display());
@@ -356,7 +357,10 @@ pub fn prompt_and_pull_if_needed(model_id: &str, auto_yes: bool) -> Result<PathB
             if !trimmed.is_empty() && trimmed != "y" && trimmed != "yes" {
                 eprintln!("  │ Download cancelled by user.                                 │");
                 eprintln!("  └─────────────────────────────────────────────────────────────┘\n");
-                return Err(format!("model '{}' download cancelled by user", entry.model_id));
+                return Err(format!(
+                    "model '{}' download cancelled by user",
+                    entry.model_id
+                ));
             }
             eprintln!("  └─────────────────────────────────────────────────────────────┘\n");
         } else {
@@ -422,8 +426,8 @@ mod tests {
         let manifest = default_manifest();
         assert_eq!(manifest.len(), expected.len());
         for (id, sha256, size_bytes, url) in expected {
-            let entry = get_manifest_entry(id)
-                .unwrap_or_else(|| panic!("missing manifest entry for {id}"));
+            let entry =
+                get_manifest_entry(id).unwrap_or_else(|| panic!("missing manifest entry for {id}"));
             assert_eq!(entry.sha256, sha256, "sha256 for {id}");
             assert_eq!(entry.sha256.len(), 64, "sha256 length for {id}");
             assert_eq!(entry.size_bytes, size_bytes, "size for {id}");
@@ -462,10 +466,7 @@ mod tests {
             .map(|b| format!("{b:02x}"))
             .collect();
 
-        assert_eq!(
-            verify_file_sha256(&file_path, &expected).unwrap(),
-            true
-        );
+        assert_eq!(verify_file_sha256(&file_path, &expected).unwrap(), true);
         assert_eq!(
             verify_file_sha256(&file_path, "00000000000000000000000000000000").unwrap(),
             false
@@ -512,18 +513,16 @@ mod tests {
         };
 
         let client = reqwest::Client::new();
-        let downloaded = download_and_verify_model(
-            &client,
-            &entry,
-            &temp_dir,
-            &SilentProgress,
-        )
-        .await
-        .unwrap();
+        let downloaded = download_and_verify_model(&client, &entry, &temp_dir, &SilentProgress)
+            .await
+            .unwrap();
 
         server.join().unwrap();
         assert!(downloaded.exists());
-        assert_eq!(verify_file_sha256(&downloaded, &expected_sha256).unwrap(), true);
+        assert_eq!(
+            verify_file_sha256(&downloaded, &expected_sha256).unwrap(),
+            true
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -624,7 +623,10 @@ mod tests {
         );
         let verify_at = events.iter().position(|e| e.starts_with("verify:"));
         let complete_at = events.iter().position(|e| e == "complete");
-        assert!(verify_at < complete_at, "verify precedes complete: {events:?}");
+        assert!(
+            verify_at < complete_at,
+            "verify precedes complete: {events:?}"
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -660,14 +662,9 @@ mod tests {
         };
 
         let client = reqwest::Client::new();
-        let err = download_and_verify_model(
-            &client,
-            &entry,
-            &temp_dir,
-            &SilentProgress,
-        )
-        .await
-        .unwrap_err();
+        let err = download_and_verify_model(&client, &entry, &temp_dir, &SilentProgress)
+            .await
+            .unwrap_err();
 
         server.join().unwrap();
         assert!(err.contains("checksum mismatch"));
