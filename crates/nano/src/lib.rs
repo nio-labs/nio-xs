@@ -1002,22 +1002,6 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
             "Which literal text or symbol should I search for in the codebase?".into(),
         );
     }
-    for prefix in &[
-        "grep for ",
-        "grep code for ",
-        "grep ",
-        "search code for ",
-        "search project for ",
-        "search repo for ",
-        "search for ",
-    ] {
-        if let Some(query) = norm.strip_prefix(prefix).or_else(|| lower.strip_prefix(prefix)) {
-            let q = query.trim().trim_matches(|c: char| "`\"',:!?".contains(c));
-            if !q.is_empty() {
-                return Intent::Search(q.to_string());
-            }
-        }
-    }
     let analyze_prefixes = [
         "analyze file ",
         "analyze folder ",
@@ -1110,28 +1094,6 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         return Intent::AnalyzeDir(".".into());
     }
     let candidates = paths(prompt);
-    if lower.contains("audit") || lower.contains("review") || lower.contains("analyze") || lower.contains("analyse") {
-        if !candidates.is_empty() {
-            let target = &candidates[0];
-            if safe_path(target, true) {
-                if target.contains('.') && !target.ends_with('/') {
-                    return Intent::AnalyzeFile(target.clone());
-                } else {
-                    return Intent::AnalyzeDir(target.clone());
-                }
-            }
-        } else if lower.contains("codebase") || lower.contains("project") || lower.contains("our code") || lower.contains("the code") || lower.contains("code") {
-            return Intent::AnalyzeDir(".".into());
-        }
-    }
-    if candidates.len() == 1 && safe_path(&candidates[0], false) && !candidates[0].contains(['*', '?']) {
-        let has_read_verb = lower.split_whitespace().any(|w| {
-            matches!(w.trim_matches(|c: char| "`\"',:!?".contains(c)), "read" | "view" | "inspect" | "examine" | "cat" | "open")
-        }) || lower.contains("what do you think") || lower.contains("look at") || lower.contains("explain ");
-        if has_read_verb && !lower.contains("write ") && !lower.contains("create ") && !lower.contains("generate ") {
-            return Intent::Read(candidates[0].clone());
-        }
-    }
     let intent = match model.predict(prompt).label.as_str() {
         "read_file" => {
             if candidates.len() == 1
@@ -1155,9 +1117,6 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         }
         "search_code" => {
             let markers = [
-                "grep for ",
-                "grep code for ",
-                "grep ",
                 "which source files contain ",
                 "look for references to ",
                 "search project text for ",
@@ -1635,7 +1594,7 @@ pub fn decide_with_model(
         let parsed = parse(model, &prompt);
         if route.selected != MODEL_NANO
             && (!prompt.starts_with("--") || is_flow)
-            && matches!(parsed, Intent::Unsupported)
+            && !matches!(parsed, Intent::Help | Intent::Config(_))
         {
             Intent::Coding {
                 prompt: if is_flow {

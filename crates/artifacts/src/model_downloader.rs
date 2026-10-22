@@ -282,31 +282,20 @@ pub fn ensure_model_ready(model_id: &str, custom_dir: Option<&Path>) -> Result<P
         }
     }
 
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| format!("failed to create runtime: {e}"))?;
+
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(600))
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))?;
 
-    if tokio::runtime::Handle::try_current().is_ok() {
-        tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(download_and_verify_model(
-                &client,
-                &entry,
-                &dir,
-                &ConsoleProgress,
-            ))
-        })
-    } else {
-        let rt =
-            tokio::runtime::Runtime::new().map_err(|e| format!("failed to create runtime: {e}"))?;
-        rt.block_on(download_and_verify_model(
-            &client,
-            &entry,
-            &dir,
-            &ConsoleProgress,
-        ))
-    }
+    rt.block_on(download_and_verify_model(
+        &client,
+        &entry,
+        &dir,
+        &ConsoleProgress,
+    ))
 }
 
 /// Interactive or automated model probe and download.
