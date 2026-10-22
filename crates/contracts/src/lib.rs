@@ -3,7 +3,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 pub const PROVIDER: &str = "nioxs";
-pub const MODEL_FLOW: &str = "nio-flow";
+pub const MODEL_CUDA: &str = "nio-cuda";
 pub const MODEL_RAY: &str = "nio-ray";
 pub const MODEL_VIPER: &str = "nio-viper";
 pub const MODEL_MANTA: &str = "nio-manta";
@@ -11,14 +11,14 @@ pub const MODEL_NANO: &str = "nio-nano";
 pub const MODEL_MICRO: &str = "nio-micro";
 pub const MODEL_MASK: &str = "nio-mask";
 pub const MODEL_MINI: &str = "nio-mini";
-/// Default public model: the task orchestrator.
-pub const MODEL: &str = MODEL_FLOW;
+/// Default public model: the tactical swarm conductor & orchestrator.
+pub const MODEL: &str = MODEL_CUDA;
 /// Deprecated request alias; kept for existing clients, but no longer advertised.
 pub const MODEL_AUTO: &str = "nio-auto";
 
 /// Official models matching https://github.com/nio-labs/nio-xs-models registry
 pub const MODELS: &[&str] = &[
-    MODEL,
+    MODEL_CUDA,
     MODEL_RAY,
     MODEL_VIPER,
     MODEL_MANTA,
@@ -29,6 +29,8 @@ pub const MODELS: &[&str] = &[
 ];
 
 // Deprecated model identifiers retained for backward-compatible routing/deserialization
+#[allow(deprecated)]
+pub const MODEL_FLOW: &str = "nio-flow";
 #[allow(deprecated)]
 pub const MODEL_HELM: &str = "nio-helm";
 #[allow(deprecated)]
@@ -48,11 +50,10 @@ pub const MODEL_QUILL: &str = "nio-quill";
 #[allow(deprecated)]
 pub const MODEL_SCOUT: &str = "nio-scout";
 #[allow(deprecated)]
-pub const MODEL_CUDA: &str = "nio-cuda";
-#[allow(deprecated)]
 pub const MODEL_APEX: &str = "nio-apex";
 
 pub const LEGACY_MODELS: &[&str] = &[
+    MODEL_FLOW,
     MODEL_HELM,
     MODEL_NOVA,
     MODEL_ATOM,
@@ -62,7 +63,6 @@ pub const LEGACY_MODELS: &[&str] = &[
     MODEL_SAGE,
     MODEL_QUILL,
     MODEL_SCOUT,
-    MODEL_CUDA,
     MODEL_APEX,
 ];
 pub const SCHEMA_VERSION: u32 = 1;

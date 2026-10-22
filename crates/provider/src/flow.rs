@@ -2,7 +2,7 @@
 //! each stage is a separate call with its own role and carried-forward evidence.
 use super::*;
 use nioxs_contracts::{
-    AtomContract, HelmGateVerdict, HelmVerdictContract, MODEL_ATOM, MODEL_ECHO, MODEL_FLOW,
+    AtomContract, HelmGateVerdict, HelmVerdictContract, MODEL, MODEL_ATOM, MODEL_ECHO, MODEL_FLOW,
     MODEL_HELM, MODEL_NANO, MODEL_NEON, MODEL_NOVA, MODEL_QUILL, MODEL_SAGE, MODEL_SCOUT,
     MODEL_THINKER, NeonReviewContract,
 };
@@ -535,13 +535,13 @@ impl Runner {
             .plan
             .as_ref()
             .and_then(|plan| plan.stages.get(self.session.stage))
-            .map_or(MODEL_FLOW, |stage| stage.model.as_str())
+            .map_or(MODEL, |stage| stage.model.as_str())
     }
     fn announce(&mut self) {
         let model = self.model().to_string();
         let previous = self.metadata["routing"]["selected_model"]
             .as_str()
-            .unwrap_or(MODEL_FLOW)
+            .unwrap_or(MODEL)
             .to_string();
         let label = if model == MODEL_THINKER {
             let task = &self.session.plan.as_ref().unwrap().stages[self.session.stage].task;
@@ -555,7 +555,8 @@ impl Runner {
         } else {
             companion::model_stage(&model).unwrap_or(&model)
         };
-        let message = if model != MODEL_FLOW && model != MODEL_HELM && previous != model {
+        let is_conductor = model == MODEL || model == MODEL_FLOW;
+        let message = if !is_conductor && model != MODEL_HELM && previous != model {
             format!(
                 "↪ {}\n",
                 label.trim_start_matches(|c: char| c == '↪' || c.is_whitespace())
@@ -571,12 +572,12 @@ impl Runner {
         } else {
             "rust_flow_cascade"
         });
-        self.metadata["progress"].as_array_mut().unwrap().push(json!({"kind":if model == MODEL_FLOW {"planning"} else {"model_handoff"},"from":previous,"to":model,"message":message}));
+        self.metadata["progress"].as_array_mut().unwrap().push(json!({"kind":if is_conductor {"planning"} else {"model_handoff"},"from":previous,"to":model,"message":message}));
         self.queue
             .push_back(status_chunk(&self.id, &model, Some(message), "routing"));
         self.queue
             .push_back(status_chunk(&self.id, &model, None, "thinking"));
-        if model == MODEL_FLOW && !self.session.helm {
+        if is_conductor && !self.session.helm {
             let skipped = format!("{}\n", companion::TRAIL_SKIP_HELM);
             self.metadata["progress"]
                 .as_array_mut()
@@ -2435,7 +2436,7 @@ mod tests {
         assert_eq!(
             labels,
             vec![
-                "🌊 NioFlow · Planning\n",
+                "🐟 NioCuda · Conducting\n",
                 "↪ NioNova · Exploring\n",
                 "↪ NioAtom · Building\n",
                 "↪ NioNeon · Reviewing\n",
@@ -2633,7 +2634,7 @@ Review complete.
             "find_files"
         );
         let text = first["choices"][0]["message"]["content"].as_str().unwrap();
-        assert_eq!(text.matches("NioFlow · Planning").count(), 1);
+        assert_eq!(text.matches("NioCuda · Conducting").count(), 1);
         replay(&mut request, &first, "nio/README.md\nnio-xs/README.md");
         let second = run(&base, &request, "turn_nano_resume").await;
         assert_eq!(second["model"], MODEL_HELM);
@@ -2653,7 +2654,7 @@ Review complete.
             !second["choices"][0]["message"]["content"]
                 .as_str()
                 .unwrap()
-                .contains("NioFlow · Planning")
+                .contains("NioCuda · Conducting")
         );
     }
     #[tokio::test]

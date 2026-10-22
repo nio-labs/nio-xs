@@ -1121,6 +1121,7 @@ pub const TRAIL_SKIP_HELM: &str = "↪ Helm skipped (--no-helm)";
 
 pub fn model_stage(model: &str) -> Option<&'static str> {
     match model {
+        "nio-cuda" => Some("🐟 NioCuda · Conducting"),
         "nio-flow" => Some("🌊 NioFlow · Planning"),
         "nio-ray" => Some("⚡ NioRay · Keystroke"),
         "nio-viper" => Some("🎯 NioViper · Tactical"),

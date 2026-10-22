@@ -123,7 +123,7 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         );
     }
     let names = [
-        "NioFlow — Plan & Sovereign Orchestrator",
+        "NioCuda — Tactical Swarm Conductor & Orchestrator",
         "NioRay — Keystroke Predator (Streaming Reflex 24L, < 86 MB RAM)",
         "NioViper — Tactical Striker (Shell Reflex 8L, < 47 MB RAM)",
         "NioManta — Conversational & AST Companion (16L, < 110 MB RAM)",
@@ -490,7 +490,9 @@ async fn chat(
         if request.model == nioxs_contracts::MODEL_THINKER
             || (matches!(
                 request.model.as_str(),
-                nioxs_contracts::MODEL_FLOW | nioxs_contracts::MODEL_AUTO
+                nioxs_contracts::MODEL_CUDA
+                    | nioxs_contracts::MODEL_FLOW
+                    | nioxs_contracts::MODEL_AUTO
             ) && (!request.messages[request.validate().expect("validated request")]
                 .content
                 .as_str()

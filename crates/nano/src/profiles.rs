@@ -1,8 +1,9 @@
 //! Rust-controlled profiles and prompt routing. These share Nano's trained
 //! intent model and execution engine; they are not separate trained weights.
 use nioxs_contracts::{
-    MODEL, MODEL_ATOM, MODEL_AUTO, MODEL_ECHO, MODEL_FLOW, MODEL_HELM, MODEL_NANO, MODEL_NEON,
-    MODEL_NOVA, MODEL_QUILL, MODEL_SAGE, MODEL_SCOUT, MODEL_THINKER,
+    MODEL, MODEL_ATOM, MODEL_AUTO, MODEL_CUDA, MODEL_ECHO, MODEL_FLOW, MODEL_HELM, MODEL_MANTA,
+    MODEL_MASK, MODEL_MICRO, MODEL_MINI, MODEL_NANO, MODEL_NEON, MODEL_NOVA, MODEL_QUILL,
+    MODEL_RAY, MODEL_SAGE, MODEL_SCOUT, MODEL_THINKER, MODEL_VIPER,
 };
 use serde_json::{Value, json};
 
@@ -103,15 +104,22 @@ pub fn skill_name(model: &str) -> Option<&'static str> {
 }
 
 pub fn route(requested: &str, _prompt: &str) -> Route {
-    if requested == MODEL_FLOW || requested == MODEL_AUTO {
+    if requested == MODEL_CUDA || requested == MODEL_FLOW || requested == MODEL_AUTO {
         return Route {
-            selected: MODEL_FLOW,
-            reason: "NioFlow orchestrates the task and specialist handoffs",
+            selected: MODEL,
+            reason: "NioCuda conducts the swarm and specialist handoffs",
         };
     }
     Route {
         selected: match requested {
+            MODEL_CUDA => MODEL_CUDA,
+            MODEL_RAY => MODEL_RAY,
+            MODEL_VIPER => MODEL_VIPER,
+            MODEL_MANTA => MODEL_MANTA,
             MODEL_NANO => MODEL_NANO,
+            MODEL_MICRO => MODEL_MICRO,
+            MODEL_MASK => MODEL_MASK,
+            MODEL_MINI => MODEL_MINI,
             MODEL_THINKER => MODEL_THINKER,
             MODEL_ECHO => MODEL_ECHO,
             MODEL_SAGE => MODEL_SAGE,
@@ -471,14 +479,14 @@ mod tests {
     #[test]
     fn routes_tasks_and_preserves_explicit_selection() {
         for (prompt, expected) in [
-            ("read README.md", MODEL_FLOW),
-            ("brainstorm a new dashboard", MODEL_FLOW),
-            ("compare sqlite and postgres", MODEL_FLOW),
-            ("review src/auth.rs", MODEL_FLOW),
-            ("fix the login bug", MODEL_FLOW),
-            ("implement a review button", MODEL_FLOW),
-            ("--code implement auth", MODEL_FLOW),
-            ("something unfamiliar", MODEL_FLOW),
+            ("read README.md", MODEL),
+            ("brainstorm a new dashboard", MODEL),
+            ("compare sqlite and postgres", MODEL),
+            ("review src/auth.rs", MODEL),
+            ("fix the login bug", MODEL),
+            ("implement a review button", MODEL),
+            ("--code implement auth", MODEL),
+            ("something unfamiliar", MODEL),
         ] {
             assert_eq!(route(MODEL_AUTO, prompt).selected, expected, "{prompt}");
         }

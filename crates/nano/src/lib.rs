@@ -1560,7 +1560,8 @@ pub fn decide_with_model(
         }
     }
     let flow_options = profiles::flow_options(&prompt);
-    let is_flow = route.selected == nioxs_contracts::MODEL_FLOW;
+    let is_flow = route.selected == nioxs_contracts::MODEL_CUDA
+        || route.selected == nioxs_contracts::MODEL_FLOW;
     let thinker_options = profiles::thinker_options(&prompt);
     let thinker_with_helm = route.selected == nioxs_contracts::MODEL_THINKER && thinker_options.1;
     let intent = if is_flow && flow_options.0.is_empty() {
@@ -2664,7 +2665,7 @@ mod tests {
         r.stream = true;
         assert_eq!(
             decide(&r, "test").unwrap().execution.model,
-            nioxs_contracts::MODEL_FLOW
+            nioxs_contracts::MODEL
         );
     }
     #[test]
@@ -2688,7 +2689,7 @@ mod tests {
             let r: ChatRequest = serde_json::from_value(json!({"model":nioxs_contracts::MODEL_AUTO,"messages":[{"role":"user","content":prompt}]})).unwrap();
             assert_eq!(
                 decide(&r, "test").unwrap().execution.model,
-                nioxs_contracts::MODEL_FLOW
+                nioxs_contracts::MODEL
             );
         }
     }
