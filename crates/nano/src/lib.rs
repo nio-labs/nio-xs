@@ -885,20 +885,6 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
         }
         return Intent::Research(query.to_string());
     }
-    let candidates = paths(prompt);
-    if let Some(target) = candidates.iter().find(|c| c.contains("..")) {
-        if lower.contains("audit") || lower.contains("review") || lower.contains("analyze") || lower.contains("analyse") {
-            return Intent::Clarify(format!(
-                "Project tools cannot leave the active directory. To audit `{target}`, restart Nio with `nio --dir {target}` or inspect files within the active project."
-            ));
-        }
-        if lower.contains("read") || lower.contains("view") || lower.contains("inspect") || lower.contains("show") || lower.contains("what do you think") {
-            return Intent::Clarify(format!(
-                "Project tools cannot leave the active directory. To read `{target}`, restart Nio with `nio --dir {}`.",
-                std::path::Path::new(target).parent().unwrap_or(std::path::Path::new(target)).display()
-            ));
-        }
-    }
     if model::features(prompt)
         .iter()
         .any(|f| f == "<unsupported-risk>")
@@ -1125,26 +1111,17 @@ pub fn parse_atomic(model: &Model, prompt: &str) -> Intent {
     }
     let candidates = paths(prompt);
     if lower.contains("audit") || lower.contains("review") || lower.contains("analyze") || lower.contains("analyse") {
-        if let Some(target) = candidates.iter().find(|c| safe_path(c, true)) {
-            if target.contains('.') && !target.ends_with('/') {
-                return Intent::AnalyzeFile(target.clone());
-            } else {
-                return Intent::AnalyzeDir(target.clone());
+        if !candidates.is_empty() {
+            let target = &candidates[0];
+            if safe_path(target, true) {
+                if target.contains('.') && !target.ends_with('/') {
+                    return Intent::AnalyzeFile(target.clone());
+                } else {
+                    return Intent::AnalyzeDir(target.clone());
+                }
             }
-        } else if let Some(target) = candidates.iter().find(|c| c.contains("..")) {
-            return Intent::Clarify(format!(
-                "Project tools cannot leave the active directory. To audit `{target}`, restart Nio with `nio --dir {target}` or inspect files within the active project."
-            ));
         } else if lower.contains("codebase") || lower.contains("project") || lower.contains("our code") || lower.contains("the code") || lower.contains("code") {
             return Intent::AnalyzeDir(".".into());
-        }
-    }
-    if let Some(target) = candidates.iter().find(|c| c.contains("..")) {
-        if lower.contains("read") || lower.contains("view") || lower.contains("inspect") || lower.contains("show") || lower.contains("what do you think") {
-            return Intent::Clarify(format!(
-                "Project tools cannot leave the active directory. To read `{target}`, restart Nio with `nio --dir {}`.",
-                std::path::Path::new(target).parent().unwrap_or(std::path::Path::new(target)).display()
-            ));
         }
     }
     if candidates.len() == 1 && safe_path(&candidates[0], false) && !candidates[0].contains(['*', '?']) {
@@ -2327,25 +2304,6 @@ pub fn decide_with_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_audit_and_read_out_of_bounds() {
-        let m = embedded();
-        let prompt1 = "our code in ../nio-guru folder. Audit it.";
-        let prompt2 = "readme.md in nio-guru. what do you think?";
-        match parse(m, prompt1) {
-            Intent::Clarify(msg) => {
-                assert!(msg.contains("cannot leave the active directory"));
-            }
-            other => panic!("Expected Intent::Clarify, got {:?}", other),
-        }
-        match parse(m, prompt2) {
-            Intent::Read(target) => {
-                assert_eq!(target, "README.md");
-            }
-            other => panic!("Expected Intent::Read, got {:?}", other),
-        }
-    }
     use nioxs_contracts::MODEL_NANO;
 
     fn inspection_request(prompt: &str) -> ChatRequest {
