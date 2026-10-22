@@ -56,11 +56,11 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
         ModelArtifactEntry {
             model_id: MODEL_CUDA.into(),
             brand_name: "NioCuda (Tactical Swarm Conductor)".into(),
-            base_model: "Qwen2.5-16L-SwarmConductor".into(),
+            base_model: "Qwen2.5-Coder-16L-SwarmConductor".into(),
             filename: "nio-cuda-ast.Q4_0.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/nio-cuda-ast.Q4_0.gguf".into(),
-            sha256: "8899aac0119842182bb192bb6b8e0123d4dfc94982bb90f77aa0e2b47e812345".into(),
-            size_bytes: 152_043_520,
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.2/nio-cuda-ast.Q4_0.gguf".into(),
+            sha256: "09566c2f463dfae5475b2747c4338cf3a9b887f8382a21052766d1f97803c58c".into(),
+            size_bytes: 284_962_368,
         },
     ]
 }
@@ -414,9 +414,9 @@ mod tests {
             ),
             (
                 MODEL_CUDA,
-                "8899aac0119842182bb192bb6b8e0123d4dfc94982bb90f77aa0e2b47e812345",
-                152_043_520,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/nio-cuda-ast.Q4_0.gguf",
+                "09566c2f463dfae5475b2747c4338cf3a9b887f8382a21052766d1f97803c58c",
+                284_962_368,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.2/nio-cuda-ast.Q4_0.gguf",
             ),
         ];
         let manifest = default_manifest();
