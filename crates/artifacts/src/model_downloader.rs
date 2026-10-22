@@ -47,7 +47,7 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
         ModelArtifactEntry {
             model_id: MODEL_MANTA.into(),
             brand_name: "NioManta (Conversational & AST Companion)".into(),
-            base_model: "Qwen2.5-16L-151k".into(),
+            base_model: "Qwen/Qwen2.5-0.5B-Instruct (16L)".into(),
             filename: "nio-manta-ast.Q4_0.gguf".into(),
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.1/nio-manta-ast.Q4_0.gguf".into(),
             sha256: "56be66f3628768f1f8a71e526da4e06e063554c8c8c50f7f205299d3671a91d2".into(),
@@ -56,7 +56,7 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
         ModelArtifactEntry {
             model_id: MODEL_CUDA.into(),
             brand_name: "NioCuda (Tactical Swarm Conductor)".into(),
-            base_model: "Qwen2.5-Coder-16L-SwarmConductor".into(),
+            base_model: "Qwen/Qwen2.5-Coder-0.5B-Instruct (16L)".into(),
             filename: "nio-cuda-ast.Q4_0.gguf".into(),
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.2/nio-cuda-ast.Q4_0.gguf".into(),
             sha256: "09566c2f463dfae5475b2747c4338cf3a9b887f8382a21052766d1f97803c58c".into(),
