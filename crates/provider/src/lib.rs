@@ -2174,18 +2174,18 @@ mod tests {
     #[test]
     fn caller_absolute_root_and_children_are_relayed_as_relative_paths() {
         let messages = vec![
-            json!({"role":"system","content":"Project overview:\nRoot: /home/mn/nio-labs\nFiles (partial listing):\nnio/README.md"}),
+            json!({"role":"system","content":"Project overview:\nRoot: /home/user/project\nFiles (partial listing):\nnio/README.md"}),
         ];
         let calls = [
             RequestedCall {
                 id: "root".into(),
                 name: "find_files".into(),
-                arguments: json!({"path":"/home/mn/nio-labs"}).to_string(),
+                arguments: json!({"path":"/home/user/project"}).to_string(),
             },
             RequestedCall {
                 id: "file".into(),
                 name: "read_file".into(),
-                arguments: json!({"path":"/home/mn/nio-labs/nio/src/main.rs"}).to_string(),
+                arguments: json!({"path":"/home/user/project/nio/src/main.rs"}).to_string(),
             },
         ];
         let relayed = relay_offered_coding_calls(
@@ -2204,8 +2204,8 @@ mod tests {
             "nio/src/main.rs"
         );
         for path in [
-            "/home/mn/nio-labs-other/file.rs",
-            "/home/mn/nio-labs/../private/file.rs",
+            "/home/user/project-other/file.rs",
+            "/home/user/project/../private/file.rs",
             "/etc/passwd",
         ] {
             let bad = [RequestedCall {

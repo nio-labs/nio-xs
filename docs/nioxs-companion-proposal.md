@@ -9,7 +9,7 @@ Transform NioXS from a **stateless routing gateway** into a **persistent compani
 ## 1. Universal Directives (All Models, Not Just NioNano)
 
 ### Current State
-- Directives (`--code:`, `--helm`, `--no-helm`, `--with-helm`) are parsed in [`profiles.rs`](file:///home/mn/nio-labs/nio-xs/crates/nano/src/profiles.rs) but only consumed when the request goes through NioNano's intent classifier.
+- Directives (`--code:`, `--helm`, `--no-helm`, `--with-helm`) are parsed in [`profiles.rs`](crates/nano/src/profiles.rs) but only consumed when the request goes through NioNano's intent classifier.
 - When a user sends `model: "gpt-4o"` or any non-Nio model to the gateway, directives in the prompt are ignored — the request is proxied raw.
 - Profile-based routing, skill injection, and tool budgets only apply to `nio-*` models.
 

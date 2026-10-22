@@ -325,12 +325,6 @@ pub fn prompt_and_pull_if_needed(model_id: &str, auto_yes: bool) -> Result<PathB
         }
     }
 
-    // Also check local workspace dev fallback (e.g. nio-ideas/models)
-    let dev_fallback = PathBuf::from("../nio-ideas/models").join(&entry.filename);
-    if dev_fallback.exists() && verify_file_sha256(&dev_fallback, &entry.sha256).unwrap_or(false) {
-        return Ok(dev_fallback);
-    }
-
     let size_mb = entry.size_bytes as f64 / (1024.0 * 1024.0);
 
     if !auto_yes {

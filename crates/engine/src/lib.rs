@@ -203,21 +203,6 @@ impl RayEngine {
             Some(PathBuf::from("models")),
             Some(PathBuf::from("../models")),
             Some(PathBuf::from("../../models")),
-            Some(PathBuf::from("../nio-ideas/models")),
-            Some(PathBuf::from("../../nio-ideas/models")),
-            Some(PathBuf::from("/home/mn/nio-labs/nio-ideas/models")),
-            Some(PathBuf::from(
-                "/home/mn/nio-labs/nio-xs-models/models/nio-cuda",
-            )),
-            Some(PathBuf::from(
-                "/home/mn/nio-labs/nio-xs-models/models/nio-manta",
-            )),
-            Some(PathBuf::from(
-                "/home/mn/nio-labs/nio-xs-models/models/nio-viper",
-            )),
-            Some(PathBuf::from(
-                "/home/mn/nio-labs/nio-xs-models/models/nio-ray",
-            )),
         ];
 
         for directory in directories.into_iter().flatten() {

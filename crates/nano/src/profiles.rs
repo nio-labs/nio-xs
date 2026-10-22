@@ -504,9 +504,9 @@ mod tests {
     /// environment, skill catalog, plugin catalog, and tool instructions.
     fn nio_style_system_prompt() -> String {
         format!(
-            "You are Taylor, a coding agent working in the project at /home/mn/nio-labs. \
+            "You are Taylor, a coding agent working in the project at /home/user/project. \
              Read and search tools are automatic. Be concise.\n\n\
-             Project overview:\nRoot: /home/mn/nio-labs\nFiles (partial listing):\nnio/README.md\n\n\
+             Project overview:\nRoot: /home/user/project\nFiles (partial listing):\nnio/README.md\n\n\
              Skills: niohelm-decision, nioatom-implementation.\n\n\
              Plugins: json_yaml, diff_viewer.\n\n\
              When calling tools, use only the exact function names supplied in the tools schema.\n\n\
