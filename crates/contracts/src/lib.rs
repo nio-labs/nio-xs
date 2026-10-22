@@ -3,43 +3,67 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 pub const PROVIDER: &str = "nioxs";
-pub const MODEL_NANO: &str = "nio-nano";
-pub const MODEL_HELM: &str = "nio-helm";
-pub const MODEL_NOVA: &str = "nio-nova";
-pub const MODEL_ATOM: &str = "nio-atom";
-pub const MODEL_NEON: &str = "nio-neon";
 pub const MODEL_FLOW: &str = "nio-flow";
-pub const MODEL_THINKER: &str = "nio-thinker";
-pub const MODEL_ECHO: &str = "nio-echo";
-pub const MODEL_SAGE: &str = "nio-sage";
-pub const MODEL_QUILL: &str = "nio-quill";
-pub const MODEL_SCOUT: &str = "nio-scout";
 pub const MODEL_RAY: &str = "nio-ray";
-pub const MODEL_CUDA: &str = "nio-cuda";
-pub const MODEL_APEX: &str = "nio-apex";
-pub const MODEL_MANTA: &str = "nio-manta";
 pub const MODEL_VIPER: &str = "nio-viper";
+pub const MODEL_MANTA: &str = "nio-manta";
+pub const MODEL_NANO: &str = "nio-nano";
+pub const MODEL_MICRO: &str = "nio-micro";
+pub const MODEL_MASK: &str = "nio-mask";
+pub const MODEL_MINI: &str = "nio-mini";
 /// Default public model: the task orchestrator.
 pub const MODEL: &str = MODEL_FLOW;
 /// Deprecated request alias; kept for existing clients, but no longer advertised.
 pub const MODEL_AUTO: &str = "nio-auto";
+
+/// Official models matching https://github.com/nio-labs/nio-xs-models registry
 pub const MODELS: &[&str] = &[
     MODEL,
     MODEL_RAY,
-    MODEL_CUDA,
-    MODEL_APEX,
-    MODEL_MANTA,
     MODEL_VIPER,
+    MODEL_MANTA,
     MODEL_NANO,
+    MODEL_MICRO,
+    MODEL_MASK,
+    MODEL_MINI,
+];
+
+// Deprecated model identifiers retained for backward-compatible routing/deserialization
+#[allow(deprecated)]
+pub const MODEL_HELM: &str = "nio-helm";
+#[allow(deprecated)]
+pub const MODEL_NOVA: &str = "nio-nova";
+#[allow(deprecated)]
+pub const MODEL_ATOM: &str = "nio-atom";
+#[allow(deprecated)]
+pub const MODEL_NEON: &str = "nio-neon";
+#[allow(deprecated)]
+pub const MODEL_THINKER: &str = "nio-thinker";
+#[allow(deprecated)]
+pub const MODEL_ECHO: &str = "nio-echo";
+#[allow(deprecated)]
+pub const MODEL_SAGE: &str = "nio-sage";
+#[allow(deprecated)]
+pub const MODEL_QUILL: &str = "nio-quill";
+#[allow(deprecated)]
+pub const MODEL_SCOUT: &str = "nio-scout";
+#[allow(deprecated)]
+pub const MODEL_CUDA: &str = "nio-cuda";
+#[allow(deprecated)]
+pub const MODEL_APEX: &str = "nio-apex";
+
+pub const LEGACY_MODELS: &[&str] = &[
+    MODEL_HELM,
+    MODEL_NOVA,
+    MODEL_ATOM,
+    MODEL_NEON,
+    MODEL_THINKER,
     MODEL_ECHO,
     MODEL_SAGE,
     MODEL_QUILL,
     MODEL_SCOUT,
-    MODEL_THINKER,
-    MODEL_NOVA,
-    MODEL_ATOM,
-    MODEL_NEON,
-    MODEL_HELM,
+    MODEL_CUDA,
+    MODEL_APEX,
 ];
 pub const SCHEMA_VERSION: u32 = 1;
 pub const MAX_REQUEST_BYTES: usize = 512 * 1024;
@@ -95,7 +119,10 @@ pub struct ChatRequest {
 
 impl ChatRequest {
     pub fn validate(&self) -> Result<usize, String> {
-        if !MODELS.contains(&self.model.as_str()) && self.model != MODEL_AUTO {
+        if !MODELS.contains(&self.model.as_str())
+            && self.model != MODEL_AUTO
+            && !LEGACY_MODELS.contains(&self.model.as_str())
+        {
             return Err(format!("unsupported model; select {}", MODELS.join(", ")));
         }
         if self.messages.is_empty() || self.messages.len() > 200 {

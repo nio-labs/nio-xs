@@ -1122,6 +1122,13 @@ pub const TRAIL_SKIP_HELM: &str = "↪ Helm skipped (--no-helm)";
 pub fn model_stage(model: &str) -> Option<&'static str> {
     match model {
         "nio-flow" => Some("🌊 NioFlow · Planning"),
+        "nio-ray" => Some("⚡ NioRay · Keystroke"),
+        "nio-viper" => Some("🎯 NioViper · Tactical"),
+        "nio-manta" => Some("💬 NioManta · Companion"),
+        "nio-nano" => Some("🔧 NioNano · Tools"),
+        "nio-micro" => Some("⚖ NioMicro · Policy"),
+        "nio-mask" => Some("🛡️ NioMask · Privacy"),
+        "nio-mini" => Some("🔍 NioMini · Defect"),
         "nio-thinker" => Some("🧠 NioThinker · Drafting"),
         "nio-echo" => Some("💬 NioEcho · Answering"),
         "nio-sage" => Some("📚 NioSage · Teaching"),
@@ -1131,7 +1138,6 @@ pub fn model_stage(model: &str) -> Option<&'static str> {
         "nio-neon" => Some("NioNeon · Reviewing"),
         "nio-helm" => Some("⚖ NioHelm · Go / No-Go"),
         "nio-nova" => Some("NioNova · Exploring"),
-        "nio-nano" => Some("🔧 NioNano · Tools"),
         _ => None,
     }
 }
@@ -1140,6 +1146,7 @@ pub fn model_stage(model: &str) -> Option<&'static str> {
 pub fn stage_model(line: &str) -> Option<&'static str> {
     let line = line.trim();
     let line = line.strip_prefix("↪ ").unwrap_or(line);
+    #[allow(deprecated)]
     if matches!(
         line,
         "🧠 NioThinker · Challenging"
@@ -1152,6 +1159,7 @@ pub fn stage_model(line: &str) -> Option<&'static str> {
     }
     nioxs_contracts::MODELS
         .iter()
+        .chain(nioxs_contracts::LEGACY_MODELS.iter())
         .copied()
         .find(|model| {
             model_stage(model).is_some_and(|label| {
@@ -1164,6 +1172,7 @@ pub fn stage_model(line: &str) -> Option<&'static str> {
             let id = label.rsplit('→').next()?.trim();
             nioxs_contracts::MODELS
                 .iter()
+                .chain(nioxs_contracts::LEGACY_MODELS.iter())
                 .copied()
                 .find(|model| *model == id)
         })

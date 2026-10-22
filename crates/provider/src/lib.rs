@@ -123,22 +123,14 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         );
     }
     let names = [
-        "NioFlow — Plan and hand off",
-        "NioRay — Electric Keystroke Reflex (In-Process Predator)",
-        "NioCuda — Tactical Ambush Conductor (In-Process Predator)",
-        "NioApex — Abyssal Reasoning Mind (In-Process Predator)",
-        "NioManta — Conversational Glider (In-Process Predator)",
-        "NioViper — Abyssal Micro-Predator (In-Process)",
-        "NioNano — Assist",
-        "NioEcho — Answer",
-        "NioSage — Explain",
-        "NioQuill — Write",
-        "NioScout — Research",
-        "NioThinker — Reflect and refine",
-        "NioNova — Invent",
-        "NioAtom — Build",
-        "NioNeon — Inspect",
-        "NioHelm — Final Go / No-Go",
+        "NioFlow — Plan & Sovereign Orchestrator",
+        "NioRay — Keystroke Predator (Streaming Reflex 24L, < 86 MB RAM)",
+        "NioViper — Tactical Striker (Shell Reflex 8L, < 47 MB RAM)",
+        "NioManta — Conversational & AST Companion (16L, < 110 MB RAM)",
+        "NioNano — Intent Reflex & MicroLM (~0.5M, sub-0.1ms)",
+        "NioMicro — Contextual Policy Decision Arbiter (5.0M / cluster)",
+        "NioMask — Byte-Stream Privacy & Secret Redactor (1.1M, sub-0.2ms)",
+        "NioMini — Predictive Defect & Quality Forecaster (7.1M, sub-5ms)",
     ];
     let data: Vec<Value> = MODELS.iter().zip(names).map(|(id, name)| json!({"id":id,"object":"model","created":0,"owned_by":PROVIDER,"name":name,"type":"language","free":true})).collect();
     Json(json!({"object":"list","data":data})).into_response()
