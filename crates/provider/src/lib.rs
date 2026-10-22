@@ -240,7 +240,23 @@ async fn microlm_chat_handler(model_name: &str, request: ChatRequest) -> Respons
         _ => "You are NioRay, a concise and lightning-fast coding reflex engine.",
     };
 
-    prompt.push_str(&format!("<|im_start|>system\n{system_prompt}<|im_end|>\n"));
+    let caller_system = request
+        .messages
+        .iter()
+        .find(|m| m.role == "system")
+        .and_then(|m| m.content.as_str());
+    let sys = match caller_system {
+        Some(s) if !s.trim().is_empty() => {
+            if s.len() > 250 {
+                s.split('.').next().unwrap_or(system_prompt).trim()
+            } else {
+                s
+            }
+        }
+        _ => system_prompt,
+    };
+
+    prompt.push_str(&format!("<|im_start|>system\n{sys}<|im_end|>\n"));
     for msg in &request.messages {
         if msg.role == "system" {
             continue;
@@ -360,13 +376,18 @@ async fn chat(
             );
         }
     };
-    let model_norm = request.model.strip_prefix("nioxs::").unwrap_or(&request.model);
-    match model_norm {
-        "nio-ray" | "ray" => return microlm_chat_handler("nio-ray", request).await,
-        "nio-manta" | "manta" => return microlm_chat_handler("nio-manta", request).await,
-        "nio-viper" | "viper" => return microlm_chat_handler("nio-viper", request).await,
-        "nio-cuda" | "cuda" => return microlm_chat_handler("nio-cuda", request).await,
-        _ => {}
+    let model_norm = request
+        .model
+        .strip_prefix("nioxs::")
+        .unwrap_or(&request.model)
+        .to_string();
+    if request.tools.is_empty() {
+        match model_norm.as_str() {
+            "nio-ray" | "ray" => return microlm_chat_handler("nio-ray", request).await,
+            "nio-manta" | "manta" => return microlm_chat_handler("nio-manta", request).await,
+            "nio-viper" | "viper" => return microlm_chat_handler("nio-viper", request).await,
+            _ => {}
+        }
     }
     let turn_override = match headers.get("x-nioxs-turn-id") {
         Some(value) => match value.to_str() {
@@ -516,6 +537,9 @@ async fn chat(
     // client executes those reads in the directory it was started in.
     if let Some(consult) = decision.coding.clone() {
         let turn_id = decision.execution.turn_id.clone();
+        if matches!(model_norm.as_str(), "nio-ray" | "ray" | "nio-manta" | "manta" | "nio-viper" | "viper") {
+            return microlm_chat_handler(&model_norm, request).await;
+        }
         if request.model == nioxs_contracts::MODEL_THINKER
             || (matches!(
                 request.model.as_str(),

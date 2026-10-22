@@ -232,6 +232,18 @@ impl RayEngine {
             return beside;
         }
 
+        let home_dir = nioxs_artifacts::resolve_models_dir();
+        if model.starts_with(&home_dir) {
+            let home_specific = home_dir.join(name);
+            if home_specific.is_file() {
+                return home_specific;
+            }
+            let home_tokenizer = home_dir.join("tokenizer.json");
+            if home_tokenizer.is_file() {
+                return home_tokenizer;
+            }
+        }
+
         beside
     }
 
@@ -270,8 +282,9 @@ impl RayEngine {
             let tokenizer = Tokenizer::from_file(&tokenizer_path)
                 .map_err(|e| anyhow!("Failed loading tokenizer: {e}"))?;
 
-            let engine = AstMicroEngine::new(&model_path)
-                .map_err(|e| anyhow!("Failed loading AST-Micro engine for {:?}: {e}", model_path))?;
+            let engine = AstMicroEngine::new(&model_path).map_err(|e| {
+                anyhow!("Failed loading AST-Micro engine for {:?}: {e}", model_path)
+            })?;
 
             Ok(ModelBundle {
                 engine,
@@ -439,7 +452,11 @@ mod tests {
 
     #[test]
     fn matching_tokenizer_accepts_unused_gguf_padding() {
-        let tokens = [String::from("hello"), String::from("<|im_end|>"), String::from("[PAD2]")];
+        let tokens = [
+            String::from("hello"),
+            String::from("<|im_end|>"),
+            String::from("[PAD2]"),
+        ];
         RayEngine::validate_tokenizer(&tokenizer(), &tokens).unwrap();
     }
 
@@ -453,7 +470,11 @@ mod tests {
 
     #[test]
     fn rejects_missing_model_tokens() {
-        let tokens = [String::from("hello"), String::from("<|im_end|>"), String::from("world")];
+        let tokens = [
+            String::from("hello"),
+            String::from("<|im_end|>"),
+            String::from("world"),
+        ];
         assert!(RayEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
     }
 
