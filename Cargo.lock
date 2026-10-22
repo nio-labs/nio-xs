@@ -1394,6 +1394,7 @@ dependencies = [
  "anyhow",
  "candle-core",
  "candle-transformers",
+ "nioxs-artifacts",
  "rand 0.9.5",
  "serde",
  "serde_json",

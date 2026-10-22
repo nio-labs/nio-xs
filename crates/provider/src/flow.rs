@@ -3,8 +3,8 @@
 use super::*;
 use nioxs_contracts::{
     AtomContract, HelmGateVerdict, HelmVerdictContract, MODEL, MODEL_ATOM, MODEL_ECHO, MODEL_FLOW,
-    MODEL_HELM, MODEL_NANO, MODEL_NEON, MODEL_NOVA, MODEL_QUILL, MODEL_SAGE, MODEL_SCOUT,
-    MODEL_THINKER, NeonReviewContract,
+    MODEL_HELM, MODEL_MANTA, MODEL_NANO, MODEL_NEON, MODEL_NOVA, MODEL_QUILL, MODEL_SAGE,
+    MODEL_SCOUT, MODEL_THINKER, NeonReviewContract,
 };
 use nioxs_nano::profiles;
 use nioxs_storage::NioDb;
@@ -730,7 +730,7 @@ impl Runner {
                 task: "Prepare the plan only".into(),
             };
             let mut messages = self.messages(&stage);
-            messages.push(json!({"role":"system","content":"Return only a JSON object with goal (string), success_criteria (array of strings), needs_context (boolean), and stages (array of {model, task}). Choose only the useful models from nio-echo for direct answers, nio-sage for teaching, nio-quill for writing, nio-scout for sourced research, nio-thinker for challenging assumptions, nio-nova for ideas, nio-atom for implementation, nio-neon for review/diagnosis. Do not include nio-flow, nio-nano, or nio-helm; Rust inserts bounded local evidence when needed and the final Helm gate. No tools or project inspections at this planning stage. Keep at most three specialist stages, no repeated model, and use the user's actual requested scope and offered capabilities. Set needs_context=false for casual questions, general knowledge, explanations, new-project ideas, and feasibility questions unless the answer requires this caller's existing files. Prefer Echo for casual answers. Do not turn requests for suggestions or feasibility into a request to build or approve a project."}));
+            messages.push(json!({"role":"system","content":"Return only a JSON object with goal (string), success_criteria (array of strings), needs_context (boolean), and stages (array of {model, task}). Choose only the useful models from nio-manta for companion & conversational direct answers, nio-sage for teaching, nio-quill for writing, nio-scout for sourced research, nio-thinker for challenging assumptions, nio-nova for ideas, nio-atom for implementation, nio-neon for review/diagnosis. Do not include nio-flow, nio-nano, or nio-helm; Rust inserts bounded local evidence when needed and the final Helm gate. No tools or project inspections at this planning stage. Keep at most three specialist stages, no repeated model, and use the user's actual requested scope and offered capabilities. Set needs_context=false for casual questions, general knowledge, explanations, new-project ideas, and feasibility questions unless the answer requires this caller's existing files. Prefer Manta for companion & casual answers. Do not turn requests for suggestions or feasibility into a request to build or approve a project."}));
             let result = self.query(&messages, &[]).await?;
             let content = result["choices"][0]["message"]["content"]
                 .as_str()
@@ -1238,7 +1238,8 @@ fn parse_plan(content: &str, prompt: &str) -> Plan {
             && plan.stages.iter().all(|stage| {
                 matches!(
                     stage.model.as_str(),
-                    MODEL_ECHO
+                    MODEL_MANTA
+                        | MODEL_ECHO
                         | MODEL_SAGE
                         | MODEL_QUILL
                         | MODEL_SCOUT
@@ -1277,7 +1278,7 @@ fn parse_plan(content: &str, prompt: &str) -> Plan {
                 } else if profiles::project_evidence_relevant(prompt) {
                     MODEL_NEON
                 } else {
-                    MODEL_ECHO
+                    MODEL_MANTA
                 }
                 .into(),
                 task: prompt.chars().take(1000).collect(),

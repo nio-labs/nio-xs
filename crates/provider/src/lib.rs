@@ -212,20 +212,38 @@ async fn decide(
     Json(nioxs_nano::decision::decide(&app.model, &request)).into_response()
 }
 
-async fn ray_chat_handler(app: &App, request: ChatRequest) -> Response {
-    let Some(engine) = &app.ray_engine else {
-        return error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "engine_unavailable",
-            "NioRay in-process engine is not loaded. Ensure nio-ray.Q4_K_M.gguf and tokenizer.json exist in ~/.nioxs/models/ or ./models/",
-        );
+async fn microlm_chat_handler(model_name: &str, request: ChatRequest) -> Response {
+    let engine = match nioxs_engine::RayEngine::for_model(model_name) {
+        Ok(engine) => engine,
+        Err(e) => {
+            return error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "engine_unavailable",
+                &format!(
+                    "In-process MicroLM engine for '{model_name}' could not be loaded: {e}. Run 'nioxs pull {model_name}'."
+                ),
+            );
+        }
     };
 
     let mut prompt = String::new();
-    prompt.push_str("<|im_start|>system\nYou are NioRay, a concise and lightning-fast coding reflex engine.<|im_end|>\n");
+    let system_prompt = match model_name {
+        "nio-manta" | "manta" => {
+            "You are NioManta, the warm, intelligent developer and architectural companion for NioGuru and NioXS."
+        }
+        "nio-viper" | "viper" => {
+            "You are NioViper, the ultra-fast tactical terminal command and shell reflex striker."
+        }
+        "nio-cuda" | "cuda" => {
+            "You are NioCuda, the tactical multi-agent swarm conductor and orchestrator."
+        }
+        _ => "You are NioRay, a concise and lightning-fast coding reflex engine.",
+    };
+
+    prompt.push_str(&format!("<|im_start|>system\n{system_prompt}<|im_end|>\n"));
     for msg in &request.messages {
         if msg.role == "system" {
-            continue; // Bypass heavy multi-kilobyte orchestrator context for reflex predator
+            continue;
         }
         let role = &msg.role;
         let content = msg.content.as_str().unwrap_or("");
@@ -234,13 +252,19 @@ async fn ray_chat_handler(app: &App, request: ChatRequest) -> Response {
     prompt.push_str("<|im_start|>assistant\n");
 
     let id = format!(
-        "chatcmpl-ray-{}",
+        "chatcmpl-{}-{}",
+        model_name.replace("nio-", ""),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0)
     );
-    let model = nioxs_contracts::MODEL_RAY;
+    let model = match model_name {
+        "nio-manta" | "manta" => nioxs_contracts::MODEL_MANTA,
+        "nio-viper" | "viper" => nioxs_contracts::MODEL_VIPER,
+        "nio-cuda" | "cuda" => nioxs_contracts::MODEL_CUDA,
+        _ => nioxs_contracts::MODEL_RAY,
+    };
 
     if !request.stream {
         match engine.generate(prompt, 512, 0.7, 0.9).await {
@@ -259,7 +283,7 @@ async fn ray_chat_handler(app: &App, request: ChatRequest) -> Response {
             Err(e) => error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "inference_error",
-                &format!("NioRay inference failed: {e}"),
+                &format!("MicroLM inference for '{model_name}' failed: {e}"),
             ),
         }
     } else {
@@ -308,7 +332,7 @@ async fn ray_chat_handler(app: &App, request: ChatRequest) -> Response {
             Err(e) => error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "inference_error",
-                &format!("NioRay stream failed: {e}"),
+                &format!("MicroLM stream for '{model_name}' failed: {e}"),
             ),
         }
     }
@@ -336,8 +360,11 @@ async fn chat(
             );
         }
     };
-    if request.model == nioxs_contracts::MODEL_RAY || request.model == "ray" {
-        return ray_chat_handler(&app, request).await;
+    match request.model.as_str() {
+        "nio-ray" | "ray" => return microlm_chat_handler("nio-ray", request).await,
+        "nio-manta" | "manta" => return microlm_chat_handler("nio-manta", request).await,
+        "nio-viper" | "viper" => return microlm_chat_handler("nio-viper", request).await,
+        _ => {}
     }
     let turn_override = match headers.get("x-nioxs-turn-id") {
         Some(value) => match value.to_str() {

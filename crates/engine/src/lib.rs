@@ -95,7 +95,11 @@ pub struct RayEngine {
 
 impl RayEngine {
     pub fn new() -> Result<Self> {
-        let (model_path, tokenizer_path) = Self::find_model_paths()?;
+        Self::for_model("nio-ray")
+    }
+
+    pub fn for_model(model_name: &str) -> Result<Self> {
+        let (model_path, tokenizer_path) = Self::find_or_pull_model_paths(model_name)?;
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -103,44 +107,121 @@ impl RayEngine {
         })
     }
 
+    pub fn from_paths(model_path: PathBuf, tokenizer_path: PathBuf) -> Self {
+        Self {
+            bundle: Arc::new(Mutex::new(None)),
+            model_path,
+            tokenizer_path,
+        }
+    }
+
     pub fn is_available() -> bool {
         Self::find_model_paths().is_ok()
     }
 
-    pub fn find_model_paths() -> Result<(PathBuf, PathBuf)> {
-        if let Ok(model) = std::env::var("NIOXS_RAY_MODEL") {
-            let model = PathBuf::from(model);
-            let tokenizer = std::env::var_os("NIOXS_TOKENIZER")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| Self::tokenizer_for_model(&model));
-            if model.is_file() && tokenizer.is_file() {
-                return Ok((model, tokenizer));
-            }
-            return Err(anyhow!(
-                "Configured NioRay model or matching tokenizer is missing: {:?}, {:?}",
-                model,
-                tokenizer
-            ));
+    pub fn is_model_available(model_name: &str) -> bool {
+        Self::find_model_paths_for(model_name).is_ok()
+    }
+
+    pub fn find_or_pull_model_paths(model_name: &str) -> Result<(PathBuf, PathBuf)> {
+        if let Ok(paths) = Self::find_model_paths_for(model_name) {
+            return Ok(paths);
         }
-        if std::env::var_os("NIOXS_TOKENIZER").is_some() {
-            return Err(anyhow!("Set NIOXS_RAY_MODEL together with NIOXS_TOKENIZER"));
+
+        let lowered = model_name.trim().to_ascii_lowercase();
+        let normalized = match lowered.as_str() {
+            "ray" | "nio-ray" => "nio-ray",
+            "viper" | "nio-viper" => "nio-viper",
+            "manta" | "nio-manta" => "nio-manta",
+            "cuda" | "nio-cuda" => "nio-cuda",
+            other => other,
+        };
+
+        // Try pulling via nioxs_artifacts with auto_yes = true when invoked programmatically
+        if let Ok(model_path) = nioxs_artifacts::prompt_and_pull_if_needed(normalized, true) {
+            let tokenizer_path = Self::tokenizer_for_model(&model_path);
+            if tokenizer_path.is_file() {
+                return Ok((model_path, tokenizer_path));
+            }
+        }
+
+        Self::find_model_paths_for(model_name)
+    }
+
+    pub fn find_model_paths() -> Result<(PathBuf, PathBuf)> {
+        Self::find_model_paths_for("nio-ray")
+    }
+
+    pub fn find_model_paths_for(model_name: &str) -> Result<(PathBuf, PathBuf)> {
+        let normalized = model_name.trim().to_ascii_lowercase();
+        let target_candidates: &[&str] = match normalized.as_str() {
+            "manta" | "nio-manta" => &[
+                "nio-manta-ast.Q4_0.gguf",
+                "nio-manta.Q4_K_M.gguf",
+                "nio-manta.Q4_0.gguf",
+            ],
+            "viper" | "nio-viper" => &[
+                "nio-viper-ast.Q4_0.gguf",
+                "nio-viper-ast-32k.Q4_0.gguf",
+                "nio-viper.Q4_K_M.gguf",
+            ],
+            "cuda" | "nio-cuda" => &[
+                "nio-cuda-ast.Q4_0.gguf",
+                "nio-cuda.Q4_K_M.gguf",
+                "nio-cuda.Q4_0.gguf",
+            ],
+            _ => &[
+                "nio-ray-moe.Q4_K_M.gguf",
+                "nio-ray-dev.Q4_K_M.gguf",
+                "nio-ray-ast.Q4_0.gguf",
+                "nio-ray.Q4_K_M.gguf",
+            ],
+        };
+
+        if normalized.contains("ray") {
+            if let Ok(model) = std::env::var("NIOXS_RAY_MODEL") {
+                let model = PathBuf::from(model);
+                let tokenizer = std::env::var_os("NIOXS_TOKENIZER")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| Self::tokenizer_for_model(&model));
+                if model.is_file() && tokenizer.is_file() {
+                    return Ok((model, tokenizer));
+                }
+                return Err(anyhow!(
+                    "Configured NioRay model or matching tokenizer is missing: {:?}, {:?}",
+                    model,
+                    tokenizer
+                ));
+            }
         }
 
         let home = std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
             .map(PathBuf::from);
         let directories = [
-            home.map(|h| h.join(".nioxs").join("models")),
+            home.as_ref().map(|h| h.join(".nioxs").join("models")),
             Some(PathBuf::from("models")),
             Some(PathBuf::from("../models")),
             Some(PathBuf::from("../../models")),
+            Some(PathBuf::from("../nio-ideas/models")),
+            Some(PathBuf::from("../../nio-ideas/models")),
+            Some(PathBuf::from("/home/mn/nio-labs/nio-ideas/models")),
+            Some(PathBuf::from(
+                "/home/mn/nio-labs/nio-xs-models/models/nio-cuda",
+            )),
+            Some(PathBuf::from(
+                "/home/mn/nio-labs/nio-xs-models/models/nio-manta",
+            )),
+            Some(PathBuf::from(
+                "/home/mn/nio-labs/nio-xs-models/models/nio-viper",
+            )),
+            Some(PathBuf::from(
+                "/home/mn/nio-labs/nio-xs-models/models/nio-ray",
+            )),
         ];
+
         for directory in directories.into_iter().flatten() {
-            for name in [
-                "nio-ray-moe.Q4_K_M.gguf",
-                "nio-ray-dev.Q4_K_M.gguf",
-                "nio-ray.Q4_K_M.gguf",
-            ] {
+            for name in target_candidates {
                 let model = directory.join(name);
                 let tokenizer = Self::tokenizer_for_model(&model);
                 if model.is_file() && tokenizer.is_file() {
@@ -148,17 +229,35 @@ impl RayEngine {
                 }
             }
         }
+
         Err(anyhow!(
-            "NioRay model/tokenizer pair not found. Install nio-ray-moe.Q4_K_M.gguf, nio-ray-dev.Q4_K_M.gguf with nio-ray-dev-tokenizer.json, or nio-ray.Q4_K_M.gguf with tokenizer.json, in ~/.nioxs/models/ or ./models/"
+            "Model '{model_name}' or tokenizer not found. Run 'nioxs pull {model_name}' to install it into ~/.nioxs/models/"
         ))
     }
 
     fn tokenizer_for_model(model: &std::path::Path) -> PathBuf {
         let name = match model.file_name().and_then(|s| s.to_str()) {
             Some("nio-ray-dev.Q4_K_M.gguf") => "nio-ray-dev-tokenizer.json",
+            Some(s) if s.contains("cuda") => "nio-cuda-tokenizer.json",
+            Some(s) if s.contains("viper") => "nio-viper-tokenizer.json",
             _ => "tokenizer.json",
         };
-        model.with_file_name(name)
+        let beside = model.with_file_name(name);
+        if beside.is_file() {
+            return beside;
+        }
+
+        // Check fallback ~/.nioxs/models/tokenizer.json
+        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+            let central = PathBuf::from(home)
+                .join(".nioxs")
+                .join("models")
+                .join("tokenizer.json");
+            if central.is_file() {
+                return central;
+            }
+        }
+        beside
     }
 
     fn validate_tokenizer(tokenizer: &Tokenizer, tokens: &[gguf_file::Value]) -> Result<()> {

@@ -91,6 +91,7 @@ pub fn skill_name(model: &str) -> Option<&'static str> {
     match model {
         MODEL_FLOW => Some("nioflow-orchestration"),
         MODEL_THINKER => Some("niothinker-reflection"),
+        MODEL_MANTA => Some("niomanta-companion"),
         MODEL_ECHO => Some("nioecho-answers"),
         MODEL_SAGE => Some("niosage-teaching"),
         MODEL_QUILL => Some("nioquill-writing"),
@@ -367,7 +368,7 @@ mod evidence_scope_tests {
 pub fn direct_answer(model: &str) -> bool {
     matches!(
         model,
-        MODEL_ECHO | MODEL_SAGE | MODEL_QUILL | MODEL_SCOUT | MODEL_THINKER
+        MODEL_MANTA | MODEL_ECHO | MODEL_SAGE | MODEL_QUILL | MODEL_SCOUT | MODEL_THINKER
     )
 }
 
@@ -391,6 +392,7 @@ pub fn tool_rounds(model: &str) -> usize {
         MODEL_NEON => 6,
         MODEL_SCOUT => 6,
         MODEL_THINKER => 3,
+        MODEL_MANTA => 4,
         MODEL_ECHO => 2,
         _ => 4,
     }
@@ -400,6 +402,7 @@ pub fn instructions(model: &str) -> Option<&'static str> {
     match model {
         MODEL_FLOW => Some(skill_body(FLOW_SKILL)),
         MODEL_THINKER => Some(skill_body(THINKER_SKILL)),
+        MODEL_MANTA => Some(skill_body(ECHO_SKILL)),
         MODEL_ECHO => Some(skill_body(ECHO_SKILL)),
         MODEL_SAGE => Some(skill_body(SAGE_SKILL)),
         MODEL_QUILL => Some(skill_body(QUILL_SKILL)),
