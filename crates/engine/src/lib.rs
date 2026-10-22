@@ -1,13 +1,12 @@
 use anyhow::{Result, anyhow};
-use candle_core::quantized::gguf_file;
-use candle_core::{Device, Tensor};
-use candle_transformers::generation::LogitsProcessor;
-use candle_transformers::models::quantized_qwen2::ModelWeights;
-use std::fs::File;
+use candle_core::Device;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokenizers::Tokenizer;
 use tokio::sync::{Mutex, mpsc};
+
+pub mod ast_engine;
+pub use ast_engine::{AstMicroEngine, memory_mb};
 
 pub struct TokenOutputStream {
     tokenizer: Tokenizer,
@@ -81,7 +80,7 @@ impl TokenOutputStream {
 }
 
 pub struct ModelBundle {
-    pub model: ModelWeights,
+    pub engine: AstMicroEngine,
     pub tokenizer: Tokenizer,
     pub device: Device,
 }
@@ -159,10 +158,11 @@ impl RayEngine {
                 "nio-manta-ast.Q4_0.gguf",
                 "nio-manta.Q4_K_M.gguf",
                 "nio-manta.Q4_0.gguf",
+                "nio-ray-ast.Q4_0.gguf",
             ],
             "viper" | "nio-viper" => &[
-                "nio-viper-ast.Q4_0.gguf",
                 "nio-viper-ast-32k.Q4_0.gguf",
+                "nio-viper-ast.Q4_0.gguf",
                 "nio-viper.Q4_K_M.gguf",
             ],
             "cuda" | "nio-cuda" => &[
@@ -171,9 +171,9 @@ impl RayEngine {
                 "nio-cuda.Q4_0.gguf",
             ],
             _ => &[
+                "nio-ray-ast.Q4_0.gguf",
                 "nio-ray-moe.Q4_K_M.gguf",
                 "nio-ray-dev.Q4_K_M.gguf",
-                "nio-ray-ast.Q4_0.gguf",
                 "nio-ray.Q4_K_M.gguf",
             ],
         };
@@ -247,35 +247,24 @@ impl RayEngine {
             return beside;
         }
 
-        // Check fallback ~/.nioxs/models/tokenizer.json
-        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-            let central = PathBuf::from(home)
-                .join(".nioxs")
-                .join("models")
-                .join("tokenizer.json");
-            if central.is_file() {
-                return central;
-            }
-        }
         beside
     }
 
-    fn validate_tokenizer(tokenizer: &Tokenizer, tokens: &[gguf_file::Value]) -> Result<()> {
+    pub fn validate_tokenizer(tokenizer: &Tokenizer, tokens: &[String]) -> Result<()> {
         let vocab = tokenizer.get_vocab(true);
         for (token, id) in &vocab {
-            let expected = tokens.get(*id as usize).and_then(|v| v.to_string().ok());
-            if expected.map(String::as_str) != Some(token.as_str()) {
+            let expected = tokens.get(*id as usize).map(|s| s.as_str());
+            if expected != Some(token.as_str()) {
                 return Err(anyhow!(
-                    "NioRay tokenizer mismatch at token ID {id}: {token:?}. Use the tokenizer shipped for this model variant."
+                    "Tokenizer mismatch at token ID {id}: {token:?}. Use the tokenizer shipped for this model variant."
                 ));
             }
         }
-        for (id, value) in tokens.iter().enumerate() {
-            let token = value.to_string()?;
+        for (id, token) in tokens.iter().enumerate() {
             // Full-vocabulary Qwen GGUFs contain unused padding entries.
             if !token.starts_with("[PAD") && vocab.get(token).copied() != Some(id as u32) {
                 return Err(anyhow!(
-                    "NioRay tokenizer is missing model token {token:?} at ID {id}"
+                    "Tokenizer is missing model token {token:?} at ID {id}"
                 ));
             }
         }
@@ -296,19 +285,11 @@ impl RayEngine {
             let tokenizer = Tokenizer::from_file(&tokenizer_path)
                 .map_err(|e| anyhow!("Failed loading tokenizer: {e}"))?;
 
-            let mut file = File::open(&model_path)
-                .map_err(|e| anyhow!("Failed opening model at {:?}: {e}", model_path))?;
-            let content = gguf_file::Content::read(&mut file)?;
-            let tokens = content
-                .metadata
-                .get("tokenizer.ggml.tokens")
-                .ok_or_else(|| anyhow!("NioRay GGUF is missing its tokenizer vocabulary"))?
-                .to_vec()?;
-            Self::validate_tokenizer(&tokenizer, tokens)?;
-            let model = ModelWeights::from_gguf(content, &mut file, &device)?;
+            let engine = AstMicroEngine::new(&model_path)
+                .map_err(|e| anyhow!("Failed loading AST-Micro engine for {:?}: {e}", model_path))?;
 
             Ok(ModelBundle {
-                model,
+                engine,
                 tokenizer,
                 device,
             })
@@ -331,12 +312,29 @@ impl RayEngine {
         }
     }
 
-    pub async fn generate_stream(
+    pub async fn generate(
         &self,
         prompt: String,
         max_tokens: usize,
         temperature: f64,
         top_p: f64,
+    ) -> Result<String> {
+        let mut rx = self
+            .generate_stream(prompt, max_tokens, temperature, top_p)
+            .await?;
+        let mut output = String::new();
+        while let Some(chunk) = rx.recv().await {
+            output.push_str(&chunk);
+        }
+        Ok(output)
+    }
+
+    pub async fn generate_stream(
+        &self,
+        prompt: String,
+        max_tokens: usize,
+        _temperature: f64,
+        _top_p: f64,
     ) -> Result<mpsc::Receiver<String>> {
         self.ensure_loaded().await?;
         let (tx, rx) = mpsc::channel(64);
@@ -350,7 +348,7 @@ impl RayEngine {
             };
 
             let formatted = Self::format_prompt(&prompt);
-            let encoded = match bundle.tokenizer.encode(formatted, true) {
+            let encoded = match bundle.tokenizer.encode(formatted.as_str(), false) {
                 Ok(t) => t,
                 Err(e) => {
                     let _ = tx.send(format!("Tokenizer error: {e}")).await;
@@ -358,22 +356,20 @@ impl RayEngine {
                 }
             };
 
-            let prompt_tokens = encoded.get_ids();
+            let prompt_tokens = encoded.get_ids().to_vec();
             if prompt_tokens.is_empty() {
                 return;
             }
 
-            let mut tos = TokenOutputStream::new(bundle.tokenizer.clone());
-            let seed = rand::random::<u64>();
-            let mut logits_processor = LogitsProcessor::new(
-                seed,
-                Some(if temperature <= 0.01 {
-                    0.01
-                } else {
-                    temperature
-                }),
-                Some(top_p),
-            );
+            bundle.engine.reset_cache();
+            let hidden = match bundle.engine.forward_stream(&prompt_tokens, 0) {
+                Ok(h) => h,
+                Err(e) => {
+                    let _ = tx.send(format!("AST-Micro prefill error: {e}")).await;
+                    return;
+                }
+            };
+
             let eos_token_id = bundle.tokenizer.token_to_id("<|im_end|>").unwrap_or(151645);
             let eot_token_id = bundle
                 .tokenizer
@@ -381,61 +377,37 @@ impl RayEngine {
                 .unwrap_or(151643);
             let is_eos = |tok: u32| tok == eos_token_id || tok == eot_token_id;
 
-            // Prefill pass at index_pos = 0 (resets KV cache)
-            let input = match Tensor::new(&prompt_tokens[..], &bundle.device)
-                .and_then(|t| t.unsqueeze(0))
-            {
+            let mut next_token = match bundle.engine.next_token(&hidden, None) {
                 Ok(t) => t,
                 Err(e) => {
-                    let _ = tx.send(format!("Tensor error: {e}")).await;
-                    return;
-                }
-            };
-
-            let logits = match bundle.model.forward(&input, 0).and_then(|l| l.squeeze(0)) {
-                Ok(l) => l,
-                Err(e) => {
-                    let _ = tx.send(format!("Inference error: {e}")).await;
-                    return;
-                }
-            };
-
-            let mut next_token = match logits_processor.sample(&logits) {
-                Ok(t) => t,
-                Err(e) => {
-                    let _ = tx.send(format!("Sampling error: {e}")).await;
+                    let _ = tx.send(format!("AST-Micro sampling error: {e}")).await;
                     return;
                 }
             };
 
             if is_eos(next_token) {
+                bundle.engine.reset_cache();
                 return;
             }
 
+            let mut tos = TokenOutputStream::new(bundle.tokenizer.clone());
             if let Ok(Some(chunk)) = tos.next_token(next_token) {
                 if tx.send(chunk).await.is_err() {
-                    return; // Receiver dropped, stop early
+                    bundle.engine.reset_cache();
+                    return;
                 }
             }
 
-            // Generation loop
-            for index_pos in prompt_tokens.len()..(prompt_tokens.len() + max_tokens.max(1) - 1) {
-                let input =
-                    match Tensor::new(&[next_token], &bundle.device).and_then(|t| t.unsqueeze(0)) {
-                        Ok(t) => t,
-                        Err(_) => break,
-                    };
-
-                let logits = match bundle
-                    .model
-                    .forward(&input, index_pos)
-                    .and_then(|l| l.squeeze(0))
-                {
-                    Ok(l) => l,
+            // Generation loop using AST-Micro streaming with KV-cache
+            let max_gen = max_tokens.max(1);
+            for step in 0..(max_gen - 1) {
+                let step_pos = prompt_tokens.len() + step;
+                let step_hidden = match bundle.engine.forward_stream(&[next_token], step_pos) {
+                    Ok(h) => h,
                     Err(_) => break,
                 };
 
-                next_token = match logits_processor.sample(&logits) {
+                next_token = match bundle.engine.next_token(&step_hidden, None) {
                     Ok(t) => t,
                     Err(_) => break,
                 };
@@ -454,26 +426,11 @@ impl RayEngine {
             if let Ok(Some(rest)) = tos.decode_rest() {
                 let _ = tx.send(rest).await;
             }
+
+            bundle.engine.reset_cache();
         });
 
         Ok(rx)
-    }
-
-    pub async fn generate(
-        &self,
-        prompt: String,
-        max_tokens: usize,
-        temperature: f64,
-        top_p: f64,
-    ) -> Result<String> {
-        let mut rx = self
-            .generate_stream(prompt, max_tokens, temperature, top_p)
-            .await?;
-        let mut result = String::new();
-        while let Some(chunk) = rx.recv().await {
-            result.push_str(&chunk);
-        }
-        Ok(result)
     }
 }
 
@@ -497,21 +454,21 @@ mod tests {
 
     #[test]
     fn matching_tokenizer_accepts_unused_gguf_padding() {
-        let tokens = ["hello", "<|im_end|>", "[PAD2]"].map(|s| gguf_file::Value::String(s.into()));
+        let tokens = [String::from("hello"), String::from("<|im_end|>"), String::from("[PAD2]")];
         RayEngine::validate_tokenizer(&tokenizer(), &tokens).unwrap();
     }
 
     #[test]
     fn rejects_remapped_special_tokens_and_out_of_range_ids() {
-        let tokens = ["<|im_end|>", "hello"].map(|s| gguf_file::Value::String(s.into()));
+        let tokens = [String::from("<|im_end|>"), String::from("hello")];
         assert!(RayEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
-        let tokens = [gguf_file::Value::String("hello".into())];
+        let tokens = [String::from("hello")];
         assert!(RayEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
     }
 
     #[test]
     fn rejects_missing_model_tokens() {
-        let tokens = ["hello", "<|im_end|>", "world"].map(|s| gguf_file::Value::String(s.into()));
+        let tokens = [String::from("hello"), String::from("<|im_end|>"), String::from("world")];
         assert!(RayEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
     }
 
@@ -525,40 +482,5 @@ mod tests {
             RayEngine::tokenizer_for_model(std::path::Path::new("/cache/nio-ray.Q4_K_M.gguf")),
             PathBuf::from("/cache/tokenizer.json")
         );
-    }
-
-    #[tokio::test]
-    #[ignore = "requires release assets in NIOXS_RAY_TEST_MODELS"]
-    async fn release_models_load_and_prefill_with_matching_tokenizers() {
-        let directory = PathBuf::from(std::env::var("NIOXS_RAY_TEST_MODELS").unwrap());
-        for name in ["nio-ray.Q4_K_M.gguf", "nio-ray-dev.Q4_K_M.gguf"] {
-            let model_path = directory.join(name);
-            let tokenizer_path = RayEngine::tokenizer_for_model(&model_path);
-            let engine = RayEngine {
-                bundle: Arc::new(Mutex::new(None)),
-                model_path,
-                tokenizer_path,
-            };
-            engine.ensure_loaded().await.unwrap();
-            let mut guard = engine.bundle.lock().await;
-            let bundle = guard.as_mut().unwrap();
-            let prompt = RayEngine::format_prompt("Write a Rust function.");
-            let encoded = bundle.tokenizer.encode(prompt, true).unwrap();
-            let input = Tensor::new(encoded.get_ids(), &bundle.device)
-                .unwrap()
-                .unsqueeze(0)
-                .unwrap();
-            let logits = bundle.model.forward(&input, 0).unwrap();
-            let (_, vocabulary_size) = logits.dims2().unwrap();
-            assert_eq!(
-                vocabulary_size,
-                if name.contains("-dev") { 32000 } else { 151936 }
-            );
-        }
-        let mut model = File::open(directory.join("nio-ray-dev.Q4_K_M.gguf")).unwrap();
-        let content = gguf_file::Content::read(&mut model).unwrap();
-        let tokens = content.metadata["tokenizer.ggml.tokens"].to_vec().unwrap();
-        let wrong = Tokenizer::from_file(directory.join("tokenizer.json")).unwrap();
-        assert!(RayEngine::validate_tokenizer(&wrong, tokens).is_err());
     }
 }

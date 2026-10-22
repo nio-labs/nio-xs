@@ -119,9 +119,10 @@ pub struct ChatRequest {
 
 impl ChatRequest {
     pub fn validate(&self) -> Result<usize, String> {
-        if !MODELS.contains(&self.model.as_str())
-            && self.model != MODEL_AUTO
-            && !LEGACY_MODELS.contains(&self.model.as_str())
+        let model_name = self.model.strip_prefix("nioxs::").unwrap_or(&self.model);
+        if !MODELS.contains(&model_name)
+            && model_name != MODEL_AUTO
+            && !LEGACY_MODELS.contains(&model_name)
         {
             return Err(format!("unsupported model; select {}", MODELS.join(", ")));
         }

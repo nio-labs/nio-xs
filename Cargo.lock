@@ -1393,7 +1393,10 @@ version = "0.4.5"
 dependencies = [
  "anyhow",
  "candle-core",
+ "candle-nn",
  "candle-transformers",
+ "libc",
+ "memmap2",
  "nioxs-artifacts",
  "rand 0.9.5",
  "serde",

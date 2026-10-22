@@ -360,10 +360,12 @@ async fn chat(
             );
         }
     };
-    match request.model.as_str() {
+    let model_norm = request.model.strip_prefix("nioxs::").unwrap_or(&request.model);
+    match model_norm {
         "nio-ray" | "ray" => return microlm_chat_handler("nio-ray", request).await,
         "nio-manta" | "manta" => return microlm_chat_handler("nio-manta", request).await,
         "nio-viper" | "viper" => return microlm_chat_handler("nio-viper", request).await,
+        "nio-cuda" | "cuda" => return microlm_chat_handler("nio-cuda", request).await,
         _ => {}
     }
     let turn_override = match headers.get("x-nioxs-turn-id") {

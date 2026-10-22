@@ -10,9 +10,12 @@ license.workspace = true
 nioxs-artifacts = { path = "../artifacts" }
 candle-core = "0.8"
 candle-transformers = "0.8"
+candle-nn = "0.8"
 tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rand = "0.9"
 anyhow = "1.0"
+memmap2 = "0.9"
+libc = "0.2"
