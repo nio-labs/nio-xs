@@ -19,17 +19,44 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|ray <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|ray <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
-  serve     Start HTTP OpenAI-compatible AI gateway (default)\n\
-  ray       Run local in-process NioRay predator inference on prompt\n\
-  mcp       Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
-  init      Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
-  undo      Rollback last applied multi-file patch (or specific patch_id)\n\
-  history   Display local session turn journal from .nioxs/history.jsonl\n\
+  serve         Start HTTP OpenAI-compatible AI gateway (default)\n\
+  pull [model]  Download and verify local MicroLM weights (ray, viper, manta, cuda, all)\n\
+  ray <prompt>  Run local in-process NioRay predator inference on prompt\n\
+  mcp           Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
+  init          Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
+  undo          Rollback last applied multi-file patch (or specific patch_id)\n\
+  history       Display local session turn journal from .nioxs/history.jsonl\n\
 \n\
 Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID, NIOXS_API_TOKEN_FILE (optional on loopback)."
         );
+        return Ok(());
+    }
+    if arg.as_deref() == Some("pull") {
+        let model_target = std::env::args().nth(2).unwrap_or_else(|| "all".into());
+        let auto_yes = std::env::args().any(|a| a == "-y" || a == "--yes");
+        let manifest = nioxs_artifacts::default_manifest();
+        if model_target == "all" {
+            println!("Pulling all production MicroLM models...");
+            for entry in &manifest {
+                let _ = nioxs_artifacts::ensure_model_ready(&entry.model_id, None)
+                    .map_err(|e| format!("Failed to download {}: {e}", entry.model_id))?;
+            }
+            println!("✔ All production models downloaded and verified.");
+            return Ok(());
+        }
+        let lowered = model_target.trim().to_ascii_lowercase();
+        let normalized = match lowered.as_str() {
+            "ray" | "nio-ray" => "nio-ray",
+            "viper" | "nio-viper" => "nio-viper",
+            "manta" | "nio-manta" => "nio-manta",
+            "cuda" | "nio-cuda" => "nio-cuda",
+            other => other,
+        };
+        let path = nioxs_artifacts::prompt_and_pull_if_needed(normalized, auto_yes)
+            .map_err(|e| format!("Failed to pull {normalized}: {e}"))?;
+        println!("✔ Model '{normalized}' ready: {}", path.display());
         return Ok(());
     }
     if arg.as_deref() == Some("ray") {
@@ -52,7 +79,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
         let target = std::env::args().nth(2).unwrap_or_else(|| "--all".into());
         match target.as_str() {
             "--aider" => {
-                let config = "openai-api-base: http://127.0.0.1:7460/v1\nmodel: openai/nio-flow\nopenai-api-key: nioxs-local\n";
+                let config = "openai-api-base: http://127.0.0.1:7460/v1\nmodel: openai/nio-cuda\nopenai-api-key: nioxs-local\n";
                 std::fs::write(".aider.conf.yml", config)?;
                 println!("✔ Successfully created .aider.conf.yml for Aider");
             }
@@ -76,7 +103,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
                     "provider": "openai",
                     "baseURL": "http://127.0.0.1:7460/v1",
                     "apiKey": "nioxs-local",
-                    "model": "nio-flow"
+                    "model": "nio-cuda"
                 });
                 std::fs::write("opencode.json", serde_json::to_string_pretty(&config)?)?;
                 println!("✔ Successfully created opencode.json for OpenCode");
@@ -85,11 +112,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
                 println!("Cursor OpenAI Endpoint Configuration:");
                 println!("  Base URL: http://127.0.0.1:7460/v1");
                 println!("  API Key:  nioxs-local");
-                println!("  Model:    nio-flow");
+                println!("  Model:    nio-cuda");
             }
             _ => {
                 println!("Auto-configuring coding agent settings in current directory...");
-                let aider_cfg = "openai-api-base: http://127.0.0.1:7460/v1\nmodel: openai/nio-flow\nopenai-api-key: nioxs-local\n";
+                let aider_cfg = "openai-api-base: http://127.0.0.1:7460/v1\nmodel: openai/nio-cuda\nopenai-api-key: nioxs-local\n";
                 let _ = std::fs::write(".aider.conf.yml", aider_cfg);
                 let cline_cfg = serde_json::json!({
                     "mcpServers": {

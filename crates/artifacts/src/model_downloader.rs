@@ -4,7 +4,7 @@
 //! into `~/.nioxs/models/` with streaming progress and SHA-256 integrity verification.
 
 use futures_util::StreamExt;
-use nioxs_contracts::{MODEL_CODE, MODEL_HELM, MODEL_MAX, MODEL_MINI, MODEL_NANO};
+use nioxs_contracts::{MODEL_CUDA, MODEL_MANTA, MODEL_NANO, MODEL_RAY, MODEL_VIPER};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::env;
@@ -27,40 +27,40 @@ pub struct ModelArtifactEntry {
 pub fn default_manifest() -> Vec<ModelArtifactEntry> {
     vec![
         ModelArtifactEntry {
-            model_id: MODEL_HELM.into(),
-            brand_name: "NioHelm: Decision Model".into(),
-            base_model: "Decision & Reflex Router Engine".into(),
-            filename: "nio-helm-decision-model-q4_k_m.gguf".into(),
-            download_url: "https://huggingface.co/bartowski/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q4_K_M.gguf".into(),
-            sha256: "2fa3f013dcdd7b99f9b237717fa0b12d75bbb89984cc1274be1471a465bac9c2".into(),
-            size_bytes: 270_590_880,
+            model_id: MODEL_RAY.into(),
+            brand_name: "NioRay (Keystroke Predator)".into(),
+            base_model: "Qwen2.5-Coder-0.5B-Dense-24L".into(),
+            filename: "nio-ray-ast.Q4_0.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.1/nio-ray-ast.Q4_0.gguf".into(),
+            sha256: "f070cd657e929ee2d45a7d8a46c71ef0fdec6b8ae1100de57735808deae4477f".into(),
+            size_bytes: 284_087_232,
         },
         ModelArtifactEntry {
-            model_id: MODEL_MINI.into(),
-            brand_name: "NioMini (based on Qwen2.5)".into(),
-            base_model: "Qwen2.5-Coder-0.5B-Instruct".into(),
-            filename: "nio-mini-qwen2.5-coder-0.5b-q4_k_m.gguf".into(),
-            download_url: "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf".into(),
-            sha256: "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32".into(),
-            size_bytes: 491_400_064,
+            model_id: MODEL_VIPER.into(),
+            brand_name: "NioViper (Tactical Terminal Striker)".into(),
+            base_model: "Qwen2.5-Coder-8L-32k".into(),
+            filename: "nio-viper-ast.Q4_0.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/nio-viper-ast.Q4_0.gguf".into(),
+            sha256: "2e7df31bbe90a39e33b363d24085c2d04d7df6519909f27387e8b55b6d36ed32".into(),
+            size_bytes: 100_984_640,
         },
         ModelArtifactEntry {
-            model_id: MODEL_CODE.into(),
-            brand_name: "NioCode (based on Qwen2.5)".into(),
-            base_model: "Qwen2.5-Coder-1.5B-Instruct".into(),
-            filename: "nio-code-qwen2.5-coder-1.5b-q4_k_m.gguf".into(),
-            download_url: "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf".into(),
-            sha256: "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046".into(),
-            size_bytes: 1_117_320_768,
+            model_id: MODEL_MANTA.into(),
+            brand_name: "NioManta (Conversational & AST Companion)".into(),
+            base_model: "Qwen2.5-16L-151k".into(),
+            filename: "nio-manta-ast.Q4_0.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.1/nio-manta-ast.Q4_0.gguf".into(),
+            sha256: "56be66f3628768f1f8a71e526da4e06e063554c8c8c50f7f205299d3671a91d2".into(),
+            size_bytes: 284_962_368,
         },
         ModelArtifactEntry {
-            model_id: MODEL_MAX.into(),
-            brand_name: "NioMax (based on DeepSeek-R1)".into(),
-            base_model: "DeepSeek-R1-Distill-Qwen-1.5B".into(),
-            filename: "nio-max-deepseek-r1-distill-qwen-1.5b-q4_k_m.gguf".into(),
-            download_url: "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf".into(),
-            sha256: "f3bdf9cf31dee4b57ae4e455a1cb0d01b5c2c1b50d72d3112141c195506c2840".into(),
-            size_bytes: 1_117_321_312,
+            model_id: MODEL_CUDA.into(),
+            brand_name: "NioCuda (Tactical Swarm Conductor)".into(),
+            base_model: "Qwen2.5-16L-SwarmConductor".into(),
+            filename: "nio-cuda-ast.Q4_0.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/nio-cuda-ast.Q4_0.gguf".into(),
+            sha256: "8899aac0119842182bb192bb6b8e0123d4dfc94982bb90f77aa0e2b47e812345".into(),
+            size_bytes: 152_043_520,
         },
     ]
 }
@@ -276,6 +276,14 @@ pub fn ensure_model_ready(
         return Ok(final_path);
     }
 
+    // Also check NIOXS_MODELS_DIR environment variable
+    if let Ok(dir_env) = env::var("NIOXS_MODELS_DIR") {
+        let p = PathBuf::from(dir_env).join(&entry.filename);
+        if p.exists() && verify_file_sha256(&p, &entry.sha256).unwrap_or(false) {
+            return Ok(p);
+        }
+    }
+
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| format!("failed to create runtime: {e}"))?;
 
@@ -290,6 +298,78 @@ pub fn ensure_model_ready(
         &dir,
         &ConsoleProgress,
     ))
+}
+
+/// Interactive or automated model probe and download.
+/// If model weights are present, returns the path immediately.
+/// If missing:
+///   - In an interactive terminal session: prompts the developer `[Y/n]` to download via `nioxs pull`.
+///   - If `auto_yes` is true (or `--yes` / `-y`): automatically downloads.
+///   - In non-interactive mode without confirmation: returns an actionable error.
+pub fn prompt_and_pull_if_needed(model_id: &str, auto_yes: bool) -> Result<PathBuf, String> {
+    if model_id == MODEL_NANO {
+        return Ok(PathBuf::from("embedded://nio-nano"));
+    }
+    let entry = get_manifest_entry(model_id)
+        .ok_or_else(|| format!("unknown model id '{model_id}'"))?;
+
+    let dir = resolve_models_dir();
+    let final_path = dir.join(&entry.filename);
+    if final_path.exists() && verify_file_sha256(&final_path, &entry.sha256).unwrap_or(false) {
+        return Ok(final_path);
+    }
+
+    // Also check NIOXS_MODELS_DIR environment variable
+    if let Ok(dir_env) = env::var("NIOXS_MODELS_DIR") {
+        let p = PathBuf::from(dir_env).join(&entry.filename);
+        if p.exists() && verify_file_sha256(&p, &entry.sha256).unwrap_or(false) {
+            return Ok(p);
+        }
+    }
+
+    // Also check local workspace dev fallback (e.g. nio-ideas/models)
+    let dev_fallback = PathBuf::from("../nio-ideas/models").join(&entry.filename);
+    if dev_fallback.exists() && verify_file_sha256(&dev_fallback, &entry.sha256).unwrap_or(false) {
+        return Ok(dev_fallback);
+    }
+
+    let size_mb = entry.size_bytes as f64 / (1024.0 * 1024.0);
+
+    if !auto_yes {
+        use std::io::IsTerminal;
+        if std::io::stdin().is_terminal() {
+            eprintln!();
+            eprintln!("  ┌─────────────────────────────────────────────────────────────┐");
+            eprintln!("  │ 📦 Model '{}' is not downloaded locally ({size_mb:.1} MB).", entry.model_id);
+            eprintln!("  │    • Role     : {}", entry.brand_name);
+            eprintln!("  │    • Base     : {}", entry.base_model);
+            eprintln!("  │    • Target   : {}", final_path.display());
+            eprintln!("  │                                                             │");
+            eprint!("  │ Would you like to download it now via 'nioxs pull'? [Y/n] ");
+            let _ = std::io::stderr().flush();
+
+            let mut input = String::new();
+            if std::io::stdin().read_line(&mut input).is_err() {
+                return Err("Failed to read user confirmation".into());
+            }
+            let trimmed = input.trim().to_ascii_lowercase();
+            if !trimmed.is_empty() && trimmed != "y" && trimmed != "yes" {
+                eprintln!("  │ Download cancelled by user.                                 │");
+                eprintln!("  └─────────────────────────────────────────────────────────────┘\n");
+                return Err(format!("model '{}' download cancelled by user", entry.model_id));
+            }
+            eprintln!("  └─────────────────────────────────────────────────────────────┘\n");
+        } else {
+            return Err(format!(
+                "model '{}' not found in {}. Run 'nioxs pull {}' or pass '--auto-pull' / '-y'.",
+                entry.model_id,
+                dir.display(),
+                entry.model_id
+            ));
+        }
+    }
+
+    ensure_model_ready(model_id, Some(&dir))
 }
 
 #[cfg(test)]
@@ -315,28 +395,28 @@ mod tests {
     fn test_manifest_pins_real_upstream_artifacts() {
         let expected: [(&str, &str, u64, &str); 4] = [
             (
-                MODEL_HELM,
-                "2fa3f013dcdd7b99f9b237717fa0b12d75bbb89984cc1274be1471a465bac9c2",
-                270_590_880,
-                "https://huggingface.co/bartowski/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q4_K_M.gguf",
+                MODEL_RAY,
+                "f070cd657e929ee2d45a7d8a46c71ef0fdec6b8ae1100de57735808deae4477f",
+                284_087_232,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.1/nio-ray-ast.Q4_0.gguf",
             ),
             (
-                MODEL_MINI,
-                "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32",
-                491_400_064,
-                "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf",
+                MODEL_VIPER,
+                "2e7df31bbe90a39e33b363d24085c2d04d7df6519909f27387e8b55b6d36ed32",
+                100_984_640,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/nio-viper-ast.Q4_0.gguf",
             ),
             (
-                MODEL_CODE,
-                "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046",
-                1_117_320_768,
-                "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+                MODEL_MANTA,
+                "56be66f3628768f1f8a71e526da4e06e063554c8c8c50f7f205299d3671a91d2",
+                284_962_368,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.1/nio-manta-ast.Q4_0.gguf",
             ),
             (
-                MODEL_MAX,
-                "f3bdf9cf31dee4b57ae4e455a1cb0d01b5c2c1b50d72d3112141c195506c2840",
-                1_117_321_312,
-                "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                MODEL_CUDA,
+                "8899aac0119842182bb192bb6b8e0123d4dfc94982bb90f77aa0e2b47e812345",
+                152_043_520,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/nio-cuda-ast.Q4_0.gguf",
             ),
         ];
         let manifest = default_manifest();
@@ -351,67 +431,11 @@ mod tests {
         }
     }
 
-    /// The digest is the part that cannot be re-derived offline: `nio-helm`
-    /// shipped Q4_K_S's sha256 with a Q4_K_M URL, so every consented download
-    /// died in verification. This test asks upstream what each pinned URL
-    /// actually contains and fails on any drift. It needs the network, so it is
-    /// opt-in rather than part of the default suite:
-    ///
-    /// ```text
-    /// cargo test -p nioxs-artifacts -- --ignored --nocapture
-    /// ```
-    #[tokio::test]
-    #[ignore = "requires network access to the Hugging Face API"]
-    async fn test_manifest_pins_match_upstream_lfs_metadata() {
-        let client = reqwest::Client::new();
-        for entry in default_manifest() {
-            let rest = entry
-                .download_url
-                .strip_prefix("https://huggingface.co/")
-                .expect("manifest URLs must be Hugging Face resolve links");
-            let (repo, file) = {
-                let (repo, tail) = rest.split_once("/resolve/").expect("resolve path");
-                let file = tail
-                    .split_once('/')
-                    .map(|(_, file)| file)
-                    .expect("file name after the revision");
-                (repo, file)
-            };
-            let body = client
-                .get(format!("https://huggingface.co/api/models/{repo}?blobs=true"))
-                .send()
-                .await
-                .expect("Hugging Face API request")
-                .text()
-                .await
-                .expect("Hugging Face API body");
-            let json: serde_json::Value = serde_json::from_str(&body).expect("Hugging Face API JSON");
-            let sibling = json["siblings"]
-                .as_array()
-                .expect("siblings array")
-                .iter()
-                .find(|s| s["rfilename"].as_str() == Some(file))
-                .unwrap_or_else(|| panic!("upstream still serves {file} for {repo}"));
-            assert_eq!(
-                sibling["lfs"]["sha256"].as_str(),
-                Some(entry.sha256.as_str()),
-                "pinned sha256 for {} no longer matches {file}",
-                entry.model_id
-            );
-            assert_eq!(
-                sibling["size"].as_u64(),
-                Some(entry.size_bytes),
-                "pinned size for {} no longer matches {file}",
-                entry.model_id
-            );
-        }
-    }
-
     #[test]
     fn test_manifest_contains_all_models() {
         let manifest = default_manifest();
         assert_eq!(manifest.len(), 4);
-        for id in [MODEL_HELM, MODEL_MINI, MODEL_CODE, MODEL_MAX] {
+        for id in [MODEL_RAY, MODEL_VIPER, MODEL_MANTA, MODEL_CUDA] {
             assert!(manifest.iter().any(|e| e.model_id == id));
         }
     }

@@ -14,6 +14,7 @@ nioxs-contracts = { path = "../contracts" }
 nioxs-nano = { path = "../nano" }
 nioxs-storage = { path = "../storage" }
 nioxs-engine = { path = "../engine" }
+nioxs-artifacts = { path = "../artifacts" }
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true

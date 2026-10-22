@@ -1359,7 +1359,12 @@ dependencies = [
 name = "nioxs-artifacts"
 version = "0.4.5"
 dependencies = [
+ "futures-util",
+ "nioxs-contracts",
+ "reqwest",
  "serde",
+ "sha2",
+ "tokio",
 ]
 
 [[package]]
@@ -1420,6 +1425,7 @@ version = "0.4.5"
 dependencies = [
  "axum",
  "futures-util",
+ "nioxs-artifacts",
  "nioxs-browser",
  "nioxs-contracts",
  "nioxs-engine",
