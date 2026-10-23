@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use candle_core::Device;
+use candle_core::{Device, IndexOp};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokenizers::Tokenizer;
@@ -286,6 +286,23 @@ impl RayEngine {
         Ok(())
     }
 
+    pub fn find_candidate_ngram(context: &[u32], ngram_len: usize) -> Option<u32> {
+        if context.len() < ngram_len + 1 {
+            return None;
+        }
+        let query = &context[context.len() - ngram_len..];
+        let search_limit = context.len() - ngram_len;
+        for i in (0..search_limit).rev() {
+            if context[i..].starts_with(query) {
+                let match_idx = i + ngram_len;
+                if match_idx < search_limit {
+                    return Some(context[match_idx]);
+                }
+            }
+        }
+        None
+    }
+
     pub fn format_prompt(raw_prompt: &str) -> String {
         if raw_prompt.contains("<|im_start|>") {
             raw_prompt.to_string()
@@ -322,7 +339,7 @@ impl RayEngine {
         _top_p: f64,
     ) -> Result<mpsc::Receiver<String>> {
         self.ensure_loaded().await?;
-        let (tx, rx) = mpsc::channel(1);
+        let (tx, rx) = mpsc::channel(64);
 
         let bundle_arc = self.bundle.clone();
         tokio::task::spawn_blocking(move || {
@@ -395,24 +412,78 @@ impl RayEngine {
                 }
             }
 
-            // Generation loop using AST-Micro streaming with KV-cache
+            // Generation loop using prompt-lookup speculative decoding with KV-cache
+            let mut context_tokens = prompt_tokens.clone();
+            context_tokens.push(next_token);
+
             let max_gen = max_tokens.max(1);
-            for step in 0..(max_gen - 1) {
-                let step_pos = prompt_tokens.len() + step;
-                let step_hidden = match bundle.engine.forward_stream(&[next_token], step_pos) {
-                    Ok(h) => h,
-                    Err(_) => break,
+            let mut current_pos = prompt_tokens.len();
+            while current_pos < prompt_tokens.len() + max_gen - 1 {
+                let draft = if context_tokens.len() >= 3 {
+                    Self::find_candidate_ngram(&context_tokens, 2)
+                        .or_else(|| Self::find_candidate_ngram(&context_tokens, 3))
+                } else {
+                    None
                 };
 
-                next_token = match bundle.engine.next_token(&step_hidden, None) {
-                    Ok(t) => t,
-                    Err(_) => break,
-                };
+                if let Some(cand) = draft {
+                    if let Ok(out) = bundle.engine.forward_all(&[next_token, cand], current_pos) {
+                        let h0 = out.i((.., 0, ..)).ok();
+                        let pred_1 = h0.as_ref().and_then(|h| bundle.engine.next_token(h, None).ok());
+
+                        if pred_1 == Some(cand) && !is_eos(cand) {
+                            // Candidate matched! Emit cand
+                            context_tokens.push(cand);
+                            if let Ok(Some(chunk)) = tos.next_token(cand) {
+                                if chunk.contains("<|im_end|>")
+                                    || chunk.contains("<|im_start|>")
+                                    || chunk.contains("<|endoftext|>")
+                                    || chunk.contains("\nuser\n")
+                                    || chunk.contains("\nUser:")
+                                {
+                                    break;
+                                }
+                                if tx.blocking_send(chunk).is_err() {
+                                    break;
+                                }
+                            }
+
+                            // Predict next token from h1
+                            let h1 = out.i((.., 1, ..)).ok();
+                            next_token = match h1.as_ref().and_then(|h| bundle.engine.next_token(h, None).ok()) {
+                                Some(t) => t,
+                                None => break,
+                            };
+                            current_pos += 2;
+                        } else {
+                            // Mismatch: rollback KV cache
+                            bundle.engine.truncate_kv(current_pos + 1);
+                            next_token = match pred_1 {
+                                Some(t) => t,
+                                None => break,
+                            };
+                            current_pos += 1;
+                        }
+                    } else {
+                        break;
+                    }
+                } else {
+                    let step_hidden = match bundle.engine.forward_stream(&[next_token], current_pos) {
+                        Ok(h) => h,
+                        Err(_) => break,
+                    };
+                    next_token = match bundle.engine.next_token(&step_hidden, None) {
+                        Ok(t) => t,
+                        Err(_) => break,
+                    };
+                    current_pos += 1;
+                }
 
                 if is_eos(next_token) {
                     break;
                 }
 
+                context_tokens.push(next_token);
                 if let Ok(Some(chunk)) = tos.next_token(next_token) {
                     if chunk.contains("<|im_end|>")
                         || chunk.contains("<|im_start|>")
@@ -449,6 +520,13 @@ impl RayEngine {
 mod tests {
     use super::*;
     use tokenizers::models::wordlevel::WordLevel;
+
+    #[test]
+    fn test_prompt_lookup_finds_ngram() {
+        let tokens = vec![10, 20, 30, 40, 50, 10, 20];
+        let cand = RayEngine::find_candidate_ngram(&tokens, 2);
+        assert_eq!(cand, Some(30));
+    }
 
     fn tokenizer() -> Tokenizer {
         let model = WordLevel::builder()

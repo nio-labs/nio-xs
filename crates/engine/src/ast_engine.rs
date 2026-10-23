@@ -712,7 +712,14 @@ impl AstMicroEngine {
                 )?;
             }
         } else {
+            // Prefetch the first layer
+            self.prefetch_layer(0);
             for layer_idx in 0..self.block_count {
+                // Prefetch NEXT layer while computing current one (pipeline overlap)
+                if layer_idx + 1 < self.block_count {
+                    self.prefetch_layer(layer_idx + 1);
+                }
+
                 let layer = self.load_layer(layer_idx)?;
                 layer_in = layer.forward(
                     &layer_in,
@@ -724,8 +731,19 @@ impl AstMicroEngine {
                 )?;
                 drop(layer);
 
-                // Active layer eviction from kernel physical page table
-                self.evict_layer(layer_idx);
+                // Batch eviction: evict in pairs to halve kernel syscalls
+                // Each pair of layers ~30MB, well within <100MB budget
+                if layer_idx % 2 == 1 {
+                    self.evict_layer(layer_idx - 1);
+                    self.evict_layer(layer_idx);
+                    unsafe {
+                        libc::malloc_trim(0);
+                    }
+                }
+            }
+            // Evict the last layer if block_count is odd
+            if self.block_count % 2 == 1 {
+                self.evict_layer(self.block_count - 1);
                 unsafe {
                     libc::malloc_trim(0);
                 }
@@ -735,6 +753,77 @@ impl AstMicroEngine {
         let out = self.output_norm.forward(&layer_in)?;
         let last_hidden = out.i((.., seq_len - 1, ..))?;
         Ok(last_hidden)
+    }
+
+    pub fn truncate_kv(&mut self, target_len: usize) {
+        for kv in &mut self.kv_caches {
+            if let Some((k, v)) = kv {
+                if let (Ok(k_sub), Ok(v_sub)) = (k.narrow(2, 0, target_len), v.narrow(2, 0, target_len)) {
+                    *k = k_sub;
+                    *v = v_sub;
+                }
+            }
+        }
+    }
+
+    pub fn forward_all(&mut self, tokens: &[u32], index_pos: usize) -> Result<Tensor> {
+        let seq_len = tokens.len();
+        let total_len = index_pos + seq_len;
+        let mask = if seq_len == 1 {
+            None
+        } else {
+            Some(self.causal_mask(seq_len, total_len)?)
+        };
+
+        let mut layer_in = self.embed(tokens)?;
+
+        if let Some(ref layers) = self.cached_layers {
+            for (layer_idx, layer) in layers.iter().enumerate() {
+                layer_in = layer.forward(
+                    &layer_in,
+                    mask.as_ref(),
+                    index_pos,
+                    &self.cos,
+                    &self.sin,
+                    &mut self.kv_caches[layer_idx],
+                )?;
+            }
+        } else {
+            self.prefetch_layer(0);
+            for layer_idx in 0..self.block_count {
+                if layer_idx + 1 < self.block_count {
+                    self.prefetch_layer(layer_idx + 1);
+                }
+
+                let layer = self.load_layer(layer_idx)?;
+                layer_in = layer.forward(
+                    &layer_in,
+                    mask.as_ref(),
+                    index_pos,
+                    &self.cos,
+                    &self.sin,
+                    &mut self.kv_caches[layer_idx],
+                )?;
+                drop(layer);
+
+                if layer_idx % 2 == 1 {
+                    self.evict_layer(layer_idx - 1);
+                    self.evict_layer(layer_idx);
+                    unsafe {
+                        libc::malloc_trim(0);
+                    }
+                }
+            }
+            if self.block_count % 2 == 1 {
+                self.evict_layer(self.block_count - 1);
+                unsafe {
+                    libc::malloc_trim(0);
+                }
+            }
+        }
+
+        let out = self.output_norm.forward(&layer_in)?;
+        Ok(out)
     }
 
     pub fn next_token(&mut self, hidden: &Tensor, candidates: Option<&[u32]>) -> Result<u32> {
