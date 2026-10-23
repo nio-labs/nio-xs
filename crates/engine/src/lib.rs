@@ -93,9 +93,12 @@ impl PhraseBuffer {
     }
 
     fn push(&mut self, chunk: &str, tx: &mpsc::Sender<String>) -> bool {
+        let was_empty = self.buffer.is_empty();
         self.buffer.push_str(chunk);
 
-        if chunk.contains(' ') || chunk.contains('\n') {
+        if was_empty && !chunk.trim().is_empty() {
+            self.word_count = chunk.split_whitespace().count().max(1);
+        } else if chunk.contains(' ') || chunk.contains('\n') {
             self.word_count += chunk.split_whitespace().count().max(1);
         }
 
@@ -103,13 +106,12 @@ impl PhraseBuffer {
             || self.buffer.contains("```")
             || self.buffer.contains('<')
             || self.buffer.contains('>')
-            || self.word_count >= 2
-            || (self.buffer.len() >= 16 && (self.buffer.ends_with(' ') || self.buffer.ends_with('\t')))
+            || self.word_count >= 4
+            || (self.buffer.len() >= 32 && (self.buffer.ends_with(' ') || self.buffer.ends_with('\t')))
             || self.buffer.ends_with(". ")
             || self.buffer.ends_with("! ")
             || self.buffer.ends_with("? ")
-            || self.buffer.ends_with(": ")
-            || self.buffer.ends_with(", ");
+            || (self.word_count >= 3 && (self.buffer.ends_with(": ") || self.buffer.ends_with(", ")));
 
         if should_flush && !self.buffer.is_empty() {
             let to_send = std::mem::take(&mut self.buffer);
@@ -584,16 +586,18 @@ mod tests {
             let mut pb = PhraseBuffer::new();
 
             assert!(pb.push("Hello", &tx));
-            assert!(pb.push(" world! ", &tx));
-            assert!(pb.push("tail", &tx));
+            assert!(pb.push(" world", &tx));
+            assert!(pb.push(" from", &tx));
+            assert!(pb.push(" NioXS", &tx));
+            assert!(pb.push(" tail", &tx));
             pb.flush(&tx);
         }).join().unwrap();
 
-        let chunk1 = rx.blocking_recv().expect("Should flush on 2 words with boundary");
-        assert_eq!(chunk1, "Hello world! ");
+        let chunk1 = rx.blocking_recv().expect("Should flush on 4 words");
+        assert_eq!(chunk1, "Hello world from NioXS");
 
         let chunk2 = rx.blocking_recv().expect("Should flush tail");
-        assert_eq!(chunk2, "tail");
+        assert_eq!(chunk2, " tail");
     }
 
     #[test]
