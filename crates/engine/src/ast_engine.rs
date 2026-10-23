@@ -736,17 +736,11 @@ impl AstMicroEngine {
                 if layer_idx % 2 == 1 {
                     self.evict_layer(layer_idx - 1);
                     self.evict_layer(layer_idx);
-                    unsafe {
-                        libc::malloc_trim(0);
-                    }
                 }
             }
             // Evict the last layer if block_count is odd
             if self.block_count % 2 == 1 {
                 self.evict_layer(self.block_count - 1);
-                unsafe {
-                    libc::malloc_trim(0);
-                }
             }
         }
 
@@ -809,16 +803,10 @@ impl AstMicroEngine {
                 if layer_idx % 2 == 1 {
                     self.evict_layer(layer_idx - 1);
                     self.evict_layer(layer_idx);
-                    unsafe {
-                        libc::malloc_trim(0);
-                    }
                 }
             }
             if self.block_count % 2 == 1 {
                 self.evict_layer(self.block_count - 1);
-                unsafe {
-                    libc::malloc_trim(0);
-                }
             }
         }
 
