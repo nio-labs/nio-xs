@@ -180,6 +180,51 @@ fn precompute_freqs_cis(
     Ok((cos, sin))
 }
 
+#[derive(Clone)]
+pub struct PrefixCache {
+    pub tokens: Vec<u32>,
+    pub kv_caches: Vec<Option<(Tensor, Tensor)>>,
+}
+
+#[derive(Clone)]
+pub struct TensorRef {
+    pub offset: usize,
+    pub size: usize,
+    pub shape: Vec<usize>,
+    pub dtype: GgmlDType,
+}
+
+fn resolve_tensor(content: &gguf_file::Content, name: &str) -> Result<TensorRef> {
+    let info = content
+        .tensor_infos
+        .get(name)
+        .ok_or_else(|| anyhow!("missing tensor {name}"))?;
+    let offset = (content.tensor_data_offset + info.offset) as usize;
+    let size = (info.shape.elem_count() / info.ggml_dtype.block_size()) * info.ggml_dtype.type_size();
+    Ok(TensorRef {
+        offset,
+        size,
+        shape: info.shape.dims().to_vec(),
+        dtype: info.ggml_dtype,
+    })
+}
+
+#[derive(Clone)]
+pub struct LayerStaticData {
+    pub attention_bq: Tensor,
+    pub attention_bk: Tensor,
+    pub attention_bv: Tensor,
+    pub attention_norm: RmsNorm,
+    pub ffn_norm: RmsNorm,
+    pub wq: TensorRef,
+    pub wk: TensorRef,
+    pub wv: TensorRef,
+    pub wo: TensorRef,
+    pub w1: TensorRef,
+    pub w2: TensorRef,
+    pub w3: TensorRef,
+}
+
 pub struct AstMicroEngine {
     pub mmap: Mmap,
     pub content: gguf_file::Content,
@@ -204,6 +249,9 @@ pub struct AstMicroEngine {
     pub layer_ranges: Vec<Vec<(usize, usize)>>,
     pub kv_caches: Vec<Option<(Tensor, Tensor)>>,
     pub masks: HashMap<usize, Tensor>,
+    pub cached_layers: Option<Vec<LayerWeights>>,
+    pub prefix_cache: Option<PrefixCache>,
+    pub layer_static: Vec<LayerStaticData>,
 }
 
 impl AstMicroEngine {
@@ -258,7 +306,33 @@ impl AstMicroEngine {
         let norm_tensor = content.tensor(&mut cursor, "output_norm.weight", &device)?;
         let output_norm = RmsNorm::from_qtensor(norm_tensor, rms_norm_eps)?;
 
-        let output_weight = None;
+        // By default, preserve strict <100MB peak RAM via AST-Micro streaming eviction.
+        // Caching full layers into RAM (~350MB) can be enabled via NIOXS_CACHE_LAYERS=1.
+        let cache_layers = std::env::var("NIOXS_CACHE_LAYERS")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false);
+
+        let output_weight = if cache_layers {
+            if let Some(info) = content.tensor_infos.get("output.weight") {
+                let start = (content.tensor_data_offset + info.offset) as usize;
+                let size = (info.shape.elem_count() / info.ggml_dtype.block_size()) * info.ggml_dtype.type_size();
+                let slice = &mmap[start..start + size];
+                qtensor_from_ggml(info.ggml_dtype, slice, info.shape.dims().to_vec(), &device)
+                    .ok()
+                    .and_then(|qt| QMatMul::from_qtensor(qt).ok())
+            } else if let Some(info) = content.tensor_infos.get("token_embd.weight") {
+                let start = (content.tensor_data_offset + info.offset) as usize;
+                let size = (info.shape.elem_count() / info.ggml_dtype.block_size()) * info.ggml_dtype.type_size();
+                let slice = &mmap[start..start + size];
+                qtensor_from_ggml(info.ggml_dtype, slice, info.shape.dims().to_vec(), &device)
+                    .ok()
+                    .and_then(|qt| QMatMul::from_qtensor(qt).ok())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         let embd_info = content
             .tensor_infos
@@ -305,14 +379,10 @@ impl AstMicroEngine {
 
         let kv_caches = vec![None; block_count];
 
-        unsafe {
-            libc::malloc_trim(0);
-        }
-
-        Ok(Self {
+        let mut engine = Self {
             mmap,
             content,
-            device,
+            device: device.clone(),
             block_count,
             head_count,
             head_count_kv,
@@ -333,13 +403,69 @@ impl AstMicroEngine {
             layer_ranges,
             kv_caches,
             masks: HashMap::new(),
-        })
+            cached_layers: None,
+            prefix_cache: None,
+            layer_static: Vec::new(),
+        };
+
+        let mut layer_static = Vec::with_capacity(block_count);
+        for idx in 0..block_count {
+            let prefix = format!("blk.{idx}");
+            let bq = engine.read_tensor(&format!("{prefix}.attn_q.bias"))?.dequantize(&device)?;
+            let bk = engine.read_tensor(&format!("{prefix}.attn_k.bias"))?.dequantize(&device)?;
+            let bv = engine.read_tensor(&format!("{prefix}.attn_v.bias"))?.dequantize(&device)?;
+            let attention_norm = RmsNorm::from_qtensor(
+                engine.read_tensor(&format!("{prefix}.attn_norm.weight"))?,
+                rms_norm_eps,
+            )?;
+            let ffn_norm = RmsNorm::from_qtensor(
+                engine.read_tensor(&format!("{prefix}.ffn_norm.weight"))?,
+                rms_norm_eps,
+            )?;
+
+            layer_static.push(LayerStaticData {
+                attention_bq: bq,
+                attention_bk: bk,
+                attention_bv: bv,
+                attention_norm,
+                ffn_norm,
+                wq: resolve_tensor(&engine.content, &format!("{prefix}.attn_q.weight"))?,
+                wk: resolve_tensor(&engine.content, &format!("{prefix}.attn_k.weight"))?,
+                wv: resolve_tensor(&engine.content, &format!("{prefix}.attn_v.weight"))?,
+                wo: resolve_tensor(&engine.content, &format!("{prefix}.attn_output.weight"))?,
+                w1: resolve_tensor(&engine.content, &format!("{prefix}.ffn_gate.weight"))?,
+                w2: resolve_tensor(&engine.content, &format!("{prefix}.ffn_down.weight"))?,
+                w3: resolve_tensor(&engine.content, &format!("{prefix}.ffn_up.weight"))?,
+            });
+        }
+        engine.layer_static = layer_static;
+
+        if cache_layers {
+            let mut layers = Vec::with_capacity(block_count);
+            let mut load_ok = true;
+            for idx in 0..block_count {
+                match engine.load_layer(idx) {
+                    Ok(layer) => layers.push(layer),
+                    Err(_) => {
+                        load_ok = false;
+                        break;
+                    }
+                }
+            }
+            if load_ok && layers.len() == block_count {
+                engine.cached_layers = Some(layers);
+            }
+        }
+
+        Ok(engine)
     }
 
     pub fn reset_cache(&mut self) {
         self.kv_caches = vec![None; self.block_count];
-        unsafe {
-            libc::malloc_trim(0);
+        if self.cached_layers.is_none() {
+            unsafe {
+                libc::malloc_trim(0);
+            }
         }
     }
 
@@ -373,44 +499,36 @@ impl AstMicroEngine {
             .map_err(|e| anyhow!("{e}"))
     }
 
+    pub fn read_tensor_ref(&self, t: &TensorRef) -> Result<QTensor> {
+        let slice = &self.mmap[t.offset..t.offset + t.size];
+        qtensor_from_ggml(t.dtype, slice, t.shape.clone(), &self.device)
+            .map_err(|e| anyhow!("{e}"))
+    }
+
     pub fn load_layer(&self, idx: usize) -> Result<LayerWeights> {
-        let prefix = format!("blk.{idx}");
-        let wq = QMatMul::from_qtensor(self.read_tensor(&format!("{prefix}.attn_q.weight"))?)?;
-        let wk = QMatMul::from_qtensor(self.read_tensor(&format!("{prefix}.attn_k.weight"))?)?;
-        let wv = QMatMul::from_qtensor(self.read_tensor(&format!("{prefix}.attn_v.weight"))?)?;
-        let wo = QMatMul::from_qtensor(self.read_tensor(&format!("{prefix}.attn_output.weight"))?)?;
-
-        let bq = self.read_tensor(&format!("{prefix}.attn_q.bias"))?.dequantize(&self.device)?;
-        let bk = self.read_tensor(&format!("{prefix}.attn_k.bias"))?.dequantize(&self.device)?;
-        let bv = self.read_tensor(&format!("{prefix}.attn_v.bias"))?.dequantize(&self.device)?;
-
-        let attention_norm = RmsNorm::from_qtensor(
-            self.read_tensor(&format!("{prefix}.attn_norm.weight"))?,
-            self.rms_norm_eps,
-        )?;
+        let stat = &self.layer_static[idx];
+        let wq = QMatMul::from_qtensor(self.read_tensor_ref(&stat.wq)?)?;
+        let wk = QMatMul::from_qtensor(self.read_tensor_ref(&stat.wk)?)?;
+        let wv = QMatMul::from_qtensor(self.read_tensor_ref(&stat.wv)?)?;
+        let wo = QMatMul::from_qtensor(self.read_tensor_ref(&stat.wo)?)?;
 
         let mlp = Mlp {
-            feed_forward_w1: QMatMul::from_qtensor(self.read_tensor(&format!("{prefix}.ffn_gate.weight"))?)?,
-            feed_forward_w2: QMatMul::from_qtensor(self.read_tensor(&format!("{prefix}.ffn_down.weight"))?)?,
-            feed_forward_w3: QMatMul::from_qtensor(self.read_tensor(&format!("{prefix}.ffn_up.weight"))?)?,
+            feed_forward_w1: QMatMul::from_qtensor(self.read_tensor_ref(&stat.w1)?)?,
+            feed_forward_w2: QMatMul::from_qtensor(self.read_tensor_ref(&stat.w2)?)?,
+            feed_forward_w3: QMatMul::from_qtensor(self.read_tensor_ref(&stat.w3)?)?,
         };
-
-        let ffn_norm = RmsNorm::from_qtensor(
-            self.read_tensor(&format!("{prefix}.ffn_norm.weight"))?,
-            self.rms_norm_eps,
-        )?;
 
         Ok(LayerWeights {
             attention_wq: wq,
             attention_wk: wk,
             attention_wv: wv,
-            attention_bq: bq,
-            attention_bk: bk,
-            attention_bv: bv,
+            attention_bq: stat.attention_bq.clone(),
+            attention_bk: stat.attention_bk.clone(),
+            attention_bv: stat.attention_bv.clone(),
             attention_wo: wo,
-            attention_norm,
+            attention_norm: stat.attention_norm.clone(),
             mlp,
-            ffn_norm,
+            ffn_norm: stat.ffn_norm.clone(),
             n_head: self.head_count,
             n_kv_head: self.head_count_kv,
             head_dim: self.head_dim,
@@ -428,6 +546,128 @@ impl AstMicroEngine {
             let mask = Tensor::from_slice(&mask, (t, t), &self.device)?;
             self.masks.insert(t, mask.clone());
             Ok(mask)
+        }
+    }
+
+    fn causal_mask(&mut self, seq_len: usize, total_len: usize) -> candle_core::Result<Tensor> {
+        let index_pos = total_len - seq_len;
+        if index_pos == 0 {
+            return self.mask(seq_len);
+        }
+        let mask: Vec<_> = (0..seq_len)
+            .flat_map(|i| (0..total_len).map(move |j| u8::from(j > index_pos + i)))
+            .collect();
+        Tensor::from_slice(&mask, (seq_len, total_len), &self.device)
+    }
+
+    pub fn save_prefix(&mut self, tokens: &[u32], prefix_len: usize) {
+        if prefix_len == 0 || prefix_len > tokens.len() {
+            return;
+        }
+        let mut prefix_kv = Vec::with_capacity(self.block_count);
+        for kv in &self.kv_caches {
+            if let Some((k, v)) = kv {
+                let k_sub = k.narrow(2, 0, prefix_len).ok();
+                let v_sub = v.narrow(2, 0, prefix_len).ok();
+                if let (Some(k_sub), Some(v_sub)) = (k_sub, v_sub) {
+                    prefix_kv.push(Some((k_sub, v_sub)));
+                } else {
+                    prefix_kv.push(None);
+                }
+            } else {
+                prefix_kv.push(None);
+            }
+        }
+        self.prefix_cache = Some(PrefixCache {
+            tokens: tokens[..prefix_len].to_vec(),
+            kv_caches: prefix_kv,
+        });
+    }
+
+    pub fn restore_prefix(&mut self, prefix_len: usize) -> bool {
+        if let Some(ref cache) = self.prefix_cache {
+            if cache.tokens.len() >= prefix_len {
+                let mut restored = Vec::with_capacity(self.block_count);
+                for kv in &cache.kv_caches {
+                    if let Some((k, v)) = kv {
+                        let k_sub = k.narrow(2, 0, prefix_len).ok();
+                        let v_sub = v.narrow(2, 0, prefix_len).ok();
+                        if let (Some(k_sub), Some(v_sub)) = (k_sub, v_sub) {
+                            restored.push(Some((k_sub, v_sub)));
+                        } else {
+                            return false;
+                        }
+                    } else {
+                        restored.push(None);
+                    }
+                }
+                self.kv_caches = restored;
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn prefill(&mut self, prompt_tokens: &[u32]) -> Result<Tensor> {
+        let mut matched_len = 0usize;
+        if let Some(ref cache) = self.prefix_cache {
+            let common = prompt_tokens
+                .iter()
+                .zip(cache.tokens.iter())
+                .take_while(|(a, b)| a == b)
+                .count();
+            if common >= 16 {
+                matched_len = common;
+            }
+        }
+
+        let hidden = if matched_len > 0 && self.restore_prefix(matched_len) {
+            let remaining = &prompt_tokens[matched_len..];
+            if remaining.is_empty() {
+                self.forward_stream(&prompt_tokens[matched_len - 1..], matched_len - 1)?
+            } else {
+                self.forward_stream(remaining, matched_len)?
+            }
+        } else {
+            self.reset_cache();
+            self.forward_stream(prompt_tokens, 0)?
+        };
+
+        // Automatically cache the largest valid boundary (<|im_end|>\n = 151645) before the final prompt:
+        let prefix_end = prompt_tokens[..prompt_tokens.len().saturating_sub(1)]
+            .iter()
+            .rposition(|&tok| tok == 151645)
+            .map(|pos| (pos + 2).min(prompt_tokens.len()))
+            .unwrap_or_else(|| {
+                prompt_tokens
+                    .iter()
+                    .position(|&tok| tok == 151645)
+                    .map(|pos| (pos + 2).min(prompt_tokens.len()))
+                    .unwrap_or_else(|| prompt_tokens.len().min(128))
+            });
+
+        if prefix_end >= 16 && prefix_end <= prompt_tokens.len() {
+            self.save_prefix(prompt_tokens, prefix_end);
+        }
+
+        Ok(hidden)
+    }
+
+    pub fn prefetch_layer(&self, idx: usize) {
+        if let Some(ranges) = self.layer_ranges.get(idx) {
+            let page_size = 4096;
+            for &(start, size) in ranges {
+                let page_start = (start / page_size) * page_size;
+                let page_end = ((start + size + page_size - 1) / page_size) * page_size;
+                let len = page_end - page_start;
+                unsafe {
+                    libc::madvise(
+                        self.mmap.as_ptr().add(page_start) as *mut libc::c_void,
+                        len,
+                        libc::MADV_WILLNEED,
+                    );
+                }
+            }
         }
     }
 
@@ -451,35 +691,45 @@ impl AstMicroEngine {
 
     pub fn forward_stream(&mut self, tokens: &[u32], index_pos: usize) -> Result<Tensor> {
         let seq_len = tokens.len();
+        let total_len = index_pos + seq_len;
         let mask = if seq_len == 1 {
             None
         } else {
-            Some(self.mask(seq_len)?)
+            Some(self.causal_mask(seq_len, total_len)?)
         };
 
         let mut layer_in = self.embed(tokens)?;
 
-        for layer_idx in 0..self.block_count {
-            let layer = self.load_layer(layer_idx)?;
-            layer_in = layer.forward(
-                &layer_in,
-                mask.as_ref(),
-                index_pos,
-                &self.cos,
-                &self.sin,
-                &mut self.kv_caches[layer_idx],
-            )?;
-            drop(layer);
-
-            // Active layer eviction from kernel physical page table
-            self.evict_layer(layer_idx);
-            unsafe {
-                libc::malloc_trim(0);
+        if let Some(ref layers) = self.cached_layers {
+            for (layer_idx, layer) in layers.iter().enumerate() {
+                layer_in = layer.forward(
+                    &layer_in,
+                    mask.as_ref(),
+                    index_pos,
+                    &self.cos,
+                    &self.sin,
+                    &mut self.kv_caches[layer_idx],
+                )?;
             }
-        }
+        } else {
+            for layer_idx in 0..self.block_count {
+                let layer = self.load_layer(layer_idx)?;
+                layer_in = layer.forward(
+                    &layer_in,
+                    mask.as_ref(),
+                    index_pos,
+                    &self.cos,
+                    &self.sin,
+                    &mut self.kv_caches[layer_idx],
+                )?;
+                drop(layer);
 
-        unsafe {
-            libc::malloc_trim(0);
+                // Active layer eviction from kernel physical page table
+                self.evict_layer(layer_idx);
+                unsafe {
+                    libc::malloc_trim(0);
+                }
+            }
         }
 
         let out = self.output_norm.forward(&layer_in)?;
@@ -491,6 +741,22 @@ impl AstMicroEngine {
         if let Some(cands) = candidates {
             if cands.is_empty() {
                 return Ok(151643); // EOS
+            }
+            if let Some(ref output_weight) = self.output_weight {
+                let logits = output_weight.forward(hidden)?;
+                let logits = logits.squeeze(0)?;
+                let logits_v: Vec<f32> = logits.to_vec1()?;
+                let mut max_idx = cands[0];
+                let mut max_val = f32::NEG_INFINITY;
+                for &tok in cands {
+                    if let Some(&val) = logits_v.get(tok as usize) {
+                        if val > max_val {
+                            max_val = val;
+                            max_idx = tok;
+                        }
+                    }
+                }
+                return Ok(max_idx);
             }
             let mut raw_bytes = Vec::with_capacity(cands.len() * self.bytes_per_token);
             for &tok in cands {
@@ -516,11 +782,23 @@ impl AstMicroEngine {
                 }
             }
             Ok(cands[max_idx])
-        } else {
-            let chunk_size = 4096;
+        } else if let Some(ref output_weight) = self.output_weight {
+            let logits = output_weight.forward(hidden)?;
+            let logits = logits.squeeze(0)?;
+            let logits_v: Vec<f32> = logits.to_vec1()?;
             let mut max_idx = 0u32;
             let mut max_val = f32::NEG_INFINITY;
-            let page_size = 4096;
+            for (i, &val) in logits_v.iter().enumerate() {
+                if val > max_val {
+                    max_val = val;
+                    max_idx = i as u32;
+                }
+            }
+            Ok(max_idx)
+        } else {
+            let chunk_size = 38016;
+            let mut max_idx = 0u32;
+            let mut max_val = f32::NEG_INFINITY;
 
             for chunk_start in (0..self.vocab_size).step_by(chunk_size) {
                 let chunk_end = (chunk_start + chunk_size).min(self.vocab_size);
@@ -535,9 +813,20 @@ impl AstMicroEngine {
                     vec![count, self.embedding_length],
                     &self.device,
                 )?;
-                let cand_weights = q_chunk.dequantize(&self.device)?;
-                let logits = hidden.matmul(&cand_weights.t()?)?.squeeze(0)?;
-                let logits_v: Vec<f32> = logits.to_vec1()?;
+                let logits_v = if let Ok(qmat) = QMatMul::from_qtensor(q_chunk) {
+                    let logits = qmat.forward(hidden)?.squeeze(0)?;
+                    logits.to_vec1::<f32>()?
+                } else {
+                    let q_chunk = qtensor_from_ggml(
+                        self.output_dtype,
+                        slice,
+                        vec![count, self.embedding_length],
+                        &self.device,
+                    )?;
+                    let cand_weights = q_chunk.dequantize(&self.device)?;
+                    let logits = hidden.matmul(&cand_weights.t()?)?.squeeze(0)?;
+                    logits.to_vec1::<f32>()?
+                };
 
                 for (i, &val) in logits_v.iter().enumerate() {
                     if val > max_val {
@@ -546,7 +835,7 @@ impl AstMicroEngine {
                     }
                 }
 
-                // Evict chunk slice from physical RAM immediately
+                let page_size = 4096;
                 let page_start = (byte_start / page_size) * page_size;
                 let page_end = ((byte_start + byte_len + page_size - 1) / page_size) * page_size;
                 let len = page_end - page_start;
@@ -560,6 +849,17 @@ impl AstMicroEngine {
             }
 
             Ok(max_idx)
+        }
+    }
+
+    pub fn evict_all(&self) {
+        unsafe {
+            libc::madvise(
+                self.mmap.as_ptr() as *mut libc::c_void,
+                self.mmap.len(),
+                libc::MADV_DONTNEED,
+            );
+            libc::malloc_trim(0);
         }
     }
 }

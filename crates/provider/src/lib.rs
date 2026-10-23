@@ -212,44 +212,117 @@ async fn decide(
     Json(nioxs_nano::decision::decide(&app.model, &request)).into_response()
 }
 
-async fn microlm_chat_handler(model_name: &str, request: ChatRequest) -> Response {
-    let engine = match nioxs_engine::RayEngine::for_model(model_name) {
-        Ok(engine) => engine,
-        Err(e) => {
-            return error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "engine_unavailable",
-                &format!(
-                    "In-process MicroLM engine for '{model_name}' could not be loaded: {e}. Run 'nioxs pull {model_name}'."
-                ),
-            );
+async fn microlm_chat_handler(
+    model_name: &str,
+    request: ChatRequest,
+    preloaded: Option<&nioxs_engine::RayEngine>,
+) -> Response {
+    let engine = if model_name == "nio-ray" || model_name == "ray" {
+        if let Some(eng) = preloaded {
+            eng.clone()
+        } else {
+            match nioxs_engine::RayEngine::for_model(model_name) {
+                Ok(engine) => engine,
+                Err(e) => {
+                    return error(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "engine_unavailable",
+                        &format!(
+                            "In-process MicroLM engine for '{model_name}' could not be loaded: {e}. Run 'nioxs pull {model_name}'."
+                        ),
+                    );
+                }
+            }
+        }
+    } else {
+        match nioxs_engine::RayEngine::for_model(model_name) {
+            Ok(engine) => engine,
+            Err(e) => {
+                return error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "engine_unavailable",
+                    &format!(
+                        "In-process MicroLM engine for '{model_name}' could not be loaded: {e}. Run 'nioxs pull {model_name}'."
+                    ),
+                );
+            }
         }
     };
 
     let mut prompt = String::new();
     let system_prompt = match model_name {
         "nio-manta" | "manta" => {
-            "You are NioManta, the warm, intelligent developer and architectural companion for NioGuru and NioXS."
+            "You are Nio, an intelligent AI coding assistant. Answer concisely and directly in 1-2 short sentences unless the user explicitly requests full code."
         }
         "nio-viper" | "viper" => {
-            "You are NioViper, the ultra-fast tactical terminal command and shell reflex striker."
+            "You are Nio, a lightning-fast terminal coding assistant. Keep replies brief and focused."
         }
         "nio-cuda" | "cuda" => {
-            "You are NioCuda, the tactical multi-agent swarm conductor and orchestrator."
+            "You are Nio, a concise terminal coding assistant. Keep replies focused and to the point."
         }
-        _ => "You are NioRay, a concise and lightning-fast coding reflex engine.",
+        _ => {
+            "You are Nio, a lightweight AI coding assistant for the terminal. You are helpful, polite, and very concise. For greetings, give a warm 1-sentence greeting and ask what to code. Do not output unrequested code, ray tracing, or headers."
+        }
     };
 
-    prompt.push_str(&format!("<|im_start|>system\n{system_prompt}<|im_end|>\n"));
+    let tools_xml = if !request.tools.is_empty() {
+        let mut t_str = String::from("\n\n# Tools\n\nYou may call one or more functions to inspect the project or perform tasks.\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n");
+        for t in &request.tools {
+            if let Ok(serialized) = serde_json::to_string(t) {
+                t_str.push_str(&serialized);
+                t_str.push('\n');
+            }
+        }
+        t_str.push_str("</tools>\n\nWhen you need a tool, output ONLY the tool call within <tool_call></tool_call> tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call>");
+        t_str
+    } else {
+        String::new()
+    };
+
+    let client_system = request
+        .messages
+        .iter()
+        .filter(|m| m.role == "system")
+        .filter_map(|m| m.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let full_system = if client_system.is_empty() {
+        format!("{system_prompt}{tools_xml}")
+    } else {
+        format!("{client_system}{tools_xml}")
+    };
+
+    prompt.push_str(&format!("<|im_start|>system\n{full_system}<|im_end|>\n"));
     for msg in &request.messages {
         if msg.role == "system" {
             continue;
         }
         let role = &msg.role;
-        let content = msg.content.as_str().unwrap_or("");
-        prompt.push_str(&format!("<|im_start|>{role}\n{content}<|im_end|>\n"));
+        if role == "tool" {
+            let content = msg.content.as_str().unwrap_or("");
+            prompt.push_str(&format!("<|im_start|>user\n<tool_response>\n{content}\n</tool_response><|im_end|>\n"));
+        } else if role == "assistant" && !msg.tool_calls.is_empty() {
+            let mut tool_calls_xml = String::new();
+            for call in &msg.tool_calls {
+                let name = &call.function.name;
+                let args = &call.function.arguments;
+                tool_calls_xml.push_str(&format!("<tool_call>\n{{\"name\": \"{name}\", \"arguments\": {args}}}\n</tool_call>\n"));
+            }
+            let content = msg.content.as_str().unwrap_or("");
+            if content.is_empty() {
+                prompt.push_str(&format!("<|im_start|>assistant\n{tool_calls_xml}<|im_end|>\n"));
+            } else {
+                prompt.push_str(&format!("<|im_start|>assistant\n{content}\n{tool_calls_xml}<|im_end|>\n"));
+            }
+        } else {
+            let content = msg.content.as_str().unwrap_or("");
+            prompt.push_str(&format!("<|im_start|>{role}\n{content}<|im_end|>\n"));
+        }
     }
     prompt.push_str("<|im_start|>assistant\n");
+
+    let max_gen_tokens = request.max_tokens.unwrap_or(512).clamp(1, 4096);
 
     let id = format!(
         "chatcmpl-{}-{}",
@@ -267,19 +340,57 @@ async fn microlm_chat_handler(model_name: &str, request: ChatRequest) -> Respons
     };
 
     if !request.stream {
-        match engine.generate(prompt, 512, 0.7, 0.9).await {
-            Ok(content) => Json(json!({
-                "id": id,
-                "object": "chat.completion",
-                "created": 0,
-                "model": model,
-                "choices": [{
-                    "index": 0,
-                    "message": {"role": "assistant", "content": content},
-                    "finish_reason": "stop"
-                }]
-            }))
-            .into_response(),
+        match engine.generate(prompt, max_gen_tokens, 0.7, 0.9).await {
+            Ok(content) => {
+                let tool_calls = extract_xml_tool_calls(&content);
+                if !tool_calls.is_empty() {
+                    let calls_json: Vec<Value> = tool_calls
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, c)| {
+                            let args_val = serde_json::from_str::<Value>(&c.arguments).unwrap_or(json!({}));
+                            json!({
+                                "index": i,
+                                "id": c.id,
+                                "type": "function",
+                                "function": {
+                                    "name": c.name,
+                                    "arguments": args_val.to_string()
+                                }
+                            })
+                        })
+                        .collect();
+                    Json(json!({
+                        "id": id,
+                        "object": "chat.completion",
+                        "created": 0,
+                        "model": model,
+                        "choices": [{
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": Value::Null,
+                                "tool_calls": calls_json
+                            },
+                            "finish_reason": "tool_calls"
+                        }]
+                    }))
+                    .into_response()
+                } else {
+                    Json(json!({
+                        "id": id,
+                        "object": "chat.completion",
+                        "created": 0,
+                        "model": model,
+                        "choices": [{
+                            "index": 0,
+                            "message": {"role": "assistant", "content": content},
+                            "finish_reason": "stop"
+                        }]
+                    }))
+                    .into_response()
+                }
+            }
             Err(e) => error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "inference_error",
@@ -287,47 +398,69 @@ async fn microlm_chat_handler(model_name: &str, request: ChatRequest) -> Respons
             ),
         }
     } else {
-        match engine.generate_stream(prompt, 512, 0.7, 0.9).await {
+        match engine.generate_stream(prompt, max_gen_tokens, 0.7, 0.9).await {
             Ok(rx) => {
                 let id_clone = id.clone();
+                let accumulated = Arc::new(tokio::sync::Mutex::new(String::new()));
+                let acc_clone = accumulated.clone();
                 let live = stream::unfold(rx, move |mut rx| {
                     let id_item = id_clone.clone();
+                    let acc = acc_clone.clone();
                     async move {
                         match rx.recv().await {
                             Some(chunk) => {
+                                acc.lock().await.push_str(&chunk);
                                 let payload = sse_chunk(
                                     &id_item,
                                     model,
                                     json!({"content": chunk}),
                                     Value::Null,
                                 );
-                                Some((
-                                    Ok::<axum::body::Bytes, Infallible>(axum::body::Bytes::from(
-                                        format!("data: {payload}\n\n"),
-                                    )),
-                                    rx,
-                                ))
+                                Some((Ok::<_, Infallible>(Event::default().data(payload)), rx))
                             }
                             None => None,
                         }
                     }
                 });
-                let tail = stream::iter(vec![
-                    Ok(axum::body::Bytes::from(format!(
-                        "data: {}\n\n",
-                        sse_chunk(&id, model, json!({}), json!("stop"))
-                    ))),
-                    Ok(axum::body::Bytes::from("data: [DONE]\n\n")),
-                ]);
-                let full_body = axum::body::Body::from_stream(live.chain(tail));
-                let mut response = Response::new(full_body);
-                response
-                    .headers_mut()
-                    .insert("content-type", "text/event-stream".parse().unwrap());
-                response
-                    .headers_mut()
-                    .insert("cache-control", "no-cache".parse().unwrap());
-                response
+                let id_tail = id.clone();
+                let tail = stream::once(async move {
+                    let final_text = accumulated.lock().await.clone();
+                    let tool_calls = extract_xml_tool_calls(&final_text);
+                    if !tool_calls.is_empty() {
+                        let calls_json: Vec<Value> = tool_calls
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, c)| {
+                                let args_val = serde_json::from_str::<Value>(&c.arguments).unwrap_or(json!({}));
+                                json!({
+                                    "index": i,
+                                    "id": c.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": c.name,
+                                        "arguments": args_val.to_string()
+                                    }
+                                })
+                            })
+                            .collect();
+                        vec![
+                            Ok(Event::default().data(sse_chunk(
+                                &id_tail,
+                                model,
+                                json!({"tool_calls": calls_json}),
+                                json!("tool_calls"),
+                            ))),
+                            Ok(Event::default().data("[DONE]")),
+                        ]
+                    } else {
+                        vec![
+                            Ok(Event::default().data(sse_chunk(&id_tail, model, json!({}), json!("stop")))),
+                            Ok(Event::default().data("[DONE]")),
+                        ]
+                    }
+                })
+                .flat_map(stream::iter);
+                Sse::new(live.chain(tail)).into_response()
             }
             Err(e) => error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -361,12 +494,16 @@ async fn chat(
         }
     };
     let model_norm = request.model.strip_prefix("nioxs::").unwrap_or(&request.model);
-    match model_norm {
-        "nio-ray" | "ray" => return microlm_chat_handler("nio-ray", request).await,
-        "nio-manta" | "manta" => return microlm_chat_handler("nio-manta", request).await,
-        "nio-viper" | "viper" => return microlm_chat_handler("nio-viper", request).await,
-        "nio-cuda" | "cuda" => return microlm_chat_handler("nio-cuda", request).await,
-        _ => {}
+    if request.tools.is_empty() {
+        match model_norm {
+            "nio-ray" | "ray" => {
+                return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;
+            }
+            "nio-manta" | "manta" => return microlm_chat_handler("nio-manta", request, None).await,
+            "nio-viper" | "viper" => return microlm_chat_handler("nio-viper", request, None).await,
+            "nio-cuda" | "cuda" => return microlm_chat_handler("nio-cuda", request, None).await,
+            _ => {}
+        }
     }
     let turn_override = match headers.get("x-nioxs-turn-id") {
         Some(value) => match value.to_str() {

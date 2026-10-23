@@ -66,7 +66,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
             return Ok(());
         }
         let engine = nioxs_engine::RayEngine::new()?;
-        let mut rx = engine.generate_stream(prompt, 512, 0.7, 0.9).await?;
+        let max_tokens = if prompt.split_whitespace().count() <= 2 { 32 } else { 128 };
+        let mut rx = engine.generate_stream(prompt, max_tokens, 0.7, 0.9).await?;
         use std::io::Write;
         while let Some(chunk) = rx.recv().await {
             print!("{chunk}");
@@ -280,6 +281,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
             .as_nanos()
     );
     let ray_engine = nioxs_engine::RayEngine::new().ok();
+    if let Some(engine) = &ray_engine {
+        let _ = engine.ensure_loaded().await;
+    }
     let microlm_banner = if ray_engine.is_some() {
         "NioRay (In-Process Predator, Candle GGUF)"
     } else {

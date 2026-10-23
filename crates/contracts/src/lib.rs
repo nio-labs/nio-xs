@@ -115,6 +115,12 @@ pub struct ChatRequest {
     pub tool_choice: Option<Value>,
     #[serde(default)]
     pub stream: bool,
+    #[serde(default)]
+    pub max_tokens: Option<usize>,
+    #[serde(default)]
+    pub temperature: Option<f64>,
+    #[serde(default)]
+    pub top_p: Option<f64>,
 }
 
 impl ChatRequest {

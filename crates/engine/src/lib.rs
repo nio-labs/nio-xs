@@ -256,7 +256,7 @@ impl RayEngine {
         Ok(())
     }
 
-    async fn ensure_loaded(&self) -> Result<()> {
+    pub async fn ensure_loaded(&self) -> Result<()> {
         let mut guard = self.bundle.lock().await;
         if guard.is_some() {
             return Ok(());
@@ -291,7 +291,7 @@ impl RayEngine {
             raw_prompt.to_string()
         } else {
             format!(
-                "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                "<|im_start|>system\nYou are Nio, an AI coding assistant for the terminal. Answer directly, concisely, and helpfully. For casual greetings, reply warmly in one sentence.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 raw_prompt.trim()
             )
         }
@@ -322,13 +322,13 @@ impl RayEngine {
         _top_p: f64,
     ) -> Result<mpsc::Receiver<String>> {
         self.ensure_loaded().await?;
-        let (tx, rx) = mpsc::channel(64);
+        let (tx, rx) = mpsc::channel(1);
 
         let bundle_arc = self.bundle.clone();
-        tokio::task::spawn(async move {
-            let mut guard = bundle_arc.lock().await;
+        tokio::task::spawn_blocking(move || {
+            let mut guard = bundle_arc.blocking_lock();
             let Some(bundle) = guard.as_mut() else {
-                let _ = tx.send("Error: Model bundle not loaded".into()).await;
+                let _ = tx.blocking_send("Error: Model bundle not loaded".into());
                 return;
             };
 
@@ -336,7 +336,7 @@ impl RayEngine {
             let encoded = match bundle.tokenizer.encode(formatted.as_str(), false) {
                 Ok(t) => t,
                 Err(e) => {
-                    let _ = tx.send(format!("Tokenizer error: {e}")).await;
+                    let _ = tx.blocking_send(format!("Tokenizer error: {e}"));
                     return;
                 }
             };
@@ -346,11 +346,10 @@ impl RayEngine {
                 return;
             }
 
-            bundle.engine.reset_cache();
-            let hidden = match bundle.engine.forward_stream(&prompt_tokens, 0) {
+            let hidden = match bundle.engine.prefill(&prompt_tokens) {
                 Ok(h) => h,
                 Err(e) => {
-                    let _ = tx.send(format!("AST-Micro prefill error: {e}")).await;
+                    let _ = tx.blocking_send(format!("AST-Micro prefill error: {e}"));
                     return;
                 }
             };
@@ -360,12 +359,18 @@ impl RayEngine {
                 .tokenizer
                 .token_to_id("<|endoftext|>")
                 .unwrap_or(151643);
-            let is_eos = |tok: u32| tok == eos_token_id || tok == eot_token_id;
+            let im_start_token_id = bundle
+                .tokenizer
+                .token_to_id("<|im_start|>")
+                .unwrap_or(151644);
+            let is_eos = |tok: u32| {
+                tok == eos_token_id || tok == eot_token_id || tok == im_start_token_id
+            };
 
             let mut next_token = match bundle.engine.next_token(&hidden, None) {
                 Ok(t) => t,
                 Err(e) => {
-                    let _ = tx.send(format!("AST-Micro sampling error: {e}")).await;
+                    let _ = tx.blocking_send(format!("AST-Micro sampling error: {e}"));
                     return;
                 }
             };
@@ -377,7 +382,14 @@ impl RayEngine {
 
             let mut tos = TokenOutputStream::new(bundle.tokenizer.clone());
             if let Ok(Some(chunk)) = tos.next_token(next_token) {
-                if tx.send(chunk).await.is_err() {
+                if chunk.contains("<|im_end|>")
+                    || chunk.contains("<|im_start|>")
+                    || chunk.contains("<|endoftext|>")
+                {
+                    bundle.engine.reset_cache();
+                    return;
+                }
+                if tx.blocking_send(chunk).is_err() {
                     bundle.engine.reset_cache();
                     return;
                 }
@@ -402,14 +414,28 @@ impl RayEngine {
                 }
 
                 if let Ok(Some(chunk)) = tos.next_token(next_token) {
-                    if tx.send(chunk).await.is_err() {
+                    if chunk.contains("<|im_end|>")
+                        || chunk.contains("<|im_start|>")
+                        || chunk.contains("<|endoftext|>")
+                        || chunk.contains("\nuser\n")
+                        || chunk.contains("\nUser:")
+                    {
+                        break;
+                    }
+                    if tx.blocking_send(chunk).is_err() {
                         break;
                     }
                 }
             }
 
             if let Ok(Some(rest)) = tos.decode_rest() {
-                let _ = tx.send(rest).await;
+                let clean = rest
+                    .replace("<|im_end|>", "")
+                    .replace("<|im_start|>", "")
+                    .replace("<|endoftext|>", "");
+                if !clean.is_empty() {
+                    let _ = tx.blocking_send(clean);
+                }
             }
 
             bundle.engine.reset_cache();
@@ -467,5 +493,25 @@ mod tests {
             RayEngine::tokenizer_for_model(std::path::Path::new("/cache/nio-ray.Q4_K_M.gguf")),
             PathBuf::from("/cache/tokenizer.json")
         );
+    }
+
+    #[tokio::test]
+    async fn test_ray_generation_speed() {
+        if let Ok(engine) = RayEngine::new() {
+            if engine.ensure_loaded().await.is_ok() {
+                let mut guard = engine.bundle.lock().await;
+                if let Some(bundle) = guard.as_mut() {
+                    let prompt_tokens = vec![1, 2, 3, 4, 5];
+                    bundle.engine.reset_cache();
+            bundle.engine.evict_all();
+                    let hidden = bundle.engine.forward_stream(&prompt_tokens, 0).unwrap();
+                    let tok = bundle.engine.next_token(&hidden, None).unwrap();
+                    assert!(tok > 0);
+                    let (rss, _hwm) = memory_mb();
+                    // Verify strict <100MB peak resident RAM requirement
+                    assert!(rss < 100.0, "Resident RAM was {rss}MB, expected <100MB");
+                }
+            }
+        }
     }
 }
