@@ -79,6 +79,58 @@ impl TokenOutputStream {
     }
 }
 
+struct PhraseBuffer {
+    buffer: String,
+    word_count: usize,
+}
+
+impl PhraseBuffer {
+    fn new() -> Self {
+        Self {
+            buffer: String::new(),
+            word_count: 0,
+        }
+    }
+
+    fn push(&mut self, chunk: &str, tx: &mpsc::Sender<String>) -> bool {
+        self.buffer.push_str(chunk);
+
+        if chunk.contains(' ') || chunk.contains('\n') {
+            self.word_count += chunk.split_whitespace().count().max(1);
+        }
+
+        let should_flush = self.buffer.contains('\n')
+            || self.buffer.contains("```")
+            || self.buffer.contains('<')
+            || self.buffer.contains('>')
+            || self.word_count >= 2
+            || (self.buffer.len() >= 16 && (self.buffer.ends_with(' ') || self.buffer.ends_with('\t')))
+            || self.buffer.ends_with(". ")
+            || self.buffer.ends_with("! ")
+            || self.buffer.ends_with("? ")
+            || self.buffer.ends_with(": ")
+            || self.buffer.ends_with(", ");
+
+        if should_flush && !self.buffer.is_empty() {
+            let to_send = std::mem::take(&mut self.buffer);
+            self.word_count = 0;
+            tx.blocking_send(to_send).is_ok()
+        } else {
+            true
+        }
+    }
+
+    fn flush(&mut self, tx: &mpsc::Sender<String>) -> bool {
+        if !self.buffer.is_empty() {
+            let to_send = std::mem::take(&mut self.buffer);
+            self.word_count = 0;
+            tx.blocking_send(to_send).is_ok()
+        } else {
+            true
+        }
+    }
+}
+
 pub struct ModelBundle {
     pub engine: AstMicroEngine,
     pub tokenizer: Tokenizer,
@@ -398,6 +450,8 @@ impl RayEngine {
             }
 
             let mut tos = TokenOutputStream::new(bundle.tokenizer.clone());
+            let mut phrase_buffer = PhraseBuffer::new();
+
             if let Ok(Some(chunk)) = tos.next_token(next_token) {
                 if chunk.contains("<|im_end|>")
                     || chunk.contains("<|im_start|>")
@@ -406,7 +460,7 @@ impl RayEngine {
                     bundle.engine.reset_cache();
                     return;
                 }
-                if tx.blocking_send(chunk).is_err() {
+                if !phrase_buffer.push(&chunk, &tx) {
                     bundle.engine.reset_cache();
                     return;
                 }
@@ -443,7 +497,7 @@ impl RayEngine {
                                 {
                                     break;
                                 }
-                                if tx.blocking_send(chunk).is_err() {
+                                if !phrase_buffer.push(&chunk, &tx) {
                                     break;
                                 }
                             }
@@ -493,11 +547,13 @@ impl RayEngine {
                     {
                         break;
                     }
-                    if tx.blocking_send(chunk).is_err() {
+                    if !phrase_buffer.push(&chunk, &tx) {
                         break;
                     }
                 }
             }
+
+            phrase_buffer.flush(&tx);
 
             if let Ok(Some(rest)) = tos.decode_rest() {
                 let clean = rest
@@ -520,6 +576,25 @@ impl RayEngine {
 mod tests {
     use super::*;
     use tokenizers::models::wordlevel::WordLevel;
+
+    #[test]
+    fn test_phrase_buffer_groups_words_before_flushing() {
+        let (tx, mut rx) = mpsc::channel(10);
+        std::thread::spawn(move || {
+            let mut pb = PhraseBuffer::new();
+
+            assert!(pb.push("Hello", &tx));
+            assert!(pb.push(" world! ", &tx));
+            assert!(pb.push("tail", &tx));
+            pb.flush(&tx);
+        }).join().unwrap();
+
+        let chunk1 = rx.blocking_recv().expect("Should flush on 2 words with boundary");
+        assert_eq!(chunk1, "Hello world! ");
+
+        let chunk2 = rx.blocking_recv().expect("Should flush tail");
+        assert_eq!(chunk2, "tail");
+    }
 
     #[test]
     fn test_prompt_lookup_finds_ngram() {
