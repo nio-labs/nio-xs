@@ -122,9 +122,10 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
             "provider authentication required",
         );
     }
+    let ray_name = "NioRay — Keystroke Predator (Streaming Reflex 24L, < 86 MB RAM)";
     let names = [
         "NioCuda — Tactical Swarm Conductor & Orchestrator",
-        "NioRay — Keystroke Predator (Streaming Reflex 24L, < 86 MB RAM)",
+        ray_name,
         "NioViper — Tactical Striker (Shell Reflex 8L, < 47 MB RAM)",
         "NioManta — Conversational & AST Companion (16L, < 110 MB RAM)",
         "NioNano — Intent Reflex & MicroLM (~0.5M, sub-0.1ms)",
@@ -494,16 +495,14 @@ async fn chat(
         }
     };
     let model_norm = request.model.strip_prefix("nioxs::").unwrap_or(&request.model);
-    if request.tools.is_empty() {
-        match model_norm {
-            "nio-ray" | "ray" => {
-                return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;
-            }
-            "nio-manta" | "manta" => return microlm_chat_handler("nio-manta", request, None).await,
-            "nio-viper" | "viper" => return microlm_chat_handler("nio-viper", request, None).await,
-            "nio-cuda" | "cuda" => return microlm_chat_handler("nio-cuda", request, None).await,
-            _ => {}
+    match model_norm {
+        "nio-ray" | "ray" => {
+            return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;
         }
+        "nio-manta" | "manta" => return microlm_chat_handler("nio-manta", request, None).await,
+        "nio-viper" | "viper" => return microlm_chat_handler("nio-viper", request, None).await,
+        "nio-cuda" | "cuda" => return microlm_chat_handler("nio-cuda", request, None).await,
+        _ => {}
     }
     let turn_override = match headers.get("x-nioxs-turn-id") {
         Some(value) => match value.to_str() {

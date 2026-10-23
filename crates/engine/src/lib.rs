@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use candle_core::{Device, IndexOp};
+use candle_core::Device;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokenizers::Tokenizer;
@@ -475,65 +475,15 @@ impl RayEngine {
             let max_gen = max_tokens.max(1);
             let mut current_pos = prompt_tokens.len();
             while current_pos < prompt_tokens.len() + max_gen - 1 {
-                let draft = if context_tokens.len() >= 3 {
-                    Self::find_candidate_ngram(&context_tokens, 2)
-                        .or_else(|| Self::find_candidate_ngram(&context_tokens, 3))
-                } else {
-                    None
+                let step_hidden = match bundle.engine.forward_stream(&[next_token], current_pos) {
+                    Ok(h) => h,
+                    Err(_) => break,
                 };
-
-                if let Some(cand) = draft {
-                    if let Ok(out) = bundle.engine.forward_all(&[next_token, cand], current_pos) {
-                        let h0 = out.i((.., 0, ..)).ok();
-                        let pred_1 = h0.as_ref().and_then(|h| bundle.engine.next_token(h, None).ok());
-
-                        if pred_1 == Some(cand) && !is_eos(cand) {
-                            // Candidate matched! Emit cand
-                            context_tokens.push(cand);
-                            if let Ok(Some(chunk)) = tos.next_token(cand) {
-                                if chunk.contains("<|im_end|>")
-                                    || chunk.contains("<|im_start|>")
-                                    || chunk.contains("<|endoftext|>")
-                                    || chunk.contains("\nuser\n")
-                                    || chunk.contains("\nUser:")
-                                {
-                                    break;
-                                }
-                                if !phrase_buffer.push(&chunk, &tx) {
-                                    break;
-                                }
-                            }
-
-                            // Predict next token from h1
-                            let h1 = out.i((.., 1, ..)).ok();
-                            next_token = match h1.as_ref().and_then(|h| bundle.engine.next_token(h, None).ok()) {
-                                Some(t) => t,
-                                None => break,
-                            };
-                            current_pos += 2;
-                        } else {
-                            // Mismatch: rollback KV cache
-                            bundle.engine.truncate_kv(current_pos + 1);
-                            next_token = match pred_1 {
-                                Some(t) => t,
-                                None => break,
-                            };
-                            current_pos += 1;
-                        }
-                    } else {
-                        break;
-                    }
-                } else {
-                    let step_hidden = match bundle.engine.forward_stream(&[next_token], current_pos) {
-                        Ok(h) => h,
-                        Err(_) => break,
-                    };
-                    next_token = match bundle.engine.next_token(&step_hidden, None) {
-                        Ok(t) => t,
-                        Err(_) => break,
-                    };
-                    current_pos += 1;
-                }
+                next_token = match bundle.engine.next_token(&step_hidden, None) {
+                    Ok(t) => t,
+                    Err(_) => break,
+                };
+                current_pos += 1;
 
                 if is_eos(next_token) {
                     break;
@@ -665,7 +615,6 @@ mod tests {
                     let tok = bundle.engine.next_token(&hidden, None).unwrap();
                     assert!(tok > 0);
                     let (rss, _hwm) = memory_mb();
-                    // Verify strict <100MB peak resident RAM requirement
                     assert!(rss < 100.0, "Resident RAM was {rss}MB, expected <100MB");
                 }
             }

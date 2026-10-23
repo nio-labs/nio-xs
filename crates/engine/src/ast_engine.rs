@@ -306,33 +306,8 @@ impl AstMicroEngine {
         let norm_tensor = content.tensor(&mut cursor, "output_norm.weight", &device)?;
         let output_norm = RmsNorm::from_qtensor(norm_tensor, rms_norm_eps)?;
 
-        // By default, preserve strict <100MB peak RAM via AST-Micro streaming eviction.
-        // Caching full layers into RAM (~350MB) can be enabled via NIOXS_CACHE_LAYERS=1.
-        let cache_layers = std::env::var("NIOXS_CACHE_LAYERS")
-            .map(|v| v == "1" || v == "true")
-            .unwrap_or(false);
-
-        let output_weight = if cache_layers {
-            if let Some(info) = content.tensor_infos.get("output.weight") {
-                let start = (content.tensor_data_offset + info.offset) as usize;
-                let size = (info.shape.elem_count() / info.ggml_dtype.block_size()) * info.ggml_dtype.type_size();
-                let slice = &mmap[start..start + size];
-                qtensor_from_ggml(info.ggml_dtype, slice, info.shape.dims().to_vec(), &device)
-                    .ok()
-                    .and_then(|qt| QMatMul::from_qtensor(qt).ok())
-            } else if let Some(info) = content.tensor_infos.get("token_embd.weight") {
-                let start = (content.tensor_data_offset + info.offset) as usize;
-                let size = (info.shape.elem_count() / info.ggml_dtype.block_size()) * info.ggml_dtype.type_size();
-                let slice = &mmap[start..start + size];
-                qtensor_from_ggml(info.ggml_dtype, slice, info.shape.dims().to_vec(), &device)
-                    .ok()
-                    .and_then(|qt| QMatMul::from_qtensor(qt).ok())
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        // AST-Micro streaming mode (<86MB peak RAM) is the default and only engine execution profile.
+        let output_weight = None;
 
         let embd_info = content
             .tensor_infos
@@ -440,23 +415,7 @@ impl AstMicroEngine {
         }
         engine.layer_static = layer_static;
 
-        if cache_layers {
-            let mut layers = Vec::with_capacity(block_count);
-            let mut load_ok = true;
-            for idx in 0..block_count {
-                match engine.load_layer(idx) {
-                    Ok(layer) => layers.push(layer),
-                    Err(_) => {
-                        load_ok = false;
-                        break;
-                    }
-                }
-            }
-            if load_ok && layers.len() == block_count {
-                engine.cached_layers = Some(layers);
-            }
-        }
-
+        engine.cached_layers = None;
         Ok(engine)
     }
 
@@ -464,6 +423,11 @@ impl AstMicroEngine {
         self.kv_caches = vec![None; self.block_count];
         if self.cached_layers.is_none() {
             unsafe {
+                libc::madvise(
+                    self.mmap.as_ptr() as *mut libc::c_void,
+                    self.mmap.len(),
+                    libc::MADV_DONTNEED,
+                );
                 libc::malloc_trim(0);
             }
         }
@@ -731,16 +695,8 @@ impl AstMicroEngine {
                 )?;
                 drop(layer);
 
-                // Batch eviction: evict in pairs to halve kernel syscalls
-                // Each pair of layers ~30MB, well within <100MB budget
-                if layer_idx % 2 == 1 {
-                    self.evict_layer(layer_idx - 1);
-                    self.evict_layer(layer_idx);
-                }
-            }
-            // Evict the last layer if block_count is odd
-            if self.block_count % 2 == 1 {
-                self.evict_layer(self.block_count - 1);
+                // Layers are kept in pagecache during active token generation for fast throughput,
+                // and evicted en masse via reset_cache() when generation completes.
             }
         }
 
@@ -800,13 +756,6 @@ impl AstMicroEngine {
                 )?;
                 drop(layer);
 
-                if layer_idx % 2 == 1 {
-                    self.evict_layer(layer_idx - 1);
-                    self.evict_layer(layer_idx);
-                }
-            }
-            if self.block_count % 2 == 1 {
-                self.evict_layer(self.block_count - 1);
             }
         }
 
@@ -910,18 +859,6 @@ impl AstMicroEngine {
                         max_val = val;
                         max_idx = (chunk_start + i) as u32;
                     }
-                }
-
-                let page_size = 4096;
-                let page_start = (byte_start / page_size) * page_size;
-                let page_end = ((byte_start + byte_len + page_size - 1) / page_size) * page_size;
-                let len = page_end - page_start;
-                unsafe {
-                    libc::madvise(
-                        self.mmap.as_ptr().add(page_start) as *mut libc::c_void,
-                        len,
-                        libc::MADV_DONTNEED,
-                    );
                 }
             }
 
