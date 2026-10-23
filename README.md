@@ -151,6 +151,7 @@ Select a model through your client's model picker or the `model` field of
 
 | Model ID | Purpose | Rust-controlled behavior |
 |---|---|---|
+| `nio-ray` | Local In-Process Predator | 100% Stock Qwen2.5-Coder 24L reflex engine running in-process (< 100 MB RAM) |
 | `nio-flow` | Plan and hand off | Rust validates a plan and invokes the useful specialists (runs without Helm by default; opt in via `--helm`) |
 | `nio-nano` | Assist | Existing trained intent classification and bounded workflows |
 | `nio-echo` | Answer | Direct Q&A and conversation; 2 read-only inspection rounds |
@@ -235,6 +236,25 @@ Stage drafts are buffered; the final answer is emitted after the specialist stag
 Direct specialist requests retain their existing live upstream streaming. The
 caller's persona stays active through planning, handoffs, and final answers;
 model names describe workflow roles and do not replace that persona.
+
+---
+
+## 🦈 NioRay In-Process MicroLM Inference
+
+NioXS embeds **NioRay** (`nio-ray`), an ultra-low-latency in-process coding reflex engine powered by Candle GGUF and based on `Qwen2.5-Coder-0.5B-Instruct` (all 24 transformer layers, full 151,936 vocabulary intact):
+
+* **Strict Memory Envelope**: Executes via native sliding-window layer streaming, maintaining a hard ceiling of **`< 100 MB` resident RAM** (typically ~69–86 MB peak VmHWM).
+* **CLI & Direct Inference**:
+  ```bash
+  # 1. Pull the NioRay GGUF model and tokenizer artifact
+  nioxs pull ray
+
+  # 2. Run instant local in-process inference
+  nioxs ray "Write a thread-safe token bucket rate limiter in Rust"
+  ```
+* **Streaming Architecture**: Emits via an intelligent 4-word / 32-character `PhraseBuffer` with boundary-aware SSE chunking, flushing immediately on code blocks (```` ``` ````), newlines, and sentence terminators.
+* **Overlapped Pipeline Prefetch**: Prefetches layer $N+1$ asynchronously via `MADV_WILLNEED` while computing layer $N$, paired with batch layer eviction for minimal kernel syscall overhead.
+* **Speculative Prompt-Lookup Decoding**: Employs context n-gram speculative decoding and prefix KV-cache preservation to accelerate generation without external server daemons.
 
 Nio keeps an animated `Thinking…` indicator with elapsed time while waiting
 for model output, including after routing notices and between tool rounds.
