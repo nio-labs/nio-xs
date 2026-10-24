@@ -252,6 +252,19 @@ pub async fn download_and_verify_model<P: ProgressListener>(
         )
     })?;
 
+    // Companion tokenizer sync (e.g. nio-viper-tokenizer.json)
+    if entry.filename.contains("viper") {
+        let tok_path = target_dir.join("nio-viper-tokenizer.json");
+        let tok_url = entry.download_url.replace("nio-viper.Q4_0.gguf", "nio-viper-tokenizer.json");
+        if let Ok(resp) = client.get(&tok_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(bytes) = resp.bytes().await {
+                    let _ = fs::write(&tok_path, bytes);
+                }
+            }
+        }
+    }
+
     listener.on_complete(&final_path);
     Ok(final_path)
 }
