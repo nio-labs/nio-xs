@@ -319,9 +319,11 @@ impl AstMicroEngine {
 
         let (output_offset, output_dtype, vocab_size) = if let Some(info) = content.tensor_infos.get("output.weight") {
             let offset = (content.tensor_data_offset + info.offset) as usize;
-            (offset, info.ggml_dtype, info.shape.dims()[0])
+            let v_size = info.shape.dims().iter().copied().max().unwrap_or(0);
+            (offset, info.ggml_dtype, v_size)
         } else {
-            (token_embd_offset, token_embd_dtype, embd_info.shape.dims()[0])
+            let v_size = embd_info.shape.dims().iter().copied().max().unwrap_or(0);
+            (token_embd_offset, token_embd_dtype, v_size)
         };
 
         let mut layer_ranges = Vec::with_capacity(block_count);
@@ -597,15 +599,15 @@ impl AstMicroEngine {
             self.forward_stream(prompt_tokens, 0)?
         };
 
-        // Automatically cache the largest valid boundary (<|im_end|>\n = 151645) before the final prompt:
+        // Automatically cache the largest valid boundary (<|im_end|>\n = 151645 for Qwen, 2 for NioViper) before the final prompt:
         let prefix_end = prompt_tokens[..prompt_tokens.len().saturating_sub(1)]
             .iter()
-            .rposition(|&tok| tok == 151645)
+            .rposition(|&tok| tok == 151645 || tok == 2)
             .map(|pos| (pos + 2).min(prompt_tokens.len()))
             .unwrap_or_else(|| {
                 prompt_tokens
                     .iter()
-                    .position(|&tok| tok == 151645)
+                    .position(|&tok| tok == 151645 || tok == 2)
                     .map(|pos| (pos + 2).min(prompt_tokens.len()))
                     .unwrap_or_else(|| prompt_tokens.len().min(128))
             });

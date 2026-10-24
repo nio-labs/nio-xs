@@ -38,20 +38,20 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
         ModelArtifactEntry {
             model_id: MODEL_VIPER.into(),
             brand_name: "NioViper (Tactical Terminal Striker)".into(),
-            base_model: "Qwen2.5-Coder-8L-32k".into(),
-            filename: "nio-viper-ast.Q4_0.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/nio-viper-ast.Q4_0.gguf".into(),
-            sha256: "2e7df31bbe90a39e33b363d24085c2d04d7df6519909f27387e8b55b6d36ed32".into(),
-            size_bytes: 100_984_640,
+            base_model: "NioViper-50M".into(),
+            filename: "nio-viper.Q4_0.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.1.0/nio-viper.Q4_0.gguf".into(),
+            sha256: "acaa8a21c8d37d12398a2e7ac67ad367d2e3786b261ce95195e6e0cc08363e9c".into(),
+            size_bytes: 28_214_368,
         },
         ModelArtifactEntry {
             model_id: MODEL_MANTA.into(),
             brand_name: "NioManta (Conversational & AST Companion)".into(),
-            base_model: "Qwen/Qwen2.5-0.5B-Instruct (16L)".into(),
-            filename: "nio-manta-ast.Q4_0.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.1/nio-manta-ast.Q4_0.gguf".into(),
+            base_model: "Qwen/Qwen2.5-Coder-7B-Instruct (Distilled Student)".into(),
+            filename: "niomanta_int8.onnx".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/niomanta_int8.onnx".into(),
             sha256: "56be66f3628768f1f8a71e526da4e06e063554c8c8c50f7f205299d3671a91d2".into(),
-            size_bytes: 284_962_368,
+            size_bytes: 166_304_340,
         },
         ModelArtifactEntry {
             model_id: MODEL_CUDA.into(),
@@ -282,20 +282,29 @@ pub fn ensure_model_ready(model_id: &str, custom_dir: Option<&Path>) -> Result<P
         }
     }
 
-    let rt =
-        tokio::runtime::Runtime::new().map_err(|e| format!("failed to create runtime: {e}"))?;
-
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(600))
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))?;
 
-    rt.block_on(download_and_verify_model(
-        &client,
-        &entry,
-        &dir,
-        &ConsoleProgress,
-    ))
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        tokio::task::block_in_place(|| {
+            handle.block_on(download_and_verify_model(
+                &client,
+                &entry,
+                &dir,
+                &ConsoleProgress,
+            ))
+        })
+    } else {
+        let rt = tokio::runtime::Runtime::new().map_err(|e| format!("failed to create runtime: {e}"))?;
+        rt.block_on(download_and_verify_model(
+            &client,
+            &entry,
+            &dir,
+            &ConsoleProgress,
+        ))
+    }
 }
 
 /// Interactive or automated model probe and download.
@@ -400,9 +409,9 @@ mod tests {
             ),
             (
                 MODEL_VIPER,
-                "2e7df31bbe90a39e33b363d24085c2d04d7df6519909f27387e8b55b6d36ed32",
-                100_984_640,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/nio-viper-ast.Q4_0.gguf",
+                "acaa8a21c8d37d12398a2e7ac67ad367d2e3786b261ce95195e6e0cc08363e9c",
+                28_214_368,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.1.0/nio-viper.Q4_0.gguf",
             ),
             (
                 MODEL_MANTA,

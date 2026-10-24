@@ -183,8 +183,8 @@ impl RayEngine {
 
         let lowered = model_name.trim().to_ascii_lowercase();
         let normalized = match lowered.as_str() {
-            "ray" | "nio-ray" => "nio-ray",
             "viper" | "nio-viper" => "nio-viper",
+            "ray" | "nio-ray" => "nio-ray",
             "manta" | "nio-manta" => "nio-manta",
             "cuda" | "nio-cuda" => "nio-cuda",
             other => other,
@@ -208,16 +208,19 @@ impl RayEngine {
     pub fn find_model_paths_for(model_name: &str) -> Result<(PathBuf, PathBuf)> {
         let normalized = model_name.trim().to_ascii_lowercase();
         let target_candidates: &[&str] = match normalized.as_str() {
+            "viper" | "nio-viper" => &[
+                "nio-viper.Q4_0.gguf",
+                "nio-viper-ast-32k.Q4_0.gguf",
+                "nio-viper-ast.Q4_0.gguf",
+                "nio-viper.Q4_K_M.gguf",
+            ],
             "manta" | "nio-manta" => &[
+                "niomanta_int8.onnx",
+                "nio-manta.onnx",
                 "nio-manta-ast.Q4_0.gguf",
                 "nio-manta.Q4_K_M.gguf",
                 "nio-manta.Q4_0.gguf",
                 "nio-ray-ast.Q4_0.gguf",
-            ],
-            "viper" | "nio-viper" => &[
-                "nio-viper-ast-32k.Q4_0.gguf",
-                "nio-viper-ast.Q4_0.gguf",
-                "nio-viper.Q4_K_M.gguf",
             ],
             "cuda" | "nio-cuda" => &[
                 "nio-cuda-ast.Q4_0.gguf",
@@ -277,8 +280,9 @@ impl RayEngine {
     fn tokenizer_for_model(model: &std::path::Path) -> PathBuf {
         let name = match model.file_name().and_then(|s| s.to_str()) {
             Some("nio-ray-dev.Q4_K_M.gguf") => "nio-ray-dev-tokenizer.json",
-            Some(s) if s.contains("cuda") => "nio-cuda-tokenizer.json",
             Some(s) if s.contains("viper") => "nio-viper-tokenizer.json",
+            Some(s) if s.contains("cuda") => "nio-cuda-tokenizer.json",
+            Some(s) if s.contains("manta") => "nio-manta-tokenizer.json",
             _ => "tokenizer.json",
         };
         let beside = model.with_file_name(name);
@@ -357,6 +361,29 @@ impl RayEngine {
         None
     }
 
+    pub fn format_prompt_for_engine(&self, raw_prompt: &str) -> String {
+        if raw_prompt.contains("<|im_start|>") {
+            raw_prompt.to_string()
+        } else if self.model_path.to_string_lossy().contains("viper") {
+            #[cfg(target_os = "windows")]
+            let os_prefix = if !raw_prompt.to_ascii_lowercase().contains("powershell") && !raw_prompt.to_ascii_lowercase().contains("cmd") {
+                "powershell "
+            } else {
+                ""
+            };
+            #[cfg(not(target_os = "windows"))]
+            let os_prefix = "";
+
+            let query = format!("{}{}", os_prefix, raw_prompt.trim());
+            format!(
+                "<|im_start|>system\nYou are NioViper, the terminal reflex oracle MicroLM.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                query
+            )
+        } else {
+            Self::format_prompt(raw_prompt)
+        }
+    }
+
     pub fn format_prompt(raw_prompt: &str) -> String {
         if raw_prompt.contains("<|im_start|>") {
             raw_prompt.to_string()
@@ -396,6 +423,7 @@ impl RayEngine {
         let (tx, rx) = mpsc::channel(64);
 
         let bundle_arc = self.bundle.clone();
+        let formatted = self.format_prompt_for_engine(&prompt);
         tokio::task::spawn_blocking(move || {
             let mut guard = bundle_arc.blocking_lock();
             let Some(bundle) = guard.as_mut() else {
@@ -403,7 +431,6 @@ impl RayEngine {
                 return;
             };
 
-            let formatted = Self::format_prompt(&prompt);
             let encoded = match bundle.tokenizer.encode(formatted.as_str(), false) {
                 Ok(t) => t,
                 Err(e) => {
@@ -491,6 +518,7 @@ impl RayEngine {
 
                 context_tokens.push(next_token);
                 if let Ok(Some(chunk)) = tos.next_token(next_token) {
+                    // eprintln!("[DEBUG] pos: {}, tok: {}, chunk: {:?}", current_pos, next_token, chunk);
                     if chunk.contains("<|im_end|>")
                         || chunk.contains("<|im_start|>")
                         || chunk.contains("<|endoftext|>")

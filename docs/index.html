@@ -51,21 +51,23 @@
         </div>
         <div class="nav-section">
           <div class="nav-section-title">Architecture &amp; models</div>
-          <a href="#profiles" class="nav-link">5. Model family</a>
-          <a href="#nionano" class="nav-link">6. NioNano MicroLM</a>
-          <a href="#flow" class="nav-link">7. NioFlow routing</a>
+          <a href="#nioviper" class="nav-link">5. NioViper 50M (Swiss Gear)</a>
+          <a href="#fleet" class="nav-link">6. Full-Brain Fleet (Ray, Apex, Hydra)</a>
+          <a href="#nionano" class="nav-link">7. NioNano Decision Model</a>
+          <a href="#flow" class="nav-link">8. NioFlow routing</a>
+          <a href="#profiles" class="nav-link">9. Workflow profiles</a>
         </div>
         <div class="nav-section">
           <div class="nav-section-title">Protocols &amp; tools</div>
-          <a href="#mcp" class="nav-link">8. MCP server</a>
-          <a href="#directives" class="nav-link">9. Directives</a>
-          <a href="#plugins" class="nav-link">10. Python plugins</a>
-          <a href="#permissions" class="nav-link">11. Tools &amp; permissions</a>
+          <a href="#plugins" class="nav-link">10. Isolated Python plugins</a>
+          <a href="#mcp" class="nav-link">11. MCP server</a>
+          <a href="#directives" class="nav-link">12. Directives</a>
+          <a href="#permissions" class="nav-link">13. Tools &amp; permissions</a>
         </div>
         <div class="nav-section">
           <div class="nav-section-title">Project</div>
-          <a href="#axis" class="nav-link">12. AXIS priorities</a>
-          <a href="#faq" class="nav-link">13. FAQ</a>
+          <a href="#axis" class="nav-link">14. AXIS priorities</a>
+          <a href="#faq" class="nav-link">15. FAQ</a>
         </div>
       </nav>
       <div class="sidebar-footer">
@@ -286,9 +288,79 @@ volumes:
           </table></div>
         </section>
 
-        <!-- 5. MODEL FAMILY -->
+        <!-- 5. NIOVIPER 50M -->
+        <section id="nioviper" class="doc-section">
+          <h2>5. NioViper: The Terminal Swiss Gear (50M MicroLM)</h2>
+          <p><strong>NioViper</strong> is an exact <strong>50,000,000 parameter</strong> micro-oracle designed for instant, zero-hesitation terminal and DevOps actions. Running locally in <strong>sub-10ms</strong> with a peak RAM footprint strictly capped under <strong>38.5 MB</strong>, Viper replaces slow cloud lookups and complex syntax googling with direct muscle-memory reflexes.</p>
+
+          <div class="capsule-benefits">
+            <article>
+              <h2>&lt; 10ms Latency</h2>
+              <p>Streams commands at <strong>160–220 tokens/sec</strong> (~140 words/sec) on standard laptop CPUs. Sub-12ms time-to-first-token.</p>
+            </article>
+            <article>
+              <h2>38.5 MB Peak RAM</h2>
+              <p>Ultra-compact 32-byte SIMD block-aligned <code>Q4_0</code> GGUF (<strong>26.9 MB disk</strong>). Runs permanently in background without memory pressure.</p>
+            </article>
+            <article>
+              <h2>Cross-Platform Reflex</h2>
+              <p>Auto-detects host OS and outputs native commands for POSIX Shell (Linux, macOS, WSL) and Windows PowerShell / CMD.</p>
+            </article>
+          </div>
+
+          <h3>Direct Execution &amp; The Safety Clutch (<code>-x</code> / <code>--run</code>)</h3>
+          <p>Pass the <code>-x</code> flag to have NioViper synthesize the command and execute it natively on your terminal. A built-in <strong>Safety Clutch</strong> automatically intercepts destructive commands (such as <code>kill -9</code>, <code>rm -rf</code>, <code>git reset --hard</code>, <code>Stop-Process</code>) and prompts for confirmation:</p>
+
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-bash"># 1. Read-only search runs immediately:
+nioxs viper -x "crawl folder for database credentials"
+# -> Synthesizes: grep -rnE "(DB_PASS|DATABASE_URL|password)" .
+# -> Streams matched lines straight to your terminal!
+
+# 2. Destructive actions trigger the safety clutch:
+nioxs viper -x "kill whatever process is holding port 3000"
+# -> Output:
+#    lsof -ti:3000 | xargs kill -9
+#    ⚡ Destructive command detected. Execute: "lsof -ti:3000 | xargs kill -9"? [Y/n]
+
+# 3. Auto-confirm in scripts or CI/CD pipelines:
+nioxs viper -x -y "kill port 3000"</code></pre>
+          </div>
+
+          <h3>Isolated Python Plugin Sandbox</h3>
+          <p>NioViper manages its own isolated Python environment in <code>~/.nioxs/plugins/venv</code>. It never touches or pollutes your global system Python or project dependencies:</p>
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-bash"># Install specialized tooling into the isolated sandbox
+nioxs viper plugin install duckdb
+nioxs viper plugin install tree-sitter
+
+# View installed sandbox plugins
+nioxs viper plugin list</code></pre>
+          </div>
+        </section>
+
+        <!-- 6. FLEET HIERARCHY -->
+        <section id="fleet" class="doc-section">
+          <h2>6. Full-Brain Fleet Hierarchy: MicroLM to Sovereign Titan</h2>
+          <p>In NioXS, reasoning models are <strong>never degraded or stripped</strong>. NioRay, NioApex, and NioHydra retain <strong>100% of their full transformer layers and reasoning weights</strong>. Memory efficiency is solved entirely in native Rust via <strong>dynamic SIMD layer streaming (<code>madvise(MADV_DONTNEED)</code>)</strong>, slashing RAM consumption by up to 96% while maintaining state-of-the-art coding benchmarks.</p>
+
+          <div class="table-container"><table>
+            <thead><tr><th>Model</th><th>Parameters</th><th>Role</th><th>Disk (Q4_0)</th><th>Peak RAM</th><th>Speed (CPU)</th><th>Benchmark</th></tr></thead>
+            <tbody>
+              <tr><td><strong>NioViper</strong></td><td><strong>50M</strong></td><td>Terminal Swiss Gear &amp; Reflex Oracle</td><td><strong>26.9 MB</strong></td><td><strong>~38.5 MB</strong></td><td>160–220 tok/s</td><td>Instant CLI Reflex</td></tr>
+              <tr><td><strong>NioManta</strong></td><td><strong>490M</strong></td><td>92-Language Coding Guru &amp; Planner</td><td><strong>260 MB</strong></td><td><strong>~42.4 MB</strong></td><td>70–90 tok/s</td><td>Architectural DAGs</td></tr>
+              <tr><td><strong>NioRay</strong></td><td><strong>1.54B</strong></td><td>Rapid Code Synthesizer (Full Brain)</td><td><strong>980 MB</strong></td><td><strong>~88 MB</strong></td><td>24–28 w/s</td><td><strong>75.6% HumanEval</strong></td></tr>
+              <tr><td><strong>NioApex</strong></td><td><strong>3.09B</strong></td><td>Mini Coding Model (Full Brain)</td><td><strong>1.78 GB</strong></td><td><strong>~135 MB</strong></td><td>16–22 w/s</td><td><strong>81.7% HumanEval</strong></td></tr>
+              <tr><td><strong>NioHydra</strong></td><td><strong>7.61B</strong></td><td>Sovereign Titan (Whole-Repo Refactor)</td><td><strong>4.15 GB</strong></td><td><strong>~350 MB</strong></td><td>10–12 w/s</td><td><strong>88.4% HumanEval</strong></td></tr>
+            </tbody>
+          </table></div>
+        </section>
+
+        <!-- 7. MODEL FAMILY & WORKFLOWS -->
         <section id="profiles" class="doc-section">
-          <h2>5. The Nio Model Family</h2>
+          <h2>7. Operational Workflow Profiles</h2>
           <p>Each profile represents a specialized operational workflow and role contract. Choose one directly in your agent's model picker, or let <code>nio-flow</code> orchestrate them automatically:</p>
 
           <div class="profile-grid">
@@ -366,9 +438,9 @@ volumes:
           </div>
         </section>
 
-        <!-- 6. NIONANO MICROLM -->
+        <!-- 8. NIONANO DECISION MODEL -->
         <section id="nionano" class="doc-section">
-          <h2>6. NioNano: MicroLM (Micro Learning Model)</h2>
+          <h2>8. NioNano: Deterministic Decision Model</h2>
           <p><strong>NioNano</strong> is the core differentiator in AXIS. While large foundation models (LLMs) require gigabytes of VRAM, introduce latency, and risk hallucination, NioNano is a <strong>46 KB deterministic learning model</strong> running natively inside the compiled Rust binary. It executes sub-millisecond local intent classification, verified evidence collection, compiler diagnostic triage, and anti-hallucination guardrails right in your developer terminal or TUI companion.</p>
 
           <div class="callout callout-info">
@@ -441,9 +513,9 @@ volumes:
           </table></div>
         </section>
 
-        <!-- 7. NIOFLOW ROUTING -->
+        <!-- 9. NIOFLOW ROUTING -->
         <section id="flow" class="doc-section">
-          <h2>7. How NioFlow Routes Work</h2>
+          <h2>9. How NioFlow Routes Work</h2>
           <p>Every turn processed by NioXS passes through an end-to-end, bounded lifecycle flow:</p>
 
           <div class="lifecycle-diagram">
@@ -504,9 +576,45 @@ volumes:
 ↪ Final Specialist Answer (or ⚖ NioHelm · Go / No-Go with --helm)</code></pre>
         </section>
 
-        <!-- 8. MCP SERVER -->
+        <!-- 10. PYTHON PLUGINS -->
+        <section id="plugins" class="doc-section">
+          <h2>10. Isolated Python Plugins Ecosystem</h2>
+          <p>NioXS provides an isolated Python virtual environment in <code>~/.nioxs/plugins/venv</code>. Developers can install packages or drop modular Python scripts without polluting their global environment or project dependencies.</p>
+
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-bash"># Install packages directly into the Viper isolated sandbox
+nioxs viper plugin install duckdb
+nioxs viper plugin install tree-sitter
+
+# List installed plugins
+nioxs viper plugin list</code></pre>
+          </div>
+
+          <h3>Custom User Automation Scripts</h3>
+          <p>You can also drop standalone Python scripts into <code>~/.nioxs/plugins/</code>:</p>
+          <ol>
+            <li>Create a <code>.py</code> file in <code>~/.nioxs/plugins/my_plugin.py</code>.</li>
+            <li>Define a top-level <code>def run(prompt: str) -&gt; str</code> function.</li>
+            <li>NioNano and NioViper detect the plugin and execute it in a bounded, timed subprocess.</li>
+          </ol>
+
+          <h3>Example Plugin</h3>
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-python"># ~/.nioxs/plugins/extract_colors.py
+import re, json
+
+def run(prompt: str) -> str:
+    """Extracts hex color codes from text or CSS strings."""
+    hex_colors = re.findall(r'#(?:[0-9a-fA-F]{3}){1,2}\b', prompt)
+    return json.dumps({"colors": list(set(hex_colors))})</code></pre>
+          </div>
+        </section>
+
+        <!-- 11. MCP SERVER -->
         <section id="mcp" class="doc-section">
-          <h2>8. Model Context Protocol (MCP) Server</h2>
+          <h2>11. Model Context Protocol (MCP) Server</h2>
           <p>NioXS can be operated as a native stdio Model Context Protocol (MCP) server, offering tools to Claude Desktop, Cursor, Cline, and any other MCP-compatible host:</p>
 
           <div class="code-wrapper">
@@ -542,9 +650,9 @@ volumes:
           </table></div>
         </section>
 
-        <!-- 9. DIRECTIVES -->
+        <!-- 12. DIRECTIVES -->
         <section id="directives" class="doc-section">
-          <h2>9. Directives</h2>
+          <h2>12. Directives</h2>
           <p>Directives allow developers to trigger instant in-TUI actions directly in conversation without exiting or minimizing the coding agent:</p>
           <div class="table-container"><table>
             <thead><tr><th>Directive</th><th>Purpose</th><th>Behavior</th></tr></thead>
@@ -564,35 +672,9 @@ volumes:
           </table></div>
         </section>
 
-        <!-- 10. PYTHON PLUGINS -->
-        <section id="plugins" class="doc-section">
-          <h2>10. Python Tool Plugins Ecosystem (`--tools`)</h2>
-          <p>NioXS supports dropping modular Python plugins into <code>~/.nioxs/plugins/</code> to extend coding agent capabilities with zero server recompilation.</p>
-
-          <h3>How Plugins Work</h3>
-          <ol>
-            <li>Create a <code>.py</code> file in <code>~/.nioxs/plugins/my_plugin.py</code>.</li>
-            <li>Define a top-level <code>def run(prompt: str) -&gt; str</code> function.</li>
-            <li>NioNano detects the plugin and advertises it to calling agents and MCP.</li>
-            <li>Before executing any newly installed or downloaded plugin, NioXS prompts the developer for explicit consent.</li>
-          </ol>
-
-          <h3>Example Plugin</h3>
-          <div class="code-wrapper">
-            <button class="copy-btn" type="button">Copy</button>
-            <pre><code class="language-python"># ~/.nioxs/plugins/extract_colors.py
-import re, json
-
-def run(prompt: str) -> str:
-    """Extracts hex color codes from text or CSS strings."""
-    hex_colors = re.findall(r'#(?:[0-9a-fA-F]{3}){1,2}\b', prompt)
-    return json.dumps({"colors": list(set(hex_colors))})</code></pre>
-          </div>
-        </section>
-
-        <!-- 11. TOOLS & PERMISSIONS -->
+        <!-- 13. TOOLS & PERMISSIONS -->
         <section id="permissions" class="doc-section">
-          <h2>11. Tools, Privacy &amp; Permissions</h2>
+          <h2>13. Tools, Privacy &amp; Permissions</h2>
           <ul>
             <li>NioXS only relays tools advertised by the caller. The calling agent remains responsible for project access, approvals, and execution.</li>
             <li>Model output, repository files, tool results, and fetched web content are treated as untrusted input.</li>
@@ -603,9 +685,9 @@ def run(prompt: str) -> str:
           <div class="callout callout-info">Helm's Go is a readiness assessment against the evidence and criteria. It does not grant tool permission or replace the caller's approval.</div>
         </section>
 
-        <!-- 12. AXIS PRIORITIES -->
+        <!-- 14. AXIS PRIORITIES -->
         <section id="axis" class="doc-section">
-          <h2>12. AXIS Advancement Priorities</h2>
+          <h2>14. AXIS Advancement Priorities</h2>
           <p>We are improving the whole system in five measurable areas:</p>
           <ol>
             <li><strong>Reliable tools:</strong> reuse results and handle tool limits cleanly.</li>
@@ -622,14 +704,14 @@ def run(prompt: str) -> str:
           </div>
         </section>
 
-        <!-- 13. FAQ -->
+        <!-- 15. FAQ -->
         <section id="faq" class="doc-section">
-          <h2>13. FAQ</h2>
+          <h2>15. FAQ</h2>
           <div class="faq-item"><h3>Are NioFlow, NioAtom, and the other profiles separate models?</h3><p>They are role profiles and Rust-controlled workflows that share the configured upstream model. NioNano has a local MicroLM component.</p></div>
           <div class="faq-item"><h3>Will a general question read my project files?</h3><p>No. NioFlow routes general questions directly and only asks for project evidence when the task depends on the current project.</p></div>
           <div class="faq-item"><h3>Does NioHelm approve changes?</h3><p>Helm reports Go, Conditional Go, or No-Go from evidence. The calling agent still enforces its approval policy before a tool runs.</p></div>
           <div class="faq-item"><h3>Can I use NioThinker without Helm?</h3><p>Yes. Direct Thinker runs its bounded three phases without Helm by default. Add <code>--with-helm</code> when you want a final decision.</p></div>
-          <div class="faq-item"><h3>How does NioXS compare to a traditional reverse proxy?</h3><p>Unlike raw proxies, NioXS embeds NioNano (&lt;0.5ms intent triage), Anti-Hallucination AST symbol validation, native web research, and cryptographic action logging in NioDB.</p></div>
+          <div class="faq-item"><h3>How does NioXS compare to a traditional reverse proxy?</h3><p>Unlike raw proxies, NioXS embeds NioViper (Terminal Swiss Gear), NioRay (1.54B Code Synthesizer), NioNano, Anti-Hallucination AST symbol validation, and cryptographic action logging in NioDB.</p></div>
           <div class="faq-item"><h3>Where can I find the API and setup details?</h3><p>See the <a href="https://github.com/nio-labs/nio-xs/blob/main/README.md" target="_blank" rel="noreferrer">README</a>, <a href="https://github.com/nio-labs/nio-xs/blob/main/docs/DEVELOPMENT.md" target="_blank" rel="noreferrer">development guide</a>, and <a href="https://github.com/nio-labs/nio-xs/blob/main/contracts/README.md" target="_blank" rel="noreferrer">API contracts</a>.</p></div>
         </section>
       </div>
