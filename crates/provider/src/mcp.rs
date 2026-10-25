@@ -62,13 +62,24 @@ pub fn handle_rpc(line: &str) -> Option<String> {
             let mut tools = vec![
                 json!({
                     "name": "web_fetch",
-                    "description": "Fetch and extract clean readable text from a web URL",
+                    "description": "Mako Web Scout: Fetch live web URL and strip 95-99% of DOM noise (scripts, ads, nav) to reduce LLM context token usage",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "url": { "type": "string" }
+                            "url": { "type": "string", "description": "HTTP or HTTPS URL to fetch and distill" }
                         },
                         "required": ["url"]
+                    }
+                }),
+                json!({
+                    "name": "mako_search",
+                    "description": "Mako Web Scout: Keyless live web search returning clean documentation URLs and summaries",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": { "type": "string", "description": "Search query or operator syntax" }
+                        },
+                        "required": ["query"]
                     }
                 }),
                 json!({
@@ -209,6 +220,95 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                 nioxs_nano::companion::dispatch_tool(&full_task).to_markdown()
             } else {
                 match tool_name {
+                    "web_fetch" => {
+                        let url = args["url"].as_str().unwrap_or("");
+                        if url.is_empty() {
+                            "Error: 'url' parameter is required for web_fetch".to_string()
+                        } else {
+                            let fetch_res = match tokio::runtime::Handle::try_current() {
+                                Ok(handle) => tokio::task::block_in_place(|| {
+                                    handle.block_on(nioxs_browser::fetch_url(url))
+                                }),
+                                Err(_) => {
+                                    tokio::runtime::Runtime::new()
+                                        .map_err(|e| e.to_string())
+                                        .and_then(|rt| rt.block_on(nioxs_browser::fetch_url(url)))
+                                }
+                            };
+                            match fetch_res {
+                                Ok(raw_html) => {
+                                    let raw_len = raw_html.len();
+                                    let clean_text = nioxs_browser::extract_text(&raw_html);
+                                    let clean_len = clean_text.len();
+                                    let saved_pct = if raw_len > 0 {
+                                        (1.0 - (clean_len as f64 / raw_len as f64)) * 100.0
+                                    } else {
+                                        0.0
+                                    };
+                                    let title = nioxs_browser::extract_title(&raw_html)
+                                        .unwrap_or_else(|| "Web Page".into());
+                                    format!(
+                                        "### 🦈 Mako Web Scout: {title}\n**URL:** {url}\n**Token Optimization:** {saved_pct:.1}% noise eliminated ({raw_len} bytes HTML → {clean_len} bytes clean payload)\n\n---\n\n{clean_text}"
+                                    )
+                                }
+                                Err(e) => format!("Error fetching URL '{url}': {e}"),
+                            }
+                        }
+                    }
+                    "mako_search" => {
+                        let q = args["query"].as_str().unwrap_or("");
+                        if q.is_empty() {
+                            "Error: 'query' parameter is required for mako_search".to_string()
+                        } else {
+                            let search_res = match tokio::runtime::Handle::try_current() {
+                                Ok(handle) => tokio::task::block_in_place(|| {
+                                    handle.block_on(nioxs_browser::search(q, 5))
+                                }),
+                                Err(_) => {
+                                    tokio::runtime::Runtime::new()
+                                        .map_err(|e| e.to_string())
+                                        .and_then(|rt| rt.block_on(nioxs_browser::search(q, 5)))
+                                }
+                            };
+                            match search_res {
+                                Ok(results) => {
+                                    if results.is_empty() {
+                                        format!("No search results found for '{q}'.")
+                                    } else {
+                                        let mut out = format!("### 🦈 Mako Search Results for: `{q}`\n\n");
+                                        for (idx, r) in results.iter().enumerate() {
+                                            out.push_str(&format!("{}. [{}]({})\n   {}\n\n", idx + 1, r.title, r.url, r.snippet));
+                                        }
+                                        out
+                                    }
+                                }
+                                Err(e) => format!("Search error: {e}"),
+                            }
+                        }
+                    }
+                    "wiki_search" => {
+                        let q = args["query"].as_str().unwrap_or("");
+                        let res = match tokio::runtime::Handle::try_current() {
+                            Ok(handle) => tokio::task::block_in_place(|| {
+                                handle.block_on(nioxs_browser::search_wikipedia(q, 3))
+                            }),
+                            Err(_) => {
+                                tokio::runtime::Runtime::new()
+                                    .map_err(|e| e.to_string())
+                                    .and_then(|rt| rt.block_on(nioxs_browser::search_wikipedia(q, 3)))
+                            }
+                        };
+                        match res {
+                            Ok(results) => {
+                                let mut out = format!("### Wikipedia Results for: `{q}`\n\n");
+                                for r in results {
+                                    out.push_str(&format!("• [{}]({}): {}\n", r.title, r.url, r.snippet));
+                                }
+                                out
+                            }
+                            Err(e) => format!("Wikipedia error: {e}"),
+                        }
+                    }
                     "companion_tool" => {
                         let task = args["task"].as_str().unwrap_or("");
                         nioxs_nano::companion::dispatch_tool(task).to_markdown()
@@ -373,6 +473,7 @@ mod tests {
             .collect();
         for expected in [
             "web_fetch",
+            "mako_search",
             "wiki_search",
             "github_repo",
             "package_info",
@@ -414,6 +515,15 @@ mod tests {
         let text = res["result"]["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("patched"), "unexpected result: {text}");
         assert!(text.contains('c'));
+    }
+
+    #[test]
+    fn test_web_fetch_missing_url_returns_error() {
+        let req = r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"web_fetch","arguments":{}}}"#;
+        let res: Value = serde_json::from_str(&handle_rpc(req).unwrap()).unwrap();
+        assert_eq!(res["jsonrpc"], "2.0");
+        let text = res["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("required"), "unexpected result: {text}");
     }
 
     #[test]
