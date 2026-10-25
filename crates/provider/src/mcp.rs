@@ -62,11 +62,12 @@ pub fn handle_rpc(line: &str) -> Option<String> {
             let mut tools = vec![
                 json!({
                     "name": "web_fetch",
-                    "description": "Mako Web Scout: Fetch live web URL and strip 95-99% of DOM noise (scripts, ads, nav) to reduce LLM context token usage",
+                    "description": "Mako Web Scout: Fetch live web URL and strip 95-99% of DOM noise (scripts, ads, nav) to reduce LLM context token usage. Optional 'focus' pinpoints exact symbols or errors.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "url": { "type": "string", "description": "HTTP or HTTPS URL to fetch and distill" }
+                            "url": { "type": "string", "description": "HTTP or HTTPS URL to fetch and distill" },
+                            "focus": { "type": "string", "description": "Optional keyword, struct, function, or error message to surgically isolate" }
                         },
                         "required": ["url"]
                     }
@@ -239,7 +240,32 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                                 Ok(raw_html) => {
                                     let raw_len = raw_html.len();
                                     let clean_text = nioxs_browser::extract_text(&raw_html);
-                                    let clean_len = clean_text.len();
+                                    let focus = args["focus"].as_str().filter(|f| !f.trim().is_empty());
+                                    
+                                    let (distilled_text, focus_note) = if let Some(target) = focus {
+                                        let lower_target = target.to_lowercase();
+                                        let paragraphs: Vec<&str> = clean_text.split("\n\n").collect();
+                                        let matching_paras: Vec<&str> = paragraphs
+                                            .iter()
+                                            .copied()
+                                            .filter(|p| p.to_lowercase().contains(&lower_target))
+                                            .collect();
+                                        if !matching_paras.is_empty() {
+                                            (
+                                                matching_paras.join("\n\n"),
+                                                format!(" *(Focused on `{target}`)*"),
+                                            )
+                                        } else {
+                                            (
+                                                clean_text.chars().take(3000).collect(),
+                                                format!(" *(Focus `{target}` not matched, showing top excerpt)*"),
+                                            )
+                                        }
+                                    } else {
+                                        (clean_text, String::new())
+                                    };
+
+                                    let clean_len = distilled_text.len();
                                     let saved_pct = if raw_len > 0 {
                                         (1.0 - (clean_len as f64 / raw_len as f64)) * 100.0
                                     } else {
@@ -248,7 +274,7 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                                     let title = nioxs_browser::extract_title(&raw_html)
                                         .unwrap_or_else(|| "Web Page".into());
                                     format!(
-                                        "### 🦈 Mako Web Scout: {title}\n**URL:** {url}\n**Token Optimization:** {saved_pct:.1}% noise eliminated ({raw_len} bytes HTML → {clean_len} bytes clean payload)\n\n---\n\n{clean_text}"
+                                        "### 🦈 Mako Web Scout: {title}{focus_note}\n**URL:** {url}\n**Token Optimization:** {saved_pct:.1}% noise eliminated ({raw_len} bytes HTML → {clean_len} bytes clean payload)\n\n---\n\n{distilled_text}"
                                     )
                                 }
                                 Err(e) => format!("Error fetching URL '{url}': {e}"),
