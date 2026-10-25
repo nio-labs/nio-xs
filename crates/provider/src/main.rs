@@ -241,11 +241,43 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
     if arg.as_deref() == Some("manta") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs manta <prompt> | nioxs manta --plan <prompt> | nioxs manta --benchmark | nioxs manta -i");
+            eprintln!("Usage: nioxs manta <prompt> | nioxs manta --plan <prompt> | nioxs manta --benchmark");
             return Ok(());
         }
 
-        // Locate runner script
+        let mut is_plan = false;
+        let mut prompt_parts = Vec::new();
+        for a in &raw_args {
+            if a == "--plan" {
+                is_plan = true;
+            } else if a == "--benchmark" || a == "-b" {
+                // Keep for python benchmark if needed
+            } else if a != "-i" && a != "--interactive" {
+                prompt_parts.push(a.as_str());
+            }
+        }
+        let user_prompt = prompt_parts.join(" ");
+
+        // Prefer native Rust RayEngine for nio-manta
+        if let Ok(engine) = nioxs_engine::RayEngine::for_model("nio-manta") {
+            let sys_msg = if is_plan {
+                "You are Manta, Nio's Conversational Guru and Wasm Architect. Compile the user request into a machine-verifiable <manta_plan> XML DAG with step id, name, description, command, and rollback."
+            } else {
+                "You are Manta, Nio's Conversational Guru and Wasm Architect. Answer with high technical precision, empathy, and conciseness."
+            };
+            let formatted_prompt = format!("<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n");
+            let max_tokens = if is_plan { 384 } else { 160 };
+            let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.2, 0.9).await?;
+            use std::io::Write;
+            while let Some(chunk) = rx.recv().await {
+                print!("{chunk}");
+                let _ = std::io::stdout().flush();
+            }
+            println!();
+            return Ok(());
+        }
+
+        // Fallback: Locate runner script
         let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf()));
         let mut script_candidates = vec![
             std::path::PathBuf::from("scripts/run_niomanta_onnx.py"),

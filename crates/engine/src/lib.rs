@@ -215,11 +215,13 @@ impl RayEngine {
                 "nio-viper.Q4_K_M.gguf",
             ],
             "manta" | "nio-manta" => &[
-                "niomanta_int8.onnx",
-                "nio-manta.onnx",
+                "manta.vmicrolm-vector.gguf",
+                "manta.Q4_0.gguf",
                 "nio-manta-ast.Q4_0.gguf",
                 "nio-manta.Q4_K_M.gguf",
                 "nio-manta.Q4_0.gguf",
+                "niomanta_int8.onnx",
+                "nio-manta.onnx",
                 "nio-ray-ast.Q4_0.gguf",
             ],
             "cuda" | "nio-cuda" => &[
@@ -278,11 +280,23 @@ impl RayEngine {
     }
 
     fn tokenizer_for_model(model: &std::path::Path) -> PathBuf {
+        if let Some(s) = model.file_name().and_then(|s| s.to_str()) {
+            if s.contains("manta") {
+                let candidate1 = model.with_file_name("manta-tokenizer.json");
+                if candidate1.is_file() {
+                    return candidate1;
+                }
+                let candidate2 = model.with_file_name("nio-manta-tokenizer.json");
+                if candidate2.is_file() {
+                    return candidate2;
+                }
+            }
+        }
         let name = match model.file_name().and_then(|s| s.to_str()) {
             Some("nio-ray-dev.Q4_K_M.gguf") => "nio-ray-dev-tokenizer.json",
             Some(s) if s.contains("viper") => "nio-viper-tokenizer.json",
             Some(s) if s.contains("cuda") => "nio-cuda-tokenizer.json",
-            Some(s) if s.contains("manta") => "nio-manta-tokenizer.json",
+            Some(s) if s.contains("manta") => "manta-tokenizer.json",
             _ => "tokenizer.json",
         };
         let beside = model.with_file_name(name);
@@ -630,7 +644,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_ray_generation_speed() {
         if let Ok(engine) = RayEngine::new() {
             if engine.ensure_loaded().await.is_ok() {

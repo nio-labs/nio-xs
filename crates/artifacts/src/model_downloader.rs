@@ -46,12 +46,12 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
         },
         ModelArtifactEntry {
             model_id: MODEL_MANTA.into(),
-            brand_name: "NioManta (Conversational & AST Companion)".into(),
-            base_model: "Qwen/Qwen2.5-Coder-7B-Instruct (Distilled Student)".into(),
-            filename: "niomanta_int8.onnx".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/niomanta_int8.onnx".into(),
-            sha256: "56be66f3628768f1f8a71e526da4e06e063554c8c8c50f7f205299d3671a91d2".into(),
-            size_bytes: 166_304_340,
+            brand_name: "NioManta (Conversational Brain & Wasm Architect)".into(),
+            base_model: "Qwen/Qwen2.5-0.5B-Instruct (24L, Full Brain)".into(),
+            filename: "manta.Q4_0.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.0/manta.Q4_0.gguf".into(),
+            sha256: "3017aaa98c315b94728d6ad0aa6ae4d068ac3c8b23c00625791a4d2c56c4eca4".into(),
+            size_bytes: 284_077_664,
         },
         ModelArtifactEntry {
             model_id: MODEL_CUDA.into(),
@@ -428,9 +428,9 @@ mod tests {
             ),
             (
                 MODEL_MANTA,
-                "56be66f3628768f1f8a71e526da4e06e063554c8c8c50f7f205299d3671a91d2",
-                284_962_368,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.1/nio-manta-ast.Q4_0.gguf",
+                "3017aaa98c315b94728d6ad0aa6ae4d068ac3c8b23c00625791a4d2c56c4eca4",
+                284_077_664,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.0/manta.Q4_0.gguf",
             ),
             (
                 MODEL_CUDA,
