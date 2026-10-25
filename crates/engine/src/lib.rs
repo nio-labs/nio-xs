@@ -215,9 +215,9 @@ impl RayEngine {
                 "nio-viper.Q4_K_M.gguf",
             ],
             "manta" | "nio-manta" => &[
-                "manta.vmicrolm-vector.gguf",
                 "manta.Q4_0.gguf",
                 "nio-manta-ast.Q4_0.gguf",
+                "manta.vmicrolm-vector.gguf",
                 "nio-manta.Q4_K_M.gguf",
                 "nio-manta.Q4_0.gguf",
                 "niomanta_int8.onnx",
