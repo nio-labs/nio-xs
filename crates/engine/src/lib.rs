@@ -210,9 +210,7 @@ impl RayEngine {
         let target_candidates: &[&str] = match normalized.as_str() {
             "skate" | "nio-skate" => &[
                 "skate.vmicrolm-vector.gguf",
-                "skate.Q4_0.gguf",
                 "nio-skate.vmicrolm-vector.gguf",
-                "nio-skate.Q4_0.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
@@ -472,6 +470,8 @@ impl RayEngine {
                     "-m", model_path.to_str().unwrap_or_default(),
                     "-p", &prompt,
                     "-n", &max_tokens.to_string(),
+                    "-c", "512",
+                    "-t", "2",
                     "-st",
                     "--temp", "0.65",
                     "--repeat-penalty", "1.2",
