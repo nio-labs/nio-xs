@@ -262,23 +262,31 @@ impl AstMicroEngine {
         let mut content = gguf_file::Content::read(&mut cursor)?;
         let device = Device::Cpu;
 
+        let arch: String = content
+            .metadata
+            .get("general.architecture")
+            .and_then(|v| v.to_string().ok().cloned())
+            .unwrap_or_else(|| "qwen2".to_string());
+
         let md_get = |s: &str| -> Result<&gguf_file::Value> {
             content
                 .metadata
-                .get(s)
-                .ok_or_else(|| anyhow!("missing metadata {s}"))
+                .get(&format!("{arch}.{s}"))
+                .or_else(|| content.metadata.get(&format!("qwen2.{s}")))
+                .or_else(|| content.metadata.get(&format!("llama.{s}")))
+                .ok_or_else(|| anyhow!("missing metadata {arch}.{s}"))
         };
 
-        let head_count = md_get("qwen2.attention.head_count")?.to_u32()? as usize;
-        let head_count_kv = md_get("qwen2.attention.head_count_kv")?.to_u32()? as usize;
-        let embedding_length = md_get("qwen2.embedding_length")?.to_u32()? as usize;
-        let context_length = (md_get("qwen2.context_length")?.to_u32()? as usize).min(4096);
-        let block_count = md_get("qwen2.block_count")?.to_u32()? as usize;
-        let rms_norm_eps = md_get("qwen2.attention.layer_norm_rms_epsilon")?.to_f32()? as f64;
-        let rope_freq_base = md_get("qwen2.rope.freq_base")
+        let head_count = md_get("attention.head_count")?.to_u32()? as usize;
+        let head_count_kv = md_get("attention.head_count_kv")?.to_u32()? as usize;
+        let embedding_length = md_get("embedding_length")?.to_u32()? as usize;
+        let context_length = (md_get("context_length")?.to_u32()? as usize).min(4096);
+        let block_count = md_get("block_count")?.to_u32()? as usize;
+        let rms_norm_eps = md_get("attention.layer_norm_rms_epsilon")?.to_f32()? as f64;
+        let rope_freq_base = md_get("rope.freq_base")
             .ok()
             .and_then(|m| m.to_f32().ok())
-            .unwrap_or(1000000.0);
+            .unwrap_or(10000.0);
 
         // Purge heavy embedded GGUF tokenizer metadata tables that are unused by the runtime
         content.metadata.remove("tokenizer.ggml.tokens");
@@ -388,9 +396,18 @@ impl AstMicroEngine {
         let mut layer_static = Vec::with_capacity(block_count);
         for idx in 0..block_count {
             let prefix = format!("blk.{idx}");
-            let bq = engine.read_tensor(&format!("{prefix}.attn_q.bias"))?.dequantize(&device)?;
-            let bk = engine.read_tensor(&format!("{prefix}.attn_k.bias"))?.dequantize(&device)?;
-            let bv = engine.read_tensor(&format!("{prefix}.attn_v.bias"))?.dequantize(&device)?;
+            let bq = match engine.read_tensor(&format!("{prefix}.attn_q.bias")) {
+                Ok(t) => t.dequantize(&device)?,
+                Err(_) => Tensor::zeros((head_count * head_dim,), DType::F32, &device)?,
+            };
+            let bk = match engine.read_tensor(&format!("{prefix}.attn_k.bias")) {
+                Ok(t) => t.dequantize(&device)?,
+                Err(_) => Tensor::zeros((head_count_kv * head_dim,), DType::F32, &device)?,
+            };
+            let bv = match engine.read_tensor(&format!("{prefix}.attn_v.bias")) {
+                Ok(t) => t.dequantize(&device)?,
+                Err(_) => Tensor::zeros((head_count_kv * head_dim,), DType::F32, &device)?,
+            };
             let attention_norm = RmsNorm::from_qtensor(
                 engine.read_tensor(&format!("{prefix}.attn_norm.weight"))?,
                 rms_norm_eps,
@@ -857,9 +874,14 @@ impl AstMicroEngine {
                 };
 
                 for (i, &val) in logits_v.iter().enumerate() {
-                    if val > max_val {
-                        max_val = val;
-                        max_idx = (chunk_start + i) as u32;
+                    let tok_id = (chunk_start + i) as u32;
+                    let mut score = val;
+                    if tok_id == 198 {
+                        score -= 2.0;
+                    }
+                    if score > max_val {
+                        max_val = score;
+                        max_idx = tok_id;
                     }
                 }
             }

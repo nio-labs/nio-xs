@@ -208,6 +208,12 @@ impl RayEngine {
     pub fn find_model_paths_for(model_name: &str) -> Result<(PathBuf, PathBuf)> {
         let normalized = model_name.trim().to_ascii_lowercase();
         let target_candidates: &[&str] = match normalized.as_str() {
+            "skate" | "nio-skate" => &[
+                "skate.vmicrolm-vector.gguf",
+                "skate.Q4_0.gguf",
+                "nio-skate.vmicrolm-vector.gguf",
+                "nio-skate.Q4_0.gguf",
+            ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
                 "nio-viper-ast-32k.Q4_0.gguf",
@@ -293,6 +299,7 @@ impl RayEngine {
             }
         }
         let name = match model.file_name().and_then(|s| s.to_str()) {
+            Some(s) if s.contains("skate") => "skate-tokenizer.json",
             Some("nio-ray-dev.Q4_K_M.gguf") => "nio-ray-dev-tokenizer.json",
             Some(s) if s.contains("viper") => "nio-viper-tokenizer.json",
             Some(s) if s.contains("cuda") => "nio-cuda-tokenizer.json",
@@ -328,7 +335,18 @@ impl RayEngine {
         Ok(())
     }
 
+    pub fn is_vector_runtime(&self) -> bool {
+        self.model_path.to_string_lossy().contains("vmicrolm-vector")
+    }
+
     pub async fn ensure_loaded(&self) -> Result<()> {
+        if self.is_vector_runtime() {
+            if !self.model_path.is_file() {
+                return Err(anyhow!("Vector model file not found at {:?}", self.model_path));
+            }
+            return Ok(());
+        }
+
         let mut guard = self.bundle.lock().await;
         if guard.is_some() {
             return Ok(());
@@ -436,6 +454,64 @@ impl RayEngine {
         self.ensure_loaded().await?;
         let (tx, rx) = mpsc::channel(64);
 
+        if self.is_vector_runtime() {
+            let model_path = self.model_path.clone();
+            tokio::task::spawn_blocking(move || {
+                let bin_candidates = [
+                    PathBuf::from("/home/mn/.nioxs/bin/llama-b11580/llama-cli"),
+                    PathBuf::from("bin/llama-cli"),
+                ];
+                let runner = bin_candidates.into_iter().find(|p| p.is_file());
+                let Some(runner_bin) = runner else {
+                    let _ = tx.blocking_send("Error: Native vector runtime binary not found in ~/.nioxs/bin".into());
+                    return;
+                };
+
+                let mut cmd = std::process::Command::new(&runner_bin);
+                cmd.args([
+                    "-m", model_path.to_str().unwrap_or_default(),
+                    "-p", &prompt,
+                    "-n", &max_tokens.to_string(),
+                    "-st",
+                    "--temp", "0.65",
+                    "--repeat-penalty", "1.2",
+                    "--no-display-prompt",
+                    "--simple-io",
+                ]);
+                let lib_dir = runner_bin.parent().unwrap();
+                cmd.env("LD_LIBRARY_PATH", lib_dir);
+                cmd.stdout(std::process::Stdio::piped());
+                cmd.stderr(std::process::Stdio::null());
+
+                if let Ok(mut child) = cmd.spawn() {
+                    if let Some(stdout) = child.stdout.take() {
+                        use std::io::{BufRead, BufReader};
+                        let reader = BufReader::new(stdout);
+                        let mut assistant_started = false;
+                        for line in reader.lines().flatten() {
+                            if line.contains("<|im_start|>assistant") {
+                                assistant_started = true;
+                                continue;
+                            }
+                            if assistant_started {
+                                let trimmed = line.trim();
+                                if trimmed.starts_with("[ Prompt:") || trimmed == "Exiting..." {
+                                    break;
+                                }
+                                if !line.is_empty() && !trimmed.contains("<|im_end|>") {
+                                    let _ = tx.blocking_send(format!("{line}\n"));
+                                }
+                            } else if line.starts_with('>') && !line.contains("<|im_start|>") {
+                                assistant_started = true;
+                            }
+                        }
+                    }
+                    let _ = child.wait();
+                }
+            });
+            return Ok(rx);
+        }
+
         let bundle_arc = self.bundle.clone();
         let formatted = self.format_prompt_for_engine(&prompt);
         tokio::task::spawn_blocking(move || {
@@ -475,7 +551,10 @@ impl RayEngine {
                 .tokenizer
                 .token_to_id("<|im_start|>")
                 .unwrap_or(151644);
-            let is_eos = |tok: u32| {
+            let is_eos = |tok: u32, pos: usize| {
+                if pos <= prompt_tokens.len() + 2 {
+                    return false;
+                }
                 tok == eos_token_id || tok == eot_token_id || tok == im_start_token_id
             };
 
@@ -486,8 +565,9 @@ impl RayEngine {
                     return;
                 }
             };
+            eprintln!("[INITIAL TOK] id: {}", next_token);
 
-            if is_eos(next_token) {
+            if is_eos(next_token, prompt_tokens.len()) {
                 bundle.engine.reset_cache();
                 return;
             }
@@ -526,13 +606,13 @@ impl RayEngine {
                 };
                 current_pos += 1;
 
-                if is_eos(next_token) {
+                if is_eos(next_token, current_pos) {
                     break;
                 }
 
                 context_tokens.push(next_token);
+                eprintln!("[TOK] pos: {}, id: {}", current_pos, next_token);
                 if let Ok(Some(chunk)) = tos.next_token(next_token) {
-                    // eprintln!("[DEBUG] pos: {}, tok: {}, chunk: {:?}", current_pos, next_token, chunk);
                     if chunk.contains("<|im_end|>")
                         || chunk.contains("<|im_start|>")
                         || chunk.contains("<|endoftext|>")
