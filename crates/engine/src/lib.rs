@@ -5,6 +5,8 @@ use std::sync::Arc;
 use tokenizers::Tokenizer;
 use tokio::sync::{Mutex, mpsc};
 
+pub mod gguf;
+pub mod quants;
 pub mod ast_engine;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 

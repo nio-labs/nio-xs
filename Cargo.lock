@@ -1401,14 +1401,17 @@ name = "nioxs-engine"
 version = "0.4.5"
 dependencies = [
  "anyhow",
+ "byteorder",
  "candle-core",
  "candle-nn",
  "candle-transformers",
+ "half",
  "libc",
  "lz4_flex",
  "memmap2",
  "nioxs-artifacts",
  "rand 0.9.5",
+ "rayon",
  "serde",
  "serde_json",
  "tokenizers",

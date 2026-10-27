@@ -2946,7 +2946,7 @@ src/engine*
     #[tokio::test]
     async fn unavailable_storage_does_not_dispatch_a_tool() {
         let response = app().oneshot(Request::builder().method("POST").uri("/v1/chat/completions").header("content-type","application/json")
-            .body(Body::from(json!({"model":MODEL,"messages":[{"role":"user","content":"read README.md"}],"tools":[{"type":"function","function":{"name":"read_file"}}]}).to_string())).unwrap()).await.unwrap();
+            .body(Body::from(json!({"model":nioxs_contracts::MODEL_NANO,"messages":[{"role":"user","content":"read README.md"}],"tools":[{"type":"function","function":{"name":"read_file"}}]}).to_string())).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         let body = to_bytes(response.into_body(), 8192).await.unwrap();
         let value: Value = serde_json::from_slice(&body).unwrap();
