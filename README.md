@@ -96,11 +96,8 @@ nioxs viper -x -y "kill port 3000"
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Viper** | **100M** | Tactical Terminal Striker | **~61.7 MB** | **< 27 MB** | Sub-20µs | Pure CLI Pipes |
 | **Skate** | **200M** | Ambient Desk Companion | **~93.4 MB** | **< 68 MB** | 50–55 w/s | Friendly Banter & Focus |
-| **µSail** | **270M** | Symbolic Invariant Reflex | **~120 MB** | **< 32 MB** | < 15 ms | Symbolic Safety Proofs |
+| **Mako** | **150M** | Live Web Intelligence & Scout | **~65.4 MB** | **< 22 MB** | 200+ tok/s | DOM Noise Stripping & Wire DSL |
 | **Manta** | **494M** | Full Conversational Guru | **~252 MB** | **< 95 MB** | 35–45 w/s | `<manta_plan>` DAGs |
-| **Sail** | **1.54B** | Lean CoT Reasoner | **~650 MB** | **< 95 MB** | 31–36 w/s | Dense `<think>` Logic |
-| **Fin** | **Council** | Frontier Coding Genius | **~1.8GB – 28GB** | **~3.1 GB** | 30–90 t/s | Compiler-Verified Diff |
-| **Gar** | **14.7B** | Encyclopedic Polymath | **~6.8 GB** | **< 850 MB** | 8–12 w/s | Universal Knowledge |
 
 ---
 
