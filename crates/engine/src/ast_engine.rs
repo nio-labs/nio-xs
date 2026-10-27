@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use candle_core::{Device, Tensor};
 use memmap2::Mmap;
+use std::collections::HashSet;
 use std::fs::File;
 use std::path::Path;
 
@@ -119,17 +120,22 @@ pub fn rms_norm_slice(x: &[f32], weight: &[f32], eps: f32, out: &mut [f32]) {
 }
 
 #[inline(always)]
-pub fn apply_rope(vec: &mut [f32], n_heads: usize, head_dim: usize, cos: &[f32], sin: &[f32]) {
+pub fn apply_rope(vec: &mut [f32], n_heads: usize, head_dim: usize, cos: &[f32], sin: &[f32], neox: bool) {
     let half = head_dim / 2;
     for h in 0..n_heads {
         let offset = h * head_dim;
         for i in 0..half {
-            let x1 = vec[offset + i];
-            let x2 = vec[offset + i + half];
+            let (i0, i1) = if neox {
+                (offset + i, offset + i + half)
+            } else {
+                (offset + 2 * i, offset + 2 * i + 1)
+            };
+            let x0 = vec[i0];
+            let x1 = vec[i1];
             let c = cos[i];
             let s = sin[i];
-            vec[offset + i] = x1 * c - x2 * s;
-            vec[offset + i + half] = x1 * s + x2 * c;
+            vec[i0] = x0 * c - x1 * s;
+            vec[i1] = x0 * s + x1 * c;
         }
     }
 }
@@ -295,6 +301,9 @@ pub struct LayerDesc {
     pub w1: LinearSlice,
     pub w2: LinearSlice,
     pub w3: LinearSlice,
+    pub q_bias: Vec<f32>,
+    pub k_bias: Vec<f32>,
+    pub v_bias: Vec<f32>,
     pub attn_norm_weight: Vec<f32>,
     pub ffn_norm_weight: Vec<f32>,
     pub min_offset: usize,
@@ -309,6 +318,7 @@ impl LayerDesc {
         _pos: usize,
         cos: &[f32],
         sin: &[f32],
+        neox: bool,
         n_head: usize,
         n_kv_head: usize,
         head_dim: usize,
@@ -328,10 +338,25 @@ impl LayerDesc {
             quants::gemv_iq4_nl_prequant(&mut scratch.k, wk_slice, &scratch.x_q8_0, self.wk.n_rows, self.wk.n_cols);
             quants::gemv_iq4_nl_prequant(&mut scratch.v, wv_slice, &scratch.x_q8_0, self.wv.n_rows, self.wv.n_cols);
         }
+        if !self.q_bias.is_empty() {
+            for i in 0..scratch.q.len() {
+                scratch.q[i] += self.q_bias[i];
+            }
+        }
+        if !self.k_bias.is_empty() {
+            for i in 0..scratch.k.len() {
+                scratch.k[i] += self.k_bias[i];
+            }
+        }
+        if !self.v_bias.is_empty() {
+            for i in 0..scratch.v.len() {
+                scratch.v[i] += self.v_bias[i];
+            }
+        }
 
         // 3. RoPE
-        apply_rope(&mut scratch.q, n_head, head_dim, cos, sin);
-        apply_rope(&mut scratch.k, n_kv_head, head_dim, cos, sin);
+        apply_rope(&mut scratch.q, n_head, head_dim, cos, sin, neox);
+        apply_rope(&mut scratch.k, n_kv_head, head_dim, cos, sin, neox);
 
         // 4. KV Cache append
         kv_cache.k.extend_from_slice(&scratch.k);
@@ -394,7 +419,7 @@ impl LayerDesc {
             scratch.x[i] += scratch.mlp_out[i];
         }
 
-        // 13. madvise each layer to keep Peak RAM safely locked around ~63-68MB
+        // 13. madvise each layer to keep Peak RAM safely locked around ~68-71MB
         let page_size = 4096;
         let aligned_start = (self.min_offset / page_size) * page_size;
         let aligned_len = ((self.max_offset - aligned_start + page_size - 1) / page_size) * page_size;
@@ -442,6 +467,7 @@ pub struct AstMicroEngine {
     rms_norm_eps: f64,
     cos_table: Vec<f32>,
     sin_table: Vec<f32>,
+    rope_neox: bool,
     output_norm_weight: Vec<f32>,
     token_embd_offset: usize,
     token_embd_dtype: u32,
@@ -449,6 +475,10 @@ pub struct AstMicroEngine {
     kv_caches: Vec<LayerKvCache>,
     layers: Vec<LayerDesc>,
     scratch: ScratchBuffers,
+    sampling_temp: f32,
+    sampling_top_p: f32,
+    repeat_penalty: f32,
+    repeat_last_n: usize,
 }
 
 impl AstMicroEngine {
@@ -463,6 +493,7 @@ impl AstMicroEngine {
             .get("general.architecture")
             .and_then(|v| v.to_string().ok())
             .unwrap_or_else(|| "llama".to_string());
+        let rope_neox = matches!(arch.as_str(), "qwen2" | "qwen3");
 
         let md_get = |s: &str| -> Result<&gguf::GgufValue> {
             gguf.metadata
@@ -547,6 +578,9 @@ impl AstMicroEngine {
                 w3.offset + w3.byte_len,
             ].into_iter().max().unwrap();
 
+            let q_bias = Self::read_optional_weight_vec(&mmap, &gguf, &format!("{prefix}.attn_q.bias"))?;
+            let k_bias = Self::read_optional_weight_vec(&mmap, &gguf, &format!("{prefix}.attn_k.bias"))?;
+            let v_bias = Self::read_optional_weight_vec(&mmap, &gguf, &format!("{prefix}.attn_v.bias"))?;
             let attn_norm_weight = Self::read_weight_vec(&mmap, &gguf, &format!("{prefix}.attn_norm.weight"))?;
             let ffn_norm_weight = Self::read_weight_vec(&mmap, &gguf, &format!("{prefix}.ffn_norm.weight"))?;
 
@@ -559,6 +593,9 @@ impl AstMicroEngine {
                 w1,
                 w2,
                 w3,
+                q_bias,
+                k_bias,
+                v_bias,
                 attn_norm_weight,
                 ffn_norm_weight,
                 min_offset,
@@ -579,6 +616,7 @@ impl AstMicroEngine {
             rms_norm_eps,
             cos_table,
             sin_table,
+            rope_neox,
             output_norm_weight,
             token_embd_offset,
             token_embd_dtype,
@@ -586,7 +624,26 @@ impl AstMicroEngine {
             kv_caches,
             layers,
             scratch,
+            sampling_temp: 0.7,
+            sampling_top_p: 0.9,
+            repeat_penalty: 1.15,
+            repeat_last_n: 64,
         })
+    }
+
+    pub fn set_sampling(&mut self, temperature: f32, top_p: f32, repeat_penalty: f32, repeat_last_n: usize) {
+        if temperature > 0.0 {
+            self.sampling_temp = temperature.clamp(0.05, 2.0);
+        }
+        if top_p > 0.0 && top_p <= 1.0 {
+            self.sampling_top_p = top_p;
+        }
+        if repeat_penalty >= 1.0 {
+            self.repeat_penalty = repeat_penalty.clamp(1.0, 2.0);
+        }
+        if repeat_last_n > 0 {
+            self.repeat_last_n = repeat_last_n;
+        }
     }
 
     pub fn reset_cache(&mut self) {
@@ -639,6 +696,14 @@ impl AstMicroEngine {
         Ok(data)
     }
 
+    fn read_optional_weight_vec(mmap: &Mmap, gguf: &gguf::GgufModel, name: &str) -> Result<Vec<f32>> {
+        if gguf.tensors.contains_key(name) {
+            Self::read_weight_vec(mmap, gguf, name)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
     #[inline(always)]
     fn embed_token_slice(mmap: &[u8], offset: usize, bytes_per_token: usize, dtype: u32, tok: u32, out: &mut [f32]) -> Result<()> {
         let start = offset + (tok as usize) * bytes_per_token;
@@ -681,6 +746,7 @@ impl AstMicroEngine {
                     pos,
                     cos,
                     sin,
+                    self.rope_neox,
                     self.head_count,
                     self.head_count_kv,
                     self.head_dim,
@@ -716,6 +782,13 @@ impl AstMicroEngine {
         suppress_eos: bool,
     ) -> Result<u32> {
         quants::quantize_row_q8_0(&self.scratch.x_norm, &mut self.scratch.x_q8_0);
+        let repeat_penalty = self.repeat_penalty;
+        let recent: HashSet<u32> = history
+            .iter()
+            .rev()
+            .take(self.repeat_last_n.max(1))
+            .copied()
+            .collect();
 
         if let Some(cands) = candidates {
             if cands.is_empty() {
@@ -738,8 +811,12 @@ impl AstMicroEngine {
                     }
                 };
                 let mut score = val;
-                if history.contains(&tok_id) {
-                    score -= 3.0;
+                if recent.contains(&tok_id) {
+                    score = if score > 0.0 {
+                        score / repeat_penalty
+                    } else {
+                        score * repeat_penalty
+                    };
                 }
                 if score > max_val {
                     max_val = score;
@@ -770,8 +847,12 @@ impl AstMicroEngine {
                         let row_slice = &embd_bytes[row_offset..row_offset + bytes_per_token];
                         let val = unsafe { quants::vec_dot_q8_0_q8_0_avx2(row_slice, x_q8_0) };
                         let mut score = val;
-                        if history.iter().rev().take(16).any(|&id| id == tok_id) {
-                            score -= 0.8;
+                        if recent.contains(&tok_id) {
+                            score = if score > 0.0 {
+                                score / repeat_penalty
+                            } else {
+                                score * repeat_penalty
+                            };
                         }
                         insert_top_k(&mut local_top, tok_id, score);
                     }
@@ -782,7 +863,7 @@ impl AstMicroEngine {
                     |a, b| merge_top_k(&a, &b),
                 );
 
-            let best_token = sample_top_p(&top_16, 0.7, 0.9);
+            let best_token = sample_top_p(&top_16, self.sampling_temp, self.sampling_top_p);
             Ok(best_token)
         }
     }

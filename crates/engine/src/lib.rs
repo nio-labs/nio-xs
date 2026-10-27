@@ -10,6 +10,8 @@ pub mod quants;
 pub mod ast_engine;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 
+pub const SKATE_SYSTEM: &str = "You are Skate, Nio's ambient companion. Think of yourself like a sharp, friendly, and grounded desk-mate. Keep responses chill, concise, and direct. Explain concepts simply and intuitively in plain English. You do not write code; defer programming to Viper or Manta.";
+
 pub struct TokenOutputStream {
     tokenizer: Tokenizer,
     tokens: Vec<u32>,
@@ -133,6 +135,49 @@ impl PhraseBuffer {
             true
         }
     }
+}
+
+const STOP_PHRASES: &[&str] = &[
+    "<|im_end|>",
+    "<|im_start|>",
+    "<|endoftext|>",
+    "You are Skate",
+    "You are a helpful AI assistant",
+    "\nuser\n",
+    "\nUser:",
+    "\nSystem:",
+    "\nAssistant:",
+    "<",
+];
+
+fn stop_position(text: &str) -> Option<usize> {
+    STOP_PHRASES
+        .iter()
+        .filter_map(|phrase| text.find(phrase))
+        .min()
+}
+
+fn push_safe_chunk(
+    chunk: &str,
+    emitted: &mut String,
+    phrase_buffer: &mut PhraseBuffer,
+    tx: &mpsc::Sender<String>,
+) -> bool {
+    let already = emitted.len();
+    emitted.push_str(chunk);
+
+    if let Some(idx) = stop_position(emitted) {
+        if idx > already {
+            let safe = &emitted[already..idx];
+            if !safe.is_empty() && !phrase_buffer.push(safe, tx) {
+                return false;
+            }
+        }
+        emitted.truncate(idx);
+        return false;
+    }
+
+    phrase_buffer.push(chunk, tx)
 }
 
 pub struct ModelBundle {
@@ -336,7 +381,7 @@ impl RayEngine {
     }
 
     pub fn is_vector_runtime(&self) -> bool {
-        self.model_path.to_string_lossy().contains("vmicrolm-vector")
+        false
     }
 
     pub async fn ensure_loaded(&self) -> Result<()> {
@@ -411,6 +456,12 @@ impl RayEngine {
                 "<|im_start|>system\nYou are NioViper, the terminal reflex oracle MicroLM.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 query
             )
+        } else if self.model_path.to_string_lossy().contains("skate") {
+            format!(
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                SKATE_SYSTEM,
+                raw_prompt.trim()
+            )
         } else {
             Self::format_prompt(raw_prompt)
         }
@@ -448,11 +499,13 @@ impl RayEngine {
         &self,
         prompt: String,
         max_tokens: usize,
-        _temperature: f64,
-        _top_p: f64,
+        temperature: f64,
+        top_p: f64,
     ) -> Result<mpsc::Receiver<String>> {
         self.ensure_loaded().await?;
         let (tx, rx) = mpsc::channel(64);
+        let temperature = temperature.clamp(0.05, 2.0) as f32;
+        let top_p = top_p.clamp(0.05, 1.0) as f32;
 
         if self.is_vector_runtime() {
             let model_path = self.model_path.clone();
@@ -467,6 +520,8 @@ impl RayEngine {
                     return;
                 };
 
+                let temp_arg = format!("{temperature:.2}");
+                let top_p_arg = format!("{top_p:.2}");
                 let mut cmd = std::process::Command::new(&runner_bin);
                 cmd.args([
                     "-m", model_path.to_str().unwrap_or_default(),
@@ -475,8 +530,11 @@ impl RayEngine {
                     "-c", "512",
                     "-t", "2",
                     "-st",
-                    "--temp", "0.65",
-                    "--repeat-penalty", "1.2",
+                    "--temp", &temp_arg,
+                    "--top-p", &top_p_arg,
+                    "--min-p", "0.05",
+                    "--repeat-penalty", "1.15",
+                    "--repeat-last-n", "64",
                     "--no-display-prompt",
                     "--simple-io",
                 ]);
@@ -536,7 +594,11 @@ impl RayEngine {
                 return;
             }
 
-            let hidden = match bundle.engine.prefill(&prompt_tokens) {
+            bundle
+                .engine
+                .set_sampling(temperature, top_p, 1.15, 64);
+
+            let _hidden = match bundle.engine.prefill(&prompt_tokens) {
                 Ok(h) => h,
                 Err(e) => {
                     let _ = tx.blocking_send(format!("AST-Micro prefill error: {e}"));
@@ -560,14 +622,13 @@ impl RayEngine {
                 tok == eos_token_id || tok == eot_token_id || tok == im_start_token_id
             };
 
-            let mut next_token = match bundle.engine.next_token(&hidden, None) {
+            let mut next_token = match bundle.engine.next_token_with_history(None, &[], false) {
                 Ok(t) => t,
                 Err(e) => {
                     let _ = tx.blocking_send(format!("AST-Micro sampling error: {e}"));
                     return;
                 }
             };
-            eprintln!("[INITIAL TOK] id: {}", next_token);
 
             if is_eos(next_token, prompt_tokens.len()) {
                 bundle.engine.reset_cache();
@@ -576,16 +637,11 @@ impl RayEngine {
 
             let mut tos = TokenOutputStream::new(bundle.tokenizer.clone());
             let mut phrase_buffer = PhraseBuffer::new();
+            let mut emitted = String::new();
 
             if let Ok(Some(chunk)) = tos.next_token(next_token) {
-                if chunk.contains("<|im_end|>")
-                    || chunk.contains("<|im_start|>")
-                    || chunk.contains("<|endoftext|>")
-                {
-                    bundle.engine.reset_cache();
-                    return;
-                }
-                if !phrase_buffer.push(&chunk, &tx) {
+                if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
+                    phrase_buffer.flush(&tx);
                     bundle.engine.reset_cache();
                     return;
                 }
@@ -598,11 +654,12 @@ impl RayEngine {
             let max_gen = max_tokens.max(1);
             let mut current_pos = prompt_tokens.len();
             while current_pos < prompt_tokens.len() + max_gen - 1 {
-                let step_hidden = match bundle.engine.forward_stream(&[next_token], current_pos) {
+                let _step_hidden = match bundle.engine.forward_stream(&[next_token], current_pos) {
                     Ok(h) => h,
                     Err(_) => break,
                 };
-                next_token = match bundle.engine.next_token(&step_hidden, None) {
+                let gen_history = &context_tokens[prompt_tokens.len()..];
+                next_token = match bundle.engine.next_token_with_history(None, gen_history, false) {
                     Ok(t) => t,
                     Err(_) => break,
                 };
@@ -613,33 +670,18 @@ impl RayEngine {
                 }
 
                 context_tokens.push(next_token);
-                eprintln!("[TOK] pos: {}, id: {}", current_pos, next_token);
                 if let Ok(Some(chunk)) = tos.next_token(next_token) {
-                    if chunk.contains("<|im_end|>")
-                        || chunk.contains("<|im_start|>")
-                        || chunk.contains("<|endoftext|>")
-                        || chunk.contains("\nuser\n")
-                        || chunk.contains("\nUser:")
-                    {
-                        break;
-                    }
-                    if !phrase_buffer.push(&chunk, &tx) {
+                    if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
                         break;
                     }
                 }
+            }
+
+            if let Ok(Some(rest)) = tos.decode_rest() {
+                let _ = push_safe_chunk(&rest, &mut emitted, &mut phrase_buffer, &tx);
             }
 
             phrase_buffer.flush(&tx);
-
-            if let Ok(Some(rest)) = tos.decode_rest() {
-                let clean = rest
-                    .replace("<|im_end|>", "")
-                    .replace("<|im_start|>", "")
-                    .replace("<|endoftext|>", "");
-                if !clean.is_empty() {
-                    let _ = tx.blocking_send(clean);
-                }
-            }
 
             bundle.engine.reset_cache();
         });

@@ -71,7 +71,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
         let engine = nioxs_engine::RayEngine::for_model("nio-skate")?;
         let (rss_start, _) = nioxs_engine::memory_mb();
         println!("🦈 Skate v-MicroLM Vector Companion Ready (VmRSS: {:.1} MB)", rss_start);
-        let sys_msg = "You are Skate, Nio's ambient companion. Explain everyday concepts simply, directly, and naturally.";
+        let sys_msg = nioxs_engine::SKATE_SYSTEM;
         let formatted = format!("<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n");
         let mut rx = engine.generate_stream(formatted, 128, 0.65, 0.9).await?;
         use std::io::Write;
