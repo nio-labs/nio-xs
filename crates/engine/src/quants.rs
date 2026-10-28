@@ -641,6 +641,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn q8_matrix_vector_matches_dequantized_reference() {
+        let cols = 64;
+        let x: Vec<f32> = (0..cols).map(|i| (i as f32 * 0.17).sin()).collect();
+        let mut weights = vec![0u8; 2 * (cols / 32) * 34];
+        for (block, bytes) in weights.chunks_exact_mut(34).enumerate() {
+            bytes[..2].copy_from_slice(&half::f16::from_f32(0.03 * (block + 1) as f32).to_le_bytes());
+            for (i, byte) in bytes[2..].iter_mut().enumerate() {
+                *byte = (i as i8 - 16) as u8;
+            }
+        }
+        let mut actual = vec![0.0; 2];
+        gemv_q8_0(&mut actual, &weights, &x, 2, cols);
+        for (row, bytes) in weights.chunks_exact(68).enumerate() {
+            let mut dequantized = vec![0.0; cols];
+            dequantize_row_q8_0(bytes, &mut dequantized);
+            let expected: f32 = dequantized.iter().zip(&x).map(|(w, v)| w * v).sum();
+            assert!((actual[row] - expected).abs() < 0.05 * expected.abs().max(1.0));
+        }
+    }
+
+    #[test]
     fn test_vec_dot_q8_0() {
         let n = 64;
         let mut x = vec![0f32; n];

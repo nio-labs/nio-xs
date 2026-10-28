@@ -333,10 +333,9 @@ impl LayerDesc {
         let wq_slice = &mmap[self.wq.offset..self.wq.offset + self.wq.byte_len];
         let wk_slice = &mmap[self.wk.offset..self.wk.offset + self.wk.byte_len];
         let wv_slice = &mmap[self.wv.offset..self.wv.offset + self.wv.byte_len];
-        unsafe {
-            quants::gemv_iq4_nl_prequant(&mut scratch.q, wq_slice, &scratch.x_q8_0, self.wq.n_rows, self.wq.n_cols);
-            quants::gemv_iq4_nl_prequant(&mut scratch.k, wk_slice, &scratch.x_q8_0, self.wk.n_rows, self.wk.n_cols);
-            quants::gemv_iq4_nl_prequant(&mut scratch.v, wv_slice, &scratch.x_q8_0, self.wv.n_rows, self.wv.n_cols);
+        for (out, weight, desc) in [(&mut scratch.q, wq_slice, &self.wq), (&mut scratch.k, wk_slice, &self.wk), (&mut scratch.v, wv_slice, &self.wv)] {
+            if desc.dtype == 8 { quants::gemv_q8_0(out, weight, &scratch.x_norm, desc.n_rows, desc.n_cols); }
+            else { unsafe { quants::gemv_iq4_nl_prequant(out, weight, &scratch.x_q8_0, desc.n_rows, desc.n_cols); } }
         }
         if !self.q_bias.is_empty() {
             for i in 0..scratch.q.len() {
@@ -379,9 +378,8 @@ impl LayerDesc {
         // 6. Output Projection (wo)
         quants::quantize_row_q8_0(&scratch.attn_out, &mut scratch.attn_q8_0);
         let wo_slice = &mmap[self.wo.offset..self.wo.offset + self.wo.byte_len];
-        unsafe {
-            quants::gemv_iq4_nl_prequant(&mut scratch.wo_out, wo_slice, &scratch.attn_q8_0, self.wo.n_rows, self.wo.n_cols);
-        }
+        if self.wo.dtype == 8 { quants::gemv_q8_0(&mut scratch.wo_out, wo_slice, &scratch.attn_out, self.wo.n_rows, self.wo.n_cols); }
+        else { unsafe { quants::gemv_iq4_nl_prequant(&mut scratch.wo_out, wo_slice, &scratch.attn_q8_0, self.wo.n_rows, self.wo.n_cols); } }
 
         // 7. Residual connection (x = x + wo_out)
         for i in 0..scratch.x.len() {
@@ -395,9 +393,9 @@ impl LayerDesc {
         // 9. FFN Gate (w1) and Up (w3)
         let w1_slice = &mmap[self.w1.offset..self.w1.offset + self.w1.byte_len];
         let w3_slice = &mmap[self.w3.offset..self.w3.offset + self.w3.byte_len];
-        unsafe {
-            quants::gemv_iq4_nl_prequant(&mut scratch.w1, w1_slice, &scratch.ffn_q8_0, self.w1.n_rows, self.w1.n_cols);
-            quants::gemv_iq4_nl_prequant(&mut scratch.w3, w3_slice, &scratch.ffn_q8_0, self.w3.n_rows, self.w3.n_cols);
+        for (out, weight, desc) in [(&mut scratch.w1, w1_slice, &self.w1), (&mut scratch.w3, w3_slice, &self.w3)] {
+            if desc.dtype == 8 { quants::gemv_q8_0(out, weight, &scratch.ffn_norm, desc.n_rows, desc.n_cols); }
+            else { unsafe { quants::gemv_iq4_nl_prequant(out, weight, &scratch.ffn_q8_0, desc.n_rows, desc.n_cols); } }
         }
 
         // 10. SwiGLU activation: inter = SiLU(w1) * w3
@@ -408,10 +406,11 @@ impl LayerDesc {
         }
 
         // 11. Quantize inter to Q8_K and Down Projection (w2)
-        quants::quantize_row_q8_k(&scratch.inter, &mut scratch.inter_q8_k);
         let w2_slice = &mmap[self.w2.offset..self.w2.offset + self.w2.byte_len];
-        unsafe {
-            quants::gemv_iq3_xxs_prequant(&mut scratch.mlp_out, w2_slice, &scratch.inter_q8_k, self.w2.n_rows, self.w2.n_cols);
+        if self.w2.dtype == 8 { quants::gemv_q8_0(&mut scratch.mlp_out, w2_slice, &scratch.inter, self.w2.n_rows, self.w2.n_cols); }
+        else {
+            quants::quantize_row_q8_k(&scratch.inter, &mut scratch.inter_q8_k);
+            unsafe { quants::gemv_iq3_xxs_prequant(&mut scratch.mlp_out, w2_slice, &scratch.inter_q8_k, self.w2.n_rows, self.w2.n_cols); }
         }
 
         // 12. Residual connection (x = x + mlp_out)
@@ -482,6 +481,13 @@ pub struct AstMicroEngine {
 }
 
 impl AstMicroEngine {
+    pub fn tokenizer_tokens(&self) -> Result<Vec<String>> {
+        match self.gguf.metadata.get("tokenizer.ggml.tokens") {
+            Some(gguf::GgufValue::Array(tokens)) => tokens.iter().map(|t| t.to_string()).collect(),
+            _ => Err(anyhow!("model is missing tokenizer.ggml.tokens")),
+        }
+    }
+
     pub fn new(model_path: &Path) -> Result<Self> {
         let file = File::open(model_path)?;
         let mmap = unsafe { Mmap::map(&file)? };
@@ -525,6 +531,9 @@ impl AstMicroEngine {
             .ok_or_else(|| anyhow!("missing token_embd.weight"))?;
         let token_embd_offset = gguf.tensor_data_offset + embd_info.offset as usize;
         let token_embd_dtype = embd_info.dtype;
+        if token_embd_dtype != 8 {
+            anyhow::bail!("AST-Micro requires Q8_0 token embeddings, found dtype {token_embd_dtype}");
+        }
 
         let (block_size, type_size) = match token_embd_dtype {
             0 => (1, 4),
@@ -553,6 +562,21 @@ impl AstMicroEngine {
             let meta_w1 = gguf.tensors.get(&format!("{prefix}.ffn_gate.weight")).ok_or_else(|| anyhow!("missing {prefix}.ffn_gate.weight"))?;
             let meta_w2 = gguf.tensors.get(&format!("{prefix}.ffn_down.weight")).ok_or_else(|| anyhow!("missing {prefix}.ffn_down.weight"))?;
             let meta_w3 = gguf.tensors.get(&format!("{prefix}.ffn_up.weight")).ok_or_else(|| anyhow!("missing {prefix}.ffn_up.weight"))?;
+
+            if [meta_wq, meta_wk, meta_wv, meta_wo, meta_w1, meta_w2, meta_w3].iter().any(|meta| meta.dtype == 8)
+                && std::env::var_os("NIOXS_AST_EXPERIMENTAL_Q8").as_deref() != Some(std::ffi::OsStr::new("1"))
+            {
+                anyhow::bail!("Q8_0 projection support is experimental; set NIOXS_AST_EXPERIMENTAL_Q8=1 to opt in for evaluation");
+            }
+
+            for meta in [meta_wq, meta_wk, meta_wv, meta_wo, meta_w1, meta_w3] {
+                if ![8, 20].contains(&meta.dtype) || meta.shape.len() != 2 || meta.shape[1] % 32 != 0 {
+                    anyhow::bail!("unsupported AST-Micro tensor {}: dtype {} shape {:?}; expected Q8_0 or IQ4_NL matrix", meta.name, meta.dtype, meta.shape);
+                }
+            }
+            if meta_w2.shape.len() != 2 || !matches!(meta_w2.dtype, 8 | 18) || (meta_w2.dtype == 18 && meta_w2.shape[1] % 256 != 0) || (meta_w2.dtype == 8 && meta_w2.shape[1] % 32 != 0) {
+                anyhow::bail!("unsupported AST-Micro tensor {}: dtype {} shape {:?}; expected Q8_0 or IQ3_XXS matrix", meta_w2.name, meta_w2.dtype, meta_w2.shape);
+            }
 
             let wq = LinearSlice::new(meta_wq, gguf.tensor_data_offset);
             let wk = LinearSlice::new(meta_wk, gguf.tensor_data_offset);
@@ -632,8 +656,8 @@ impl AstMicroEngine {
     }
 
     pub fn set_sampling(&mut self, temperature: f32, top_p: f32, repeat_penalty: f32, repeat_last_n: usize) {
-        if temperature > 0.0 {
-            self.sampling_temp = temperature.clamp(0.05, 2.0);
+        if temperature >= 0.0 {
+            self.sampling_temp = temperature.clamp(0.0, 2.0);
         }
         if top_p > 0.0 && top_p <= 1.0 {
             self.sampling_top_p = top_p;
@@ -720,6 +744,15 @@ impl AstMicroEngine {
 
     pub fn forward_stream(&mut self, tokens: &[u32], index_pos: usize) -> Result<Tensor> {
         let half = self.head_dim / 2;
+        let limit = self.cos_table.len() / half;
+        if index_pos.checked_add(tokens.len()).is_none_or(|end| end > limit) {
+            return Err(anyhow!("context exceeds model runtime limit of {limit} tokens"));
+        }
+        let vocab = self.gguf.tensors.get("token_embd.weight")
+            .and_then(|t| t.shape.first()).copied().ok_or_else(|| anyhow!("invalid token embedding shape"))?;
+        if let Some(token) = tokens.iter().find(|&&token| token as usize >= vocab) {
+            return Err(anyhow!("token id {token} exceeds model vocabulary size {vocab}"));
+        }
         let token_embd_offset = self.token_embd_offset;
         let bytes_per_token = self.bytes_per_token;
         let token_embd_dtype = self.token_embd_dtype;
@@ -769,6 +802,20 @@ impl AstMicroEngine {
 
     pub fn prefill(&mut self, tokens: &[u32]) -> Result<Tensor> {
         self.forward_stream(tokens, 0)
+    }
+
+    /// Return unsampled logits after prefill/forward for runtime diagnostics.
+    pub fn diagnostic_logits(&mut self) -> Result<Vec<f32>> {
+        quants::quantize_row_q8_0(&self.scratch.x_norm, &mut self.scratch.x_q8_0);
+        let embedding = self.gguf.tensors.get("token_embd.weight")
+            .ok_or_else(|| anyhow!("missing token embeddings"))?;
+        let vocab_size = *embedding.shape.first().ok_or_else(|| anyhow!("invalid embedding shape"))?;
+        let end = self.token_embd_offset.checked_add(vocab_size.checked_mul(self.bytes_per_token)
+            .ok_or_else(|| anyhow!("embedding size overflow"))?).ok_or_else(|| anyhow!("embedding offset overflow"))?;
+        let bytes = self.mmap.get(self.token_embd_offset..end).ok_or_else(|| anyhow!("truncated embeddings"))?;
+        use rayon::prelude::*;
+        Ok(bytes.par_chunks_exact(self.bytes_per_token)
+            .map(|row| unsafe { quants::vec_dot_q8_0_q8_0_avx2(row, &self.scratch.x_q8_0) }).collect())
     }
 
     pub fn next_token(&mut self, _hidden: &Tensor, candidates: Option<&[u32]>) -> Result<u32> {

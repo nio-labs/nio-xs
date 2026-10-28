@@ -1440,6 +1440,7 @@ dependencies = [
 name = "nioxs-provider"
 version = "0.4.5"
 dependencies = [
+ "anyhow",
  "axum",
  "futures-util",
  "nioxs-artifacts",
@@ -1451,6 +1452,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "tower",
 ]

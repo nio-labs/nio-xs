@@ -10,7 +10,15 @@ pub mod quants;
 pub mod ast_engine;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 
-pub const SKATE_SYSTEM: &str = "You are Skate, Nio's ambient companion. Think of yourself like a sharp, friendly, and grounded desk-mate. Keep responses chill, concise, and direct. Explain concepts simply and intuitively in plain English. You do not write code; defer programming to Viper or Manta.";
+pub fn skate_system() -> Result<String> {
+    let path = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE")
+        .ok_or_else(|| anyhow!("Set NIOXS_SKATE_SYSTEM_FILE to the configured Skate policy file"))?;
+    let prompt = std::fs::read_to_string(&path)
+        .map_err(|e| anyhow!("Cannot read Skate policy {:?}: {e}", path))?;
+    if prompt.trim().is_empty() { return Err(anyhow!("Skate policy is empty")); }
+    Ok(prompt.trim().to_owned())
+}
+
 
 pub struct TokenOutputStream {
     tokenizer: Tokenizer,
@@ -191,9 +199,18 @@ pub struct RayEngine {
     bundle: Arc<Mutex<Option<ModelBundle>>>,
     model_path: PathBuf,
     tokenizer_path: PathBuf,
+    is_skate: bool,
 }
 
 impl RayEngine {
+    pub fn model_path(&self) -> &std::path::Path {
+        &self.model_path
+    }
+
+    pub fn tokenizer_path(&self) -> &std::path::Path {
+        &self.tokenizer_path
+    }
+
     pub fn new() -> Result<Self> {
         Self::for_model("nio-ray")
     }
@@ -204,14 +221,17 @@ impl RayEngine {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
             tokenizer_path,
+            is_skate: matches!(model_name.trim().to_ascii_lowercase().as_str(), "skate" | "nio-skate"),
         })
     }
 
     pub fn from_paths(model_path: PathBuf, tokenizer_path: PathBuf) -> Self {
+        let is_skate = model_path.to_string_lossy().contains("skate");
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
             tokenizer_path,
+            is_skate,
         }
     }
 
@@ -224,6 +244,11 @@ impl RayEngine {
     }
 
     pub fn find_or_pull_model_paths(model_name: &str) -> Result<(PathBuf, PathBuf)> {
+        if matches!(model_name.trim().to_ascii_lowercase().as_str(), "skate" | "nio-skate")
+            && std::env::var_os("NIOXS_SKATE_MODEL").is_some()
+        {
+            return Self::find_model_paths_for(model_name);
+        }
         if let Ok(paths) = Self::find_model_paths_for(model_name) {
             return Ok(paths);
         }
@@ -288,40 +313,42 @@ impl RayEngine {
             ],
         };
 
-        if normalized.contains("ray") {
-            if let Ok(model) = std::env::var("NIOXS_RAY_MODEL") {
+        let model_override = match normalized.as_str() {
+            "skate" | "nio-skate" => Some("NIOXS_SKATE_MODEL"),
+            "ray" | "nio-ray" => Some("NIOXS_RAY_MODEL"),
+            _ => None,
+        };
+        if let Some(variable) = model_override {
+            if let Ok(model) = std::env::var(variable) {
                 let model = PathBuf::from(model);
-                let tokenizer = std::env::var_os("NIOXS_TOKENIZER")
+                let tokenizer = if variable == "NIOXS_SKATE_MODEL" {
+                    std::env::var_os("NIOXS_SKATE_TOKENIZER")
+                } else {
+                    std::env::var_os("NIOXS_TOKENIZER")
+                }
                     .map(PathBuf::from)
-                    .unwrap_or_else(|| Self::tokenizer_for_model(&model));
+                    .unwrap_or_else(|| if variable == "NIOXS_SKATE_MODEL" {
+                        model.with_file_name("skate-tokenizer.json")
+                    } else {
+                        Self::tokenizer_for_model(&model)
+                    });
                 if model.is_file() && tokenizer.is_file() {
                     return Ok((model, tokenizer));
                 }
                 return Err(anyhow!(
-                    "Configured NioRay model or matching tokenizer is missing: {:?}, {:?}",
+                    "Configured model or matching tokenizer is missing: {:?}, {:?}",
                     model,
                     tokenizer
                 ));
             }
         }
 
-        let home = std::env::var_os("HOME")
-            .or_else(|| std::env::var_os("USERPROFILE"))
-            .map(PathBuf::from);
-        let directories = [
-            home.as_ref().map(|h| h.join(".nioxs").join("models")),
-            Some(PathBuf::from("models")),
-            Some(PathBuf::from("../models")),
-            Some(PathBuf::from("../../models")),
-        ];
-
-        for directory in directories.into_iter().flatten() {
-            for name in target_candidates {
-                let model = directory.join(name);
-                let tokenizer = Self::tokenizer_for_model(&model);
-                if model.is_file() && tokenizer.is_file() {
-                    return Ok((model, tokenizer));
-                }
+        let directory = nioxs_artifacts::resolve_models_dir();
+        for name in target_candidates {
+            let model = directory.join(name);
+            let tokenizer = Self::tokenizer_for_model(&model);
+            if model.is_file() && tokenizer.is_file() {
+                return Ok((model, tokenizer));
             }
         }
 
@@ -407,6 +434,8 @@ impl RayEngine {
 
             let engine = AstMicroEngine::new(&model_path)
                 .map_err(|e| anyhow!("Failed loading AST-Micro engine for {:?}: {e}", model_path))?;
+            Self::validate_tokenizer(&tokenizer, &engine.tokenizer_tokens()?)
+                .map_err(|e| anyhow!("Tokenizer does not match model: {e}"))?;
 
             Ok(ModelBundle {
                 engine,
@@ -438,8 +467,8 @@ impl RayEngine {
         None
     }
 
-    pub fn format_prompt_for_engine(&self, raw_prompt: &str) -> String {
-        if raw_prompt.contains("<|im_start|>") {
+    pub fn format_prompt_for_engine(&self, raw_prompt: &str) -> Result<String> {
+        Ok(if raw_prompt.contains("<|im_start|>") {
             raw_prompt.to_string()
         } else if self.model_path.to_string_lossy().contains("viper") {
             #[cfg(target_os = "windows")]
@@ -456,15 +485,15 @@ impl RayEngine {
                 "<|im_start|>system\nYou are NioViper, the terminal reflex oracle MicroLM.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 query
             )
-        } else if self.model_path.to_string_lossy().contains("skate") {
+        } else if self.is_skate {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
-                SKATE_SYSTEM,
+                skate_system()?,
                 raw_prompt.trim()
             )
         } else {
             Self::format_prompt(raw_prompt)
-        }
+        })
     }
 
     pub fn format_prompt(raw_prompt: &str) -> String {
@@ -510,15 +539,9 @@ impl RayEngine {
         if self.is_vector_runtime() {
             let model_path = self.model_path.clone();
             tokio::task::spawn_blocking(move || {
-                let bin_candidates = [
-                    PathBuf::from("/home/mn/.nioxs/bin/llama-b11580/llama-cli"),
-                    PathBuf::from("bin/llama-cli"),
-                ];
-                let runner = bin_candidates.into_iter().find(|p| p.is_file());
-                let Some(runner_bin) = runner else {
-                    let _ = tx.blocking_send("Error: Native vector runtime binary not found in ~/.nioxs/bin".into());
-                    return;
-                };
+                let runner_bin = std::env::var_os("NIOXS_LLAMA_CLI")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from("llama-cli"));
 
                 let temp_arg = format!("{temperature:.2}");
                 let top_p_arg = format!("{top_p:.2}");
@@ -538,8 +561,14 @@ impl RayEngine {
                     "--no-display-prompt",
                     "--simple-io",
                 ]);
-                let lib_dir = runner_bin.parent().unwrap();
-                cmd.env("LD_LIBRARY_PATH", lib_dir);
+                if let Some(lib_dir) = runner_bin.parent().filter(|p| !p.as_os_str().is_empty()) {
+                    let existing = std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default();
+                    let mut paths = vec![lib_dir.to_path_buf()];
+                    paths.extend(std::env::split_paths(&existing));
+                    if let Ok(joined) = std::env::join_paths(paths) {
+                        cmd.env("LD_LIBRARY_PATH", joined);
+                    }
+                }
                 cmd.stdout(std::process::Stdio::piped());
                 cmd.stderr(std::process::Stdio::null());
 
@@ -573,9 +602,12 @@ impl RayEngine {
         }
 
         let bundle_arc = self.bundle.clone();
-        let formatted = self.format_prompt_for_engine(&prompt);
+        let formatted = self.format_prompt_for_engine(&prompt)?;
         tokio::task::spawn_blocking(move || {
             let mut guard = bundle_arc.blocking_lock();
+            if tx.is_closed() {
+                return;
+            }
             let Some(bundle) = guard.as_mut() else {
                 let _ = tx.blocking_send("Error: Model bundle not loaded".into());
                 return;
@@ -597,6 +629,10 @@ impl RayEngine {
             bundle
                 .engine
                 .set_sampling(temperature, top_p, 1.15, 64);
+
+            if tx.is_closed() {
+                return;
+            }
 
             let _hidden = match bundle.engine.prefill(&prompt_tokens) {
                 Ok(h) => h,
@@ -654,9 +690,12 @@ impl RayEngine {
             let max_gen = max_tokens.max(1);
             let mut current_pos = prompt_tokens.len();
             while current_pos < prompt_tokens.len() + max_gen - 1 {
+                if tx.is_closed() {
+                    break;
+                }
                 let _step_hidden = match bundle.engine.forward_stream(&[next_token], current_pos) {
                     Ok(h) => h,
-                    Err(_) => break,
+                    Err(e) => { let _ = tx.blocking_send(format!("AST-Micro forward error: {e}")); break; },
                 };
                 let gen_history = &context_tokens[prompt_tokens.len()..];
                 next_token = match bundle.engine.next_token_with_history(None, gen_history, false) {

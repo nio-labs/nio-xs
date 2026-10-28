@@ -19,8 +19,8 @@ fn memory_mb() -> (f64, f64) {
 }
 
 fn main() -> Result<()> {
-    let model_path = PathBuf::from("/home/mn/.nioxs/models/skate.vmicrolm-vector.gguf");
-    let tok_path = PathBuf::from("/home/mn/.nioxs/models/skate-tokenizer.json");
+    let model_path = PathBuf::from(std::env::args().nth(1).expect("model path"));
+    let tok_path = PathBuf::from(std::env::args().nth(2).expect("tokenizer path"));
 
     println!("Loading tokenizer from {:?}...", tok_path);
     let tokenizer = Tokenizer::from_file(&tok_path).map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -33,8 +33,8 @@ fn main() -> Result<()> {
     let (rss_load, hwm_load) = memory_mb();
     println!("Post-Load RAM: VmRSS: {:.2} MB | VmHWM: {:.2} MB", rss_load, hwm_load);
 
-    let prompt = "<|im_start|>system\nYou are Skate, Nio's ambient companion.<|im_end|>\n<|im_start|>user\nWhat's the difference between an espresso and a latte?<|im_end|>\n<|im_start|>assistant\n";
-    let encoded = tokenizer.encode(prompt, false).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let prompt = std::env::args().nth(3).expect("formatted prompt argument");
+    let encoded = tokenizer.encode(prompt.as_str(), false).map_err(|e| anyhow::anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     println!("\nPrefilling {} prompt tokens...", prompt_tokens.len());

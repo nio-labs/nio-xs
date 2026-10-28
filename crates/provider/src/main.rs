@@ -3,6 +3,8 @@ use nioxs_provider::{ActiveTurns, App, router};
 use nioxs_storage::NioDb;
 use std::sync::Arc;
 
+mod skate_safety;
+
 #[tokio::main]
 async fn main() {
     if let Err(error) = run().await {
@@ -68,20 +70,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
             eprintln!("Usage: nioxs skate <prompt>");
             return Ok(());
         }
-        let engine = nioxs_engine::RayEngine::for_model("nio-skate")?;
-        let (rss_start, _) = nioxs_engine::memory_mb();
-        println!("🦈 Skate v-MicroLM Vector Companion Ready (VmRSS: {:.1} MB)", rss_start);
-        let sys_msg = nioxs_engine::SKATE_SYSTEM;
-        let formatted = format!("<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n");
-        let mut rx = engine.generate_stream(formatted, 128, 0.65, 0.9).await?;
-        use std::io::Write;
-        while let Some(chunk) = rx.recv().await {
-            print!("{chunk}");
-            let _ = std::io::stdout().flush();
-        }
-        println!();
-        let (rss_end, hwm_end) = nioxs_engine::memory_mb();
-        println!("\n[v-MicroLM Vector] Resident RAM: {:.1} MB | Peak Process RAM: {:.1} MB", rss_end, hwm_end);
+        let response = skate_safety::generate(&prompt).await?;
+        println!("{response}");
         return Ok(());
     }
     if arg.as_deref() == Some("viper") {
