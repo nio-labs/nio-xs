@@ -642,21 +642,13 @@ impl RayEngine {
                 }
             };
 
-            let eos_token_id = bundle.tokenizer.token_to_id("<|im_end|>").unwrap_or(151645);
-            let eot_token_id = bundle
-                .tokenizer
-                .token_to_id("<|endoftext|>")
-                .unwrap_or(151643);
-            let im_start_token_id = bundle
-                .tokenizer
-                .token_to_id("<|im_start|>")
-                .unwrap_or(151644);
-            let is_eos = |tok: u32, pos: usize| {
-                if pos <= prompt_tokens.len() + 2 {
-                    return false;
-                }
-                tok == eos_token_id || tok == eot_token_id || tok == im_start_token_id
-            };
+            let stop_tokens: Vec<u32> = [
+                bundle.engine.eos_token_id(),
+                bundle.tokenizer.token_to_id("<|im_end|>"),
+                bundle.tokenizer.token_to_id("<|endoftext|>"),
+                bundle.tokenizer.token_to_id("<|im_start|>"),
+            ].into_iter().flatten().collect();
+            let is_eos = |tok: u32| stop_tokens.contains(&tok);
 
             let mut next_token = match bundle.engine.next_token_with_history(None, &[], false) {
                 Ok(t) => t,
@@ -666,7 +658,7 @@ impl RayEngine {
                 }
             };
 
-            if is_eos(next_token, prompt_tokens.len()) {
+            if is_eos(next_token) {
                 bundle.engine.reset_cache();
                 return;
             }
@@ -704,7 +696,7 @@ impl RayEngine {
                 };
                 current_pos += 1;
 
-                if is_eos(next_token, current_pos) {
+                if is_eos(next_token) {
                     break;
                 }
 

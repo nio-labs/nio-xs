@@ -304,6 +304,8 @@ pub struct LayerDesc {
     pub q_bias: Vec<f32>,
     pub k_bias: Vec<f32>,
     pub v_bias: Vec<f32>,
+    pub q_norm_weight: Vec<f32>,
+    pub k_norm_weight: Vec<f32>,
     pub attn_norm_weight: Vec<f32>,
     pub ffn_norm_weight: Vec<f32>,
     pub min_offset: usize,
@@ -353,6 +355,15 @@ impl LayerDesc {
             }
         }
 
+        // Qwen3 normalizes each query and key head before applying RoPE.
+        for (values, weight) in [(&mut scratch.q, &self.q_norm_weight), (&mut scratch.k, &self.k_norm_weight)] {
+            if !weight.is_empty() {
+                for head in values.chunks_exact_mut(head_dim) {
+                    let scale = (head.iter().map(|x| x * x).sum::<f32>() / head_dim as f32 + eps).sqrt().recip();
+                    for (x, w) in head.iter_mut().zip(weight.iter()) { *x *= scale * w; }
+                }
+            }
+        }
         // 3. RoPE
         apply_rope(&mut scratch.q, n_head, head_dim, cos, sin, neox);
         apply_rope(&mut scratch.k, n_kv_head, head_dim, cos, sin, neox);
@@ -471,6 +482,7 @@ pub struct AstMicroEngine {
     token_embd_offset: usize,
     token_embd_dtype: u32,
     bytes_per_token: usize,
+    output_weight: Option<LinearSlice>,
     kv_caches: Vec<LayerKvCache>,
     layers: Vec<LayerDesc>,
     scratch: ScratchBuffers,
@@ -481,6 +493,10 @@ pub struct AstMicroEngine {
 }
 
 impl AstMicroEngine {
+    pub fn eos_token_id(&self) -> Option<u32> {
+        self.gguf.metadata.get("tokenizer.ggml.eos_token_id").and_then(|v| v.to_u32().ok())
+    }
+
     pub fn tokenizer_tokens(&self) -> Result<Vec<String>> {
         match self.gguf.metadata.get("tokenizer.ggml.tokens") {
             Some(gguf::GgufValue::Array(tokens)) => tokens.iter().map(|t| t.to_string()).collect(),
@@ -545,6 +561,23 @@ impl AstMicroEngine {
         };
         let bytes_per_token = (embedding_length / block_size) * type_size;
 
+        // Llama chat checkpoints may keep a distinct output head. Preserve and
+        // use it when present; older AST artifacts omit it and use tied embeddings.
+        let output_weight = if let Some(meta) = gguf.tensors.get("output.weight") {
+            if meta.shape.len() != 2
+                || meta.shape[0] != embd_info.shape[0]
+                || meta.shape[1] != embedding_length
+            {
+                anyhow::bail!("output.weight shape {:?} does not match vocab/embedding dimensions", meta.shape);
+            }
+            if meta.dtype != 8 {
+                anyhow::bail!("AST-Micro separate output.weight requires Q8_0, found dtype {}", meta.dtype);
+            }
+            Some(LinearSlice::new(meta, gguf.tensor_data_offset))
+        } else {
+            None
+        };
+
         let kv_caches = vec![LayerKvCache::default(); block_count];
 
         let mut layers = Vec::with_capacity(block_count);
@@ -605,6 +638,14 @@ impl AstMicroEngine {
             let q_bias = Self::read_optional_weight_vec(&mmap, &gguf, &format!("{prefix}.attn_q.bias"))?;
             let k_bias = Self::read_optional_weight_vec(&mmap, &gguf, &format!("{prefix}.attn_k.bias"))?;
             let v_bias = Self::read_optional_weight_vec(&mmap, &gguf, &format!("{prefix}.attn_v.bias"))?;
+            let q_norm_weight = Self::read_optional_weight_vec(&mmap, &gguf, &format!("{prefix}.attn_q_norm.weight"))?;
+            let k_norm_weight = Self::read_optional_weight_vec(&mmap, &gguf, &format!("{prefix}.attn_k_norm.weight"))?;
+            if arch == "qwen3" && (q_norm_weight.len() != head_dim || k_norm_weight.len() != head_dim) {
+                anyhow::bail!("Qwen3 layer {idx} requires query/key norm weights of length {head_dim}");
+            }
+            if (!q_norm_weight.is_empty() && q_norm_weight.len() != head_dim) || (!k_norm_weight.is_empty() && k_norm_weight.len() != head_dim) {
+                anyhow::bail!("invalid attention normalization weights in layer {idx}");
+            }
             let attn_norm_weight = Self::read_weight_vec(&mmap, &gguf, &format!("{prefix}.attn_norm.weight"))?;
             let ffn_norm_weight = Self::read_weight_vec(&mmap, &gguf, &format!("{prefix}.ffn_norm.weight"))?;
 
@@ -620,6 +661,8 @@ impl AstMicroEngine {
                 q_bias,
                 k_bias,
                 v_bias,
+                q_norm_weight,
+                k_norm_weight,
                 attn_norm_weight,
                 ffn_norm_weight,
                 min_offset,
@@ -645,6 +688,7 @@ impl AstMicroEngine {
             token_embd_offset,
             token_embd_dtype,
             bytes_per_token,
+            output_weight,
             kv_caches,
             layers,
             scratch,
@@ -807,14 +851,18 @@ impl AstMicroEngine {
     /// Return unsampled logits after prefill/forward for runtime diagnostics.
     pub fn diagnostic_logits(&mut self) -> Result<Vec<f32>> {
         quants::quantize_row_q8_0(&self.scratch.x_norm, &mut self.scratch.x_q8_0);
-        let embedding = self.gguf.tensors.get("token_embd.weight")
-            .ok_or_else(|| anyhow!("missing token embeddings"))?;
-        let vocab_size = *embedding.shape.first().ok_or_else(|| anyhow!("invalid embedding shape"))?;
-        let end = self.token_embd_offset.checked_add(vocab_size.checked_mul(self.bytes_per_token)
+        let (offset, vocab_size, row_bytes) = if let Some(output) = &self.output_weight {
+            (output.offset, output.n_rows, (output.n_cols / 32) * 34)
+        } else {
+            let embedding = self.gguf.tensors.get("token_embd.weight")
+                .ok_or_else(|| anyhow!("missing token embeddings"))?;
+            (self.token_embd_offset, *embedding.shape.first().ok_or_else(|| anyhow!("invalid embedding shape"))?, self.bytes_per_token)
+        };
+        let end = offset.checked_add(vocab_size.checked_mul(row_bytes)
             .ok_or_else(|| anyhow!("embedding size overflow"))?).ok_or_else(|| anyhow!("embedding offset overflow"))?;
-        let bytes = self.mmap.get(self.token_embd_offset..end).ok_or_else(|| anyhow!("truncated embeddings"))?;
+        let bytes = self.mmap.get(offset..end).ok_or_else(|| anyhow!("truncated output matrix"))?;
         use rayon::prelude::*;
-        Ok(bytes.par_chunks_exact(self.bytes_per_token)
+        Ok(bytes.par_chunks_exact(row_bytes)
             .map(|row| unsafe { quants::vec_dot_q8_0_q8_0_avx2(row, &self.scratch.x_q8_0) }).collect())
     }
 
@@ -843,20 +891,18 @@ impl AstMicroEngine {
             }
             let mut max_idx = 0;
             let mut max_val = f32::NEG_INFINITY;
+            let (matrix_offset, row_bytes) = if let Some(output) = &self.output_weight {
+                (output.offset, (output.n_cols / 32) * 34)
+            } else {
+                (self.token_embd_offset, self.bytes_per_token)
+            };
             for (i, &tok_id) in cands.iter().enumerate() {
                 if suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2) {
                     continue;
                 }
-                let start = self.token_embd_offset + (tok_id as usize) * self.bytes_per_token;
-                let slice = &self.mmap[start..start + self.bytes_per_token];
-                let val = match self.token_embd_dtype {
-                    8 => unsafe { quants::vec_dot_q8_0_q8_0_avx2(slice, &self.scratch.x_q8_0) },
-                    _ => {
-                        let mut row = vec![0f32; self.embedding_length];
-                        quants::dequantize_row_q8_0(slice, &mut row);
-                        row.iter().zip(self.scratch.x_norm.iter()).map(|(a, b)| a * b).sum()
-                    }
-                };
+                let start = matrix_offset + (tok_id as usize) * row_bytes;
+                let slice = &self.mmap[start..start + row_bytes];
+                let val = unsafe { quants::vec_dot_q8_0_q8_0_avx2(slice, &self.scratch.x_q8_0) };
                 let mut score = val;
                 if recent.contains(&tok_id) {
                     score = if score > 0.0 {
@@ -872,11 +918,14 @@ impl AstMicroEngine {
             }
             Ok(cands[max_idx])
         } else {
-            let embd_info = self.gguf.tensors.get("token_embd.weight").unwrap();
-            let vocab_size = embd_info.shape[0];
+            let (matrix_offset, vocab_size, bytes_per_token) = if let Some(output) = &self.output_weight {
+                (output.offset, output.n_rows, (output.n_cols / 32) * 34)
+            } else {
+                let embd_info = self.gguf.tensors.get("token_embd.weight").unwrap();
+                (self.token_embd_offset, embd_info.shape[0], self.bytes_per_token)
+            };
 
-            let embd_bytes = &self.mmap[self.token_embd_offset..self.token_embd_offset + vocab_size * self.bytes_per_token];
-            let bytes_per_token = self.bytes_per_token;
+            let embd_bytes = &self.mmap[matrix_offset..matrix_offset + vocab_size * bytes_per_token];
 
             use rayon::prelude::*;
             let chunk_size = 4096;
