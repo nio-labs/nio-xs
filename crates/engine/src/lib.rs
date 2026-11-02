@@ -7,6 +7,7 @@ use tokio::sync::{Mutex, mpsc};
 
 pub mod gguf;
 pub mod quants;
+pub mod pool;
 pub mod ast_engine;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 

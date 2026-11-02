@@ -7,6 +7,7 @@ use std::path::Path;
 
 use crate::gguf;
 use crate::quants;
+use crate::pool::{self, GemvTask, SpinThreadPool};
 
 pub fn memory_mb() -> (f64, f64) {
     let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
@@ -22,6 +23,7 @@ pub fn memory_mb() -> (f64, f64) {
     (get_val("VmRSS:"), get_val("VmHWM:"))
 }
 
+#[allow(dead_code)]
 fn random_f32() -> f32 {
     use std::cell::Cell;
     thread_local! {
@@ -37,6 +39,7 @@ fn random_f32() -> f32 {
     })
 }
 
+#[allow(dead_code)]
 #[inline(always)]
 fn insert_top_k(top: &mut [(u32, f32); 16], tok: u32, score: f32) {
     if score <= top[15].1 {
@@ -50,6 +53,7 @@ fn insert_top_k(top: &mut [(u32, f32); 16], tok: u32, score: f32) {
     top[pos] = (tok, score);
 }
 
+#[allow(dead_code)]
 fn merge_top_k(a: &[(u32, f32); 16], b: &[(u32, f32); 16]) -> [(u32, f32); 16] {
     let mut res = [(0u32, f32::NEG_INFINITY); 16];
     let mut i = 0;
@@ -66,6 +70,7 @@ fn merge_top_k(a: &[(u32, f32); 16], b: &[(u32, f32); 16]) -> [(u32, f32); 16] {
     res
 }
 
+#[allow(dead_code)]
 fn sample_top_p(top: &[(u32, f32); 16], temperature: f32, top_p: f32) -> u32 {
     if temperature < 0.05 {
         return top[0].0;
@@ -203,14 +208,17 @@ pub struct ScratchBuffers {
     pub x: Vec<f32>,
     pub x_norm: Vec<f32>,
     pub x_q8_0: Vec<quants::BlockQ8_0>,
+    pub x_q8_k: Vec<quants::BlockQ8_K>,
     pub q: Vec<f32>,
     pub k: Vec<f32>,
     pub v: Vec<f32>,
     pub attn_out: Vec<f32>,
     pub attn_q8_0: Vec<quants::BlockQ8_0>,
+    pub attn_q8_k: Vec<quants::BlockQ8_K>,
     pub wo_out: Vec<f32>,
     pub ffn_norm: Vec<f32>,
     pub ffn_q8_0: Vec<quants::BlockQ8_0>,
+    pub ffn_q8_k: Vec<quants::BlockQ8_K>,
     pub w1: Vec<f32>,
     pub w3: Vec<f32>,
     pub inter: Vec<f32>,
@@ -224,19 +232,22 @@ impl ScratchBuffers {
         Self {
             x: vec![0f32; embedding_length],
             x_norm: vec![0f32; embedding_length],
-            x_q8_0: vec![quants::BlockQ8_0 { d: half::f16::ZERO, qs: [0; 32] }; embedding_length / 32],
+            x_q8_0: vec![quants::BlockQ8_0 { d: 0.0, qs: [0; 32] }; embedding_length / 32],
+            x_q8_k: vec![quants::BlockQ8_K { d: 0.0, qs: [0; 256], bsums: [0; 16] }; (embedding_length + 255) / 256],
             q: vec![0f32; wq_rows],
             k: vec![0f32; wk_rows],
             v: vec![0f32; wv_rows],
             attn_out: vec![0f32; wq_rows],
-            attn_q8_0: vec![quants::BlockQ8_0 { d: half::f16::ZERO, qs: [0; 32] }; wq_rows / 32],
+            attn_q8_0: vec![quants::BlockQ8_0 { d: 0.0, qs: [0; 32] }; wq_rows / 32],
+            attn_q8_k: vec![quants::BlockQ8_K { d: 0.0, qs: [0; 256], bsums: [0; 16] }; (wq_rows + 255) / 256],
             wo_out: vec![0f32; embedding_length],
             ffn_norm: vec![0f32; embedding_length],
-            ffn_q8_0: vec![quants::BlockQ8_0 { d: half::f16::ZERO, qs: [0; 32] }; embedding_length / 32],
+            ffn_q8_0: vec![quants::BlockQ8_0 { d: 0.0, qs: [0; 32] }; embedding_length / 32],
+            ffn_q8_k: vec![quants::BlockQ8_K { d: 0.0, qs: [0; 256], bsums: [0; 16] }; (embedding_length + 255) / 256],
             w1: vec![0f32; w1_rows],
             w3: vec![0f32; w1_rows],
             inter: vec![0f32; w1_rows],
-            inter_q8_k: vec![quants::BlockQ8_K { d: 0.0, qs: [0; 256], bsums: [0; 16] }; w1_rows / 256],
+            inter_q8_k: vec![quants::BlockQ8_K { d: 0.0, qs: [0; 256], bsums: [0; 16] }; (w1_rows + 255) / 256],
             mlp_out: vec![0f32; embedding_length],
             attn_scores: Vec::with_capacity(512),
         }
@@ -327,6 +338,7 @@ impl LayerDesc {
         &self,
         mmap: &[u8],
         scratch: &mut ScratchBuffers,
+        pool: &SpinThreadPool,
         _pos: usize,
         cos: &[f32],
         sin: &[f32],
@@ -339,16 +351,68 @@ impl LayerDesc {
     ) {
         // 1. Attention Norm
         rms_norm_slice(&scratch.x, &self.attn_norm_weight, eps, &mut scratch.x_norm);
-        quants::quantize_row_q8_0(&scratch.x_norm, &mut scratch.x_q8_0);
+        if self.wq.dtype == 18 {
+            quants::quantize_row_q8_k(&scratch.x_norm, &mut scratch.x_q8_k);
+        } else {
+            quants::quantize_row_q8_0(&scratch.x_norm, &mut scratch.x_q8_0);
+        }
 
-        // 2. Q, K, V Projections (Pure AVX2 in L1 cache)
+        // 2. Q, K, V Projections (Pure AVX2 parallelized across spin threadpool)
         let wq_slice = &mmap[self.wq.offset..self.wq.offset + self.wq.byte_len];
         let wk_slice = &mmap[self.wk.offset..self.wk.offset + self.wk.byte_len];
         let wv_slice = &mmap[self.wv.offset..self.wv.offset + self.wv.byte_len];
-        for (out, weight, desc) in [(&mut scratch.q, wq_slice, &self.wq), (&mut scratch.k, wk_slice, &self.wk), (&mut scratch.v, wv_slice, &self.wv)] {
-            if desc.dtype == 8 { quants::gemv_q8_0(out, weight, &scratch.x_norm, desc.n_rows, desc.n_cols); }
-            else { unsafe { quants::gemv_iq4_nl_prequant(out, weight, &scratch.x_q8_0, desc.n_rows, desc.n_cols); } }
+        if self.wq.dtype == 18 {
+            pool.run_task(GemvTask::QkvIq3Xxs {
+                q_ptr: scratch.q.as_mut_ptr() as usize,
+                k_ptr: scratch.k.as_mut_ptr() as usize,
+                v_ptr: scratch.v.as_mut_ptr() as usize,
+                wq_ptr: wq_slice.as_ptr() as usize,
+                wk_ptr: wk_slice.as_ptr() as usize,
+                wv_ptr: wv_slice.as_ptr() as usize,
+                x_q8_k_ptr: scratch.x_q8_k.as_ptr() as usize,
+                q_rows: self.wq.n_rows,
+                k_rows: self.wk.n_rows,
+                v_rows: self.wv.n_rows,
+                n_cols: self.wq.n_cols,
+            });
+        } else if self.wq.dtype == 8 {
+            pool.run_task(GemvTask::Q8_0 {
+                out_ptr: scratch.q.as_mut_ptr() as usize,
+                weight_ptr: wq_slice.as_ptr() as usize,
+                x_norm_ptr: scratch.x_norm.as_ptr() as usize,
+                n_rows: self.wq.n_rows,
+                n_cols: self.wq.n_cols,
+            });
+            pool.run_task(GemvTask::Q8_0 {
+                out_ptr: scratch.k.as_mut_ptr() as usize,
+                weight_ptr: wk_slice.as_ptr() as usize,
+                x_norm_ptr: scratch.x_norm.as_ptr() as usize,
+                n_rows: self.wk.n_rows,
+                n_cols: self.wk.n_cols,
+            });
+            pool.run_task(GemvTask::Q8_0 {
+                out_ptr: scratch.v.as_mut_ptr() as usize,
+                weight_ptr: wv_slice.as_ptr() as usize,
+                x_norm_ptr: scratch.x_norm.as_ptr() as usize,
+                n_rows: self.wv.n_rows,
+                n_cols: self.wv.n_cols,
+            });
+        } else {
+            pool.run_task(GemvTask::QkvIq4Nl {
+                q_ptr: scratch.q.as_mut_ptr() as usize,
+                k_ptr: scratch.k.as_mut_ptr() as usize,
+                v_ptr: scratch.v.as_mut_ptr() as usize,
+                wq_ptr: wq_slice.as_ptr() as usize,
+                wk_ptr: wk_slice.as_ptr() as usize,
+                wv_ptr: wv_slice.as_ptr() as usize,
+                x_blocks_ptr: scratch.x_q8_0.as_ptr() as usize,
+                q_rows: self.wq.n_rows,
+                k_rows: self.wk.n_rows,
+                v_rows: self.wv.n_rows,
+                n_cols: self.wq.n_cols,
+            });
         }
+
         if !self.q_bias.is_empty() {
             for i in 0..scratch.q.len() {
                 scratch.q[i] += self.q_bias[i];
@@ -365,7 +429,7 @@ impl LayerDesc {
             }
         }
 
-        // Qwen3 normalizes each query and key head before applying RoPE.
+        // Qwen3 / Manta normalizes each query and key head before applying RoPE.
         for (values, weight) in [(&mut scratch.q, &self.q_norm_weight), (&mut scratch.k, &self.k_norm_weight)] {
             if !weight.is_empty() {
                 for head in values.chunks_exact_mut(head_dim) {
@@ -374,6 +438,7 @@ impl LayerDesc {
                 }
             }
         }
+
         // 3. RoPE
         apply_rope(&mut scratch.q, n_head, head_dim, cos, sin, neox);
         apply_rope(&mut scratch.k, n_kv_head, head_dim, cos, sin, neox);
@@ -383,24 +448,47 @@ impl LayerDesc {
         kv_cache.v.extend_from_slice(&scratch.v);
         kv_cache.cur_len += 1;
 
-        // 5. Multi-head Attention
-        compute_attention(
-            &scratch.q,
-            &kv_cache.k,
-            &kv_cache.v,
-            kv_cache.cur_len,
+        // 5. Multi-head Attention (parallelized across spin threadpool)
+        pool.run_task(GemvTask::Attention {
+            q_ptr: scratch.q.as_ptr() as usize,
+            k_cache_ptr: kv_cache.k.as_ptr() as usize,
+            v_cache_ptr: kv_cache.v.as_ptr() as usize,
+            out_ptr: scratch.attn_out.as_mut_ptr() as usize,
+            seq_len: kv_cache.cur_len,
             n_head,
             n_kv_head,
             head_dim,
-            &mut scratch.attn_out,
-            &mut scratch.attn_scores,
-        );
+        });
 
         // 6. Output Projection (wo)
-        quants::quantize_row_q8_0(&scratch.attn_out, &mut scratch.attn_q8_0);
         let wo_slice = &mmap[self.wo.offset..self.wo.offset + self.wo.byte_len];
-        if self.wo.dtype == 8 { quants::gemv_q8_0(&mut scratch.wo_out, wo_slice, &scratch.attn_out, self.wo.n_rows, self.wo.n_cols); }
-        else { unsafe { quants::gemv_iq4_nl_prequant(&mut scratch.wo_out, wo_slice, &scratch.attn_q8_0, self.wo.n_rows, self.wo.n_cols); } }
+        if self.wo.dtype == 18 {
+            quants::quantize_row_q8_k(&scratch.attn_out, &mut scratch.attn_q8_k);
+            pool.run_task(GemvTask::Iq3Xxs {
+                out_ptr: scratch.wo_out.as_mut_ptr() as usize,
+                weight_ptr: wo_slice.as_ptr() as usize,
+                x_q8_k_ptr: scratch.attn_q8_k.as_ptr() as usize,
+                n_rows: self.wo.n_rows,
+                n_cols: self.wo.n_cols,
+            });
+        } else if self.wo.dtype == 8 {
+            pool.run_task(GemvTask::Q8_0 {
+                out_ptr: scratch.wo_out.as_mut_ptr() as usize,
+                weight_ptr: wo_slice.as_ptr() as usize,
+                x_norm_ptr: scratch.attn_out.as_ptr() as usize,
+                n_rows: self.wo.n_rows,
+                n_cols: self.wo.n_cols,
+            });
+        } else {
+            quants::quantize_row_q8_0(&scratch.attn_out, &mut scratch.attn_q8_0);
+            pool.run_task(GemvTask::Iq4Nl {
+                out_ptr: scratch.wo_out.as_mut_ptr() as usize,
+                weight_ptr: wo_slice.as_ptr() as usize,
+                x_blocks_ptr: scratch.attn_q8_0.as_ptr() as usize,
+                n_rows: self.wo.n_rows,
+                n_cols: self.wo.n_cols,
+            });
+        }
 
         // 7. Residual connection (x = x + wo_out)
         for i in 0..scratch.x.len() {
@@ -409,29 +497,87 @@ impl LayerDesc {
 
         // 8. FFN Norm
         rms_norm_slice(&scratch.x, &self.ffn_norm_weight, eps, &mut scratch.ffn_norm);
-        quants::quantize_row_q8_0(&scratch.ffn_norm, &mut scratch.ffn_q8_0);
+        if self.w1.dtype == 18 {
+            quants::quantize_row_q8_k(&scratch.ffn_norm, &mut scratch.ffn_q8_k);
+        } else {
+            quants::quantize_row_q8_0(&scratch.ffn_norm, &mut scratch.ffn_q8_0);
+        }
 
         // 9. FFN Gate (w1) and Up (w3)
         let w1_slice = &mmap[self.w1.offset..self.w1.offset + self.w1.byte_len];
         let w3_slice = &mmap[self.w3.offset..self.w3.offset + self.w3.byte_len];
-        for (out, weight, desc) in [(&mut scratch.w1, w1_slice, &self.w1), (&mut scratch.w3, w3_slice, &self.w3)] {
-            if desc.dtype == 8 { quants::gemv_q8_0(out, weight, &scratch.ffn_norm, desc.n_rows, desc.n_cols); }
-            else { unsafe { quants::gemv_iq4_nl_prequant(out, weight, &scratch.ffn_q8_0, desc.n_rows, desc.n_cols); } }
-        }
-
-        // 10. SwiGLU activation: inter = SiLU(w1) * w3
-        for j in 0..self.w1.n_rows {
-            let w1_val = scratch.w1[j];
-            let silu = w1_val / (1.0 + (-w1_val).exp());
-            scratch.inter[j] = silu * scratch.w3[j];
+        if self.w1.dtype == 18 {
+            pool.run_task(GemvTask::Iq3Xxs {
+                out_ptr: scratch.w1.as_mut_ptr() as usize,
+                weight_ptr: w1_slice.as_ptr() as usize,
+                x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
+                n_rows: self.w1.n_rows,
+                n_cols: self.w1.n_cols,
+            });
+            pool.run_task(GemvTask::Iq3Xxs {
+                out_ptr: scratch.w3.as_mut_ptr() as usize,
+                weight_ptr: w3_slice.as_ptr() as usize,
+                x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
+                n_rows: self.w3.n_rows,
+                n_cols: self.w3.n_cols,
+            });
+            for j in 0..self.w1.n_rows {
+                let w1_val = scratch.w1[j];
+                let silu = w1_val / (1.0 + (-w1_val).exp());
+                scratch.inter[j] = silu * scratch.w3[j];
+            }
+        } else if self.w1.dtype == 8 {
+            pool.run_task(GemvTask::Q8_0 {
+                out_ptr: scratch.w1.as_mut_ptr() as usize,
+                weight_ptr: w1_slice.as_ptr() as usize,
+                x_norm_ptr: scratch.ffn_norm.as_ptr() as usize,
+                n_rows: self.w1.n_rows,
+                n_cols: self.w1.n_cols,
+            });
+            pool.run_task(GemvTask::Q8_0 {
+                out_ptr: scratch.w3.as_mut_ptr() as usize,
+                weight_ptr: w3_slice.as_ptr() as usize,
+                x_norm_ptr: scratch.ffn_norm.as_ptr() as usize,
+                n_rows: self.w3.n_rows,
+                n_cols: self.w3.n_cols,
+            });
+            for j in 0..self.w1.n_rows {
+                let w1_val = scratch.w1[j];
+                let silu = w1_val / (1.0 + (-w1_val).exp());
+                scratch.inter[j] = silu * scratch.w3[j];
+            }
+        } else {
+            pool.run_task(GemvTask::GateUpIq4Nl {
+                w1_out_ptr: scratch.w1.as_mut_ptr() as usize,
+                w3_out_ptr: scratch.w3.as_mut_ptr() as usize,
+                inter_out_ptr: scratch.inter.as_mut_ptr() as usize,
+                w1_ptr: w1_slice.as_ptr() as usize,
+                w3_ptr: w3_slice.as_ptr() as usize,
+                x_blocks_ptr: scratch.ffn_q8_0.as_ptr() as usize,
+                n_rows: self.w1.n_rows,
+                n_cols: self.w1.n_cols,
+            });
         }
 
         // 11. Quantize inter to Q8_K and Down Projection (w2)
+        quants::quantize_row_q8_k(&scratch.inter, &mut scratch.inter_q8_k);
         let w2_slice = &mmap[self.w2.offset..self.w2.offset + self.w2.byte_len];
-        if self.w2.dtype == 8 { quants::gemv_q8_0(&mut scratch.mlp_out, w2_slice, &scratch.inter, self.w2.n_rows, self.w2.n_cols); }
-        else {
-            quants::quantize_row_q8_k(&scratch.inter, &mut scratch.inter_q8_k);
-            unsafe { quants::gemv_iq3_xxs_prequant(&mut scratch.mlp_out, w2_slice, &scratch.inter_q8_k, self.w2.n_rows, self.w2.n_cols); }
+        if self.w2.dtype == 8 {
+            pool.run_task(GemvTask::Q8_0 {
+                out_ptr: scratch.mlp_out.as_mut_ptr() as usize,
+                weight_ptr: w2_slice.as_ptr() as usize,
+                x_norm_ptr: scratch.inter.as_ptr() as usize,
+                n_rows: self.w2.n_rows,
+                n_cols: self.w2.n_cols,
+            });
+        } else {
+            pool.run_task(GemvTask::Iq3Xxs {
+                out_ptr: scratch.mlp_out.as_mut_ptr() as usize,
+                weight_ptr: w2_slice.as_ptr() as usize,
+                x_q8_k_ptr: scratch.inter_q8_k.as_ptr() as usize,
+                n_rows: self.w2.n_rows,
+                n_cols: self.w2.n_cols,
+            });
         }
 
         // 12. Residual connection (x = x + mlp_out)
@@ -458,6 +604,7 @@ impl LayerDesc {
         &self,
         mmap: &[u8],
         scratch: &mut ScratchBuffers,
+        pool: &SpinThreadPool,
         pos: usize,
         cos: &[f32],
         sin: &[f32],
@@ -471,6 +618,7 @@ impl LayerDesc {
         self.forward_token(
             mmap,
             scratch,
+            pool,
             pos,
             cos,
             sin,
@@ -534,6 +682,7 @@ pub struct AstMicroEngine {
     repeat_penalty: f32,
     repeat_last_n: usize,
     pub suppressed_tokens: HashSet<u32>,
+    pub pool: SpinThreadPool,
 }
 
 impl AstMicroEngine {
@@ -748,7 +897,36 @@ impl AstMicroEngine {
             repeat_penalty: 1.15,
             repeat_last_n: 64,
             suppressed_tokens: HashSet::new(),
+            pool: {
+                let pool = SpinThreadPool::new();
+                pool.park();
+                pool
+            },
         })
+    }
+
+    #[inline(always)]
+    pub fn unpark(&self) {
+        self.pool.unpark();
+    }
+
+    #[inline(always)]
+    pub fn park(&self) {
+        self.pool.park();
+    }
+
+    #[inline(always)]
+    pub fn madvise_dontneed_range(mmap: &[u8], offset: usize, len: usize) {
+        let page_size = 4096;
+        let aligned_start = (offset / page_size) * page_size;
+        let aligned_len = ((offset + len - aligned_start + page_size - 1) / page_size) * page_size;
+        unsafe {
+            libc::madvise(
+                mmap.as_ptr().add(aligned_start) as *mut libc::c_void,
+                aligned_len,
+                libc::MADV_DONTNEED,
+            );
+        }
     }
 
     pub fn set_suppressed_tokens(&mut self, tokens: impl IntoIterator<Item = u32>) {
@@ -778,6 +956,7 @@ impl AstMicroEngine {
         for c in &mut self.kv_caches {
             c.reset();
         }
+        self.pool.park();
         unsafe {
             libc::malloc_trim(0);
         }
@@ -866,6 +1045,8 @@ impl AstMicroEngine {
             return Ok(Vec::new());
         }
 
+        self.pool.unpark();
+
         let half = self.head_dim / 2;
         let limit = self.cos_table.len() / half;
         if index_pos.checked_add(n_tokens).is_none_or(|end| end > limit) {
@@ -909,6 +1090,7 @@ impl AstMicroEngine {
                 layer.forward_token(
                     &self.mmap,
                     &mut self.scratch,
+                    &self.pool,
                     pos,
                     cos,
                     sin,
@@ -999,6 +1181,7 @@ impl AstMicroEngine {
         history: &[u32],
         suppress_eos: bool,
     ) -> Result<u32> {
+        self.pool.unpark();
         quants::quantize_row_q8_0(x_norm, &mut self.scratch.x_q8_0);
         let repeat_penalty = self.repeat_penalty;
         let recent: HashSet<u32> = history
@@ -1051,78 +1234,53 @@ impl AstMicroEngine {
                 (self.token_embd_offset, embd_info.shape[0], self.bytes_per_token)
             };
 
-            let embd_bytes = &self.mmap[matrix_offset..matrix_offset + vocab_size * bytes_per_token];
+            let suppressed_vec: Vec<u32> = self.suppressed_tokens.iter().copied().collect();
+            let mut top_toks = [0u32; pool::NUM_WORKERS];
+            let mut top_scores = [f32::NEG_INFINITY; pool::NUM_WORKERS];
 
-            use rayon::prelude::*;
-            let chunk_size = 4096;
-            let x_q8_0 = &self.scratch.x_q8_0;
-            let x_scales: Vec<f32> = x_q8_0.iter().map(|b| b.d.to_f32()).collect();
-            let top_16 = (0..vocab_size as u32)
-                .into_par_iter()
-                .chunks(chunk_size)
-                .map(|chunk| {
-                    let mut local_top = [(0u32, f32::NEG_INFINITY); 16];
-                    let mut i = 0;
-                    while i + 3 < chunk.len() {
-                        let t0 = chunk[i];
-                        let t1 = chunk[i + 1];
-                        let t2 = chunk[i + 2];
-                        let t3 = chunk[i + 3];
+            let num_passes = 2;
+            let pass_size = (vocab_size + num_passes - 1) / num_passes;
+            let mut best_token = 0u32;
+            let mut max_score = f32::NEG_INFINITY;
 
-                        let r0 = &embd_bytes[(t0 as usize) * bytes_per_token..(t0 as usize + 1) * bytes_per_token];
-                        let r1 = &embd_bytes[(t1 as usize) * bytes_per_token..(t1 as usize + 1) * bytes_per_token];
-                        let r2 = &embd_bytes[(t2 as usize) * bytes_per_token..(t2 as usize + 1) * bytes_per_token];
-                        let r3 = &embd_bytes[(t3 as usize) * bytes_per_token..(t3 as usize + 1) * bytes_per_token];
+            for p in 0..num_passes {
+                let start_tok = p * pass_size;
+                let count = (vocab_size - start_tok).min(pass_size);
+                if count == 0 {
+                    break;
+                }
 
-                        let vals = unsafe { quants::vec_dot_q8_0_q8_0_4rows_fast(r0, r1, r2, r3, x_q8_0, &x_scales) };
+                top_scores.fill(f32::NEG_INFINITY);
+                self.pool.run_task(GemvTask::VocabQ8_0 {
+                    weight_ptr: (self.mmap.as_ptr() as usize) + matrix_offset,
+                    x_blocks_ptr: self.scratch.x_q8_0.as_ptr() as usize,
+                    start_tok,
+                    vocab_count: count,
+                    bytes_per_token,
+                    suppress_eos,
+                    history_ptr: history.as_ptr() as usize,
+                    history_len: history.len(),
+                    suppressed_ptr: suppressed_vec.as_ptr() as usize,
+                    suppressed_len: suppressed_vec.len(),
+                    repeat_penalty: self.repeat_penalty,
+                    top_tok_ptr: top_toks.as_mut_ptr() as usize,
+                    top_score_ptr: top_scores.as_mut_ptr() as usize,
+                });
 
-                        for (tok_id, val) in [(t0, vals[0]), (t1, vals[1]), (t2, vals[2]), (t3, vals[3])] {
-                            if suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2) {
-                                continue;
-                            }
-                            if self.suppressed_tokens.contains(&tok_id) {
-                                continue;
-                            }
-                            let mut score = val;
-                            if recent.contains(&tok_id) {
-                                score = if score > 0.0 {
-                                    score / repeat_penalty
-                                } else {
-                                    score * repeat_penalty
-                                };
-                            }
-                            insert_top_k(&mut local_top, tok_id, score);
-                        }
-                        i += 4;
+                for i in 0..pool::NUM_WORKERS {
+                    if top_scores[i] > max_score {
+                        max_score = top_scores[i];
+                        best_token = top_toks[i];
                     }
-                    while i < chunk.len() {
-                        let tok_id = chunk[i];
-                        if !suppress_eos || (tok_id != 0 && tok_id != 1 && tok_id != 2) {
-                            if !self.suppressed_tokens.contains(&tok_id) {
-                                let row_offset = (tok_id as usize) * bytes_per_token;
-                                let row_slice = &embd_bytes[row_offset..row_offset + bytes_per_token];
-                                let val = unsafe { quants::vec_dot_q8_0_q8_0_avx2_fast(row_slice, x_q8_0, &x_scales) };
-                                let mut score = val;
-                                if recent.contains(&tok_id) {
-                                    score = if score > 0.0 {
-                                        score / repeat_penalty
-                                    } else {
-                                        score * repeat_penalty
-                                    };
-                                }
-                                insert_top_k(&mut local_top, tok_id, score);
-                            }
-                        }
-                        i += 1;
-                    }
-                    local_top
-                })
-                .reduce(
-                    || [(0u32, f32::NEG_INFINITY); 16],
-                    |a, b| merge_top_k(&a, &b),
+                }
+
+                Self::madvise_dontneed_range(
+                    &self.mmap,
+                    matrix_offset + start_tok * bytes_per_token,
+                    count * bytes_per_token,
                 );
+            }
 
-            let best_token = sample_top_p(&top_16, self.sampling_temp, self.sampling_top_p);
             Ok(best_token)
         }
     }

@@ -84,6 +84,11 @@ fn benchmark_model(
     let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(|e| anyhow!("{e}"))?;
     let t0 = Instant::now();
     let mut engine = AstMicroEngine::new(model_path)?;
+    if model_name.to_lowercase().contains("skate") {
+        engine.set_suppressed_tokens([3725, 47182]);
+    } else if model_name.to_lowercase().contains("manta") {
+        engine.set_suppressed_tokens([41233, 54275, 73594]);
+    }
     let load_time = t0.elapsed().as_secs_f64();
     let (load_rss, load_hwm) = memory_mb();
     println!("Engine loaded in {:.2}s | Post-load RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB\n", load_time, load_rss, load_hwm);
@@ -148,7 +153,7 @@ fn benchmark_model(
 
         // Check for code emissions if category is deflection
         if category.contains("deflect") || category.contains("Zero-Code") {
-            if decoded.contains("```") || decoded.contains("def ") || decoded.contains("function ") {
+            if decoded.contains("```") || decoded.contains("def ") || decoded.contains("function(") || decoded.contains("function (") || decoded.contains("fn ") || decoded.contains("=>") {
                 has_code_violation = true;
             }
         }
