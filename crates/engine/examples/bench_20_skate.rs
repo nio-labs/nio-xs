@@ -70,7 +70,7 @@ fn main() -> Result<()> {
         engine.reset_cache();
 
         let prompt = format!(
-            "<|im_start|>system\nYou are Skate, Nio's fast local terminal reflex companion.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+            "<|im_start|>system\nYou are Skate, Nio's ambient companion. Be friendly, clear, grounded, and concise.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
             query.trim()
         );
         let encoded = tokenizer.encode(prompt.as_str(), false).map_err(|e| anyhow::anyhow!("{e}"))?;
