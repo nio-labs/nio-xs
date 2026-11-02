@@ -348,6 +348,68 @@ pub unsafe fn vec_dot_q8_0_q8_0_avx2_fast(weight_bytes: &[u8], x_blocks: &[Block
     hsum_float_8(acc)
 }
 
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn vec_dot_q8_0_q8_0_4rows_fast(
+    row0: &[u8],
+    row1: &[u8],
+    row2: &[u8],
+    row3: &[u8],
+    x_blocks: &[BlockQ8_0],
+    x_scales: &[f32],
+) -> [f32; 4] {
+    use core::arch::x86_64::*;
+    let nb = x_blocks.len();
+    assert_eq!(row0.len(), nb * 34);
+    assert_eq!(row1.len(), nb * 34);
+    assert_eq!(row2.len(), nb * 34);
+    assert_eq!(row3.len(), nb * 34);
+
+    let mut acc0 = _mm256_setzero_ps();
+    let mut acc1 = _mm256_setzero_ps();
+    let mut acc2 = _mm256_setzero_ps();
+    let mut acc3 = _mm256_setzero_ps();
+
+    for ib in 0..nb {
+        let qy = _mm256_loadu_si256(x_blocks[ib].qs.as_ptr() as *const __m256i);
+        let x_s = x_scales[ib];
+
+        let b0_ptr = row0.as_ptr().add(ib * 34);
+        let u0 = (*b0_ptr as u16) | ((*b0_ptr.add(1) as u16) << 8);
+        let d0_weight = _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(u0 as i32)));
+        let d0 = _mm256_set1_ps(d0_weight * x_s);
+        let qx0 = _mm256_loadu_si256(b0_ptr.add(2) as *const __m256i);
+        acc0 = _mm256_fmadd_ps(d0, mul_sum_i8_pairs_float(qx0, qy), acc0);
+
+        let b1_ptr = row1.as_ptr().add(ib * 34);
+        let u1 = (*b1_ptr as u16) | ((*b1_ptr.add(1) as u16) << 8);
+        let d1_weight = _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(u1 as i32)));
+        let d1 = _mm256_set1_ps(d1_weight * x_s);
+        let qx1 = _mm256_loadu_si256(b1_ptr.add(2) as *const __m256i);
+        acc1 = _mm256_fmadd_ps(d1, mul_sum_i8_pairs_float(qx1, qy), acc1);
+
+        let b2_ptr = row2.as_ptr().add(ib * 34);
+        let u2 = (*b2_ptr as u16) | ((*b2_ptr.add(1) as u16) << 8);
+        let d2_weight = _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(u2 as i32)));
+        let d2 = _mm256_set1_ps(d2_weight * x_s);
+        let qx2 = _mm256_loadu_si256(b2_ptr.add(2) as *const __m256i);
+        acc2 = _mm256_fmadd_ps(d2, mul_sum_i8_pairs_float(qx2, qy), acc2);
+
+        let b3_ptr = row3.as_ptr().add(ib * 34);
+        let u3 = (*b3_ptr as u16) | ((*b3_ptr.add(1) as u16) << 8);
+        let d3_weight = _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(u3 as i32)));
+        let d3 = _mm256_set1_ps(d3_weight * x_s);
+        let qx3 = _mm256_loadu_si256(b3_ptr.add(2) as *const __m256i);
+        acc3 = _mm256_fmadd_ps(d3, mul_sum_i8_pairs_float(qx3, qy), acc3);
+    }
+
+    [
+        hsum_float_8(acc0),
+        hsum_float_8(acc1),
+        hsum_float_8(acc2),
+        hsum_float_8(acc3),
+    ]
+}
+
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn vec_dot_iq4_nl_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_0]) -> f32 {
     use core::arch::x86_64::*;
@@ -773,6 +835,40 @@ mod tests {
         println!("Q8_0 scalar_dot: {scalar_dot}, simd_dot: {simd_dot}");
         let diff = (scalar_dot - simd_dot).abs();
         assert!(diff < 0.05 * scalar_dot.abs().max(1.0), "Q8_0 mismatch: {scalar_dot} vs {simd_dot}");
+    }
+
+    #[test]
+    fn test_vec_dot_q8_0_4rows() {
+        let n = 64;
+        let x: Vec<f32> = (0..n).map(|i| ((i as f32) * 0.1).sin()).collect();
+        let nb = n / 32;
+        let mut x_q8_0 = vec![BlockQ8_0 { d: half::f16::ZERO, qs: [0; 32] }; nb];
+        quantize_row_q8_0(&x, &mut x_q8_0);
+        let x_scales: Vec<f32> = x_q8_0.iter().map(|b| b.d.to_f32()).collect();
+
+        let mut rows = vec![vec![0u8; nb * 34]; 4];
+        for (r, row) in rows.iter_mut().enumerate() {
+            for b in 0..nb {
+                let d_bytes = half::f16::from_f32(0.02 * (r + b + 1) as f32).to_le_bytes();
+                row[b * 34] = d_bytes[0];
+                row[b * 34 + 1] = d_bytes[1];
+                for j in 0..32 {
+                    row[b * 34 + 2 + j] = ((j as i8) - 16 + (r as i8) * 3) as u8;
+                }
+            }
+        }
+
+        let dots_single: Vec<f32> = rows.iter().map(|r| unsafe {
+            vec_dot_q8_0_q8_0_avx2_fast(r, &x_q8_0, &x_scales)
+        }).collect();
+
+        let dots_4 = unsafe {
+            vec_dot_q8_0_q8_0_4rows_fast(&rows[0], &rows[1], &rows[2], &rows[3], &x_q8_0, &x_scales)
+        };
+
+        for i in 0..4 {
+            assert_eq!(dots_single[i].to_bits(), dots_4[i].to_bits(), "Mismatch on row {i}: {} vs {}", dots_single[i], dots_4[i]);
+        }
     }
 
     #[test]

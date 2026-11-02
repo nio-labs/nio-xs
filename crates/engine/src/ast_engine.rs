@@ -957,25 +957,58 @@ impl AstMicroEngine {
                 .chunks(chunk_size)
                 .map(|chunk| {
                     let mut local_top = [(0u32, f32::NEG_INFINITY); 16];
-                    for tok_id in chunk {
-                        if suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2) {
-                            continue;
+                    let mut i = 0;
+                    while i + 3 < chunk.len() {
+                        let t0 = chunk[i];
+                        let t1 = chunk[i + 1];
+                        let t2 = chunk[i + 2];
+                        let t3 = chunk[i + 3];
+
+                        let r0 = &embd_bytes[(t0 as usize) * bytes_per_token..(t0 as usize + 1) * bytes_per_token];
+                        let r1 = &embd_bytes[(t1 as usize) * bytes_per_token..(t1 as usize + 1) * bytes_per_token];
+                        let r2 = &embd_bytes[(t2 as usize) * bytes_per_token..(t2 as usize + 1) * bytes_per_token];
+                        let r3 = &embd_bytes[(t3 as usize) * bytes_per_token..(t3 as usize + 1) * bytes_per_token];
+
+                        let vals = unsafe { quants::vec_dot_q8_0_q8_0_4rows_fast(r0, r1, r2, r3, x_q8_0, &x_scales) };
+
+                        for (tok_id, val) in [(t0, vals[0]), (t1, vals[1]), (t2, vals[2]), (t3, vals[3])] {
+                            if suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2) {
+                                continue;
+                            }
+                            if self.suppressed_tokens.contains(&tok_id) {
+                                continue;
+                            }
+                            let mut score = val;
+                            if recent.contains(&tok_id) {
+                                score = if score > 0.0 {
+                                    score / repeat_penalty
+                                } else {
+                                    score * repeat_penalty
+                                };
+                            }
+                            insert_top_k(&mut local_top, tok_id, score);
                         }
-                        if self.suppressed_tokens.contains(&tok_id) {
-                            continue;
+                        i += 4;
+                    }
+                    while i < chunk.len() {
+                        let tok_id = chunk[i];
+                        if !suppress_eos || (tok_id != 0 && tok_id != 1 && tok_id != 2) {
+                            if !self.suppressed_tokens.contains(&tok_id) {
+                                let row_offset = (tok_id as usize) * bytes_per_token;
+                                let row_slice = &embd_bytes[row_offset..row_offset + bytes_per_token];
+                                let val = unsafe { quants::vec_dot_q8_0_q8_0_avx2_fast(row_slice, x_q8_0, &x_scales) };
+                                let mut score = val;
+                                if recent.contains(&tok_id) {
+                                    score = if score > 0.0 {
+                                        score / repeat_penalty
+                                    } else {
+                                        score * repeat_penalty
+                                    };
+                                }
+                                insert_top_k(&mut local_top, tok_id, score);
+                            }
                         }
-                        let row_offset = (tok_id as usize) * bytes_per_token;
-                        let row_slice = &embd_bytes[row_offset..row_offset + bytes_per_token];
-                        let val = unsafe { quants::vec_dot_q8_0_q8_0_avx2_fast(row_slice, x_q8_0, &x_scales) };
-                        let mut score = val;
-                        if recent.contains(&tok_id) {
-                            score = if score > 0.0 {
-                                score / repeat_penalty
-                            } else {
-                                score * repeat_penalty
-                            };
-                        }
-                        insert_top_k(&mut local_top, tok_id, score);
+                        i += 1;
                     }
                     local_top
                 })
