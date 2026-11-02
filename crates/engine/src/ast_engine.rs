@@ -469,11 +469,12 @@ fn precompute_freqs_cis_flat(
 pub struct AstMicroEngine {
     mmap: Mmap,
     gguf: gguf::GgufModel,
-    block_count: usize,
+    pub block_count: usize,
+    pub vocab_size: usize,
     head_count: usize,
     head_count_kv: usize,
     head_dim: usize,
-    embedding_length: usize,
+    _embedding_length: usize,
     rms_norm_eps: f64,
     cos_table: Vec<f32>,
     sin_table: Vec<f32>,
@@ -490,6 +491,7 @@ pub struct AstMicroEngine {
     sampling_top_p: f32,
     repeat_penalty: f32,
     repeat_last_n: usize,
+    pub suppressed_tokens: HashSet<u32>,
 }
 
 impl AstMicroEngine {
@@ -672,14 +674,21 @@ impl AstMicroEngine {
 
         let scratch = ScratchBuffers::new(embedding_length, max_wq_rows, max_wk_rows, max_wv_rows, max_w1_rows);
 
+        let vocab_size = if let Some(output) = &output_weight {
+            output.n_rows
+        } else {
+            embd_info.shape[0]
+        };
+
         Ok(Self {
             mmap,
             gguf,
             block_count,
+            vocab_size,
             head_count,
             head_count_kv,
             head_dim,
-            embedding_length,
+            _embedding_length: embedding_length,
             rms_norm_eps,
             cos_table,
             sin_table,
@@ -696,7 +705,16 @@ impl AstMicroEngine {
             sampling_top_p: 0.9,
             repeat_penalty: 1.15,
             repeat_last_n: 64,
+            suppressed_tokens: HashSet::new(),
         })
+    }
+
+    pub fn set_suppressed_tokens(&mut self, tokens: impl IntoIterator<Item = u32>) {
+        self.suppressed_tokens = tokens.into_iter().collect();
+    }
+
+    pub fn add_suppressed_token(&mut self, token: u32) {
+        self.suppressed_tokens.insert(token);
     }
 
     pub fn set_sampling(&mut self, temperature: f32, top_p: f32, repeat_penalty: f32, repeat_last_n: usize) {
@@ -900,6 +918,9 @@ impl AstMicroEngine {
                 if suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2) {
                     continue;
                 }
+                if self.suppressed_tokens.contains(&tok_id) {
+                    continue;
+                }
                 let start = matrix_offset + (tok_id as usize) * row_bytes;
                 let slice = &self.mmap[start..start + row_bytes];
                 let val = unsafe { quants::vec_dot_q8_0_q8_0_avx2(slice, &self.scratch.x_q8_0) };
@@ -937,6 +958,9 @@ impl AstMicroEngine {
                     let mut local_top = [(0u32, f32::NEG_INFINITY); 16];
                     for tok_id in chunk {
                         if suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2) {
+                            continue;
+                        }
+                        if self.suppressed_tokens.contains(&tok_id) {
                             continue;
                         }
                         let row_offset = (tok_id as usize) * bytes_per_token;

@@ -155,7 +155,6 @@ const STOP_PHRASES: &[&str] = &[
     "\nUser:",
     "\nSystem:",
     "\nAssistant:",
-    "<",
 ];
 
 fn stop_position(text: &str) -> Option<usize> {
@@ -200,6 +199,7 @@ pub struct RayEngine {
     model_path: PathBuf,
     tokenizer_path: PathBuf,
     is_skate: bool,
+    is_manta: bool,
 }
 
 impl RayEngine {
@@ -217,21 +217,27 @@ impl RayEngine {
 
     pub fn for_model(model_name: &str) -> Result<Self> {
         let (model_path, tokenizer_path) = Self::find_or_pull_model_paths(model_name)?;
+        let lowered = model_name.trim().to_ascii_lowercase();
+        let is_skate = matches!(lowered.as_str(), "skate" | "nio-skate");
+        let is_manta = matches!(lowered.as_str(), "manta" | "nio-manta") || model_path.to_string_lossy().contains("manta");
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
             tokenizer_path,
-            is_skate: matches!(model_name.trim().to_ascii_lowercase().as_str(), "skate" | "nio-skate"),
+            is_skate,
+            is_manta,
         })
     }
 
     pub fn from_paths(model_path: PathBuf, tokenizer_path: PathBuf) -> Self {
         let is_skate = model_path.to_string_lossy().contains("skate");
+        let is_manta = model_path.to_string_lossy().contains("manta");
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
             tokenizer_path,
             is_skate,
+            is_manta,
         }
     }
 
@@ -291,9 +297,10 @@ impl RayEngine {
                 "nio-viper.Q4_K_M.gguf",
             ],
             "manta" | "nio-manta" => &[
+                "manta.vmicrolm-vector.gguf",
+                "nio-manta.vmicrolm-vector.gguf",
                 "manta.Q4_0.gguf",
                 "nio-manta-ast.Q4_0.gguf",
-                "manta.vmicrolm-vector.gguf",
                 "nio-manta.Q4_K_M.gguf",
                 "nio-manta.Q4_0.gguf",
                 "niomanta_int8.onnx",
@@ -426,16 +433,24 @@ impl RayEngine {
 
         let model_path = self.model_path.clone();
         let tokenizer_path = self.tokenizer_path.clone();
+        let is_skate = self.is_skate;
+        let is_manta = self.is_manta;
 
         let bundle = tokio::task::spawn_blocking(move || -> Result<ModelBundle> {
             let device = Device::Cpu;
             let tokenizer = Tokenizer::from_file(&tokenizer_path)
                 .map_err(|e| anyhow!("Failed loading tokenizer: {e}"))?;
 
-            let engine = AstMicroEngine::new(&model_path)
+            let mut engine = AstMicroEngine::new(&model_path)
                 .map_err(|e| anyhow!("Failed loading AST-Micro engine for {:?}: {e}", model_path))?;
             Self::validate_tokenizer(&tokenizer, &engine.tokenizer_tokens()?)
                 .map_err(|e| anyhow!("Tokenizer does not match model: {e}"))?;
+
+            if is_skate {
+                engine.set_suppressed_tokens([3725, 47182]);
+            } else if is_manta {
+                engine.set_suppressed_tokens([41233, 54275, 73594]);
+            }
 
             Ok(ModelBundle {
                 engine,
@@ -489,6 +504,11 @@ impl RayEngine {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 skate_system()?,
+                raw_prompt.trim()
+            )
+        } else if self.is_manta {
+            format!(
+                "<|im_start|>system\nYou are Manta, Nio's Conversational Guru and DAG Architect. You specialize in systems architecture, boundary analysis, trade-off evaluation, and operational planning. Decompose technical tasks into structured implementation roadmaps using <manta_plan>, <manta_step>, and <manta_risk> tags. You operate strictly as a systems architect; cleanly defer raw code implementation to Cuda or Fin.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 raw_prompt.trim()
             )
         } else {

@@ -19,12 +19,12 @@
                                             │
         ┌───────────────────────────────────┼────────────────────────────────────┐
         ▼                                   ▼                                    ▼
- 🐍 Viper (100M)                     🦈 Skate (200M)                     🌊 Manta (494M)
+ 🐍 Viper (100M)                     🦈 Skate (135M)                     🌊 Manta (494M)
  Tactical Terminal Striker           Ambient Desk Companion              Conversational Guru
- • Sub-20µs Latency · ~61.7 MB disk  • < 68 MB RAM · ~93.4 MB disk       • < 95 MB RAM · ~252 MB disk
- • < 27 MB Peak Resident RAM         • 50+ w/s (AVX2 SIMD)               • 21 NioGuru Personas
+ • Sub-20µs Latency · ~61.7 MB disk  • < 68 MB RAM · ~82.9 MB disk       • < 240 MB Peak RAM · ~317.9 MB disk
+ • < 27 MB Peak Resident RAM         • 55+ w/s (66.5 tok/s AVX2)         • < 80 MB Idle Reclaim
  • Destructive Safety Clutch         • Friendly Banter & Active Listen   • <manta_plan> Execution DAGs
- • Pure POSIX & PowerShell Pipes     • Zero Code Bloat                   • Multi-File Architecture
+ • Pure POSIX & PowerShell Pipes     • Zero Code Bloat (Masked)          • Architectural Synthesis
 ```
 
 ---
@@ -95,9 +95,9 @@ nioxs viper -x -y "kill port 3000"
 | Model | Parameters | Role | Disk (`IQ3_XXS`) | Peak RAM | Speed (CPU) | Cognitive Mode |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Viper** | **100M** | Tactical Terminal Striker | **~61.7 MB** | **< 27 MB** | Sub-20µs | Pure CLI Pipes |
-| **Skate** | **200M** | Ambient Desk Companion | **~93.4 MB** | **< 68 MB** | 50–55 w/s | Friendly Banter & Focus |
+| **Skate** | **135M** | Ambient Desk Companion | **82.9 MB** | **66.2 MB** (< 68 MB) | 55.7 w/s (66.5 tok/s) | Friendly Banter & Zero-Code Focus |
 | **Mako** | **150M** | Live Web Intelligence & Scout | **~65.4 MB** | **< 22 MB** | 200+ tok/s | DOM Noise Stripping & Wire DSL |
-| **Manta** | **494M** | Full Conversational Guru | **~252 MB** | **< 95 MB** | 35–45 w/s | `<manta_plan>` DAGs |
+| **Manta** | **494M** | Systems Guru & DAG Architect | **317.9 MB** | **226–235 MB** (< 80 MB idle) | 13.8 w/s (21.6 tok/s) | `<manta_plan>` DAGs & Trade-offs |
 
 ---
 
