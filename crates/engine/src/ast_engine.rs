@@ -682,6 +682,7 @@ pub struct AstMicroEngine {
     repeat_penalty: f32,
     repeat_last_n: usize,
     pub suppressed_tokens: HashSet<u32>,
+    pub turbo: bool,
     pub pool: SpinThreadPool,
 }
 
@@ -871,7 +872,7 @@ impl AstMicroEngine {
             embd_info.shape[0]
         };
 
-        Ok(Self {
+        let mut engine = Self {
             mmap,
             gguf,
             block_count,
@@ -897,12 +898,23 @@ impl AstMicroEngine {
             repeat_penalty: 1.15,
             repeat_last_n: 64,
             suppressed_tokens: HashSet::new(),
+            turbo: false,
             pool: {
                 let pool = SpinThreadPool::new();
                 pool.park();
                 pool
             },
-        })
+        };
+        engine.evict_all();
+        unsafe {
+            libc::malloc_trim(0);
+        }
+        Ok(engine)
+    }
+
+    #[inline(always)]
+    pub fn set_turbo(&mut self, enabled: bool) {
+        self.turbo = enabled;
     }
 
     #[inline(always)]
@@ -956,6 +968,7 @@ impl AstMicroEngine {
         for c in &mut self.kv_caches {
             c.reset();
         }
+        self.evict_all();
         self.pool.park();
         unsafe {
             libc::malloc_trim(0);
@@ -1238,47 +1251,29 @@ impl AstMicroEngine {
             let mut top_toks = [0u32; pool::NUM_WORKERS];
             let mut top_scores = [f32::NEG_INFINITY; pool::NUM_WORKERS];
 
-            let num_passes = 2;
-            let pass_size = (vocab_size + num_passes - 1) / num_passes;
+            self.pool.run_task(GemvTask::VocabQ8_0 {
+                weight_ptr: (self.mmap.as_ptr() as usize) + matrix_offset,
+                x_blocks_ptr: self.scratch.x_q8_0.as_ptr() as usize,
+                start_tok: 0,
+                vocab_count: vocab_size,
+                bytes_per_token,
+                suppress_eos,
+                history_ptr: history.as_ptr() as usize,
+                history_len: history.len(),
+                suppressed_ptr: suppressed_vec.as_ptr() as usize,
+                suppressed_len: suppressed_vec.len(),
+                repeat_penalty: self.repeat_penalty,
+                top_tok_ptr: top_toks.as_mut_ptr() as usize,
+                top_score_ptr: top_scores.as_mut_ptr() as usize,
+            });
+
             let mut best_token = 0u32;
             let mut max_score = f32::NEG_INFINITY;
-
-            for p in 0..num_passes {
-                let start_tok = p * pass_size;
-                let count = (vocab_size - start_tok).min(pass_size);
-                if count == 0 {
-                    break;
+            for i in 0..pool::NUM_WORKERS {
+                if top_scores[i] > max_score {
+                    max_score = top_scores[i];
+                    best_token = top_toks[i];
                 }
-
-                top_scores.fill(f32::NEG_INFINITY);
-                self.pool.run_task(GemvTask::VocabQ8_0 {
-                    weight_ptr: (self.mmap.as_ptr() as usize) + matrix_offset,
-                    x_blocks_ptr: self.scratch.x_q8_0.as_ptr() as usize,
-                    start_tok,
-                    vocab_count: count,
-                    bytes_per_token,
-                    suppress_eos,
-                    history_ptr: history.as_ptr() as usize,
-                    history_len: history.len(),
-                    suppressed_ptr: suppressed_vec.as_ptr() as usize,
-                    suppressed_len: suppressed_vec.len(),
-                    repeat_penalty: self.repeat_penalty,
-                    top_tok_ptr: top_toks.as_mut_ptr() as usize,
-                    top_score_ptr: top_scores.as_mut_ptr() as usize,
-                });
-
-                for i in 0..pool::NUM_WORKERS {
-                    if top_scores[i] > max_score {
-                        max_score = top_scores[i];
-                        best_token = top_toks[i];
-                    }
-                }
-
-                Self::madvise_dontneed_range(
-                    &self.mmap,
-                    matrix_offset + start_tok * bytes_per_token,
-                    count * bytes_per_token,
-                );
             }
 
             Ok(best_token)
