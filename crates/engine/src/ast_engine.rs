@@ -951,6 +951,7 @@ impl AstMicroEngine {
             use rayon::prelude::*;
             let chunk_size = 4096;
             let x_q8_0 = &self.scratch.x_q8_0;
+            let x_scales: Vec<f32> = x_q8_0.iter().map(|b| b.d.to_f32()).collect();
             let top_16 = (0..vocab_size as u32)
                 .into_par_iter()
                 .chunks(chunk_size)
@@ -965,7 +966,7 @@ impl AstMicroEngine {
                         }
                         let row_offset = (tok_id as usize) * bytes_per_token;
                         let row_slice = &embd_bytes[row_offset..row_offset + bytes_per_token];
-                        let val = unsafe { quants::vec_dot_q8_0_q8_0_avx2(row_slice, x_q8_0) };
+                        let val = unsafe { quants::vec_dot_q8_0_q8_0_avx2_fast(row_slice, x_q8_0, &x_scales) };
                         let mut score = val;
                         if recent.contains(&tok_id) {
                             score = if score > 0.0 {
