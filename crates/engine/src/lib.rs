@@ -670,7 +670,7 @@ impl RayEngine {
             ].into_iter().flatten().collect();
             let is_eos = |tok: u32| stop_tokens.contains(&tok);
 
-            let mut next_token = match bundle.engine.next_token_with_history(None, &[], false) {
+            let next_token = match bundle.engine.next_token_with_history(None, &[], false) {
                 Ok(t) => t,
                 Err(e) => {
                     let _ = tx.blocking_send(format!("AST-Micro sampling error: {e}"));
@@ -698,33 +698,59 @@ impl RayEngine {
             // Generation loop using prompt-lookup speculative decoding with KV-cache
             let mut context_tokens = prompt_tokens.clone();
             context_tokens.push(next_token);
+            let mut gen_tokens = vec![next_token];
 
             let max_gen = max_tokens.max(1);
             let mut current_pos = prompt_tokens.len();
-            while current_pos < prompt_tokens.len() + max_gen - 1 {
+            let mut current_confirmed = next_token;
+
+            while gen_tokens.len() < max_gen {
                 if tx.is_closed() {
                     break;
                 }
-                let _step_hidden = match bundle.engine.forward_stream(&[next_token], current_pos) {
-                    Ok(h) => h,
-                    Err(e) => { let _ = tx.blocking_send(format!("AST-Micro forward error: {e}")); break; },
-                };
-                let gen_history = &context_tokens[prompt_tokens.len()..];
-                next_token = match bundle.engine.next_token_with_history(None, gen_history, false) {
-                    Ok(t) => t,
-                    Err(_) => break,
-                };
-                current_pos += 1;
+                let remaining = max_gen.saturating_sub(gen_tokens.len());
+                let max_draft = 2.min(remaining.saturating_sub(1));
 
-                if is_eos(next_token) {
-                    break;
-                }
-
-                context_tokens.push(next_token);
-                if let Ok(Some(chunk)) = tos.next_token(next_token) {
-                    if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
+                let step_res = match bundle.engine.speculative_pld_step(
+                    &context_tokens,
+                    current_confirmed,
+                    current_pos,
+                    &gen_tokens,
+                    max_draft,
+                    &stop_tokens,
+                ) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        let _ = tx.blocking_send(format!("AST-Micro forward error: {e}"));
                         break;
                     }
+                };
+
+                let mut stopped = false;
+                for tok in step_res.accepted_tokens {
+                    context_tokens.push(tok);
+                    gen_tokens.push(tok);
+                    if is_eos(tok) {
+                        stopped = true;
+                        break;
+                    }
+                    if let Ok(Some(chunk)) = tos.next_token(tok) {
+                        if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
+                            stopped = true;
+                            break;
+                        }
+                    }
+                    if gen_tokens.len() >= max_gen {
+                        stopped = true;
+                        break;
+                    }
+                }
+
+                current_confirmed = step_res.next_confirmed;
+                current_pos = step_res.next_pos;
+
+                if stopped || step_res.is_eos {
+                    break;
                 }
             }
 

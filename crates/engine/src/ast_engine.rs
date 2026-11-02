@@ -256,6 +256,15 @@ impl LayerKvCache {
         self.v.clear();
         self.cur_len = 0;
     }
+
+    pub fn truncate(&mut self, target_len: usize, kv_stride: usize) {
+        if target_len < self.cur_len {
+            self.cur_len = target_len;
+            let target_elems = target_len * kv_stride;
+            self.k.truncate(target_elems);
+            self.v.truncate(target_elems);
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -313,7 +322,8 @@ pub struct LayerDesc {
 }
 
 impl LayerDesc {
-    pub fn forward(
+    #[inline(always)]
+    pub fn forward_token(
         &self,
         mmap: &[u8],
         scratch: &mut ScratchBuffers,
@@ -428,8 +438,10 @@ impl LayerDesc {
         for i in 0..scratch.x.len() {
             scratch.x[i] += scratch.mlp_out[i];
         }
+    }
 
-        // 13. madvise each layer to keep Peak RAM safely locked around ~68-71MB
+    #[inline(always)]
+    pub fn madvise_layer(&self, mmap: &[u8]) {
         let page_size = 4096;
         let aligned_start = (self.min_offset / page_size) * page_size;
         let aligned_len = ((self.max_offset - aligned_start + page_size - 1) / page_size) * page_size;
@@ -440,6 +452,36 @@ impl LayerDesc {
                 libc::MADV_DONTNEED,
             );
         }
+    }
+
+    pub fn forward(
+        &self,
+        mmap: &[u8],
+        scratch: &mut ScratchBuffers,
+        pos: usize,
+        cos: &[f32],
+        sin: &[f32],
+        neox: bool,
+        n_head: usize,
+        n_kv_head: usize,
+        head_dim: usize,
+        eps: f32,
+        kv_cache: &mut LayerKvCache,
+    ) {
+        self.forward_token(
+            mmap,
+            scratch,
+            pos,
+            cos,
+            sin,
+            neox,
+            n_head,
+            n_kv_head,
+            head_dim,
+            eps,
+            kv_cache,
+        );
+        self.madvise_layer(mmap);
     }
 }
 
@@ -741,6 +783,13 @@ impl AstMicroEngine {
         }
     }
 
+    pub fn truncate_cache(&mut self, target_len: usize) {
+        let kv_stride = self.head_count_kv * self.head_dim;
+        for c in &mut self.kv_caches {
+            c.truncate(target_len, kv_stride);
+        }
+    }
+
     pub fn evict_all(&mut self) {
         unsafe {
             libc::madvise(
@@ -804,10 +853,22 @@ impl AstMicroEngine {
         Ok(())
     }
 
-    pub fn forward_stream(&mut self, tokens: &[u32], index_pos: usize) -> Result<Tensor> {
+    /// Forward multiple tokens in a layer-outer fashion, loading and evicting each layer's weights
+    /// into memory only ONCE for the entire batch of tokens.
+    /// Returns the normalized hidden state (after rms_norm) for each token in `tokens`.
+    pub fn forward_batch_layer_outer(
+        &mut self,
+        tokens: &[u32],
+        index_pos: usize,
+    ) -> Result<Vec<Vec<f32>>> {
+        let n_tokens = tokens.len();
+        if n_tokens == 0 {
+            return Ok(Vec::new());
+        }
+
         let half = self.head_dim / 2;
         let limit = self.cos_table.len() / half;
-        if index_pos.checked_add(tokens.len()).is_none_or(|end| end > limit) {
+        if index_pos.checked_add(n_tokens).is_none_or(|end| end > limit) {
             return Err(anyhow!("context exceeds model runtime limit of {limit} tokens"));
         }
         let vocab = self.gguf.tensors.get("token_embd.weight")
@@ -815,27 +876,37 @@ impl AstMicroEngine {
         if let Some(token) = tokens.iter().find(|&&token| token as usize >= vocab) {
             return Err(anyhow!("token id {token} exceeds model vocabulary size {vocab}"));
         }
+
         let token_embd_offset = self.token_embd_offset;
         let bytes_per_token = self.bytes_per_token;
         let token_embd_dtype = self.token_embd_dtype;
+        let embd_len = self._embedding_length;
 
-        for (step, &tok) in tokens.iter().enumerate() {
-            let pos = index_pos + step;
-            let cos = &self.cos_table[pos * half..(pos + 1) * half];
-            let sin = &self.sin_table[pos * half..(pos + 1) * half];
-
+        // 1. Embed all tokens into activation vectors
+        let mut activations: Vec<Vec<f32>> = Vec::with_capacity(n_tokens);
+        for &tok in tokens {
+            let mut x = vec![0.0f32; embd_len];
             Self::embed_token_slice(
                 &self.mmap,
                 token_embd_offset,
                 bytes_per_token,
                 token_embd_dtype,
                 tok,
-                &mut self.scratch.x,
+                &mut x,
             )?;
+            activations.push(x);
+        }
 
-            for layer_idx in 0..self.block_count {
-                let layer = &self.layers[layer_idx];
-                layer.forward(
+        // 2. Pass all tokens through layers, layer-by-layer (layer-outer)
+        for layer_idx in 0..self.block_count {
+            let layer = &self.layers[layer_idx];
+            for step in 0..n_tokens {
+                let pos = index_pos + step;
+                let cos = &self.cos_table[pos * half..(pos + 1) * half];
+                let sin = &self.sin_table[pos * half..(pos + 1) * half];
+
+                self.scratch.x.copy_from_slice(&activations[step]);
+                layer.forward_token(
                     &self.mmap,
                     &mut self.scratch,
                     pos,
@@ -848,16 +919,39 @@ impl AstMicroEngine {
                     self.rms_norm_eps as f32,
                     &mut self.kv_caches[layer_idx],
                 );
+                activations[step].copy_from_slice(&self.scratch.x);
             }
 
-            rms_norm_slice(
-                &self.scratch.x,
-                &self.output_norm_weight,
-                self.rms_norm_eps as f32,
-                &mut self.scratch.x_norm,
-            );
+            // Layer weights were used for all tokens; evict once per layer
+            layer.madvise_layer(&self.mmap);
         }
 
+        // 3. Output RMS norm for each token
+        let mut out_norms = Vec::with_capacity(n_tokens);
+        for x in &activations {
+            let mut norm = vec![0.0f32; embd_len];
+            rms_norm_slice(
+                x,
+                &self.output_norm_weight,
+                self.rms_norm_eps as f32,
+                &mut norm,
+            );
+            out_norms.push(norm);
+        }
+
+        // Keep self.scratch.x and self.scratch.x_norm aligned with the last token
+        if let Some(last_norm) = out_norms.last() {
+            self.scratch.x_norm.copy_from_slice(last_norm);
+        }
+        if let Some(last_x) = activations.last() {
+            self.scratch.x.copy_from_slice(last_x);
+        }
+
+        Ok(out_norms)
+    }
+
+    pub fn forward_stream(&mut self, tokens: &[u32], index_pos: usize) -> Result<Tensor> {
+        self.forward_batch_layer_outer(tokens, index_pos)?;
         // Return dummy 1-element tensor for caller interface compatibility
         Tensor::new(&[0.0f32], &Device::Cpu).map_err(|e| anyhow!("{e}"))
     }
@@ -894,7 +988,18 @@ impl AstMicroEngine {
         history: &[u32],
         suppress_eos: bool,
     ) -> Result<u32> {
-        quants::quantize_row_q8_0(&self.scratch.x_norm, &mut self.scratch.x_q8_0);
+        let x_norm = self.scratch.x_norm.clone();
+        self.sample_token_from_x_norm(&x_norm, candidates, history, suppress_eos)
+    }
+
+    pub fn sample_token_from_x_norm(
+        &mut self,
+        x_norm: &[f32],
+        candidates: Option<&[u32]>,
+        history: &[u32],
+        suppress_eos: bool,
+    ) -> Result<u32> {
+        quants::quantize_row_q8_0(x_norm, &mut self.scratch.x_q8_0);
         let repeat_penalty = self.repeat_penalty;
         let recent: HashSet<u32> = history
             .iter()
@@ -1020,5 +1125,169 @@ impl AstMicroEngine {
             let best_token = sample_top_p(&top_16, self.sampling_temp, self.sampling_top_p);
             Ok(best_token)
         }
+    }
+
+    /// Perform one speculative decoding step with Prompt Lookup Decoding (PLD).
+    /// Uses layer-outer multi-token evaluation to amortize memory bandwidth across draft tokens,
+    /// and strictly enforces 100.000% mathematical parity with autoregressive decoding.
+    pub fn speculative_pld_step(
+        &mut self,
+        all_tokens: &[u32],
+        current_confirmed: u32,
+        current_pos: usize,
+        gen_history: &[u32],
+        max_draft: usize,
+        eos_tokens: &[u32],
+    ) -> Result<SpeculativeStepResult> {
+        let is_eos = |t: u32| eos_tokens.contains(&t);
+        let drafts = if max_draft > 0 {
+            find_candidate_draft_tokens(all_tokens, max_draft, eos_tokens)
+        } else {
+            Vec::new()
+        };
+
+        let mut batch = Vec::with_capacity(1 + drafts.len());
+        batch.push(current_confirmed);
+        batch.extend_from_slice(&drafts);
+
+        let out_norms = self.forward_batch_layer_outer(&batch, current_pos)?;
+
+        let mut matched_drafts = 0;
+        let mut final_token = 0;
+        let mut final_is_eos = false;
+        let mut accepted_tokens = Vec::with_capacity(batch.len() + 1);
+        let mut local_history: Vec<u32> = gen_history.to_vec();
+
+        for i in 0..=drafts.len() {
+            let true_tok = self.sample_token_from_x_norm(&out_norms[i], None, &local_history, false)?;
+            if is_eos(true_tok) {
+                final_token = true_tok;
+                final_is_eos = true;
+                break;
+            }
+
+            if i < drafts.len() && true_tok == drafts[i] {
+                matched_drafts += 1;
+                accepted_tokens.push(drafts[i]);
+                local_history.push(drafts[i]);
+            } else {
+                final_token = true_tok;
+                break;
+            }
+        }
+
+        let next_pos = current_pos + 1 + matched_drafts;
+        self.truncate_cache(next_pos);
+
+        if final_token != 0 {
+            accepted_tokens.push(final_token);
+        }
+
+        let next_confirmed = final_token;
+
+        Ok(SpeculativeStepResult {
+            accepted_tokens,
+            next_confirmed,
+            next_pos,
+            is_eos: final_is_eos,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SpeculativeStepResult {
+    pub accepted_tokens: Vec<u32>,
+    pub next_confirmed: u32,
+    pub next_pos: usize,
+    pub is_eos: bool,
+}
+
+/// Find up to `max_draft` candidate tokens from historical context using prompt lookup.
+/// Searches backwards for matching n-grams of lengths 5, 4, down to 3.
+/// Minimum n-gram length is 3 to guarantee high-confidence draft continuations and avoid
+/// low-entropy thrashing on common bigrams/whitespace.
+pub fn find_candidate_draft_tokens(
+    context: &[u32],
+    max_draft: usize,
+    eos_tokens: &[u32],
+) -> Vec<u32> {
+    if context.len() < 4 || max_draft == 0 {
+        return Vec::new();
+    }
+
+    let is_eos = |t: u32| eos_tokens.contains(&t);
+
+    for ngram_len in (3..=5.min(context.len().saturating_sub(1))).rev() {
+        let query = &context[context.len() - ngram_len..];
+        let search_limit = context.len().saturating_sub(ngram_len);
+        if search_limit == 0 {
+            continue;
+        }
+
+        for match_idx in (0..search_limit).rev() {
+            if &context[match_idx..match_idx + ngram_len] == query {
+                let candidate_start = match_idx + ngram_len;
+                let max_take = (context.len() - ngram_len).saturating_sub(candidate_start).min(max_draft);
+                if max_take > 0 {
+                    let mut candidates = Vec::with_capacity(max_take);
+                    for &t in &context[candidate_start..candidate_start + max_take] {
+                        if is_eos(t) {
+                            break;
+                        }
+                        candidates.push(t);
+                    }
+                    if !candidates.is_empty() {
+                        return candidates;
+                    }
+                }
+            }
+        }
+    }
+
+    Vec::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_candidate_draft_tokens_basic() {
+        let context = vec![10, 20, 30, 40, 50, 99, 10, 20, 30];
+        let drafts = find_candidate_draft_tokens(&context, 2, &[2]);
+        assert_eq!(drafts, vec![40, 50]);
+    }
+
+    #[test]
+    fn test_find_candidate_draft_tokens_recency() {
+        let context = vec![10, 20, 30, 1, 2, 3, 10, 20, 30, 88, 99, 4, 5, 10, 20, 30];
+        let drafts = find_candidate_draft_tokens(&context, 2, &[2]);
+        assert_eq!(drafts, vec![88, 99]);
+    }
+
+    #[test]
+    fn test_find_candidate_draft_tokens_eos_cutoff() {
+        let eos = 2;
+        let context = vec![10, 20, 30, 40, eos, 50, 10, 20, 30];
+        let drafts = find_candidate_draft_tokens(&context, 3, &[eos]);
+        assert_eq!(drafts, vec![40]);
+    }
+
+    #[test]
+    fn test_layer_kv_cache_truncate() {
+        let mut cache = LayerKvCache::default();
+        let kv_stride = 128;
+        cache.k = vec![1.0; 10 * kv_stride];
+        cache.v = vec![2.0; 10 * kv_stride];
+        cache.cur_len = 10;
+
+        cache.truncate(6, kv_stride);
+        assert_eq!(cache.cur_len, 6);
+        assert_eq!(cache.k.len(), 6 * kv_stride);
+        assert_eq!(cache.v.len(), 6 * kv_stride);
+
+        cache.truncate(8, kv_stride);
+        assert_eq!(cache.cur_len, 6);
+        assert_eq!(cache.k.len(), 6 * kv_stride);
     }
 }
