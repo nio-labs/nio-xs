@@ -11,6 +11,7 @@ pub const MODEL_NANO: &str = "nio-nano";
 pub const MODEL_MICRO: &str = "nio-micro";
 pub const MODEL_MASK: &str = "nio-mask";
 pub const MODEL_MINI: &str = "nio-mini";
+pub const MODEL_SKATE: &str = "nio-skate";
 /// Default public model: the tactical swarm conductor & orchestrator.
 pub const MODEL: &str = MODEL_CUDA;
 /// Deprecated request alias; kept for existing clients, but no longer advertised.
@@ -22,6 +23,7 @@ pub const MODELS: &[&str] = &[
     MODEL_RAY,
     MODEL_VIPER,
     MODEL_MANTA,
+    MODEL_SKATE,
     MODEL_NANO,
     MODEL_MICRO,
     MODEL_MASK,
@@ -128,6 +130,7 @@ impl ChatRequest {
         let model_name = self.model.strip_prefix("nioxs::").unwrap_or(&self.model);
         if !MODELS.contains(&model_name)
             && model_name != MODEL_AUTO
+            && model_name != "skate"
             && !LEGACY_MODELS.contains(&model_name)
         {
             return Err(format!("unsupported model; select {}", MODELS.join(", ")));

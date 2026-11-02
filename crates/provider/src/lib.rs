@@ -128,6 +128,7 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         ray_name,
         "NioViper — Tactical Striker (Shell Reflex 8L, < 47 MB RAM)",
         "NioManta — Conversational & AST Companion (16L, < 110 MB RAM)",
+        "NioSkate — Resident Micro-Guru & Edge Companion (v-µLM Vector, < 50 MB RAM)",
         "NioNano — Intent Reflex & MicroLM (~0.5M, sub-0.1ms)",
         "NioMicro — Contextual Policy Decision Arbiter (5.0M / cluster)",
         "NioMask — Byte-Stream Privacy & Secret Redactor (1.1M, sub-0.2ms)",
@@ -252,7 +253,10 @@ async fn microlm_chat_handler(
 
     let mut prompt = String::new();
     let system_prompt = match model_name {
-        "nio-manta" | "manta" => {
+        "nio-skate" | "skate" => {
+            "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and concise. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Fin. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."
+        }
+        "nio-manta" | "manta" | "nio-echo" | "echo" => {
             "You are Nio, an intelligent AI coding assistant. Answer concisely and directly in 1-2 short sentences unless the user explicitly requests full code."
         }
         "nio-viper" | "viper" => {
@@ -288,7 +292,10 @@ async fn microlm_chat_handler(
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    let full_system = if client_system.is_empty() {
+    let is_skate = model_name == nioxs_contracts::MODEL_SKATE || model_name == "skate";
+    let full_system = if is_skate {
+        format!("{system_prompt}{tools_xml}")
+    } else if client_system.is_empty() {
         format!("{system_prompt}{tools_xml}")
     } else {
         format!("{client_system}{tools_xml}")
@@ -334,7 +341,7 @@ async fn microlm_chat_handler(
             .unwrap_or(0)
     );
     let model = match model_name {
-        "nio-manta" | "manta" => nioxs_contracts::MODEL_MANTA,
+        "nio-manta" | "manta" | "nio-echo" | "echo" => nioxs_contracts::MODEL_MANTA,
         "nio-viper" | "viper" => nioxs_contracts::MODEL_VIPER,
         "nio-cuda" | "cuda" => nioxs_contracts::MODEL_CUDA,
         _ => nioxs_contracts::MODEL_RAY,
@@ -496,10 +503,13 @@ async fn chat(
     };
     let model_norm = request.model.strip_prefix("nioxs::").unwrap_or(&request.model);
     match model_norm {
+        "nio-skate" | "skate" => {
+            return microlm_chat_handler("nio-skate", request, None).await;
+        }
         "nio-ray" | "ray" => {
             return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;
         }
-        "nio-manta" | "manta" => return microlm_chat_handler("nio-manta", request, None).await,
+        "nio-manta" | "manta" | "nio-echo" | "echo" => return microlm_chat_handler("nio-manta", request, None).await,
         "nio-viper" | "viper" => return microlm_chat_handler("nio-viper", request, None).await,
         "nio-cuda" | "cuda" => return microlm_chat_handler("nio-cuda", request, None).await,
         _ => {}

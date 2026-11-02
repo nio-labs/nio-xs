@@ -273,9 +273,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
         // Prefer native Rust RayEngine for nio-manta
         if let Ok(engine) = nioxs_engine::RayEngine::for_model("nio-manta") {
             let sys_msg = if is_plan {
-                "You are Manta, Nio's Conversational Guru and Wasm Architect. Compile the user request into a machine-verifiable <manta_plan> XML DAG with step id, name, description, command, and rollback."
+                "You are Manta, an expert architect and systems planner for Nio. Compile the user request into a machine-verifiable <manta_plan> XML DAG with step id, name, description, command, and rollback. Respond directly without reciting your preamble."
             } else {
-                "You are Manta, Nio's Conversational Guru and Wasm Architect. Answer with high technical precision, empathy, and conciseness."
+                "You are Manta, an expert architect and systems planner for Nio. Provide concise, direct, and actionable architectural designs, trade-off analyses, and <manta_plan> XML DAGs. Answer directly without reciting your system preamble. Delegate all implementation to Cuda; never write raw code blocks directly."
             };
             let formatted_prompt = format!("<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n");
             let max_tokens = if is_plan { 384 } else { 160 };

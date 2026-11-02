@@ -11,12 +11,26 @@ pub mod ast_engine;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 
 pub fn skate_system() -> Result<String> {
-    let path = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE")
-        .ok_or_else(|| anyhow!("Set NIOXS_SKATE_SYSTEM_FILE to the configured Skate policy file"))?;
-    let prompt = std::fs::read_to_string(&path)
-        .map_err(|e| anyhow!("Cannot read Skate policy {:?}: {e}", path))?;
-    if prompt.trim().is_empty() { return Err(anyhow!("Skate policy is empty")); }
-    Ok(prompt.trim().to_owned())
+    if let Some(path) = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE") {
+        if let Ok(prompt) = std::fs::read_to_string(&path) {
+            if !prompt.trim().is_empty() {
+                return Ok(prompt.trim().to_owned());
+            }
+        }
+    }
+    let user_home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from);
+    if let Some(ref home) = user_home {
+        let p = home.join(".nioxs").join("skate_policy.txt");
+        if let Ok(prompt) = std::fs::read_to_string(&p) {
+            if !prompt.trim().is_empty() {
+                return Ok(prompt.trim().to_owned());
+            }
+        }
+    }
+    let default_policy = "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and concise. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Fin. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate.";
+    Ok(default_policy.to_owned())
 }
 
 
