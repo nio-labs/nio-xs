@@ -123,7 +123,7 @@ fn main() -> Result<()> {
         // Decode loop
         let t_gen = Instant::now();
         let mut gen_tokens = Vec::new();
-        let max_gen_tokens = 96;
+        let max_gen_tokens = 64;
 
         for _ in 0..max_gen_tokens {
             let next_tok = engine.next_token_with_history(None, &gen_tokens, false)?;
@@ -148,7 +148,7 @@ fn main() -> Result<()> {
 
         let has_think = decoded_response.contains("<think>") || decoded_response.contains("think");
 
-        println!("  Tokens: {} | Time: {:.2}s | Speed: {:.2} t/s | {:.2} w/s", gen_tokens.len(), gen_time_s, tps, wps);
+        println!("  Prefill: {:.1} ms ({:.1} t/s) | Gen Tokens: {} | Gen Time: {:.2}s | Speed: {:.2} t/s | {:.2} w/s", prefill_ms, prefill_tps, gen_tokens.len(), gen_time_s, tps, wps);
         println!("  RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB (Peak: {:.2} MB)", cur_rss, cur_hwm, peak_ram_observed);
         println!("  Sample Output:\n{}\n", decoded_response.trim());
 

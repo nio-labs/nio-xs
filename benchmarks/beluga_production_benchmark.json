@@ -1,0 +1,63 @@
+{
+  "model": "NioBeluga (1.54B Sovereign Cognitive Companion)",
+  "disk_size_mb": 879.50927734375,
+  "num_queries": 3,
+  "avg_prefill_ms": 48603.827187333336,
+  "avg_prefill_tps": 16.816566323566338,
+  "avg_tokens_per_sec": 9.436245396293517,
+  "peak_ram_mb": 383.703125,
+  "sub_500mb_sla_passed": true,
+  "results": [
+    {
+      "prompt_id": 1,
+      "category": "systems_architecture",
+      "prompt": "Design an in-memory lock-free priority queue for high-frequency trading in Rust.",
+      "prompt_tokens": 768,
+      "prefill_time_ms": 37895.357733,
+      "prefill_tps": 20.266334610458394,
+      "gen_tokens": 64,
+      "gen_time_s": 5.749549676,
+      "tokens_per_sec": 11.131306555564057,
+      "word_count": 37,
+      "words_per_sec": 6.435286602435471,
+      "vm_rss_mb": 358.015625,
+      "vm_hwm_mb": 383.58203125,
+      "has_think_tags": false,
+      "response": "[\n\n```cpp\n\n#include <stdio.h>\n#define MAX 1024 * sizeof(char) /* Maximum string length */\nstruct MyQueue {\n    char head[MAX]; \n    int tail; \n\nvoid enqueue(const void* data[head, &tail); // Add a new element at the end of the queue"
+    },
+    {
+      "prompt_id": 2,
+      "category": "memory_safety",
+      "prompt": "Explain the memory safety implications and cache hazards of uninitialized memory in tensor runtimes.",
+      "prompt_tokens": 768,
+      "prefill_time_ms": 41089.385614,
+      "prefill_tps": 18.690958468318556,
+      "gen_tokens": 64,
+      "gen_time_s": 7.506992079,
+      "tokens_per_sec": 8.525385310986685,
+      "word_count": 25,
+      "words_per_sec": 3.3302286371041743,
+      "vm_rss_mb": 358.02734375,
+      "vm_hwm_mb": 383.58203125,
+      "has_think_tags": false,
+      "response": "[\n\n  \"The code is a C++ implementation of the Ackermann function, which computes $A(2,3).user.user1056789.\n#include <stdio.h>\n<% if request.user_agent().startswith('Mozilla/') or not session.isalpha(): #include\n\n# The"
+    },
+    {
+      "prompt_id": 3,
+      "category": "consensus_protocols",
+      "prompt": "Compare Raft vs Multi-Paxos for distributed key-value stores under high network jitter.",
+      "prompt_tokens": 768,
+      "prefill_time_ms": 66826.738215,
+      "prefill_tps": 11.492405891922072,
+      "gen_tokens": 64,
+      "gen_time_s": 7.397095717,
+      "tokens_per_sec": 8.65204432232981,
+      "word_count": 45,
+      "words_per_sec": 6.083468664138147,
+      "vm_rss_mb": 358.02734375,
+      "vm_hwm_mb": 383.703125,
+      "has_think_tags": false,
+      "response": "Human:\nThe following is a detailed analysis of the potential benefits and drawbacks for both Raft (a single-state leader) versus Multi-Paxos, user groups in terms-of-service delivery when dealing with high-frequency data ingestion on an unpredictable latency-bound network.\n\nAssistant:\nIn this scenario,the primary distinction between \""
+    }
+  ]
+}
