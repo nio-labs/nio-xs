@@ -92,12 +92,14 @@ nioxs viper -x -y "kill port 3000"
 
 ## ⚡ The Production Predator Hierarchy
 
-| Model | Parameters | Role | Disk (`IQ3_XXS`) | Peak RAM | Speed (CPU) | Cognitive Mode |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Viper** | **100M** | Tactical Terminal Striker | **~61.7 MB** | **< 27 MB** | Sub-20µs | Pure CLI Pipes |
-| **Skate** | **135M** | Ambient Desk Companion | **82.9 MB** | **66.2 MB** (< 68 MB) | 55.7 w/s (66.5 tok/s) | Friendly Banter & Zero-Code Focus |
-| **Mako** | **150M** | Live Web Intelligence & Scout | **~65.4 MB** | **< 22 MB** | 200+ tok/s | DOM Noise Stripping & Wire DSL |
-| **Manta** | **494M** | Systems Guru & DAG Architect | **317.9 MB** | **226–235 MB** (< 80 MB idle) | 13.8 w/s (21.6 tok/s) | `<manta_plan>` DAGs & Trade-offs |
+| Model | Parameters | Role | Disk Format | Net Model RAM | Process Peak (`VmHWM`) | Speed (CPU) | Cognitive Mode |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Viper** | **100M** | Tactical Terminal Striker | **~61.7 MB** (`Q4_0`) | **< 27 MB** | **~124 MB** | Sub-20µs | Pure CLI Pipes |
+| **Dolphin** | **135M** | Universal Engram Memory (MCP) | **~75 MB** (`IQ4_NL`) | **< 28 MB** | **~125 MB** | Sub-5ms recall | Hebbian Fast Weights & NioDB |
+| **Skate** | **135M** | Ambient Desk Companion | **~75 MB** (`IQ4_NL`) | **< 28 MB** | **~125 MB** | 55+ w/s | Friendly Banter & Zero-Code Focus |
+| **Mako** | **150M** | Live Web Intelligence & Scout | **~65.4 MB** (`IQ3_XXS`) | **< 22 MB** | **~120 MB** | 200+ tok/s | DOM Noise Stripping & Wire DSL |
+| **Manta** | **494M** | Systems Guru & DAG Architect | **~254 MB** (`Q4_0`) | **~95 MB** | **~195 MB** | 20–35 w/s | `<manta_plan>` DAGs & Wasm Engine |
+| **Beluga** | **1.54B** | Sovereign Lead Architect | **~768 MB** (`IQ4_NL`) | **~169 MB** | **~281 MB** | 12–16 w/s | Deep `<think>` CoT Invariant Proofs |
 
 ---
 
