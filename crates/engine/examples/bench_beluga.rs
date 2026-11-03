@@ -83,6 +83,11 @@ fn main() -> Result<()> {
 
     let mut tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| anyhow!("{e}"))?;
     tokenizer.with_padding(None);
+    unsafe {
+        libc::malloc_trim(0);
+    }
+    let (tok_rss, tok_hwm) = memory_mb();
+    println!("Post-tokenizer RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB", tok_rss, tok_hwm);
     let t0 = Instant::now();
     let mut engine = AstMicroEngine::new(&model_path)?;
     let load_time = t0.elapsed().as_secs_f64();

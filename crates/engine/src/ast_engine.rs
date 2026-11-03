@@ -703,16 +703,6 @@ impl AstMicroEngine {
         let file = File::open(model_path)?;
         let mmap = unsafe { Mmap::map(&file)? };
 
-        #[cfg(target_os = "linux")]
-        unsafe {
-            // Advise Transparent HugePages (THP) for collapsing 4KB page walks into 2MB entries
-            libc::madvise(
-                mmap.as_ptr() as *mut libc::c_void,
-                mmap.len(),
-                libc::MADV_HUGEPAGE,
-            );
-        }
-
         let mut cursor = std::io::Cursor::new(&mmap[..]);
         let gguf = gguf::GgufModel::read(&mut cursor)?;
 
