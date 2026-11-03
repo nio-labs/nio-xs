@@ -128,6 +128,7 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         ray_name,
         "NioViper — Tactical Striker (Shell Reflex 8L, < 47 MB RAM)",
         "NioManta — Conversational & AST Companion (16L, < 110 MB RAM)",
+        "NioBeluga — Sovereign Lead Architect (28L, < 225 MB RAM)",
         "NioSkate — Resident Micro-Guru & Edge Companion (v-µLM Vector, < 50 MB RAM)",
         "NioNano — Intent Reflex & MicroLM (~0.5M, sub-0.1ms)",
         "NioMicro — Contextual Policy Decision Arbiter (5.0M / cluster)",
@@ -253,6 +254,9 @@ async fn microlm_chat_handler(
 
     let mut prompt = String::new();
     let system_prompt = match model_name {
+        "nio-beluga" | "beluga" => {
+            "You are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Defer raw low-level code generation to Cuda."
+        }
         "nio-skate" | "skate" => {
             "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and concise. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Fin. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."
         }
@@ -341,6 +345,7 @@ async fn microlm_chat_handler(
             .unwrap_or(0)
     );
     let model = match model_name {
+        "nio-beluga" | "beluga" => nioxs_contracts::MODEL_BELUGA,
         "nio-manta" | "manta" | "nio-echo" | "echo" => nioxs_contracts::MODEL_MANTA,
         "nio-viper" | "viper" => nioxs_contracts::MODEL_VIPER,
         "nio-cuda" | "cuda" => nioxs_contracts::MODEL_CUDA,
@@ -505,6 +510,9 @@ async fn chat(
     match model_norm {
         "nio-skate" | "skate" => {
             return microlm_chat_handler("nio-skate", request, None).await;
+        }
+        "nio-beluga" | "beluga" => {
+            return microlm_chat_handler("nio-beluga", request, None).await;
         }
         "nio-ray" | "ray" => {
             return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;

@@ -4,7 +4,7 @@
 //! into `~/.nioxs/models/` with streaming progress and SHA-256 integrity verification.
 
 use futures_util::StreamExt;
-use nioxs_contracts::{MODEL_CUDA, MODEL_MANTA, MODEL_NANO, MODEL_RAY, MODEL_VIPER};
+use nioxs_contracts::{MODEL_BELUGA, MODEL_CUDA, MODEL_MANTA, MODEL_NANO, MODEL_RAY, MODEL_VIPER};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::env;
@@ -61,6 +61,15 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.2/nio-cuda-ast.Q4_0.gguf".into(),
             sha256: "09566c2f463dfae5475b2747c4338cf3a9b887f8382a21052766d1f97803c58c".into(),
             size_bytes: 284_962_368,
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_BELUGA.into(),
+            brand_name: "NioBeluga (Sovereign Lead Architect)".into(),
+            base_model: "Qwen/Qwen2.5-1.5B-Instruct (28L, v-MicroLM Companion)".into(),
+            filename: "beluga.vmicrolm-vector.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/beluga.vmicrolm-vector.gguf".into(),
+            sha256: "".into(),
+            size_bytes: 768_230_000,
         },
     ]
 }

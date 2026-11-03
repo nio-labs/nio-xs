@@ -215,6 +215,7 @@ pub struct RayEngine {
     tokenizer_path: PathBuf,
     is_skate: bool,
     is_manta: bool,
+    is_beluga: bool,
 }
 
 impl RayEngine {
@@ -235,24 +236,28 @@ impl RayEngine {
         let lowered = model_name.trim().to_ascii_lowercase();
         let is_skate = matches!(lowered.as_str(), "skate" | "nio-skate");
         let is_manta = matches!(lowered.as_str(), "manta" | "nio-manta") || model_path.to_string_lossy().contains("manta");
+        let is_beluga = matches!(lowered.as_str(), "beluga" | "nio-beluga") || model_path.to_string_lossy().contains("beluga");
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
             tokenizer_path,
             is_skate,
             is_manta,
+            is_beluga,
         })
     }
 
     pub fn from_paths(model_path: PathBuf, tokenizer_path: PathBuf) -> Self {
         let is_skate = model_path.to_string_lossy().contains("skate");
         let is_manta = model_path.to_string_lossy().contains("manta");
+        let is_beluga = model_path.to_string_lossy().contains("beluga");
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
             tokenizer_path,
             is_skate,
             is_manta,
+            is_beluga,
         }
     }
 
@@ -280,6 +285,7 @@ impl RayEngine {
             "ray" | "nio-ray" => "nio-ray",
             "manta" | "nio-manta" => "nio-manta",
             "cuda" | "nio-cuda" => "nio-cuda",
+            "beluga" | "nio-beluga" => "nio-beluga",
             other => other,
         };
 
@@ -304,6 +310,10 @@ impl RayEngine {
             "skate" | "nio-skate" => &[
                 "skate.vmicrolm-vector.gguf",
                 "nio-skate.vmicrolm-vector.gguf",
+            ],
+            "beluga" | "nio-beluga" => &[
+                "beluga.vmicrolm-vector.gguf",
+                "nio-beluga.vmicrolm-vector.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
@@ -337,6 +347,7 @@ impl RayEngine {
 
         let model_override = match normalized.as_str() {
             "skate" | "nio-skate" => Some("NIOXS_SKATE_MODEL"),
+            "beluga" | "nio-beluga" => Some("NIOXS_BELUGA_MODEL"),
             "ray" | "nio-ray" => Some("NIOXS_RAY_MODEL"),
             _ => None,
         };
@@ -381,6 +392,16 @@ impl RayEngine {
 
     fn tokenizer_for_model(model: &std::path::Path) -> PathBuf {
         if let Some(s) = model.file_name().and_then(|s| s.to_str()) {
+            if s.contains("beluga") {
+                let candidate1 = model.with_file_name("beluga-tokenizer.json");
+                if candidate1.is_file() {
+                    return candidate1;
+                }
+                let candidate2 = model.with_file_name("nio-beluga-tokenizer.json");
+                if candidate2.is_file() {
+                    return candidate2;
+                }
+            }
             if s.contains("manta") {
                 let candidate1 = model.with_file_name("manta-tokenizer.json");
                 if candidate1.is_file() {
@@ -394,6 +415,7 @@ impl RayEngine {
         }
         let name = match model.file_name().and_then(|s| s.to_str()) {
             Some(s) if s.contains("skate") => "skate-tokenizer.json",
+            Some(s) if s.contains("beluga") => "beluga-tokenizer.json",
             Some("nio-ray-dev.Q4_K_M.gguf") => "nio-ray-dev-tokenizer.json",
             Some(s) if s.contains("viper") => "nio-viper-tokenizer.json",
             Some(s) if s.contains("cuda") => "nio-cuda-tokenizer.json",
@@ -450,6 +472,7 @@ impl RayEngine {
         let tokenizer_path = self.tokenizer_path.clone();
         let is_skate = self.is_skate;
         let is_manta = self.is_manta;
+        let _is_beluga = self.is_beluga;
 
         let bundle = tokio::task::spawn_blocking(move || -> Result<ModelBundle> {
             let device = Device::Cpu;
@@ -515,6 +538,11 @@ impl RayEngine {
             format!(
                 "<|im_start|>system\nYou are NioViper, the terminal reflex oracle MicroLM.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 query
+            )
+        } else if self.is_beluga {
+            format!(
+                "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Defer raw low-level code generation to Cuda.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                raw_prompt.trim()
             )
         } else if self.is_skate {
             format!(

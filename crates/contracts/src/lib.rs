@@ -7,6 +7,7 @@ pub const MODEL_CUDA: &str = "nio-cuda";
 pub const MODEL_RAY: &str = "nio-ray";
 pub const MODEL_VIPER: &str = "nio-viper";
 pub const MODEL_MANTA: &str = "nio-manta";
+pub const MODEL_BELUGA: &str = "nio-beluga";
 pub const MODEL_NANO: &str = "nio-nano";
 pub const MODEL_MICRO: &str = "nio-micro";
 pub const MODEL_MASK: &str = "nio-mask";
@@ -23,6 +24,7 @@ pub const MODELS: &[&str] = &[
     MODEL_RAY,
     MODEL_VIPER,
     MODEL_MANTA,
+    MODEL_BELUGA,
     MODEL_SKATE,
     MODEL_NANO,
     MODEL_MICRO,
