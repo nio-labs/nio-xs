@@ -472,7 +472,7 @@ impl RayEngine {
         let tokenizer_path = self.tokenizer_path.clone();
         let is_skate = self.is_skate;
         let is_manta = self.is_manta;
-        let _is_beluga = self.is_beluga;
+        let is_beluga = self.is_beluga;
 
         let bundle = tokio::task::spawn_blocking(move || -> Result<ModelBundle> {
             let device = Device::Cpu;
@@ -489,6 +489,8 @@ impl RayEngine {
                 engine.set_suppressed_tokens([3725, 47182]);
             } else if is_manta {
                 engine.set_suppressed_tokens([41233, 54275, 73594]);
+            } else if is_beluga {
+                engine.set_resident_layers(2);
             }
 
             Ok(ModelBundle {
@@ -667,6 +669,7 @@ impl RayEngine {
 
         let bundle_arc = self.bundle.clone();
         let formatted = self.format_prompt_for_engine(&prompt)?;
+        let is_beluga = self.is_beluga;
         tokio::task::spawn_blocking(move || {
             let mut guard = bundle_arc.blocking_lock();
             if tx.is_closed() {
@@ -753,7 +756,8 @@ impl RayEngine {
                     break;
                 }
                 let remaining = max_gen.saturating_sub(gen_tokens.len());
-                let max_draft = 2.min(remaining.saturating_sub(1));
+                let draft_limit = if is_beluga { 4 } else { 3 };
+                let max_draft = draft_limit.min(remaining.saturating_sub(1));
 
                 let step_res = match bundle.engine.speculative_pld_step(
                     &context_tokens,

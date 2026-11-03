@@ -1114,6 +1114,22 @@ impl AstMicroEngine {
         // 2. Pass all tokens through layers, layer-by-layer (layer-outer)
         for layer_idx in 0..self.block_count {
             let layer = &self.layers[layer_idx];
+
+            // Prefetch next layer's memory asynchronously while executing current layer
+            if layer_idx + 1 < self.block_count {
+                let next_layer = &self.layers[layer_idx + 1];
+                let page_size = 4096;
+                let aligned_start = (next_layer.min_offset / page_size) * page_size;
+                let aligned_len = ((next_layer.max_offset - aligned_start + page_size - 1) / page_size) * page_size;
+                unsafe {
+                    libc::madvise(
+                        self.mmap.as_ptr().add(aligned_start) as *mut libc::c_void,
+                        aligned_len,
+                        libc::MADV_WILLNEED,
+                    );
+                }
+            }
+
             for step in 0..n_tokens {
                 let pos = index_pos + step;
                 let cos = &self.cos_table[pos * half..(pos + 1) * half];
@@ -1422,7 +1438,7 @@ pub fn find_candidate_draft_tokens(
 
     let is_eos = |t: u32| eos_tokens.contains(&t);
 
-    for ngram_len in (3..=5.min(context.len().saturating_sub(1))).rev() {
+    for ngram_len in (3..=7.min(context.len().saturating_sub(1))).rev() {
         let query = &context[context.len() - ngram_len..];
         let search_limit = context.len().saturating_sub(ngram_len);
         if search_limit == 0 {
