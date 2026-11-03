@@ -798,8 +798,8 @@ impl AstMicroEngine {
             }
 
             for meta in [meta_wq, meta_wk, meta_wv, meta_wo] {
-                if ![8, 20].contains(&meta.dtype) || meta.shape.len() != 2 || meta.shape[1] % 32 != 0 {
-                    anyhow::bail!("unsupported AST-Micro tensor {}: dtype {} shape {:?}; expected Q8_0 or IQ4_NL matrix", meta.name, meta.dtype, meta.shape);
+                if ![8, 18, 20].contains(&meta.dtype) || meta.shape.len() != 2 || (meta.dtype == 18 && meta.shape[1] % 256 != 0) || (meta.dtype != 18 && meta.shape[1] % 32 != 0) {
+                    anyhow::bail!("unsupported AST-Micro tensor {}: dtype {} shape {:?}; expected Q8_0, IQ3_XXS, or IQ4_NL matrix", meta.name, meta.dtype, meta.shape);
                 }
             }
             for meta in [meta_w1, meta_w3] {

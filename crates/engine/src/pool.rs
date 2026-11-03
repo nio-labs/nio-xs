@@ -225,18 +225,72 @@ impl GemvTask {
                     let inter = std::slice::from_raw_parts_mut((inter_out_ptr as *mut f32).add(start_r), rows);
 
                     let nb = n_cols / 32;
-                    for j in 0..rows {
-                        let w1_row_ptr = weights1_ptr.add(j * row_bytes);
-                        let w3_row_ptr = weights3_ptr.add(j * row_bytes);
-                        if j + 1 < rows {
-                            let next_w1 = weights1_ptr.add((j + 1) * row_bytes);
-                            let next_w3 = weights3_ptr.add((j + 1) * row_bytes);
-                            core::arch::x86_64::_mm_prefetch(next_w1 as *const i8, core::arch::x86_64::_MM_HINT_T0);
-                            core::arch::x86_64::_mm_prefetch(next_w1.add(64) as *const i8, core::arch::x86_64::_MM_HINT_T0);
-                            core::arch::x86_64::_mm_prefetch(next_w3 as *const i8, core::arch::x86_64::_MM_HINT_T0);
-                            core::arch::x86_64::_mm_prefetch(next_w3.add(64) as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                    if nb == 48 {
+                        let mut x_qs = [core::arch::x86_64::_mm256_setzero_si256(); 48];
+                        let mut x_d = [0.0f32; 48];
+                        for i in 0..48 {
+                            x_qs[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                            x_d[i] = x_blocks[i].d;
                         }
-                        inter[j] = quants::gate_up_iq4_nl_silu_avx2(w1_row_ptr, w3_row_ptr, x_blocks, nb);
+                        let mut j = 0;
+                        while j + 1 < rows {
+                            let w1_r0 = weights1_ptr.add(j * 864);
+                            let w1_r1 = weights1_ptr.add((j + 1) * 864);
+                            let w3_r0 = weights3_ptr.add(j * 864);
+                            let w3_r1 = weights3_ptr.add((j + 1) * 864);
+                            let (w1_0, w1_1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(w1_r0, w1_r1, &x_qs, &x_d);
+                            let (w3_0, w3_1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(w3_r0, w3_r1, &x_qs, &x_d);
+                            inter[j] = quants::fast_silu(w1_0) * w3_0;
+                            inter[j + 1] = quants::fast_silu(w1_1) * w3_1;
+                            j += 2;
+                        }
+                        if j < rows {
+                            let w1_r0 = weights1_ptr.add(j * 864);
+                            let w3_r0 = weights3_ptr.add(j * 864);
+                            let w1_0 = quants::vec_dot_iq4_nl_48blocks_avx2(w1_r0, &x_qs, &x_d);
+                            let w3_0 = quants::vec_dot_iq4_nl_48blocks_avx2(w3_r0, &x_qs, &x_d);
+                            inter[j] = quants::fast_silu(w1_0) * w3_0;
+                        }
+                    } else if nb == 28 {
+                        let mut x_qs = [core::arch::x86_64::_mm256_setzero_si256(); 28];
+                        let mut x_d = [0.0f32; 28];
+                        for i in 0..28 {
+                            x_qs[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                            x_d[i] = x_blocks[i].d;
+                        }
+                        let mut j = 0;
+                        while j + 1 < rows {
+                            let w1_r0 = weights1_ptr.add(j * 504);
+                            let w1_r1 = weights1_ptr.add((j + 1) * 504);
+                            let w3_r0 = weights3_ptr.add(j * 504);
+                            let w3_r1 = weights3_ptr.add((j + 1) * 504);
+                            let (w1_0, w1_1) = quants::vec_dot_iq4_nl_28blocks_2rows_avx2(w1_r0, w1_r1, &x_qs, &x_d);
+                            let (w3_0, w3_1) = quants::vec_dot_iq4_nl_28blocks_2rows_avx2(w3_r0, w3_r1, &x_qs, &x_d);
+                            inter[j] = quants::fast_silu(w1_0) * w3_0;
+                            inter[j + 1] = quants::fast_silu(w1_1) * w3_1;
+                            j += 2;
+                        }
+                        if j < rows {
+                            let w1_r0 = weights1_ptr.add(j * 504);
+                            let w3_r0 = weights3_ptr.add(j * 504);
+                            let w1_0 = quants::vec_dot_iq4_nl_28blocks_avx2(w1_r0, &x_qs, &x_d);
+                            let w3_0 = quants::vec_dot_iq4_nl_28blocks_avx2(w3_r0, &x_qs, &x_d);
+                            inter[j] = quants::fast_silu(w1_0) * w3_0;
+                        }
+                    } else {
+                        for j in 0..rows {
+                            let w1_row_ptr = weights1_ptr.add(j * row_bytes);
+                            let w3_row_ptr = weights3_ptr.add(j * row_bytes);
+                            if j + 1 < rows {
+                                let next_w1 = weights1_ptr.add((j + 1) * row_bytes);
+                                let next_w3 = weights3_ptr.add((j + 1) * row_bytes);
+                                core::arch::x86_64::_mm_prefetch(next_w1 as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                                core::arch::x86_64::_mm_prefetch(next_w1.add(64) as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                                core::arch::x86_64::_mm_prefetch(next_w3 as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                                core::arch::x86_64::_mm_prefetch(next_w3.add(64) as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                            }
+                            inter[j] = quants::gate_up_iq4_nl_silu_avx2(w1_row_ptr, w3_row_ptr, x_blocks, nb);
+                        }
                     }
                 }
             }
