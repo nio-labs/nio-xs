@@ -5,7 +5,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use crate::quants::{self, BlockQ8_0, BlockQ8_K};
 
-pub const NUM_WORKERS: usize = 4;
+pub const NUM_WORKERS: usize = 6;
 
 #[derive(Clone, Copy)]
 pub enum GemvTask {
@@ -258,12 +258,15 @@ impl GemvTask {
 
                 let is_skate = num_blocks == 18;
                 let is_manta = num_blocks == 28;
+                let is_beluga = num_blocks == 48;
 
-                // Pin activation vectors in L1 registers/stack for Skate (18 blocks) or Manta (28 blocks)
+                // Pin activation vectors in L1 registers/stack for Skate (18 blocks), Manta (28 blocks), Beluga (48 blocks)
                 let mut x_qs_skate = [core::arch::x86_64::_mm256_setzero_si256(); 18];
                 let mut x_d_skate = [0.0f32; 18];
                 let mut x_qs_manta = [core::arch::x86_64::_mm256_setzero_si256(); 28];
                 let mut x_d_manta = [0.0f32; 28];
+                let mut x_qs_beluga = [core::arch::x86_64::_mm256_setzero_si256(); 48];
+                let mut x_d_beluga = [0.0f32; 48];
                 if is_skate {
                     for i in 0..18 {
                         x_qs_skate[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
@@ -273,6 +276,11 @@ impl GemvTask {
                     for i in 0..28 {
                         x_qs_manta[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
                         x_d_manta[i] = x_blocks[i].d;
+                    }
+                } else if is_beluga {
+                    for i in 0..48 {
+                        x_qs_beluga[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_d_beluga[i] = x_blocks[i].d;
                     }
                 }
 
@@ -331,6 +339,66 @@ impl GemvTask {
                         if !((suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0))) {
                             let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 952);
                             let val0 = quants::vec_dot_q8_0_28blocks_avx2(r0_ptr, &x_qs_manta, &x_d_manta);
+                            if val0 > best_score {
+                                let mut score = val0;
+                                let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                                if repeat_count > 0 {
+                                    score -= (repeat_count as f32) * 2.5;
+                                    if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                    else { score *= pen.powi(repeat_count as i32); }
+                                }
+                                if score > best_score {
+                                    best_score = score;
+                                    best_tok = tok0;
+                                }
+                            }
+                        }
+                    }
+                } else if is_beluga {
+                    let mut tok_id = worker_start as u32;
+                    let end_id = worker_end as u32;
+                    while tok_id + 1 < end_id {
+                        let tok0 = tok_id;
+                        let tok1 = tok_id + 1;
+                        let skip0 = (suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0));
+                        let skip1 = (suppress_eos && (tok1 == 151645 || tok1 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok1));
+                        let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 1632);
+                        let r1_ptr = weight_bytes.as_ptr().add((tok1 as usize) * 1632);
+                        let (val0, val1) = quants::vec_dot_q8_0_48blocks_2rows_avx2(r0_ptr, r1_ptr, &x_qs_beluga, &x_d_beluga);
+
+                        if !skip0 && val0 > best_score {
+                            let mut score = val0;
+                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                            if repeat_count > 0 {
+                                score -= (repeat_count as f32) * 2.5;
+                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                else { score *= pen.powi(repeat_count as i32); }
+                            }
+                            if score > best_score {
+                                best_score = score;
+                                best_tok = tok0;
+                            }
+                        }
+                        if !skip1 && val1 > best_score {
+                            let mut score = val1;
+                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok1).count();
+                            if repeat_count > 0 {
+                                score -= (repeat_count as f32) * 2.5;
+                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                else { score *= pen.powi(repeat_count as i32); }
+                            }
+                            if score > best_score {
+                                best_score = score;
+                                best_tok = tok1;
+                            }
+                        }
+                        tok_id += 2;
+                    }
+                    if tok_id < end_id {
+                        let tok0 = tok_id;
+                        if !((suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0))) {
+                            let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 1632);
+                            let val0 = quants::vec_dot_q8_0_48blocks_avx2(r0_ptr, &x_qs_beluga, &x_d_beluga);
                             if val0 > best_score {
                                 let mut score = val0;
                                 let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
@@ -465,16 +533,28 @@ impl GemvTask {
                     let kv_h = h / kv_repeats;
                     let q_head_ptr = q.as_ptr().add(h * head_dim);
 
+                    // Preload query vectors in AVX2 registers/stack (head_dim <= 128 -> head_dim_vec <= 16)
+                    let num_q_vec = head_dim_vec.min(16);
+                    let mut q_vec = [core::arch::x86_64::_mm256_setzero_ps(); 16];
+                    for vd in 0..num_q_vec {
+                        q_vec[vd] = core::arch::x86_64::_mm256_loadu_ps(q_head_ptr.add(vd * 8));
+                    }
+
                     let mut max_s = f32::NEG_INFINITY;
                     for t in 0..seq_len {
                         let k_start = t * kv_stride + kv_h * head_dim;
                         let k_ptr = k_cache.as_ptr().add(k_start);
 
+                        // Lookahead prefetch for k_cache
+                        if t + 4 < seq_len {
+                            let k_next = (t + 4) * kv_stride + kv_h * head_dim;
+                            core::arch::x86_64::_mm_prefetch(k_cache.as_ptr().add(k_next) as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                        }
+
                         let mut dot_vec = core::arch::x86_64::_mm256_setzero_ps();
-                        for vd in 0..head_dim_vec {
-                            let q_v = core::arch::x86_64::_mm256_loadu_ps(q_head_ptr.add(vd * 8));
+                        for vd in 0..num_q_vec {
                             let k_v = core::arch::x86_64::_mm256_loadu_ps(k_ptr.add(vd * 8));
-                            dot_vec = core::arch::x86_64::_mm256_fmadd_ps(q_v, k_v, dot_vec);
+                            dot_vec = core::arch::x86_64::_mm256_fmadd_ps(q_vec[vd], k_v, dot_vec);
                         }
 
                         let mut res = core::arch::x86_64::_mm256_extractf128_ps(dot_vec, 1);
@@ -505,24 +585,41 @@ impl GemvTask {
                         scores_slice[t] *= inv_sum;
                     }
 
-                    let out_ptr = out.as_mut_ptr().add(h * head_dim);
-                    for d in 0..head_dim {
-                        *out_ptr.add(d) = 0.0;
-                    }
+                    // Accumulate V in registers / stack without re-loading/storing out_ptr on every token step
+                    let mut acc_v = [core::arch::x86_64::_mm256_setzero_ps(); 16];
+                    let mut tail_acc = [0.0f32; 8];
+                    let tail_start = head_dim_vec * 8;
+                    let tail_len = head_dim - tail_start;
 
                     for t in 0..seq_len {
+                        // Lookahead prefetch for v_cache
+                        if t + 4 < seq_len {
+                            let v_next = (t + 4) * kv_stride + kv_h * head_dim;
+                            core::arch::x86_64::_mm_prefetch(v_cache.as_ptr().add(v_next) as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                        }
+
                         let s = scores_slice[t];
                         let s_vec = core::arch::x86_64::_mm256_set1_ps(s);
                         let v_ptr = v_cache.as_ptr().add(t * kv_stride + kv_h * head_dim);
 
-                        for vd in 0..head_dim_vec {
-                            let out_v = core::arch::x86_64::_mm256_loadu_ps(out_ptr.add(vd * 8));
+                        for vd in 0..num_q_vec {
                             let v_v = core::arch::x86_64::_mm256_loadu_ps(v_ptr.add(vd * 8));
-                            let acc = core::arch::x86_64::_mm256_fmadd_ps(s_vec, v_v, out_v);
-                            core::arch::x86_64::_mm256_storeu_ps(out_ptr.add(vd * 8), acc);
+                            acc_v[vd] = core::arch::x86_64::_mm256_fmadd_ps(s_vec, v_v, acc_v[vd]);
                         }
-                        for d in (head_dim_vec * 8)..head_dim {
-                            *out_ptr.add(d) += s * *v_ptr.add(d);
+                        if tail_len > 0 {
+                            for d in 0..tail_len {
+                                tail_acc[d] += s * *v_ptr.add(tail_start + d);
+                            }
+                        }
+                    }
+
+                    let out_ptr = out.as_mut_ptr().add(h * head_dim);
+                    for vd in 0..num_q_vec {
+                        core::arch::x86_64::_mm256_storeu_ps(out_ptr.add(vd * 8), acc_v[vd]);
+                    }
+                    if tail_len > 0 {
+                        for d in 0..tail_len {
+                            *out_ptr.add(tail_start + d) = tail_acc[d];
                         }
                     }
                 }

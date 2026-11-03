@@ -487,6 +487,110 @@ pub unsafe fn vec_dot_q8_0_28blocks_avx2(weight_ptr: *const u8, x_qs: &[core::ar
     hsum_float_8(_mm256_add_ps(acc0, acc1))
 }
 
+#[inline]
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn vec_dot_q8_0_48blocks_2rows_avx2(
+    r0_ptr: *const u8,
+    r1_ptr: *const u8,
+    x_qs: &[core::arch::x86_64::__m256i; 48],
+    x_d: &[f32; 48],
+) -> (f32, f32) {
+    use core::arch::x86_64::*;
+
+    // Prefetch 4 rows ahead (4 * 1632 = 6528 bytes)
+    _mm_prefetch(r0_ptr.add(6528) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r0_ptr.add(6528 + 512) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r0_ptr.add(6528 + 1024) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r1_ptr.add(6528) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r1_ptr.add(6528 + 512) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r1_ptr.add(6528 + 1024) as *const i8, _MM_HINT_T0);
+
+    let mut r0_acc0 = _mm256_setzero_ps();
+    let mut r0_acc1 = _mm256_setzero_ps();
+    let mut r1_acc0 = _mm256_setzero_ps();
+    let mut r1_acc1 = _mm256_setzero_ps();
+
+    let mut ib = 0;
+    while ib < 48 {
+        if ib + 4 < 48 {
+            _mm_prefetch(r0_ptr.add((ib + 4) * 34) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(r1_ptr.add((ib + 4) * 34) as *const i8, _MM_HINT_T0);
+        }
+        let act_q0 = x_qs[ib];
+        let act_q1 = x_qs[ib + 1];
+        let act_d0 = x_d[ib];
+        let act_d1 = x_d[ib + 1];
+
+        // Row 0
+        let r0_b0 = r0_ptr.add(ib * 34);
+        let r0_b1 = r0_ptr.add((ib + 1) * 34);
+        let r0_d0 = _mm256_set1_ps(f16_to_f32_hw((r0_b0 as *const u16).read_unaligned()) * act_d0);
+        let r0_d1 = _mm256_set1_ps(f16_to_f32_hw((r0_b1 as *const u16).read_unaligned()) * act_d1);
+        let r0_qx0 = _mm256_loadu_si256(r0_b0.add(2) as *const __m256i);
+        let r0_qx1 = _mm256_loadu_si256(r0_b1.add(2) as *const __m256i);
+        let r0_q0 = mul_sum_i8_pairs_float(r0_qx0, act_q0);
+        let r0_q1 = mul_sum_i8_pairs_float(r0_qx1, act_q1);
+        r0_acc0 = _mm256_fmadd_ps(r0_d0, r0_q0, r0_acc0);
+        r0_acc1 = _mm256_fmadd_ps(r0_d1, r0_q1, r0_acc1);
+
+        // Row 1
+        let r1_b0 = r1_ptr.add(ib * 34);
+        let r1_b1 = r1_ptr.add((ib + 1) * 34);
+        let r1_d0 = _mm256_set1_ps(f16_to_f32_hw((r1_b0 as *const u16).read_unaligned()) * act_d0);
+        let r1_d1 = _mm256_set1_ps(f16_to_f32_hw((r1_b1 as *const u16).read_unaligned()) * act_d1);
+        let r1_qx0 = _mm256_loadu_si256(r1_b0.add(2) as *const __m256i);
+        let r1_qx1 = _mm256_loadu_si256(r1_b1.add(2) as *const __m256i);
+        let r1_q0 = mul_sum_i8_pairs_float(r1_qx0, act_q0);
+        let r1_q1 = mul_sum_i8_pairs_float(r1_qx1, act_q1);
+        r1_acc0 = _mm256_fmadd_ps(r1_d0, r1_q0, r1_acc0);
+        r1_acc1 = _mm256_fmadd_ps(r1_d1, r1_q1, r1_acc1);
+
+        ib += 2;
+    }
+
+    let val0 = hsum_float_8(_mm256_add_ps(r0_acc0, r0_acc1));
+    let val1 = hsum_float_8(_mm256_add_ps(r1_acc0, r1_acc1));
+    (val0, val1)
+}
+
+#[inline]
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn vec_dot_q8_0_48blocks_avx2(weight_ptr: *const u8, x_qs: &[core::arch::x86_64::__m256i; 48], x_d: &[f32; 48]) -> f32 {
+    use core::arch::x86_64::*;
+
+    // Prefetch row ahead (48 blocks * 34 bytes = 1632 bytes)
+    _mm_prefetch(weight_ptr.add(1632) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(weight_ptr.add(1632 + 512) as *const i8, _MM_HINT_T0);
+
+    let mut acc0 = _mm256_setzero_ps();
+    let mut acc1 = _mm256_setzero_ps();
+
+    let mut ib = 0;
+    while ib < 48 {
+        let b0_ptr = weight_ptr.add(ib * 34);
+        let b1_ptr = weight_ptr.add((ib + 1) * 34);
+
+        let d0_f32 = f16_to_f32_hw((b0_ptr as *const u16).read_unaligned());
+        let d1_f32 = f16_to_f32_hw((b1_ptr as *const u16).read_unaligned());
+
+        let d0 = _mm256_set1_ps(d0_f32 * x_d[ib]);
+        let d1 = _mm256_set1_ps(d1_f32 * x_d[ib + 1]);
+
+        let qx0 = _mm256_loadu_si256(b0_ptr.add(2) as *const __m256i);
+        let qx1 = _mm256_loadu_si256(b1_ptr.add(2) as *const __m256i);
+
+        let q0 = mul_sum_i8_pairs_float(qx0, x_qs[ib]);
+        let q1 = mul_sum_i8_pairs_float(qx1, x_qs[ib + 1]);
+
+        acc0 = _mm256_fmadd_ps(d0, q0, acc0);
+        acc1 = _mm256_fmadd_ps(d1, q1, acc1);
+
+        ib += 2;
+    }
+
+    hsum_float_8(_mm256_add_ps(acc0, acc1))
+}
+
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn vec_dot_iq4_nl_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_0]) -> f32 {
     use core::arch::x86_64::*;

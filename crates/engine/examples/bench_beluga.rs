@@ -78,7 +78,8 @@ fn main() -> Result<()> {
     let (start_rss, start_hwm) = memory_mb();
     println!("Process Start RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB", start_rss, start_hwm);
 
-    let tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| anyhow!("{e}"))?;
+    let mut tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| anyhow!("{e}"))?;
+    tokenizer.with_padding(None);
     let t0 = Instant::now();
     let mut engine = AstMicroEngine::new(&model_path)?;
     let load_time = t0.elapsed().as_secs_f64();

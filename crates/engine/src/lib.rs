@@ -453,8 +453,9 @@ impl RayEngine {
 
         let bundle = tokio::task::spawn_blocking(move || -> Result<ModelBundle> {
             let device = Device::Cpu;
-            let tokenizer = Tokenizer::from_file(&tokenizer_path)
+            let mut tokenizer = Tokenizer::from_file(&tokenizer_path)
                 .map_err(|e| anyhow!("Failed loading tokenizer: {e}"))?;
+            tokenizer.with_padding(None);
 
             let mut engine = AstMicroEngine::new(&model_path)
                 .map_err(|e| anyhow!("Failed loading AST-Micro engine for {:?}: {e}", model_path))?;
