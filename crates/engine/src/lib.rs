@@ -491,6 +491,7 @@ impl RayEngine {
                 engine.set_suppressed_tokens([41233, 54275, 73594]);
             } else if is_beluga {
                 engine.set_resident_layers(2);
+                engine.set_rolling_window(4);
             }
 
             Ok(ModelBundle {
@@ -756,7 +757,7 @@ impl RayEngine {
                     break;
                 }
                 let remaining = max_gen.saturating_sub(gen_tokens.len());
-                let draft_limit = if is_beluga { 4 } else { 3 };
+                let draft_limit = if is_beluga { 5 } else { 3 };
                 let max_draft = draft_limit.min(remaining.saturating_sub(1));
 
                 let step_res = match bundle.engine.speculative_pld_step(

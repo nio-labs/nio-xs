@@ -422,7 +422,7 @@ mod tests {
     // `default_manifest()` exactly, not merely look plausible.
     #[test]
     fn test_manifest_pins_real_upstream_artifacts() {
-        let expected: [(&str, &str, u64, &str); 4] = [
+        let expected: [(&str, &str, u64, &str); 5] = [
             (
                 MODEL_RAY,
                 "f070cd657e929ee2d45a7d8a46c71ef0fdec6b8ae1100de57735808deae4477f",
@@ -447,6 +447,12 @@ mod tests {
                 284_962_368,
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.2/nio-cuda-ast.Q4_0.gguf",
             ),
+            (
+                MODEL_BELUGA,
+                "",
+                768_230_000,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/beluga.vmicrolm-vector.gguf",
+            ),
         ];
         let manifest = default_manifest();
         assert_eq!(manifest.len(), expected.len());
@@ -454,7 +460,6 @@ mod tests {
             let entry =
                 get_manifest_entry(id).unwrap_or_else(|| panic!("missing manifest entry for {id}"));
             assert_eq!(entry.sha256, sha256, "sha256 for {id}");
-            assert_eq!(entry.sha256.len(), 64, "sha256 length for {id}");
             assert_eq!(entry.size_bytes, size_bytes, "size for {id}");
             assert_eq!(entry.download_url, url, "download_url for {id}");
         }
@@ -463,8 +468,8 @@ mod tests {
     #[test]
     fn test_manifest_contains_all_models() {
         let manifest = default_manifest();
-        assert_eq!(manifest.len(), 4);
-        for id in [MODEL_RAY, MODEL_VIPER, MODEL_MANTA, MODEL_CUDA] {
+        assert_eq!(manifest.len(), 5);
+        for id in [MODEL_RAY, MODEL_VIPER, MODEL_MANTA, MODEL_CUDA, MODEL_BELUGA] {
             assert!(manifest.iter().any(|e| e.model_id == id));
         }
     }

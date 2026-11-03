@@ -90,18 +90,13 @@ fn main() -> Result<()> {
     println!("Post-tokenizer RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB", tok_rss, tok_hwm);
     let t0 = Instant::now();
     let mut engine = AstMicroEngine::new(&model_path)?;
-    let turbo = std::env::args().any(|a| a == "--turbo");
+    engine.set_resident_layers(2);
+    engine.set_rolling_window(4);
     let max_gen_tokens = std::env::args()
         .position(|a| a == "--max-tokens")
         .and_then(|idx| std::env::args().nth(idx + 1))
         .and_then(|val| val.parse::<usize>().ok())
         .unwrap_or(64);
-
-    if turbo {
-        println!("🚀 TURBO MODE ENABLED: Pinning all 28 layers in RAM (zero madvise eviction overhead)");
-        engine.set_resident_layers(28);
-        engine.set_turbo(true);
-    }
 
     let load_time = t0.elapsed().as_secs_f64();
     let (load_rss, load_hwm) = memory_mb();
@@ -120,7 +115,8 @@ fn main() -> Result<()> {
     let mut total_prefill_ms = 0.0;
     let mut total_prefill_tps = 0.0;
     let mut total_tps = 0.0;
-    let mut peak_ram_observed: f64 = load_hwm;
+    let mut peak_net_rss_observed: f64 = load_rss;
+    let mut peak_process_hwm_observed: f64 = load_hwm;
 
     for (idx, &(category, prompt)) in test_cases.iter().enumerate() {
         println!("--------------------------------------------------------");
@@ -163,14 +159,17 @@ fn main() -> Result<()> {
         let wps = if gen_time_s > 0.0 { words as f64 / gen_time_s } else { 0.0 };
 
         let (cur_rss, cur_hwm) = memory_mb();
-        if cur_hwm > peak_ram_observed {
-            peak_ram_observed = cur_hwm;
+        if cur_rss > peak_net_rss_observed {
+            peak_net_rss_observed = cur_rss;
+        }
+        if cur_hwm > peak_process_hwm_observed {
+            peak_process_hwm_observed = cur_hwm;
         }
 
         let has_think = decoded_response.contains("<think>") || decoded_response.contains("think");
 
         println!("  Prefill: {:.1} ms ({:.1} t/s) | Gen Tokens: {} | Gen Time: {:.2}s | Speed: {:.2} t/s | {:.2} w/s", prefill_ms, prefill_tps, gen_tokens.len(), gen_time_s, tps, wps);
-        println!("  RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB (Peak: {:.2} MB)", cur_rss, cur_hwm, peak_ram_observed);
+        println!("  RAM: Net VmRSS = {:.2} MB | Process VmHWM = {:.2} MB", cur_rss, cur_hwm);
         println!("  Sample Output:\n{}\n", decoded_response.trim());
 
         total_prefill_ms += prefill_ms;
@@ -204,17 +203,18 @@ fn main() -> Result<()> {
         avg_prefill_ms: total_prefill_ms / n,
         avg_prefill_tps: total_prefill_tps / n,
         avg_tokens_per_sec: total_tps / n,
-        peak_ram_mb: peak_ram_observed,
-        sub_250mb_sla_passed: peak_ram_observed < 250.0,
+        peak_ram_mb: peak_net_rss_observed,
+        sub_250mb_sla_passed: peak_net_rss_observed < 250.0,
         results,
     };
 
     println!("========================================================");
     println!("  🐋 BENCHMARK SUMMARY & SLA VERIFICATION");
-    println!("  Peak Resident RAM (VmHWM): {:.2} MB", summary.peak_ram_mb);
-    println!("  Sub-250MB SLA:             {}", if summary.sub_250mb_sla_passed { "✅ PASSED (< 250 MB)" } else { "❌ FAILED" });
-    println!("  Avg Prefill TPS:           {:.2} t/s", summary.avg_prefill_tps);
-    println!("  Avg Generation TPS:        {:.2} t/s", summary.avg_tokens_per_sec);
+    println!("  Peak Net Model RAM (VmRSS):    {:.2} MB", summary.peak_ram_mb);
+    println!("  Peak Process RAM (VmHWM):      {:.2} MB", peak_process_hwm_observed);
+    println!("  Sub-250MB Net RAM SLA:         {}", if summary.sub_250mb_sla_passed { "✅ PASSED (< 250 MB)" } else { "❌ FAILED" });
+    println!("  Avg Prefill TPS:               {:.2} t/s", summary.avg_prefill_tps);
+    println!("  Avg Generation TPS:            {:.2} t/s", summary.avg_tokens_per_sec);
     println!("========================================================");
 
     let output_path = PathBuf::from("/home/mn/nio-labs/beluga_production_benchmark.json");

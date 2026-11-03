@@ -629,7 +629,6 @@ impl LayerDesc {
             eps,
             kv_cache,
         );
-        self.madvise_layer(mmap);
     }
 }
 
@@ -682,9 +681,9 @@ pub struct AstMicroEngine {
     repeat_penalty: f32,
     repeat_last_n: usize,
     pub suppressed_tokens: HashSet<u32>,
-    pub turbo: bool,
     pub pool: SpinThreadPool,
     pub resident_layers: usize,
+    pub rolling_window: usize,
 }
 
 impl AstMicroEngine {
@@ -905,13 +904,13 @@ impl AstMicroEngine {
             repeat_penalty: 1.15,
             repeat_last_n: 64,
             suppressed_tokens: HashSet::new(),
-            turbo: false,
             pool: {
                 let pool = SpinThreadPool::new();
                 pool.park();
                 pool
             },
             resident_layers: 0,
+            rolling_window: 4,
         };
         engine.evict_all();
         unsafe {
@@ -926,8 +925,8 @@ impl AstMicroEngine {
     }
 
     #[inline(always)]
-    pub fn set_turbo(&mut self, enabled: bool) {
-        self.turbo = enabled;
+    pub fn set_rolling_window(&mut self, n: usize) {
+        self.rolling_window = n;
     }
 
     #[inline(always)]
@@ -1112,21 +1111,26 @@ impl AstMicroEngine {
         }
 
         // 2. Pass all tokens through layers, layer-by-layer (layer-outer)
+        let window = self.rolling_window.max(1);
+
         for layer_idx in 0..self.block_count {
             let layer = &self.layers[layer_idx];
 
-            // Prefetch next layer's memory asynchronously while executing current layer
-            if layer_idx + 1 < self.block_count {
-                let next_layer = &self.layers[layer_idx + 1];
-                let page_size = 4096;
-                let aligned_start = (next_layer.min_offset / page_size) * page_size;
-                let aligned_len = ((next_layer.max_offset - aligned_start + page_size - 1) / page_size) * page_size;
-                unsafe {
-                    libc::madvise(
-                        self.mmap.as_ptr().add(aligned_start) as *mut libc::c_void,
-                        aligned_len,
-                        libc::MADV_WILLNEED,
-                    );
+            // Prefetch next 1..=2 layers asynchronously while executing current layer
+            for prefetch_offset in 1..=2 {
+                let target_idx = layer_idx + prefetch_offset;
+                if target_idx < self.block_count {
+                    let next_layer = &self.layers[target_idx];
+                    let page_size = 4096;
+                    let aligned_start = (next_layer.min_offset / page_size) * page_size;
+                    let aligned_len = ((next_layer.max_offset - aligned_start + page_size - 1) / page_size) * page_size;
+                    unsafe {
+                        libc::madvise(
+                            self.mmap.as_ptr().add(aligned_start) as *mut libc::c_void,
+                            aligned_len,
+                            libc::MADV_WILLNEED,
+                        );
+                    }
                 }
             }
 
@@ -1153,9 +1157,20 @@ impl AstMicroEngine {
                 activations[step].copy_from_slice(&self.scratch.x);
             }
 
-            // Layer weights were used for all tokens; evict once per layer if above resident threshold
-            if layer_idx >= self.resident_layers {
-                layer.madvise_layer(&self.mmap);
+            // Rolling window eviction: evict layer_idx - window once it leaves active window,
+            // strictly preserving resident layers (layer < resident_layers).
+            if layer_idx >= window {
+                let evict_idx = layer_idx - window;
+                if evict_idx >= self.resident_layers {
+                    self.layers[evict_idx].madvise_layer(&self.mmap);
+                }
+            }
+        }
+
+        // Flush trailing layers that finished within the rolling window
+        for idx in self.block_count.saturating_sub(window)..self.block_count {
+            if idx >= self.resident_layers {
+                self.layers[idx].madvise_layer(&self.mmap);
             }
         }
 
@@ -1424,21 +1439,21 @@ pub struct SpeculativeStepResult {
 }
 
 /// Find up to `max_draft` candidate tokens from historical context using prompt lookup.
-/// Searches backwards for matching n-grams of lengths 5, 4, down to 3.
-/// Minimum n-gram length is 3 to guarantee high-confidence draft continuations and avoid
-/// low-entropy thrashing on common bigrams/whitespace.
+/// Searches backwards for matching n-grams of lengths 7 down to 2.
+/// Tries longer n-grams first for high-confidence drafting, with 2-gram bigram fallback
+/// to maintain draft momentum in high-frequency phrasing.
 pub fn find_candidate_draft_tokens(
     context: &[u32],
     max_draft: usize,
     eos_tokens: &[u32],
 ) -> Vec<u32> {
-    if context.len() < 4 || max_draft == 0 {
+    if context.len() < 3 || max_draft == 0 {
         return Vec::new();
     }
 
     let is_eos = |t: u32| eos_tokens.contains(&t);
 
-    for ngram_len in (3..=7.min(context.len().saturating_sub(1))).rev() {
+    for ngram_len in (2..=7.min(context.len().saturating_sub(1))).rev() {
         let query = &context[context.len() - ngram_len..];
         let search_limit = context.len().saturating_sub(ngram_len);
         if search_limit == 0 {
@@ -1477,6 +1492,13 @@ mod tests {
         let context = vec![10, 20, 30, 40, 50, 99, 10, 20, 30];
         let drafts = find_candidate_draft_tokens(&context, 2, &[2]);
         assert_eq!(drafts, vec![40, 50]);
+    }
+
+    #[test]
+    fn test_find_candidate_draft_tokens_bigram_fallback() {
+        let context = vec![10, 20, 30, 40, 50, 99, 10, 20];
+        let drafts = find_candidate_draft_tokens(&context, 2, &[2]);
+        assert_eq!(drafts, vec![30, 40]);
     }
 
     #[test]
