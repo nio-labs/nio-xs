@@ -90,6 +90,19 @@ fn main() -> Result<()> {
     println!("Post-tokenizer RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB", tok_rss, tok_hwm);
     let t0 = Instant::now();
     let mut engine = AstMicroEngine::new(&model_path)?;
+    let turbo = std::env::args().any(|a| a == "--turbo");
+    let max_gen_tokens = std::env::args()
+        .position(|a| a == "--max-tokens")
+        .and_then(|idx| std::env::args().nth(idx + 1))
+        .and_then(|val| val.parse::<usize>().ok())
+        .unwrap_or(64);
+
+    if turbo {
+        println!("🚀 TURBO MODE ENABLED: Pinning all 28 layers in RAM (zero madvise eviction overhead)");
+        engine.set_resident_layers(28);
+        engine.set_turbo(true);
+    }
+
     let load_time = t0.elapsed().as_secs_f64();
     let (load_rss, load_hwm) = memory_mb();
     println!("Engine loaded in {:.2}s | Post-load RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB\n", load_time, load_rss, load_hwm);
@@ -132,7 +145,6 @@ fn main() -> Result<()> {
         // Decode loop
         let t_gen = Instant::now();
         let mut gen_tokens = Vec::new();
-        let max_gen_tokens = 64;
 
         for _ in 0..max_gen_tokens {
             let next_tok = engine.next_token_with_history(None, &gen_tokens, false)?;
