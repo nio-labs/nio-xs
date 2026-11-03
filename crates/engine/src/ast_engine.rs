@@ -701,6 +701,17 @@ impl AstMicroEngine {
     pub fn new(model_path: &Path) -> Result<Self> {
         let file = File::open(model_path)?;
         let mmap = unsafe { Mmap::map(&file)? };
+
+        #[cfg(target_os = "linux")]
+        unsafe {
+            // Advise Transparent HugePages (THP) for collapsing 4KB page walks into 2MB entries
+            libc::madvise(
+                mmap.as_ptr() as *mut libc::c_void,
+                mmap.len(),
+                libc::MADV_HUGEPAGE,
+            );
+        }
+
         let mut cursor = std::io::Cursor::new(&mmap[..]);
         let gguf = gguf::GgufModel::read(&mut cursor)?;
 
@@ -988,6 +999,12 @@ impl AstMicroEngine {
                 self.mmap.as_ptr() as *mut libc::c_void,
                 self.mmap.len(),
                 libc::MADV_DONTNEED,
+            );
+            #[cfg(target_os = "linux")]
+            libc::madvise(
+                self.mmap.as_ptr() as *mut libc::c_void,
+                self.mmap.len(),
+                libc::MADV_HUGEPAGE,
             );
         }
     }

@@ -214,8 +214,12 @@ impl GemvTask {
                         let w1_row_ptr = weights1_ptr.add(j * row_bytes);
                         let w3_row_ptr = weights3_ptr.add(j * row_bytes);
                         if j + 1 < rows {
-                            core::arch::x86_64::_mm_prefetch(weights1_ptr.add((j + 1) * row_bytes) as *const i8, core::arch::x86_64::_MM_HINT_T0);
-                            core::arch::x86_64::_mm_prefetch(weights3_ptr.add((j + 1) * row_bytes) as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                            let next_w1 = weights1_ptr.add((j + 1) * row_bytes);
+                            let next_w3 = weights3_ptr.add((j + 1) * row_bytes);
+                            core::arch::x86_64::_mm_prefetch(next_w1 as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                            core::arch::x86_64::_mm_prefetch(next_w1.add(64) as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                            core::arch::x86_64::_mm_prefetch(next_w3 as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                            core::arch::x86_64::_mm_prefetch(next_w3.add(64) as *const i8, core::arch::x86_64::_MM_HINT_T0);
                         }
                         inter[j] = quants::gate_up_iq4_nl_silu_avx2(w1_row_ptr, w3_row_ptr, x_blocks, nb);
                     }

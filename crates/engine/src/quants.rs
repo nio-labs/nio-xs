@@ -334,6 +334,9 @@ pub unsafe fn vec_dot_q8_0_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_0]
 
     let mut acc = _mm256_setzero_ps();
     for ib in 0..nb {
+        if (ib & 3) == 0 && ib + 8 < nb {
+            _mm_prefetch(weight_bytes.as_ptr().add((ib + 8) * 34) as *const i8, _MM_HINT_T0);
+        }
         let block_ptr = weight_bytes.as_ptr().add(ib * 34);
         let d_f32 = f16_to_f32_hw((block_ptr as *const u16).read_unaligned());
         let d = _mm256_set1_ps(d_f32 * x_blocks[ib].d);
@@ -394,7 +397,9 @@ pub unsafe fn vec_dot_q8_0_28blocks_2rows_avx2(
 
     // Prefetch 4 rows ahead (4 * 952 = 3808 bytes)
     _mm_prefetch(r0_ptr.add(3808) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r0_ptr.add(3808 + 512) as *const i8, _MM_HINT_T0);
     _mm_prefetch(r1_ptr.add(3808) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r1_ptr.add(3808 + 512) as *const i8, _MM_HINT_T0);
 
     let mut r0_acc0 = _mm256_setzero_ps();
     let mut r0_acc1 = _mm256_setzero_ps();
@@ -403,6 +408,10 @@ pub unsafe fn vec_dot_q8_0_28blocks_2rows_avx2(
 
     let mut ib = 0;
     while ib < 28 {
+        if ib + 4 < 28 {
+            _mm_prefetch(r0_ptr.add((ib + 4) * 34) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(r1_ptr.add((ib + 4) * 34) as *const i8, _MM_HINT_T0);
+        }
         let act_q0 = x_qs[ib];
         let act_q1 = x_qs[ib + 1];
         let act_d0 = x_d[ib];
@@ -492,6 +501,9 @@ pub unsafe fn vec_dot_iq4_nl_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_
     let mut accum2 = _mm256_setzero_ps();
     let mut ib = 0;
     while ib + 1 < nb {
+        if (ib & 3) == 0 && ib + 8 < nb {
+            _mm_prefetch(weight_bytes.as_ptr().add((ib + 8) * 18) as *const i8, _MM_HINT_T0);
+        }
         let b0_ptr = weight_bytes.as_ptr().add(ib * 18);
         let b1_ptr = weight_bytes.as_ptr().add((ib + 1) * 18);
 
@@ -561,6 +573,10 @@ pub unsafe fn gate_up_iq4_nl_silu_avx2(
 
     let mut ib = 0;
     while ib + 1 < nb {
+        if (ib & 3) == 0 && ib + 8 < nb {
+            _mm_prefetch(w1_ptr.add((ib + 8) * 18) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(w3_ptr.add((ib + 8) * 18) as *const i8, _MM_HINT_T0);
+        }
         let q8b_1 = _mm256_loadu_si256(x_blocks[ib].qs.as_ptr() as *const __m256i);
         let q8b_2 = _mm256_loadu_si256(x_blocks[ib + 1].qs.as_ptr() as *const __m256i);
         let x_d0 = x_blocks[ib].d;
@@ -633,7 +649,9 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8
     for i in 0..nb {
         let b_ptr = weight_bytes.as_ptr().add(i * 98);
         if i + 2 < nb {
-            _mm_prefetch(weight_bytes.as_ptr().add((i + 2) * 98) as *const i8, _MM_HINT_T0);
+            let next_ptr = weight_bytes.as_ptr().add((i + 2) * 98);
+            _mm_prefetch(next_ptr as *const i8, _MM_HINT_T0);
+            _mm_prefetch(next_ptr.add(64) as *const i8, _MM_HINT_T0);
         }
         let d = f16_to_f32_hw((b_ptr as *const u16).read_unaligned()) * x_blocks[i].d;
 
@@ -737,12 +755,25 @@ pub unsafe fn gemv_iq4_nl_prequant(out: &mut [f32], weight_bytes: &[u8], x_block
         let r2_ptr = weight_bytes.as_ptr().add((r + 2) * row_bytes);
         let r3_ptr = weight_bytes.as_ptr().add((r + 3) * row_bytes);
 
+        if r + 7 < n_rows {
+            _mm_prefetch(weight_bytes.as_ptr().add((r + 4) * row_bytes) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(weight_bytes.as_ptr().add((r + 5) * row_bytes) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(weight_bytes.as_ptr().add((r + 6) * row_bytes) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(weight_bytes.as_ptr().add((r + 7) * row_bytes) as *const i8, _MM_HINT_T0);
+        }
+
         let mut acc0 = _mm256_setzero_ps();
         let mut acc1 = _mm256_setzero_ps();
         let mut acc2 = _mm256_setzero_ps();
         let mut acc3 = _mm256_setzero_ps();
 
         for ib in 0..nb {
+            if (ib & 3) == 0 && ib + 8 < nb {
+                _mm_prefetch(r0_ptr.add((ib + 8) * 18) as *const i8, _MM_HINT_T0);
+                _mm_prefetch(r1_ptr.add((ib + 8) * 18) as *const i8, _MM_HINT_T0);
+                _mm_prefetch(r2_ptr.add((ib + 8) * 18) as *const i8, _MM_HINT_T0);
+                _mm_prefetch(r3_ptr.add((ib + 8) * 18) as *const i8, _MM_HINT_T0);
+            }
             let q8b = _mm256_loadu_si256(x_blocks[ib].qs.as_ptr() as *const __m256i);
             let x_d = x_blocks[ib].d;
 
@@ -815,11 +846,19 @@ pub unsafe fn gemv_iq4_nl_prequant(out: &mut [f32], weight_bytes: &[u8], x_block
 
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn gemv_iq3_xxs_prequant(out: &mut [f32], weight_bytes: &[u8], x_q8_k: &[BlockQ8_K], n_rows: usize, n_cols: usize) {
+    use core::arch::x86_64::*;
     let row_bytes = (n_cols / 256) * 98;
     assert_eq!(weight_bytes.len(), n_rows * row_bytes);
 
     let mut r = 0;
     while r + 3 < n_rows {
+        if r + 7 < n_rows {
+            _mm_prefetch(weight_bytes.as_ptr().add((r + 4) * row_bytes) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(weight_bytes.as_ptr().add((r + 5) * row_bytes) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(weight_bytes.as_ptr().add((r + 6) * row_bytes) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(weight_bytes.as_ptr().add((r + 7) * row_bytes) as *const i8, _MM_HINT_T0);
+        }
+
         let row0 = std::slice::from_raw_parts(weight_bytes.as_ptr().add(r * row_bytes), row_bytes);
         let row1 = std::slice::from_raw_parts(weight_bytes.as_ptr().add((r + 1) * row_bytes), row_bytes);
         let row2 = std::slice::from_raw_parts(weight_bytes.as_ptr().add((r + 2) * row_bytes), row_bytes);
