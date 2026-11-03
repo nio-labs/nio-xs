@@ -557,15 +557,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
             .duration_since(std::time::UNIX_EPOCH)?
             .as_nanos()
     );
-    let ray_engine = nioxs_engine::RayEngine::new().ok();
-    if let Some(engine) = &ray_engine {
-        let _ = engine.ensure_loaded().await;
-    }
-    let microlm_banner = if ray_engine.is_some() {
-        "NioRay (In-Process Predator, Candle GGUF)"
-    } else {
-        "NioNano (<0.5ms decision triage)"
-    };
+    let ray_engine: Option<nioxs_engine::RayEngine> = None;
+    let microlm_banner = "Sovereign MicroLM Fleet (Beluga, Manta, Viper, Dolphin)";
     let listener = tokio::net::TcpListener::bind(listen).await?;
     let addr = listener.local_addr()?;
     eprintln!(
