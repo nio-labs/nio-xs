@@ -684,6 +684,7 @@ pub struct AstMicroEngine {
     pub suppressed_tokens: HashSet<u32>,
     pub turbo: bool,
     pub pool: SpinThreadPool,
+    pub resident_layers: usize,
 }
 
 impl AstMicroEngine {
@@ -915,12 +916,18 @@ impl AstMicroEngine {
                 pool.park();
                 pool
             },
+            resident_layers: 0,
         };
         engine.evict_all();
         unsafe {
             libc::malloc_trim(0);
         }
         Ok(engine)
+    }
+
+    #[inline(always)]
+    pub fn set_resident_layers(&mut self, n: usize) {
+        self.resident_layers = n;
     }
 
     #[inline(always)]
@@ -1134,8 +1141,10 @@ impl AstMicroEngine {
                 activations[step].copy_from_slice(&self.scratch.x);
             }
 
-            // Layer weights were used for all tokens; evict once per layer
-            layer.madvise_layer(&self.mmap);
+            // Layer weights were used for all tokens; evict once per layer if above resident threshold
+            if layer_idx >= self.resident_layers {
+                layer.madvise_layer(&self.mmap);
+            }
         }
 
         // 3. Output RMS norm for each token
