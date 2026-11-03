@@ -81,6 +81,21 @@ pub enum GemvTask {
         top_tok_ptr: usize,
         top_score_ptr: usize,
     },
+    VocabIq4Nl {
+        weight_ptr: usize,
+        x_blocks_ptr: usize,
+        start_tok: usize,
+        vocab_count: usize,
+        bytes_per_token: usize,
+        suppress_eos: bool,
+        history_ptr: usize,
+        history_len: usize,
+        suppressed_ptr: usize,
+        suppressed_len: usize,
+        repeat_penalty: f32,
+        top_tok_ptr: usize,
+        top_score_ptr: usize,
+    },
     Attention {
         q_ptr: usize,
         k_cache_ptr: usize,
@@ -448,6 +463,220 @@ impl GemvTask {
                         let row_ptr = weight_bytes.as_ptr().add(row_offset);
                         let row_slice = std::slice::from_raw_parts(row_ptr, bytes_per_token);
                         let val = quants::vec_dot_q8_0_q8_0_avx2(row_slice, x_blocks);
+                        if val > best_score {
+                            let mut score = val;
+                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok_id).count();
+                            if repeat_count > 0 {
+                                score -= (repeat_count as f32) * 2.5;
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
+                            }
+                            if score > best_score {
+                                best_score = score;
+                                best_tok = tok_id;
+                            }
+                        }
+                    }
+                }
+
+                let top_toks = std::slice::from_raw_parts_mut(top_tok_ptr as *mut u32, num_workers);
+                let top_scores = std::slice::from_raw_parts_mut(top_score_ptr as *mut f32, num_workers);
+                top_toks[worker_id] = best_tok;
+                top_scores[worker_id] = best_score;
+            }
+            GemvTask::VocabIq4Nl {
+                weight_ptr,
+                x_blocks_ptr,
+                start_tok,
+                vocab_count,
+                bytes_per_token,
+                suppress_eos,
+                history_ptr,
+                history_len,
+                suppressed_ptr,
+                suppressed_len,
+                repeat_penalty,
+                top_tok_ptr,
+                top_score_ptr,
+            } => {
+                let chunk = (vocab_count + num_workers - 1) / num_workers;
+                let worker_start = (start_tok + worker_id * chunk).min(start_tok + vocab_count);
+                let worker_end = (start_tok + (worker_id + 1) * chunk).min(start_tok + vocab_count);
+                if worker_start >= worker_end {
+                    return;
+                }
+                let num_blocks = bytes_per_token / 18;
+                let weight_bytes = std::slice::from_raw_parts(weight_ptr as *const u8, (start_tok + vocab_count) * bytes_per_token);
+                let x_blocks = std::slice::from_raw_parts(x_blocks_ptr as *const BlockQ8_0, num_blocks);
+                let history = std::slice::from_raw_parts(history_ptr as *const u32, history_len);
+                let suppressed = if suppressed_len > 0 {
+                    std::slice::from_raw_parts(suppressed_ptr as *const u32, suppressed_len)
+                } else {
+                    &[]
+                };
+
+                let is_manta = num_blocks == 28;
+                let is_beluga = num_blocks == 48;
+
+                let mut x_qs_manta = [core::arch::x86_64::_mm256_setzero_si256(); 28];
+                let mut x_d_manta = [0.0f32; 28];
+                let mut x_qs_beluga = [core::arch::x86_64::_mm256_setzero_si256(); 48];
+                let mut x_d_beluga = [0.0f32; 48];
+
+                if is_manta {
+                    for i in 0..28 {
+                        x_qs_manta[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_d_manta[i] = x_blocks[i].d;
+                    }
+                } else if is_beluga {
+                    for i in 0..48 {
+                        x_qs_beluga[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_d_beluga[i] = x_blocks[i].d;
+                    }
+                }
+
+                let recent_slice = if history_len > 96 {
+                    &history[history_len - 96..]
+                } else {
+                    history
+                };
+
+                let mut best_tok = worker_start as u32;
+                let mut best_score = f32::NEG_INFINITY;
+                let pen = if repeat_penalty > 1.0 { repeat_penalty } else { 1.25 };
+
+                if is_manta {
+                    let mut tok_id = worker_start as u32;
+                    let end_id = worker_end as u32;
+                    while tok_id + 1 < end_id {
+                        let tok0 = tok_id;
+                        let tok1 = tok_id + 1;
+                        let skip0 = (suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0));
+                        let skip1 = (suppress_eos && (tok1 == 151645 || tok1 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok1));
+                        let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 504);
+                        let r1_ptr = weight_bytes.as_ptr().add((tok1 as usize) * 504);
+                        let (val0, val1) = quants::vec_dot_iq4_nl_28blocks_2rows_avx2(r0_ptr, r1_ptr, &x_qs_manta, &x_d_manta);
+
+                        if !skip0 && val0 > best_score {
+                            let mut score = val0;
+                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                            if repeat_count > 0 {
+                                score -= (repeat_count as f32) * 2.5;
+                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                else { score *= pen.powi(repeat_count as i32); }
+                            }
+                            if score > best_score {
+                                best_score = score;
+                                best_tok = tok0;
+                            }
+                        }
+                        if !skip1 && val1 > best_score {
+                            let mut score = val1;
+                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok1).count();
+                            if repeat_count > 0 {
+                                score -= (repeat_count as f32) * 2.5;
+                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                else { score *= pen.powi(repeat_count as i32); }
+                            }
+                            if score > best_score {
+                                best_score = score;
+                                best_tok = tok1;
+                            }
+                        }
+                        tok_id += 2;
+                    }
+                    if tok_id < end_id {
+                        let tok0 = tok_id;
+                        if !((suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0))) {
+                            let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 504);
+                            let val0 = quants::vec_dot_iq4_nl_28blocks_avx2(r0_ptr, &x_qs_manta, &x_d_manta);
+                            if val0 > best_score {
+                                let mut score = val0;
+                                let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                                if repeat_count > 0 {
+                                    score -= (repeat_count as f32) * 2.5;
+                                    if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                    else { score *= pen.powi(repeat_count as i32); }
+                                }
+                                if score > best_score {
+                                    best_score = score;
+                                    best_tok = tok0;
+                                }
+                            }
+                        }
+                    }
+                } else if is_beluga {
+                    let mut tok_id = worker_start as u32;
+                    let end_id = worker_end as u32;
+                    while tok_id + 1 < end_id {
+                        let tok0 = tok_id;
+                        let tok1 = tok_id + 1;
+                        let skip0 = (suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0));
+                        let skip1 = (suppress_eos && (tok1 == 151645 || tok1 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok1));
+                        let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 864);
+                        let r1_ptr = weight_bytes.as_ptr().add((tok1 as usize) * 864);
+                        let (val0, val1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(r0_ptr, r1_ptr, &x_qs_beluga, &x_d_beluga);
+
+                        if !skip0 && val0 > best_score {
+                            let mut score = val0;
+                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                            if repeat_count > 0 {
+                                score -= (repeat_count as f32) * 2.5;
+                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                else { score *= pen.powi(repeat_count as i32); }
+                            }
+                            if score > best_score {
+                                best_score = score;
+                                best_tok = tok0;
+                            }
+                        }
+                        if !skip1 && val1 > best_score {
+                            let mut score = val1;
+                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok1).count();
+                            if repeat_count > 0 {
+                                score -= (repeat_count as f32) * 2.5;
+                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                else { score *= pen.powi(repeat_count as i32); }
+                            }
+                            if score > best_score {
+                                best_score = score;
+                                best_tok = tok1;
+                            }
+                        }
+                        tok_id += 2;
+                    }
+                    if tok_id < end_id {
+                        let tok0 = tok_id;
+                        if !((suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0))) {
+                            let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 864);
+                            let val0 = quants::vec_dot_iq4_nl_48blocks_avx2(r0_ptr, &x_qs_beluga, &x_d_beluga);
+                            if val0 > best_score {
+                                let mut score = val0;
+                                let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                                if repeat_count > 0 {
+                                    score -= (repeat_count as f32) * 2.5;
+                                    if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                    else { score *= pen.powi(repeat_count as i32); }
+                                }
+                                if score > best_score {
+                                    best_score = score;
+                                    best_tok = tok0;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    for tok_id in (worker_start as u32)..(worker_end as u32) {
+                        if (suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2 || tok_id == 151645 || tok_id == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok_id)) {
+                            continue;
+                        }
+                        let row_offset = (tok_id as usize) * bytes_per_token;
+                        let row_ptr = weight_bytes.as_ptr().add(row_offset);
+                        let row_slice = std::slice::from_raw_parts(row_ptr, bytes_per_token);
+                        let val = quants::vec_dot_iq4_nl_q8_0_avx2(row_slice, x_blocks);
                         if val > best_score {
                             let mut score = val;
                             let repeat_count = recent_slice.iter().filter(|&&id| id == tok_id).count();

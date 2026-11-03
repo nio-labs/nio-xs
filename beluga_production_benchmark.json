@@ -1,0 +1,63 @@
+{
+  "model": "NioBeluga (1.54B Sovereign Cognitive Companion)",
+  "disk_size_mb": 768.22802734375,
+  "num_queries": 3,
+  "avg_prefill_ms": 3055.501026666667,
+  "avg_prefill_tps": 27.8823809349821,
+  "avg_tokens_per_sec": 15.761461351024517,
+  "peak_ram_mb": 225.62890625,
+  "sub_250mb_sla_passed": true,
+  "results": [
+    {
+      "prompt_id": 1,
+      "category": "systems_architecture",
+      "prompt": "Design an in-memory lock-free priority queue for high-frequency trading in Rust.",
+      "prompt_tokens": 82,
+      "prefill_time_ms": 2621.7749559999997,
+      "prefill_tps": 31.276521202684034,
+      "gen_tokens": 64,
+      "gen_time_s": 3.546138692,
+      "tokens_per_sec": 18.047799468301225,
+      "word_count": 39,
+      "words_per_sec": 10.99787780099606,
+      "vm_rss_mb": 203.22265625,
+      "vm_hwm_mb": 225.62890625,
+      "has_think_tags": true,
+      "response": "<think>The current design is flawed. A simple Mutex/CondVar pair suffices for the core, but it doesn't scale to high frequency without significant overhead in isolation points and thread synchronization checks.</think>\n\nI propose a *lock-free* priority queue using [C++14's `std::queue`"
+    },
+    {
+      "prompt_id": 2,
+      "category": "memory_safety",
+      "prompt": "Explain the memory safety implications and cache hazards of uninitialized memory in tensor runtimes.",
+      "prompt_tokens": 84,
+      "prefill_time_ms": 2877.409638,
+      "prefill_tps": 29.19292369451638,
+      "gen_tokens": 64,
+      "gen_time_s": 4.163513353,
+      "tokens_per_sec": 15.371633179436088,
+      "word_count": 45,
+      "words_per_sec": 10.808179579291,
+      "vm_rss_mb": 202.390625,
+      "vm_hwm_mb": 225.62890625,
+      "has_think_tags": true,
+      "response": "<think>Uninitialized memory in tensor runtimes is a significant architectural flaw that introduces severe performance and reliability issues, often referred to as \"data corruption\" or the *use-after-free* bug. This problem arises when an application allocates storage for tensors (typically using `cudaMalloc` on CUDA platforms) but does"
+    },
+    {
+      "prompt_id": 3,
+      "category": "consensus_protocols",
+      "prompt": "Compare Raft vs Multi-Paxos for distributed key-value stores under high network jitter.",
+      "prompt_tokens": 85,
+      "prefill_time_ms": 3667.318486,
+      "prefill_tps": 23.177697907745884,
+      "gen_tokens": 64,
+      "gen_time_s": 4.615955594,
+      "tokens_per_sec": 13.864951405336244,
+      "word_count": 44,
+      "words_per_sec": 9.53215409116867,
+      "vm_rss_mb": 202.4765625,
+      "vm_hwm_mb": 225.62890625,
+      "has_think_tags": true,
+      "response": "<think>\nRaft and Multi-Paxos both provide strong state guarantees in a distributed environment, but they differ significantly when dealing with high network jitter.\n</think>\n\n**1. Basic Architecture Comparison:**\n- **Raft:** A simple majority-based algorithm where the leader is elected by all followers (or more)"
+    }
+  ]
+}

@@ -33,7 +33,7 @@ struct BelugaSummary {
     avg_prefill_tps: f64,
     avg_tokens_per_sec: f64,
     peak_ram_mb: f64,
-    sub_500mb_sla_passed: bool,
+    sub_250mb_sla_passed: bool,
     results: Vec<BenchmarkResult>,
 }
 
@@ -58,7 +58,10 @@ fn get_file_size_mb(path: &Path) -> f64 {
 }
 
 fn main() -> Result<()> {
-    let model_path = PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga.vmicrolm-vector.gguf");
+    let model_path = std::env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga.vmicrolm-vector.gguf"));
     let tokenizer_path = PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga-tokenizer.json");
 
     if !model_path.exists() {
@@ -185,14 +188,14 @@ fn main() -> Result<()> {
         avg_prefill_tps: total_prefill_tps / n,
         avg_tokens_per_sec: total_tps / n,
         peak_ram_mb: peak_ram_observed,
-        sub_500mb_sla_passed: peak_ram_observed < 500.0,
+        sub_250mb_sla_passed: peak_ram_observed < 250.0,
         results,
     };
 
     println!("========================================================");
     println!("  🐋 BENCHMARK SUMMARY & SLA VERIFICATION");
     println!("  Peak Resident RAM (VmHWM): {:.2} MB", summary.peak_ram_mb);
-    println!("  Sub-500MB SLA:             {}", if summary.sub_500mb_sla_passed { "✅ PASSED (< 500 MB)" } else { "❌ FAILED" });
+    println!("  Sub-250MB SLA:             {}", if summary.sub_250mb_sla_passed { "✅ PASSED (< 250 MB)" } else { "❌ FAILED" });
     println!("  Avg Prefill TPS:           {:.2} t/s", summary.avg_prefill_tps);
     println!("  Avg Generation TPS:        {:.2} t/s", summary.avg_tokens_per_sec);
     println!("========================================================");

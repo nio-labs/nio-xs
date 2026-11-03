@@ -753,8 +753,8 @@ impl AstMicroEngine {
             .ok_or_else(|| anyhow!("missing token_embd.weight"))?;
         let token_embd_offset = gguf.tensor_data_offset + embd_info.offset as usize;
         let token_embd_dtype = embd_info.dtype;
-        if token_embd_dtype != 8 {
-            anyhow::bail!("AST-Micro requires Q8_0 token embeddings, found dtype {token_embd_dtype}");
+        if token_embd_dtype != 8 && token_embd_dtype != 20 {
+            anyhow::bail!("AST-Micro requires Q8_0 or IQ4_NL token embeddings, found dtype {token_embd_dtype}");
         }
 
         let (block_size, type_size) = match token_embd_dtype {
@@ -776,8 +776,8 @@ impl AstMicroEngine {
             {
                 anyhow::bail!("output.weight shape {:?} does not match vocab/embedding dimensions", meta.shape);
             }
-            if meta.dtype != 8 {
-                anyhow::bail!("AST-Micro separate output.weight requires Q8_0, found dtype {}", meta.dtype);
+            if meta.dtype != 8 && meta.dtype != 20 {
+                anyhow::bail!("AST-Micro separate output.weight requires Q8_0 or IQ4_NL, found dtype {}", meta.dtype);
             }
             Some(LinearSlice::new(meta, gguf.tensor_data_offset))
         } else {
@@ -1061,6 +1061,7 @@ impl AstMicroEngine {
         let end = start + bytes_per_token;
         let slice = &mmap[start..end];
         match dtype {
+            20 => quants::dequantize_row_iq4_nl(slice, out),
             8 => quants::dequantize_row_q8_0(slice, out),
             2 => quants::dequantize_row_q4_0(slice, out),
             0 => quants::dequantize_row_f32(slice, out),
@@ -1184,19 +1185,25 @@ impl AstMicroEngine {
     /// Return unsampled logits after prefill/forward for runtime diagnostics.
     pub fn diagnostic_logits(&mut self) -> Result<Vec<f32>> {
         quants::quantize_row_q8_0(&self.scratch.x_norm, &mut self.scratch.x_q8_0);
-        let (offset, vocab_size, row_bytes) = if let Some(output) = &self.output_weight {
-            (output.offset, output.n_rows, (output.n_cols / 32) * 34)
+        let (offset, vocab_size, row_bytes, is_iq4_nl) = if let Some(output) = &self.output_weight {
+            let row_bytes = if output.dtype == 20 { (output.n_cols / 32) * 18 } else { (output.n_cols / 32) * 34 };
+            (output.offset, output.n_rows, row_bytes, output.dtype == 20)
         } else {
             let embedding = self.gguf.tensors.get("token_embd.weight")
                 .ok_or_else(|| anyhow!("missing token embeddings"))?;
-            (self.token_embd_offset, *embedding.shape.first().ok_or_else(|| anyhow!("invalid embedding shape"))?, self.bytes_per_token)
+            (self.token_embd_offset, *embedding.shape.first().ok_or_else(|| anyhow!("invalid embedding shape"))?, self.bytes_per_token, self.token_embd_dtype == 20)
         };
         let end = offset.checked_add(vocab_size.checked_mul(row_bytes)
             .ok_or_else(|| anyhow!("embedding size overflow"))?).ok_or_else(|| anyhow!("embedding offset overflow"))?;
         let bytes = self.mmap.get(offset..end).ok_or_else(|| anyhow!("truncated output matrix"))?;
         use rayon::prelude::*;
-        Ok(bytes.par_chunks_exact(row_bytes)
-            .map(|row| unsafe { quants::vec_dot_q8_0_q8_0_avx2(row, &self.scratch.x_q8_0) }).collect())
+        if is_iq4_nl {
+            Ok(bytes.par_chunks_exact(row_bytes)
+                .map(|row| unsafe { quants::vec_dot_iq4_nl_q8_0_avx2(row, &self.scratch.x_q8_0) }).collect())
+        } else {
+            Ok(bytes.par_chunks_exact(row_bytes)
+                .map(|row| unsafe { quants::vec_dot_q8_0_q8_0_avx2(row, &self.scratch.x_q8_0) }).collect())
+        }
     }
 
     pub fn next_token(&mut self, _hidden: &Tensor, candidates: Option<&[u32]>) -> Result<u32> {
@@ -1236,10 +1243,11 @@ impl AstMicroEngine {
             }
             let mut max_idx = 0;
             let mut max_val = f32::NEG_INFINITY;
-            let (matrix_offset, row_bytes) = if let Some(output) = &self.output_weight {
-                (output.offset, (output.n_cols / 32) * 34)
+            let (matrix_offset, row_bytes, is_iq4_nl) = if let Some(output) = &self.output_weight {
+                let rbytes = if output.dtype == 20 { (output.n_cols / 32) * 18 } else { (output.n_cols / 32) * 34 };
+                (output.offset, rbytes, output.dtype == 20)
             } else {
-                (self.token_embd_offset, self.bytes_per_token)
+                (self.token_embd_offset, self.bytes_per_token, self.token_embd_dtype == 20)
             };
             for (i, &tok_id) in cands.iter().enumerate() {
                 if suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2) {
@@ -1250,7 +1258,11 @@ impl AstMicroEngine {
                 }
                 let start = matrix_offset + (tok_id as usize) * row_bytes;
                 let slice = &self.mmap[start..start + row_bytes];
-                let val = unsafe { quants::vec_dot_q8_0_q8_0_avx2(slice, &self.scratch.x_q8_0) };
+                let val = if is_iq4_nl {
+                    unsafe { quants::vec_dot_iq4_nl_q8_0_avx2(slice, &self.scratch.x_q8_0) }
+                } else {
+                    unsafe { quants::vec_dot_q8_0_q8_0_avx2(slice, &self.scratch.x_q8_0) }
+                };
                 let mut score = val;
                 if recent.contains(&tok_id) {
                     score = if score > 0.0 {
@@ -1266,32 +1278,51 @@ impl AstMicroEngine {
             }
             Ok(cands[max_idx])
         } else {
-            let (matrix_offset, vocab_size, bytes_per_token) = if let Some(output) = &self.output_weight {
-                (output.offset, output.n_rows, (output.n_cols / 32) * 34)
+            let (matrix_offset, vocab_size, bytes_per_token, is_iq4_nl) = if let Some(output) = &self.output_weight {
+                let rbytes = if output.dtype == 20 { (output.n_cols / 32) * 18 } else { (output.n_cols / 32) * 34 };
+                (output.offset, output.n_rows, rbytes, output.dtype == 20)
             } else {
                 let embd_info = self.gguf.tensors.get("token_embd.weight").unwrap();
-                (self.token_embd_offset, embd_info.shape[0], self.bytes_per_token)
+                (self.token_embd_offset, embd_info.shape[0], self.bytes_per_token, self.token_embd_dtype == 20)
             };
 
             let suppressed_vec: Vec<u32> = self.suppressed_tokens.iter().copied().collect();
             let mut top_toks = [0u32; pool::NUM_WORKERS];
             let mut top_scores = [f32::NEG_INFINITY; pool::NUM_WORKERS];
 
-            self.pool.run_task(GemvTask::VocabQ8_0 {
-                weight_ptr: (self.mmap.as_ptr() as usize) + matrix_offset,
-                x_blocks_ptr: self.scratch.x_q8_0.as_ptr() as usize,
-                start_tok: 0,
-                vocab_count: vocab_size,
-                bytes_per_token,
-                suppress_eos,
-                history_ptr: history.as_ptr() as usize,
-                history_len: history.len(),
-                suppressed_ptr: suppressed_vec.as_ptr() as usize,
-                suppressed_len: suppressed_vec.len(),
-                repeat_penalty: self.repeat_penalty,
-                top_tok_ptr: top_toks.as_mut_ptr() as usize,
-                top_score_ptr: top_scores.as_mut_ptr() as usize,
-            });
+            if is_iq4_nl {
+                self.pool.run_task(GemvTask::VocabIq4Nl {
+                    weight_ptr: (self.mmap.as_ptr() as usize) + matrix_offset,
+                    x_blocks_ptr: self.scratch.x_q8_0.as_ptr() as usize,
+                    start_tok: 0,
+                    vocab_count: vocab_size,
+                    bytes_per_token,
+                    suppress_eos,
+                    history_ptr: history.as_ptr() as usize,
+                    history_len: history.len(),
+                    suppressed_ptr: suppressed_vec.as_ptr() as usize,
+                    suppressed_len: suppressed_vec.len(),
+                    repeat_penalty: self.repeat_penalty,
+                    top_tok_ptr: top_toks.as_mut_ptr() as usize,
+                    top_score_ptr: top_scores.as_mut_ptr() as usize,
+                });
+            } else {
+                self.pool.run_task(GemvTask::VocabQ8_0 {
+                    weight_ptr: (self.mmap.as_ptr() as usize) + matrix_offset,
+                    x_blocks_ptr: self.scratch.x_q8_0.as_ptr() as usize,
+                    start_tok: 0,
+                    vocab_count: vocab_size,
+                    bytes_per_token,
+                    suppress_eos,
+                    history_ptr: history.as_ptr() as usize,
+                    history_len: history.len(),
+                    suppressed_ptr: suppressed_vec.as_ptr() as usize,
+                    suppressed_len: suppressed_vec.len(),
+                    repeat_penalty: self.repeat_penalty,
+                    top_tok_ptr: top_toks.as_mut_ptr() as usize,
+                    top_score_ptr: top_scores.as_mut_ptr() as usize,
+                });
+            }
 
             let mut best_token = 0u32;
             let mut max_score = f32::NEG_INFINITY;
