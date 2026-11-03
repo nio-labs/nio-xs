@@ -5,7 +5,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use crate::quants::{self, BlockQ8_0, BlockQ8_K};
 
-pub const NUM_WORKERS: usize = 6;
+pub const NUM_WORKERS: usize = 4;
 
 #[derive(Clone, Copy)]
 pub enum GemvTask {
@@ -52,11 +52,55 @@ pub enum GemvTask {
         n_rows: usize,
         n_cols: usize,
     },
+    GateUpIq3Xxs {
+        inter_out_ptr: usize,
+        w1_ptr: usize,
+        w3_ptr: usize,
+        x_q8_k_ptr: usize,
+        n_rows: usize,
+        n_cols: usize,
+    },
+    GateUpIq3Xxs2Tokens {
+        inter0_out_ptr: usize,
+        inter1_out_ptr: usize,
+        w1_ptr: usize,
+        w3_ptr: usize,
+        x0_q8_k_ptr: usize,
+        x1_q8_k_ptr: usize,
+        n_rows: usize,
+        n_cols: usize,
+    },
     Iq3Xxs {
         out_ptr: usize,
         weight_ptr: usize,
         x_q8_k_ptr: usize,
         n_rows: usize,
+        n_cols: usize,
+    },
+    Iq3Xxs2Tokens {
+        out0_ptr: usize,
+        out1_ptr: usize,
+        weight_ptr: usize,
+        x0_q8_k_ptr: usize,
+        x1_q8_k_ptr: usize,
+        n_rows: usize,
+        n_cols: usize,
+    },
+    QkvIq3Xxs2Tokens {
+        q0_ptr: usize,
+        q1_ptr: usize,
+        k0_ptr: usize,
+        k1_ptr: usize,
+        v0_ptr: usize,
+        v1_ptr: usize,
+        wq_ptr: usize,
+        wk_ptr: usize,
+        wv_ptr: usize,
+        x0_q8_k_ptr: usize,
+        x1_q8_k_ptr: usize,
+        q_rows: usize,
+        k_rows: usize,
+        v_rows: usize,
         n_cols: usize,
     },
     Q8_0 {
@@ -204,6 +248,68 @@ impl GemvTask {
                     let out = std::slice::from_raw_parts_mut((v_ptr as *mut f32).add(v_start), v_end - v_start);
                     let weights = std::slice::from_raw_parts((wv_ptr as *const u8).add(v_start * row_bytes), (v_end - v_start) * row_bytes);
                     quants::gemv_iq3_xxs_prequant(out, weights, x_q8_k, v_end - v_start, n_cols);
+                }
+            }
+            GemvTask::QkvIq3Xxs2Tokens {
+                q0_ptr, q1_ptr,
+                k0_ptr, k1_ptr,
+                v0_ptr, v1_ptr,
+                wq_ptr, wk_ptr, wv_ptr,
+                x0_q8_k_ptr, x1_q8_k_ptr,
+                q_rows, k_rows, v_rows,
+                n_cols,
+            } => {
+                let nb = (n_cols + 255) / 256;
+                let row_bytes = nb * 98;
+                let x0_q8_k = x0_q8_k_ptr as *const BlockQ8_K;
+                let x1_q8_k = x1_q8_k_ptr as *const BlockQ8_K;
+
+                // Q partition
+                let q_chunk = (q_rows + num_workers - 1) / num_workers;
+                let q_start = (worker_id * q_chunk).min(q_rows);
+                let q_end = ((worker_id + 1) * q_chunk).min(q_rows);
+                if q_end > q_start {
+                    let q0_base = (q0_ptr as *mut f32).add(q_start);
+                    let q1_base = (q1_ptr as *mut f32).add(q_start);
+                    for j in 0..(q_end - q_start) {
+                        let r = q_start + j;
+                        let w_ptr = (wq_ptr as *const u8).add(r * row_bytes);
+                        let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, nb);
+                        *q0_base.add(j) = v0;
+                        *q1_base.add(j) = v1;
+                    }
+                }
+
+                // K partition
+                let k_chunk = (k_rows + num_workers - 1) / num_workers;
+                let k_start = (worker_id * k_chunk).min(k_rows);
+                let k_end = ((worker_id + 1) * k_chunk).min(k_rows);
+                if k_end > k_start {
+                    let k0_base = (k0_ptr as *mut f32).add(k_start);
+                    let k1_base = (k1_ptr as *mut f32).add(k_start);
+                    for j in 0..(k_end - k_start) {
+                        let r = k_start + j;
+                        let w_ptr = (wk_ptr as *const u8).add(r * row_bytes);
+                        let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, nb);
+                        *k0_base.add(j) = v0;
+                        *k1_base.add(j) = v1;
+                    }
+                }
+
+                // V partition
+                let v_chunk = (v_rows + num_workers - 1) / num_workers;
+                let v_start = (worker_id * v_chunk).min(v_rows);
+                let v_end = ((worker_id + 1) * v_chunk).min(v_rows);
+                if v_end > v_start {
+                    let v0_base = (v0_ptr as *mut f32).add(v_start);
+                    let v1_base = (v1_ptr as *mut f32).add(v_start);
+                    for j in 0..(v_end - v_start) {
+                        let r = v_start + j;
+                        let w_ptr = (wv_ptr as *const u8).add(r * row_bytes);
+                        let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, nb);
+                        *v0_base.add(j) = v0;
+                        *v1_base.add(j) = v1;
+                    }
                 }
             }
             GemvTask::GateUpIq4Nl {
@@ -755,6 +861,68 @@ impl GemvTask {
                 top_toks[worker_id] = best_tok;
                 top_scores[worker_id] = best_score;
             }
+            GemvTask::GateUpIq3Xxs {
+                inter_out_ptr,
+                w1_ptr,
+                w3_ptr,
+                x_q8_k_ptr,
+                n_rows,
+                n_cols,
+            } => {
+                let chunk = (n_rows + num_workers - 1) / num_workers;
+                let start_r = (worker_id * chunk).min(n_rows);
+                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let rows = end_r - start_r;
+                if rows == 0 {
+                    return;
+                }
+                let nb = (n_cols + 255) / 256;
+                let row_bytes = nb * 98;
+                let x_q8_k = x_q8_k_ptr as *const BlockQ8_K;
+                let inter_base = (inter_out_ptr as *mut f32).add(start_r);
+
+                for j in 0..rows {
+                    let r = start_r + j;
+                    let w1_row_ptr = (w1_ptr as *const u8).add(r * row_bytes);
+                    let w3_row_ptr = (w3_ptr as *const u8).add(r * row_bytes);
+                    let (w1_val, w3_val) = quants::vec_dot_iq3_xxs_q8_k_2rows_avx2_ptr(w1_row_ptr, w3_row_ptr, x_q8_k, nb);
+                    *inter_base.add(j) = quants::fast_silu(w1_val) * w3_val;
+                }
+            }
+            GemvTask::GateUpIq3Xxs2Tokens {
+                inter0_out_ptr,
+                inter1_out_ptr,
+                w1_ptr,
+                w3_ptr,
+                x0_q8_k_ptr,
+                x1_q8_k_ptr,
+                n_rows,
+                n_cols,
+            } => {
+                let chunk = (n_rows + num_workers - 1) / num_workers;
+                let start_r = (worker_id * chunk).min(n_rows);
+                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let rows = end_r - start_r;
+                if rows == 0 {
+                    return;
+                }
+                let nb = (n_cols + 255) / 256;
+                let row_bytes = nb * 98;
+                let x0_q8_k = x0_q8_k_ptr as *const BlockQ8_K;
+                let x1_q8_k = x1_q8_k_ptr as *const BlockQ8_K;
+                let inter0_base = (inter0_out_ptr as *mut f32).add(start_r);
+                let inter1_base = (inter1_out_ptr as *mut f32).add(start_r);
+
+                for j in 0..rows {
+                    let r = start_r + j;
+                    let w1_row_ptr = (w1_ptr as *const u8).add(r * row_bytes);
+                    let w3_row_ptr = (w3_ptr as *const u8).add(r * row_bytes);
+                    let (w1_0, w1_1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w1_row_ptr, x0_q8_k, x1_q8_k, nb);
+                    let (w3_0, w3_1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w3_row_ptr, x0_q8_k, x1_q8_k, nb);
+                    *inter0_base.add(j) = quants::fast_silu(w1_0) * w3_0;
+                    *inter1_base.add(j) = quants::fast_silu(w1_1) * w3_1;
+                }
+            }
             GemvTask::Iq3Xxs { out_ptr, weight_ptr, x_q8_k_ptr, n_rows, n_cols } => {
                 let chunk = (n_rows + num_workers - 1) / num_workers;
                 let start_r = (worker_id * chunk).min(n_rows);
@@ -768,6 +936,37 @@ impl GemvTask {
                 let weight_slice = std::slice::from_raw_parts((weight_ptr as *const u8).add(start_r * row_bytes), rows * row_bytes);
                 let x_q8_k = std::slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8_K, (n_cols + 255) / 256);
                 quants::gemv_iq3_xxs_prequant(out_slice, weight_slice, x_q8_k, rows, n_cols);
+            }
+            GemvTask::Iq3Xxs2Tokens {
+                out0_ptr,
+                out1_ptr,
+                weight_ptr,
+                x0_q8_k_ptr,
+                x1_q8_k_ptr,
+                n_rows,
+                n_cols,
+            } => {
+                let chunk = (n_rows + num_workers - 1) / num_workers;
+                let start_r = (worker_id * chunk).min(n_rows);
+                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let rows = end_r - start_r;
+                if rows == 0 {
+                    return;
+                }
+                let nb = (n_cols + 255) / 256;
+                let row_bytes = nb * 98;
+                let x0_q8_k = x0_q8_k_ptr as *const BlockQ8_K;
+                let x1_q8_k = x1_q8_k_ptr as *const BlockQ8_K;
+                let out0_base = (out0_ptr as *mut f32).add(start_r);
+                let out1_base = (out1_ptr as *mut f32).add(start_r);
+
+                for j in 0..rows {
+                    let r = start_r + j;
+                    let w_row_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                    let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_row_ptr, x0_q8_k, x1_q8_k, nb);
+                    *out0_base.add(j) = v0;
+                    *out1_base.add(j) = v1;
+                }
             }
             GemvTask::Q8_0 { out_ptr, weight_ptr, x_norm_ptr, n_rows, n_cols } => {
                 let chunk = (n_rows + num_workers - 1) / num_workers;

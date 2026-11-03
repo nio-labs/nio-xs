@@ -46,6 +46,9 @@ impl Drop for TurnGuard {
     }
 }
 
+static ENGINE_CACHE: std::sync::LazyLock<Mutex<HashMap<String, nioxs_engine::RayEngine>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
 #[derive(Clone)]
 pub struct App {
     pub db: NioDb,
@@ -220,12 +223,21 @@ async fn microlm_chat_handler(
     request: ChatRequest,
     preloaded: Option<&nioxs_engine::RayEngine>,
 ) -> Response {
-    let engine = if model_name == "nio-ray" || model_name == "ray" {
-        if let Some(eng) = preloaded {
+    let engine = if let Some(eng) = preloaded {
+        eng.clone()
+    } else {
+        let mut cache = match ENGINE_CACHE.lock() {
+            Ok(c) => c,
+            Err(p) => p.into_inner(),
+        };
+        if let Some(eng) = cache.get(model_name) {
             eng.clone()
         } else {
             match nioxs_engine::RayEngine::for_model(model_name) {
-                Ok(engine) => engine,
+                Ok(eng) => {
+                    cache.insert(model_name.to_string(), eng.clone());
+                    eng
+                }
                 Err(e) => {
                     return error(
                         StatusCode::SERVICE_UNAVAILABLE,
@@ -235,19 +247,6 @@ async fn microlm_chat_handler(
                         ),
                     );
                 }
-            }
-        }
-    } else {
-        match nioxs_engine::RayEngine::for_model(model_name) {
-            Ok(engine) => engine,
-            Err(e) => {
-                return error(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "engine_unavailable",
-                    &format!(
-                        "In-process MicroLM engine for '{model_name}' could not be loaded: {e}. Run 'nioxs pull {model_name}'."
-                    ),
-                );
             }
         }
     };

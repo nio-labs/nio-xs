@@ -490,7 +490,7 @@ impl RayEngine {
             } else if is_manta {
                 engine.set_suppressed_tokens([41233, 54275, 73594]);
             } else if is_beluga {
-                engine.set_resident_layers(2);
+                engine.set_resident_layers(1);
                 engine.set_rolling_window(4);
             }
 
@@ -751,13 +751,23 @@ impl RayEngine {
             let max_gen = max_tokens.max(1);
             let mut current_pos = prompt_tokens.len();
             let mut current_confirmed = next_token;
+            let mut consecutive_draft_misses = 0usize;
 
             while gen_tokens.len() < max_gen {
                 if tx.is_closed() {
                     break;
                 }
                 let remaining = max_gen.saturating_sub(gen_tokens.len());
-                let draft_limit = if is_beluga { 5 } else { 3 };
+                // Phase-Aware Dynamic Lookahead:
+                // Beluga reasons deeply first: from token 0 until </think>, the model is in internal monologue.
+                // Reasoning monologues have ~0% n-gram draft acceptance. Suppress drafting to run full-speed pure AR.
+                // Once </think> is emitted, switch to high-momentum response lookahead (max_draft = 2).
+                let in_thinking = is_beluga && !emitted.contains("</think>");
+                let draft_limit = if in_thinking || (consecutive_draft_misses > 0 && consecutive_draft_misses < 8) {
+                    0
+                } else {
+                    1
+                };
                 let max_draft = draft_limit.min(remaining.saturating_sub(1));
 
                 let step_res = match bundle.engine.speculative_pld_step(
@@ -774,6 +784,20 @@ impl RayEngine {
                         break;
                     }
                 };
+
+                // Track draft efficiency: only evaluate miss if drafts were actually proposed
+                if step_res.drafts_proposed > 0 {
+                    if step_res.accepted_tokens.len() <= 1 {
+                        consecutive_draft_misses += 1;
+                    } else {
+                        consecutive_draft_misses = 0;
+                    }
+                } else if consecutive_draft_misses > 0 {
+                    consecutive_draft_misses += 1;
+                    if consecutive_draft_misses >= 8 {
+                        consecutive_draft_misses = 0;
+                    }
+                }
 
                 let mut stopped = false;
                 for tok in step_res.accepted_tokens {

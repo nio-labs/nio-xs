@@ -90,8 +90,15 @@ fn main() -> Result<()> {
     println!("Post-tokenizer RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB", tok_rss, tok_hwm);
     let t0 = Instant::now();
     let mut engine = AstMicroEngine::new(&model_path)?;
-    engine.set_resident_layers(2);
-    engine.set_rolling_window(4);
+    let window: usize = std::env::args()
+        .position(|a| a == "--window")
+        .and_then(|idx| std::env::args().nth(idx + 1))
+        .and_then(|val| val.parse().ok())
+        .unwrap_or(0);
+    if window > 0 {
+        engine.set_resident_layers(2);
+        engine.set_rolling_window(window);
+    }
     let max_gen_tokens = std::env::args()
         .position(|a| a == "--max-tokens")
         .and_then(|idx| std::env::args().nth(idx + 1))
@@ -142,13 +149,20 @@ fn main() -> Result<()> {
         let t_gen = Instant::now();
         let mut gen_tokens = Vec::new();
 
+        let mut time_vocab = std::time::Duration::ZERO;
+        let mut time_layers = std::time::Duration::ZERO;
+
         for _ in 0..max_gen_tokens {
+            let t_v0 = Instant::now();
             let next_tok = engine.next_token_with_history(None, &gen_tokens, false)?;
+            time_vocab += t_v0.elapsed();
             if next_tok == eos_id || next_tok == 0 {
                 break;
             }
             gen_tokens.push(next_tok);
+            let t_l0 = Instant::now();
             let _ = engine.forward_stream(&[next_tok], prompt_tokens.len() + gen_tokens.len() - 1)?;
+            time_layers += t_l0.elapsed();
         }
         let gen_duration = t_gen.elapsed();
         let gen_time_s = gen_duration.as_secs_f64();
@@ -169,6 +183,8 @@ fn main() -> Result<()> {
         let has_think = decoded_response.contains("<think>") || decoded_response.contains("think");
 
         println!("  Prefill: {:.1} ms ({:.1} t/s) | Gen Tokens: {} | Gen Time: {:.2}s | Speed: {:.2} t/s | {:.2} w/s", prefill_ms, prefill_tps, gen_tokens.len(), gen_time_s, tps, wps);
+        let n_gen = gen_tokens.len().max(1) as f64;
+        println!("  Timing Breakdown per token: Vocab/LM-Head: {:.2} ms | Transformer Layers: {:.2} ms", (time_vocab.as_secs_f64() * 1000.0) / n_gen, (time_layers.as_secs_f64() * 1000.0) / n_gen);
         println!("  RAM: Net VmRSS = {:.2} MB | Process VmHWM = {:.2} MB", cur_rss, cur_hwm);
         println!("  Sample Output:\n{}\n", decoded_response.trim());
 

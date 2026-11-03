@@ -111,8 +111,60 @@ fn sample_top_p(top: &[(u32, f32); 16], temperature: f32, top_p: f32) -> u32 {
     top[0].0
 }
 
-#[inline(always)]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn rms_norm_slice_avx2(x: &[f32], weight: &[f32], eps: f32, out: &mut [f32]) {
+    use core::arch::x86_64::*;
+    let len = x.len();
+    let chunks = len / 8;
+    let mut sum_sq_vec = _mm256_setzero_ps();
+
+    let x_ptr = x.as_ptr();
+    let w_ptr = weight.as_ptr();
+    let out_ptr = out.as_mut_ptr();
+
+    unsafe {
+        for i in 0..chunks {
+            let xv = _mm256_loadu_ps(x_ptr.add(i * 8));
+            sum_sq_vec = _mm256_fmadd_ps(xv, xv, sum_sq_vec);
+        }
+
+        let lo = _mm256_castps256_ps128(sum_sq_vec);
+        let hi = _mm256_extractf128_ps(sum_sq_vec, 1);
+        let v128 = _mm_add_ps(lo, hi);
+        let shuf = _mm_movehl_ps(v128, v128);
+        let v64 = _mm_add_ps(v128, shuf);
+        let shuf2 = _mm_shuffle_ps(v64, v64, 1);
+        let mut sum_sq = _mm_cvtss_f32(_mm_add_ss(v64, shuf2));
+
+        for i in (chunks * 8)..len {
+            let v = *x_ptr.add(i);
+            sum_sq += v * v;
+        }
+
+        let scale = 1.0 / (sum_sq / len as f32 + eps).sqrt();
+        let scale_vec = _mm256_set1_ps(scale);
+
+        for i in 0..chunks {
+            let xv = _mm256_loadu_ps(x_ptr.add(i * 8));
+            let wv = _mm256_loadu_ps(w_ptr.add(i * 8));
+            let res = _mm256_mul_ps(_mm256_mul_ps(xv, scale_vec), wv);
+            _mm256_storeu_ps(out_ptr.add(i * 8), res);
+        }
+
+        for i in (chunks * 8)..len {
+            *out_ptr.add(i) = *x_ptr.add(i) * scale * *w_ptr.add(i);
+        }
+    }
+}
+
 pub fn rms_norm_slice(x: &[f32], weight: &[f32], eps: f32, out: &mut [f32]) {
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+        unsafe {
+            rms_norm_slice_avx2(x, weight, eps, out);
+            return;
+        }
+    }
     let len = x.len();
     let mut sum_sq = 0.0f32;
     for i in 0..len {
@@ -507,25 +559,14 @@ impl LayerDesc {
         let w1_slice = &mmap[self.w1.offset..self.w1.offset + self.w1.byte_len];
         let w3_slice = &mmap[self.w3.offset..self.w3.offset + self.w3.byte_len];
         if self.w1.dtype == 18 {
-            pool.run_task(GemvTask::Iq3Xxs {
-                out_ptr: scratch.w1.as_mut_ptr() as usize,
-                weight_ptr: w1_slice.as_ptr() as usize,
+            pool.run_task(GemvTask::GateUpIq3Xxs {
+                inter_out_ptr: scratch.inter.as_mut_ptr() as usize,
+                w1_ptr: w1_slice.as_ptr() as usize,
+                w3_ptr: w3_slice.as_ptr() as usize,
                 x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
                 n_rows: self.w1.n_rows,
                 n_cols: self.w1.n_cols,
             });
-            pool.run_task(GemvTask::Iq3Xxs {
-                out_ptr: scratch.w3.as_mut_ptr() as usize,
-                weight_ptr: w3_slice.as_ptr() as usize,
-                x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
-                n_rows: self.w3.n_rows,
-                n_cols: self.w3.n_cols,
-            });
-            for j in 0..self.w1.n_rows {
-                let w1_val = scratch.w1[j];
-                let silu = w1_val / (1.0 + (-w1_val).exp());
-                scratch.inter[j] = silu * scratch.w3[j];
-            }
         } else if self.w1.dtype == 8 {
             pool.run_task(GemvTask::Q8_0 {
                 out_ptr: scratch.w1.as_mut_ptr() as usize,
@@ -583,6 +624,188 @@ impl LayerDesc {
         // 12. Residual connection (x = x + mlp_out)
         for i in 0..scratch.x.len() {
             scratch.x[i] += scratch.mlp_out[i];
+        }
+    }
+
+    pub fn forward_2tokens(
+        &self,
+        mmap: &[u8],
+        scratch0: &mut ScratchBuffers,
+        scratch1: &mut ScratchBuffers,
+        pool: &SpinThreadPool,
+        _pos0: usize,
+        _pos1: usize,
+        cos0: &[f32],
+        sin0: &[f32],
+        cos1: &[f32],
+        sin1: &[f32],
+        neox: bool,
+        n_head: usize,
+        n_kv_head: usize,
+        head_dim: usize,
+        eps: f32,
+        kv_cache: &mut LayerKvCache,
+    ) {
+        // 1. Attention Norms
+        rms_norm_slice(&scratch0.x, &self.attn_norm_weight, eps, &mut scratch0.x_norm);
+        rms_norm_slice(&scratch1.x, &self.attn_norm_weight, eps, &mut scratch1.x_norm);
+        quants::quantize_row_q8_k(&scratch0.x_norm, &mut scratch0.x_q8_k);
+        quants::quantize_row_q8_k(&scratch1.x_norm, &mut scratch1.x_q8_k);
+
+        // 2. QKV Joint Projection (streams wq, wk, wv ONCE)
+        let wq_slice = &mmap[self.wq.offset..self.wq.offset + self.wq.byte_len];
+        let wk_slice = &mmap[self.wk.offset..self.wk.offset + self.wk.byte_len];
+        let wv_slice = &mmap[self.wv.offset..self.wv.offset + self.wv.byte_len];
+        pool.run_task(GemvTask::QkvIq3Xxs2Tokens {
+            q0_ptr: scratch0.q.as_mut_ptr() as usize,
+            q1_ptr: scratch1.q.as_mut_ptr() as usize,
+            k0_ptr: scratch0.k.as_mut_ptr() as usize,
+            k1_ptr: scratch1.k.as_mut_ptr() as usize,
+            v0_ptr: scratch0.v.as_mut_ptr() as usize,
+            v1_ptr: scratch1.v.as_mut_ptr() as usize,
+            wq_ptr: wq_slice.as_ptr() as usize,
+            wk_ptr: wk_slice.as_ptr() as usize,
+            wv_ptr: wv_slice.as_ptr() as usize,
+            x0_q8_k_ptr: scratch0.x_q8_k.as_ptr() as usize,
+            x1_q8_k_ptr: scratch1.x_q8_k.as_ptr() as usize,
+            q_rows: self.wq.n_rows,
+            k_rows: self.wk.n_rows,
+            v_rows: self.wv.n_rows,
+            n_cols: self.wq.n_cols,
+        });
+
+        // 3. Biases and head normalization
+        if !self.q_bias.is_empty() {
+            for i in 0..scratch0.q.len() {
+                scratch0.q[i] += self.q_bias[i];
+                scratch1.q[i] += self.q_bias[i];
+            }
+        }
+        if !self.k_bias.is_empty() {
+            for i in 0..scratch0.k.len() {
+                scratch0.k[i] += self.k_bias[i];
+                scratch1.k[i] += self.k_bias[i];
+            }
+        }
+        if !self.v_bias.is_empty() {
+            for i in 0..scratch0.v.len() {
+                scratch0.v[i] += self.v_bias[i];
+                scratch1.v[i] += self.v_bias[i];
+            }
+        }
+
+        for (values, weight) in [(&mut scratch0.q, &self.q_norm_weight), (&mut scratch0.k, &self.k_norm_weight)] {
+            if !weight.is_empty() {
+                for head in values.chunks_exact_mut(head_dim) {
+                    let scale = (head.iter().map(|x| x * x).sum::<f32>() / head_dim as f32 + eps).sqrt().recip();
+                    for (x, w) in head.iter_mut().zip(weight.iter()) { *x *= scale * w; }
+                }
+            }
+        }
+        for (values, weight) in [(&mut scratch1.q, &self.q_norm_weight), (&mut scratch1.k, &self.k_norm_weight)] {
+            if !weight.is_empty() {
+                for head in values.chunks_exact_mut(head_dim) {
+                    let scale = (head.iter().map(|x| x * x).sum::<f32>() / head_dim as f32 + eps).sqrt().recip();
+                    for (x, w) in head.iter_mut().zip(weight.iter()) { *x *= scale * w; }
+                }
+            }
+        }
+
+        // RoPE
+        apply_rope(&mut scratch0.q, n_head, head_dim, cos0, sin0, neox);
+        apply_rope(&mut scratch0.k, n_kv_head, head_dim, cos0, sin0, neox);
+        apply_rope(&mut scratch1.q, n_head, head_dim, cos1, sin1, neox);
+        apply_rope(&mut scratch1.k, n_kv_head, head_dim, cos1, sin1, neox);
+
+        // 4. KV cache append & Attention
+        // Token 0:
+        kv_cache.k.extend_from_slice(&scratch0.k);
+        kv_cache.v.extend_from_slice(&scratch0.v);
+        kv_cache.cur_len += 1;
+        pool.run_task(GemvTask::Attention {
+            q_ptr: scratch0.q.as_ptr() as usize,
+            k_cache_ptr: kv_cache.k.as_ptr() as usize,
+            v_cache_ptr: kv_cache.v.as_ptr() as usize,
+            out_ptr: scratch0.attn_out.as_mut_ptr() as usize,
+            seq_len: kv_cache.cur_len,
+            n_head,
+            n_kv_head,
+            head_dim,
+        });
+
+        // Token 1:
+        kv_cache.k.extend_from_slice(&scratch1.k);
+        kv_cache.v.extend_from_slice(&scratch1.v);
+        kv_cache.cur_len += 1;
+        pool.run_task(GemvTask::Attention {
+            q_ptr: scratch1.q.as_ptr() as usize,
+            k_cache_ptr: kv_cache.k.as_ptr() as usize,
+            v_cache_ptr: kv_cache.v.as_ptr() as usize,
+            out_ptr: scratch1.attn_out.as_mut_ptr() as usize,
+            seq_len: kv_cache.cur_len,
+            n_head,
+            n_kv_head,
+            head_dim,
+        });
+
+        // 5. Output Projection (wo) Joint (streams wo ONCE)
+        let wo_slice = &mmap[self.wo.offset..self.wo.offset + self.wo.byte_len];
+        quants::quantize_row_q8_k(&scratch0.attn_out, &mut scratch0.attn_q8_k);
+        quants::quantize_row_q8_k(&scratch1.attn_out, &mut scratch1.attn_q8_k);
+        pool.run_task(GemvTask::Iq3Xxs2Tokens {
+            out0_ptr: scratch0.wo_out.as_mut_ptr() as usize,
+            out1_ptr: scratch1.wo_out.as_mut_ptr() as usize,
+            weight_ptr: wo_slice.as_ptr() as usize,
+            x0_q8_k_ptr: scratch0.attn_q8_k.as_ptr() as usize,
+            x1_q8_k_ptr: scratch1.attn_q8_k.as_ptr() as usize,
+            n_rows: self.wo.n_rows,
+            n_cols: self.wo.n_cols,
+        });
+
+        // Residual connection
+        for i in 0..scratch0.x.len() {
+            scratch0.x[i] += scratch0.wo_out[i];
+            scratch1.x[i] += scratch1.wo_out[i];
+        }
+
+        // 6. FFN Norms
+        rms_norm_slice(&scratch0.x, &self.ffn_norm_weight, eps, &mut scratch0.ffn_norm);
+        rms_norm_slice(&scratch1.x, &self.ffn_norm_weight, eps, &mut scratch1.ffn_norm);
+        quants::quantize_row_q8_k(&scratch0.ffn_norm, &mut scratch0.ffn_q8_k);
+        quants::quantize_row_q8_k(&scratch1.ffn_norm, &mut scratch1.ffn_q8_k);
+
+        // 7. Gate & Up Joint (streams w1 and w3 ONCE)
+        let w1_slice = &mmap[self.w1.offset..self.w1.offset + self.w1.byte_len];
+        let w3_slice = &mmap[self.w3.offset..self.w3.offset + self.w3.byte_len];
+        pool.run_task(GemvTask::GateUpIq3Xxs2Tokens {
+            inter0_out_ptr: scratch0.inter.as_mut_ptr() as usize,
+            inter1_out_ptr: scratch1.inter.as_mut_ptr() as usize,
+            w1_ptr: w1_slice.as_ptr() as usize,
+            w3_ptr: w3_slice.as_ptr() as usize,
+            x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
+            x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
+            n_rows: self.w1.n_rows,
+            n_cols: self.w1.n_cols,
+        });
+
+        // 8. Down Joint (streams w2 ONCE)
+        quants::quantize_row_q8_k(&scratch0.inter, &mut scratch0.inter_q8_k);
+        quants::quantize_row_q8_k(&scratch1.inter, &mut scratch1.inter_q8_k);
+        let w2_slice = &mmap[self.w2.offset..self.w2.offset + self.w2.byte_len];
+        pool.run_task(GemvTask::Iq3Xxs2Tokens {
+            out0_ptr: scratch0.mlp_out.as_mut_ptr() as usize,
+            out1_ptr: scratch1.mlp_out.as_mut_ptr() as usize,
+            weight_ptr: w2_slice.as_ptr() as usize,
+            x0_q8_k_ptr: scratch0.inter_q8_k.as_ptr() as usize,
+            x1_q8_k_ptr: scratch1.inter_q8_k.as_ptr() as usize,
+            n_rows: self.w2.n_rows,
+            n_cols: self.w2.n_cols,
+        });
+
+        // Residual connection
+        for i in 0..scratch0.x.len() {
+            scratch0.x[i] += scratch0.mlp_out[i];
+            scratch1.x[i] += scratch1.mlp_out[i];
         }
     }
 
@@ -676,6 +899,7 @@ pub struct AstMicroEngine {
     kv_caches: Vec<LayerKvCache>,
     layers: Vec<LayerDesc>,
     scratch: ScratchBuffers,
+    scratch1: ScratchBuffers,
     sampling_temp: f32,
     sampling_top_p: f32,
     repeat_penalty: f32,
@@ -871,6 +1095,7 @@ impl AstMicroEngine {
         }
 
         let scratch = ScratchBuffers::new(embedding_length, max_wq_rows, max_wk_rows, max_wv_rows, max_w1_rows);
+        let scratch1 = ScratchBuffers::new(embedding_length, max_wq_rows, max_wk_rows, max_wv_rows, max_w1_rows);
 
         let vocab_size = if let Some(output) = &output_weight {
             output.n_rows
@@ -899,6 +1124,7 @@ impl AstMicroEngine {
             kv_caches,
             layers,
             scratch,
+            scratch1,
             sampling_temp: 0.7,
             sampling_top_p: 0.9,
             repeat_penalty: 1.15,
@@ -1116,37 +1342,30 @@ impl AstMicroEngine {
         for layer_idx in 0..self.block_count {
             let layer = &self.layers[layer_idx];
 
-            // Prefetch next 1..=2 layers asynchronously while executing current layer
-            for prefetch_offset in 1..=2 {
-                let target_idx = layer_idx + prefetch_offset;
-                if target_idx < self.block_count {
-                    let next_layer = &self.layers[target_idx];
-                    let page_size = 4096;
-                    let aligned_start = (next_layer.min_offset / page_size) * page_size;
-                    let aligned_len = ((next_layer.max_offset - aligned_start + page_size - 1) / page_size) * page_size;
-                    unsafe {
-                        libc::madvise(
-                            self.mmap.as_ptr().add(aligned_start) as *mut libc::c_void,
-                            aligned_len,
-                            libc::MADV_WILLNEED,
-                        );
-                    }
-                }
-            }
 
-            for step in 0..n_tokens {
-                let pos = index_pos + step;
-                let cos = &self.cos_table[pos * half..(pos + 1) * half];
-                let sin = &self.sin_table[pos * half..(pos + 1) * half];
 
-                self.scratch.x.copy_from_slice(&activations[step]);
-                layer.forward_token(
+            if n_tokens == 2 && layer.wq.dtype == 18 {
+                let pos0 = index_pos;
+                let pos1 = index_pos + 1;
+                let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];
+                let sin0 = &self.sin_table[pos0 * half..(pos0 + 1) * half];
+                let cos1 = &self.cos_table[pos1 * half..(pos1 + 1) * half];
+                let sin1 = &self.sin_table[pos1 * half..(pos1 + 1) * half];
+
+                self.scratch.x.copy_from_slice(&activations[0]);
+                self.scratch1.x.copy_from_slice(&activations[1]);
+
+                layer.forward_2tokens(
                     &self.mmap,
                     &mut self.scratch,
+                    &mut self.scratch1,
                     &self.pool,
-                    pos,
-                    cos,
-                    sin,
+                    pos0,
+                    pos1,
+                    cos0,
+                    sin0,
+                    cos1,
+                    sin1,
                     self.rope_neox,
                     self.head_count,
                     self.head_count_kv,
@@ -1154,7 +1373,32 @@ impl AstMicroEngine {
                     self.rms_norm_eps as f32,
                     &mut self.kv_caches[layer_idx],
                 );
-                activations[step].copy_from_slice(&self.scratch.x);
+
+                activations[0].copy_from_slice(&self.scratch.x);
+                activations[1].copy_from_slice(&self.scratch1.x);
+            } else {
+                for step in 0..n_tokens {
+                    let pos = index_pos + step;
+                    let cos = &self.cos_table[pos * half..(pos + 1) * half];
+                    let sin = &self.sin_table[pos * half..(pos + 1) * half];
+
+                    self.scratch.x.copy_from_slice(&activations[step]);
+                    layer.forward_token(
+                        &self.mmap,
+                        &mut self.scratch,
+                        &self.pool,
+                        pos,
+                        cos,
+                        sin,
+                        self.rope_neox,
+                        self.head_count,
+                        self.head_count_kv,
+                        self.head_dim,
+                        self.rms_norm_eps as f32,
+                        &mut self.kv_caches[layer_idx],
+                    );
+                    activations[step].copy_from_slice(&self.scratch.x);
+                }
             }
 
             // Rolling window eviction: evict layer_idx - window once it leaves active window,
@@ -1421,8 +1665,11 @@ impl AstMicroEngine {
 
         let next_confirmed = final_token;
 
+        let drafts_proposed = drafts.len();
+
         Ok(SpeculativeStepResult {
             accepted_tokens,
+            drafts_proposed,
             next_confirmed,
             next_pos,
             is_eos: final_is_eos,
@@ -1433,6 +1680,7 @@ impl AstMicroEngine {
 #[derive(Debug, Clone)]
 pub struct SpeculativeStepResult {
     pub accepted_tokens: Vec<u32>,
+    pub drafts_proposed: usize,
     pub next_confirmed: u32,
     pub next_pos: usize,
     pub is_eos: bool,
@@ -1447,13 +1695,22 @@ pub fn find_candidate_draft_tokens(
     max_draft: usize,
     eos_tokens: &[u32],
 ) -> Vec<u32> {
-    if context.len() < 3 || max_draft == 0 {
+    find_candidate_draft_tokens_with_min(context, max_draft, 3, eos_tokens)
+}
+
+pub fn find_candidate_draft_tokens_with_min(
+    context: &[u32],
+    max_draft: usize,
+    min_ngram: usize,
+    eos_tokens: &[u32],
+) -> Vec<u32> {
+    if context.len() < min_ngram || max_draft == 0 {
         return Vec::new();
     }
 
     let is_eos = |t: u32| eos_tokens.contains(&t);
 
-    for ngram_len in (2..=7.min(context.len().saturating_sub(1))).rev() {
+    for ngram_len in (min_ngram..=7.min(context.len().saturating_sub(1))).rev() {
         let query = &context[context.len() - ngram_len..];
         let search_limit = context.len().saturating_sub(ngram_len);
         if search_limit == 0 {
@@ -1497,7 +1754,7 @@ mod tests {
     #[test]
     fn test_find_candidate_draft_tokens_bigram_fallback() {
         let context = vec![10, 20, 30, 40, 50, 99, 10, 20];
-        let drafts = find_candidate_draft_tokens(&context, 2, &[2]);
+        let drafts = find_candidate_draft_tokens_with_min(&context, 2, 2, &[2]);
         assert_eq!(drafts, vec![30, 40]);
     }
 
