@@ -103,6 +103,18 @@ nioxs viper -x -y "kill port 3000"
 
 ---
 
+## 🧬 The v-µLM (V-MicroLM) Architecture: Reflex, Vector & Companion
+
+Nio's proprietary **v-µLM (V-MicroLM)** architecture eliminates reliance on brittle synthetic dataset fine-tuning by organizing execution across three complementary mathematical pillars:
+
+| Pillar | Role | Key Models | Operational SLA |
+| :--- | :--- | :--- | :--- |
+| **`v-µLM Reflex`** | Instant Grammar & In-Process Decision Engine | **Nano (~0.5M)**, **Mask (1.1M)**, **Micro (5.0M)**, **Mini (7.1M)**, **Viper (100M)** | `< 28 MB RAM`, sub-0.1ms to sub-20µs sampling |
+| **`v-µLM Vector`** | Vector Codebook Lattice & Web Scout | **Mako (150M)** & **µCuda / Cuda (3.0B–6.0B)** | `92 MB disk`, >0.999 cosine fidelity, wire scraping |
+| **`v-µLM Companion`** | Sovereign Edge Companion Fleet | **Skate (135M)**, **Manta (494M)** & **Beluga (1.54B)** | `< 50 MB to < 295 MB peak RAM`, pure CPU, zero GPU |
+
+---
+
 ## 🤝 State of our v-MicroLM Companion Fleet (Skate, Manta & Beluga)
 
 The **v-MicroLM Companion Fleet** represents Nio's tiered, zero-cloud edge intelligence architecture. By pairing custom `v-MicroLM Vector` codebooks (`IQ3_XXS` / `IQ4_NL`) with dynamic layer streaming and lock-free AVX2 parallelism, each companion tier delivers uncompromising domain specialization strictly within ultralight memory envelopes:
