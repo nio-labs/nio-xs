@@ -21,14 +21,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|viper <prompt>|ray <prompt>|manta <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
-  pull [model]   Download and verify local MicroLM weights (viper, ray, manta, cuda, all)\n\
-  viper [-x|-y] <prompt> Run local NioViper 50M Swiss Gear reflex (-x executes natively with safety clutch)\n\
-  viper plugin <install|list> Manage isolated Python plugins for NioViper sandbox\n\
-  ray <prompt>   Run local in-process NioRay predator inference on prompt\n\
-  manta <prompt> Run local in-process NioManta ONNX companion inference on prompt\n\
+  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, all)\n\
+  viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
+  viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
+  skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
+  manta <prompt> Run local in-process Manta 494M systems guru & DAG architect (<manta_plan>)\n\
+  beluga <prompt> Run local in-process Beluga 1.54B sovereign lead architect & CoT reasoning\n\
   mcp            Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
   init           Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
   undo           Rollback last applied multi-file patch (or specific patch_id)\n\
@@ -54,8 +55,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
         let lowered = model_target.trim().to_ascii_lowercase();
         let normalized = match lowered.as_str() {
             "viper" | "nio-viper" => "nio-viper",
-            "ray" | "nio-ray" => "nio-ray",
+            "skate" | "nio-skate" => "nio-skate",
             "manta" | "nio-manta" => "nio-manta",
+            "beluga" | "nio-beluga" => "nio-beluga",
             "cuda" | "nio-cuda" => "nio-cuda",
             other => other,
         };
@@ -233,15 +235,18 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
 
         return Ok(());
     }
-    if arg.as_deref() == Some("ray") {
+    if arg.as_deref() == Some("beluga") {
         let prompt = std::env::args().skip(2).collect::<Vec<_>>().join(" ");
         if prompt.is_empty() {
-            eprintln!("Usage: nioxs ray <prompt>");
+            eprintln!("Usage: nioxs beluga <prompt>");
             return Ok(());
         }
-        let engine = nioxs_engine::RayEngine::new()?;
-        let max_tokens = if prompt.split_whitespace().count() <= 2 { 32 } else { 128 };
-        let mut rx = engine.generate_stream(prompt, max_tokens, 0.7, 0.9).await?;
+        let engine = nioxs_engine::RayEngine::for_model("nio-beluga")?;
+        let max_tokens = if prompt.split_whitespace().count() <= 3 { 64 } else { 256 };
+        let formatted_prompt = format!(
+            "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Defer raw low-level code generation to downstream coding models.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        );
+        let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.65, 0.9).await?;
         use std::io::Write;
         while let Some(chunk) = rx.recv().await {
             print!("{chunk}");
@@ -488,7 +493,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
         return nioxs_provider::mcp::run_stdio_server().map_err(|e| e.into());
     }
     if arg.is_some() && arg.as_deref() != Some("serve") {
-        return Err("unknown command; expected 'nioxs', 'nioxs serve', 'nioxs init', 'nioxs mcp', 'nioxs undo', or 'nioxs history'".into());
+        return Err("unknown command; expected 'nioxs serve', 'nioxs pull', 'nioxs viper', 'nioxs skate', 'nioxs manta', 'nioxs beluga', 'nioxs mcp', 'nioxs init', 'nioxs undo', or 'nioxs history'".into());
     }
     let listen: std::net::SocketAddr = if let Ok(listen_str) = std::env::var("NIOXS_LISTEN") {
         listen_str.parse()?

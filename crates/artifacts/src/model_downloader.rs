@@ -4,7 +4,7 @@
 //! into `~/.nioxs/models/` with streaming progress and SHA-256 integrity verification.
 
 use futures_util::StreamExt;
-use nioxs_contracts::{MODEL_BELUGA, MODEL_CUDA, MODEL_MANTA, MODEL_NANO, MODEL_RAY, MODEL_VIPER};
+use nioxs_contracts::{MODEL_BELUGA, MODEL_MANTA, MODEL_NANO, MODEL_SKATE, MODEL_VIPER};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::env;
@@ -27,49 +27,40 @@ pub struct ModelArtifactEntry {
 pub fn default_manifest() -> Vec<ModelArtifactEntry> {
     vec![
         ModelArtifactEntry {
-            model_id: MODEL_RAY.into(),
-            brand_name: "NioRay (Keystroke Predator)".into(),
-            base_model: "Qwen2.5-Coder-0.5B-Dense-24L".into(),
-            filename: "nio-ray-ast.Q4_0.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.1/nio-ray-ast.Q4_0.gguf".into(),
-            sha256: "f070cd657e929ee2d45a7d8a46c71ef0fdec6b8ae1100de57735808deae4477f".into(),
-            size_bytes: 284_087_232,
+            model_id: MODEL_VIPER.into(),
+            brand_name: "Viper (Tactical Terminal Striker)".into(),
+            base_model: "Viper-100M".into(),
+            filename: "viper.Q4_0.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.1.0/viper.Q4_0.gguf".into(),
+            sha256: "58633aa691b80840dc85586cf2cb8616deff480c64ddf406bf848db749ecc3d4".into(),
+            size_bytes: 64_686_080,
         },
         ModelArtifactEntry {
-            model_id: MODEL_VIPER.into(),
-            brand_name: "NioViper (Tactical Terminal Striker)".into(),
-            base_model: "NioViper-50M".into(),
-            filename: "nio-viper.Q4_0.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.1.0/nio-viper.Q4_0.gguf".into(),
-            sha256: "acaa8a21c8d37d12398a2e7ac67ad367d2e3786b261ce95195e6e0cc08363e9c".into(),
-            size_bytes: 28_214_368,
+            model_id: MODEL_SKATE.into(),
+            brand_name: "Skate (Ambient Desk Companion)".into(),
+            base_model: "SmolLM2-135M (30L, v-µLM Companion)".into(),
+            filename: "skate.vmicrolm-vector.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.6/skate.vmicrolm-vector.gguf".into(),
+            sha256: "a00921dca072e640bb1f9730a95e3d88ed843cba3dd0a5648a6fd5e3e9e3d86b".into(),
+            size_bytes: 86_958_464,
         },
         ModelArtifactEntry {
             model_id: MODEL_MANTA.into(),
-            brand_name: "NioManta (Conversational Brain & Wasm Architect)".into(),
-            base_model: "Qwen/Qwen2.5-0.5B-Instruct (24L, v-µLM Vector)".into(),
+            brand_name: "Manta (Systems Guru & DAG Architect)".into(),
+            base_model: "Qwen/Qwen2.5-0.5B-Instruct (24L, v-µLM Companion)".into(),
             filename: "manta.vmicrolm-vector.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.2/manta.vmicrolm-vector.gguf".into(),
-            sha256: "ed27ef71bf8c0c5f372efb0eef99b71a9c6480bf3e228ce2f1027fd3583d08bf".into(),
-            size_bytes: 265_635_936,
-        },
-        ModelArtifactEntry {
-            model_id: MODEL_CUDA.into(),
-            brand_name: "NioCuda (Tactical Swarm Conductor)".into(),
-            base_model: "Qwen/Qwen2.5-Coder-0.5B-Instruct (16L)".into(),
-            filename: "nio-cuda-ast.Q4_0.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.2/nio-cuda-ast.Q4_0.gguf".into(),
-            sha256: "09566c2f463dfae5475b2747c4338cf3a9b887f8382a21052766d1f97803c58c".into(),
-            size_bytes: 284_962_368,
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.7/manta.vmicrolm-vector.gguf".into(),
+            sha256: "fa981bab81c7cb32a7072dfd193f1e03f988eb800d7e6773a03b69c861d452a5".into(),
+            size_bytes: 333_363_520,
         },
         ModelArtifactEntry {
             model_id: MODEL_BELUGA.into(),
             brand_name: "Beluga (Sovereign Lead Architect)".into(),
-            base_model: "Qwen/Qwen2.5-1.5B-Instruct (28L, v-MicroLM Companion)".into(),
+            base_model: "Qwen/Qwen2.5-1.5B-Instruct (28L, v-µLM Companion)".into(),
             filename: "beluga.vmicrolm-vector.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/beluga.vmicrolm-vector.gguf".into(),
-            sha256: "".into(),
-            size_bytes: 768_230_000,
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.0/beluga.vmicrolm-vector.gguf".into(),
+            sha256: "d2d4642d36b907c8658301208e8cd4ab3c6d72051a37a780ebc35a56ff83d5ba".into(),
+            size_bytes: 639_362_560,
         },
     ]
 }
