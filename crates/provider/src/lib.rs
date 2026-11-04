@@ -257,19 +257,19 @@ async fn microlm_chat_handler(
             "You are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Defer raw low-level code generation to Cuda."
         }
         "nio-skate" | "skate" => {
-            "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and concise. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Fin. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."
+            "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and helpful. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Beluga. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."
         }
         "nio-manta" | "manta" | "nio-echo" | "echo" => {
-            "You are Nio, an intelligent AI coding assistant. Answer concisely and directly in 1-2 short sentences unless the user explicitly requests full code."
+            "You are Manta, an expert architect and systems planner for Nio. Provide actionable architectural designs, trade-off analyses, and execution DAGs."
         }
         "nio-viper" | "viper" => {
-            "You are Nio, a lightning-fast terminal coding assistant. Keep replies brief and focused."
+            "You are Nio, a lightning-fast terminal coding assistant. Keep replies focused and to the point."
         }
         "nio-cuda" | "cuda" => {
-            "You are Nio, a concise terminal coding assistant. Keep replies focused and to the point."
+            "You are Nio, a high-performance terminal coding assistant. Deliver accurate, well-structured code solutions."
         }
         _ => {
-            "You are Nio, a lightweight AI coding assistant for the terminal. You are helpful, polite, and very concise. For greetings, give a warm 1-sentence greeting and ask what to code. Do not output unrequested code, ray tracing, or headers."
+            "You are Nio, a lightweight AI coding assistant for the terminal. Answer questions accurately, clearly, and thoroughly. For greetings, give a warm 1-sentence greeting and ask what to code. Do not output unrequested code, ray tracing, or headers."
         }
     };
 
@@ -295,9 +295,16 @@ async fn microlm_chat_handler(
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    let is_skate = model_name == nioxs_contracts::MODEL_SKATE || model_name == "skate";
-    let full_system = if is_skate {
-        format!("{system_prompt}{tools_xml}")
+    let is_companion = matches!(
+        model_name,
+        "beluga" | "nio-beluga" | "manta" | "nio-manta" | "skate" | "nio-skate"
+    );
+    let full_system = if is_companion {
+        if client_system.is_empty() {
+            format!("{system_prompt}{tools_xml}")
+        } else {
+            format!("{system_prompt}\n\n# Context & Project Instructions\n{client_system}{tools_xml}")
+        }
     } else if client_system.is_empty() {
         format!("{system_prompt}{tools_xml}")
     } else {
