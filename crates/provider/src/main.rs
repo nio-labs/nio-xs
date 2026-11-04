@@ -4,6 +4,9 @@ use nioxs_storage::NioDb;
 use std::sync::Arc;
 
 mod skate_safety;
+mod stream_flow;
+
+use stream_flow::{FlowMode, StreamFlow};
 
 #[tokio::main]
 async fn main() {
@@ -36,8 +39,9 @@ Commands:\n\
   history        Display local session turn journal from .nioxs/history.jsonl\n\
 \n\
 Options:\n\
-  --device, -d <auto|cpu|gpu> Select hardware compute device (default: auto; uses GPU if available, else pure CPU)\n\
-  --max-tokens, -n <count>    Max tokens to generate (default: 4096 / unconstrained until EOS)\n\
+  --device, -d <auto|cpu|gpu>        Select hardware compute device (default: auto; uses GPU if available, else pure CPU)\n\
+  --flow, -f <burst|token|paragraph> Output streaming cadence (default: burst; smooth sentence rhythm)\n\
+  --max-tokens, -n <count>           Max tokens to generate (default: 4096 / unconstrained until EOS)\n\
 \n\
 Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID."
         );
@@ -71,13 +75,55 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         return Ok(());
     }
     if arg.as_deref() == Some("skate") {
-        let prompt = std::env::args().skip(2).collect::<Vec<_>>().join(" ");
-        if prompt.is_empty() {
-            eprintln!("Usage: nioxs skate <prompt>");
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        if raw_args.is_empty() {
+            eprintln!("Usage: nioxs skate [--device <auto|cpu|gpu>] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
-        let response = skate_safety::generate(&prompt).await?;
-        println!("{response}");
+
+        let mut custom_max_tokens = None;
+        let mut device_pref = nioxs_engine::DevicePreference::Auto;
+        let mut flow_mode = FlowMode::Burst;
+        let mut prompt_parts = Vec::new();
+        let mut iter = raw_args.clone().into_iter();
+        while let Some(a) = iter.next() {
+            if a == "-n" || a == "--max-tokens" {
+                if let Some(val) = iter.next() {
+                    custom_max_tokens = val.parse::<usize>().ok();
+                }
+            } else if a == "-d" || a == "--device" {
+                if let Some(val) = iter.next() {
+                    device_pref = nioxs_engine::DevicePreference::parse(&val);
+                }
+            } else if a == "-f" || a == "--flow" {
+                if let Some(val) = iter.next() {
+                    flow_mode = FlowMode::parse(&val);
+                }
+            } else {
+                prompt_parts.push(a);
+            }
+        }
+        let prompt = prompt_parts.join(" ");
+        if prompt.is_empty() {
+            eprintln!("Usage: nioxs skate [--device <auto|cpu|gpu>] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            return Ok(());
+        }
+
+        let max_tokens = custom_max_tokens.unwrap_or(2048);
+        let mut flow = StreamFlow::new(flow_mode);
+        match skate_safety::generate_stream_with_device(&prompt, device_pref, max_tokens).await {
+            Ok(mut rx) => {
+                while let Some(chunk) = rx.recv().await {
+                    flow.push(&chunk);
+                }
+                flow.finish();
+                println!();
+            }
+            Err(_) => {
+                let response = skate_safety::generate(&prompt).await?;
+                println!("{response}");
+            }
+        }
         return Ok(());
     }
     if arg.as_deref() == Some("viper") {
@@ -242,12 +288,13 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     if arg.as_deref() == Some("beluga") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [-n <max_tokens>] <prompt>");
+            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
 
         let mut custom_max_tokens = None;
         let mut device_pref = nioxs_engine::DevicePreference::Auto;
+        let mut flow_mode = FlowMode::Burst;
         let mut prompt_parts = Vec::new();
         let mut iter = raw_args.clone().into_iter();
         while let Some(a) = iter.next() {
@@ -259,13 +306,17 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 if let Some(val) = iter.next() {
                     device_pref = nioxs_engine::DevicePreference::parse(&val);
                 }
+            } else if a == "-f" || a == "--flow" {
+                if let Some(val) = iter.next() {
+                    flow_mode = FlowMode::parse(&val);
+                }
             } else {
                 prompt_parts.push(a);
             }
         }
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
-            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [-n <max_tokens>] <prompt>");
+            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
         let engine = nioxs_engine::RayEngine::for_model_with_device("nio-beluga", device_pref)?;
@@ -274,24 +325,25 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Defer raw low-level code generation to downstream coding models.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         );
         let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.65, 0.9).await?;
-        use std::io::Write;
+        let mut flow = StreamFlow::new(flow_mode);
         while let Some(chunk) = rx.recv().await {
-            print!("{chunk}");
-            let _ = std::io::stdout().flush();
+            flow.push(&chunk);
         }
+        flow.finish();
         println!();
         return Ok(());
     }
     if arg.as_deref() == Some("manta") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs manta [--device <auto|cpu|gpu>] [--plan] [-n <max_tokens>] <prompt>");
+            eprintln!("Usage: nioxs manta [--device <auto|cpu|gpu>] [--flow <burst|token|paragraph>] [--plan] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
 
         let mut is_plan = false;
         let mut custom_max_tokens = None;
         let mut device_pref = nioxs_engine::DevicePreference::Auto;
+        let mut flow_mode = FlowMode::Burst;
         let mut prompt_parts = Vec::new();
         let mut iter = raw_args.clone().into_iter();
         while let Some(a) = iter.next() {
@@ -304,6 +356,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             } else if a == "-d" || a == "--device" {
                 if let Some(val) = iter.next() {
                     device_pref = nioxs_engine::DevicePreference::parse(&val);
+                }
+            } else if a == "-f" || a == "--flow" {
+                if let Some(val) = iter.next() {
+                    flow_mode = FlowMode::parse(&val);
                 }
             } else if a != "-i" && a != "--interactive" && a != "--benchmark" && a != "-b" {
                 prompt_parts.push(a);
@@ -321,11 +377,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             let formatted_prompt = format!("<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n");
             let max_tokens = custom_max_tokens.unwrap_or(4096);
             let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.2, 0.9).await?;
-            use std::io::Write;
+            let mut flow = StreamFlow::new(flow_mode);
             while let Some(chunk) = rx.recv().await {
-                print!("{chunk}");
-                let _ = std::io::stdout().flush();
+                flow.push(&chunk);
             }
+            flow.finish();
             println!();
             return Ok(());
         }

@@ -96,3 +96,16 @@ pub async fn generate(prompt: &str) -> Result<String> {
     }
     Ok(generated)
 }
+
+pub async fn generate_stream_with_device(
+    prompt: &str,
+    device_pref: nioxs_engine::DevicePreference,
+    max_tokens: usize,
+) -> Result<tokio::sync::mpsc::Receiver<String>> {
+    let engine = nioxs_engine::RayEngine::for_model_with_device("nio-skate", device_pref)?;
+    let policy = nioxs_engine::skate_system()?;
+    let formatted = format!(
+        "<|im_start|>system\n{policy}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+    );
+    engine.generate_stream(formatted, max_tokens, 0.65, 0.9).await
+}
