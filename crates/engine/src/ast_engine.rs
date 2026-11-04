@@ -1483,7 +1483,7 @@ impl AstMicroEngine {
                 }
             },
         };
-        if engine.medusa_head.is_some() {
+        if engine.medusa_head.is_some() && std::env::var_os("NIOXS_DEBUG").is_some() {
             eprintln!("[AST-Micro] Loaded Beluga Medusa Head (Option 2) for multi-token speculative acceleration.");
         }
         engine.evict_all();

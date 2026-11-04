@@ -333,7 +333,7 @@ async fn microlm_chat_handler(
     }
     prompt.push_str("<|im_start|>assistant\n");
 
-    let max_gen_tokens = request.max_tokens.unwrap_or(512).clamp(1, 4096);
+    let max_gen_tokens = request.max_tokens.unwrap_or(4096).clamp(1, 8192);
 
     let id = format!(
         "chatcmpl-{}-{}",
