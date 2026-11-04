@@ -359,8 +359,15 @@ async fn microlm_chat_handler(
         _ => nioxs_contracts::MODEL_RAY,
     };
 
+    let (temp, top_p) = match model_name {
+        "nio-beluga" | "beluga" => (0.6, 0.95),
+        "nio-manta" | "manta" => (0.3, 0.90),
+        "nio-skate" | "skate" => (0.65, 0.90),
+        _ => (0.7, 0.90),
+    };
+
     if !request.stream {
-        match engine.generate(prompt, max_gen_tokens, 0.7, 0.9).await {
+        match engine.generate(prompt, max_gen_tokens, temp, top_p).await {
             Ok(content) => {
                 let tool_calls = extract_xml_tool_calls(&content);
                 if !tool_calls.is_empty() {
@@ -418,7 +425,7 @@ async fn microlm_chat_handler(
             ),
         }
     } else {
-        match engine.generate_stream(prompt, max_gen_tokens, 0.7, 0.9).await {
+        match engine.generate_stream(prompt, max_gen_tokens, temp, top_p).await {
             Ok(rx) => {
                 let id_clone = id.clone();
                 let accumulated = Arc::new(tokio::sync::Mutex::new(String::new()));

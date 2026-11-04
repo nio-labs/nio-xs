@@ -117,19 +117,22 @@ Nio's proprietary **v-µLM (V-MicroLM)** architecture eliminates reliance on bri
 | :--- | :--- | :--- | :--- |
 | **`v-µLM Reflex`** | Instant Grammar & In-Process Decision Engine | **Nano (~0.5M)**, **Mask (1.1M)**, **Micro (5.0M)**, **Mini (7.1M)**, **Viper (100M)** | `< 28 MB RAM`, sub-0.1ms to sub-20µs sampling |
 | **`v-µLM Vector`** | Vector Codebook Lattice & Web Scout | **Mako (150M)** | `92 MB disk`, >0.999 cosine fidelity, wire scraping |
-| **`v-µLM Companion`** | Sovereign Edge Companion Fleet | **Skate (135M)**, **Manta (494M)** & **Beluga (1.54B)** | `< 50 MB to < 295 MB peak RAM`, pure CPU, zero GPU |
+| **`v-µLM Companion`** | Sovereign Edge Companion Fleet | **Skate (135M)**, **Manta (494M)**, **Beluga (1.54B)** & **Gar (14.7B, planned)** | Existing models: `< 50 MB to < 295 MB peak RAM`; Gar targets `< 850 MB` |
 
 ---
 
-## 🤝 State of our v-MicroLM Companion Fleet (Skate, Manta & Beluga)
+## 🤝 State of our v-MicroLM Companion Fleet (Skate, Manta, Beluga & Gar)
 
 The **v-MicroLM Companion Fleet** represents Nio's tiered, zero-cloud edge intelligence architecture. By pairing custom `v-MicroLM Vector` codebooks (`IQ3_XXS` / `IQ4_NL`) with dynamic layer streaming and lock-free AVX2 parallelism, each companion tier delivers uncompromising domain specialization strictly within ultralight memory envelopes:
 
 - **Tier 1: Skate (135M)** — **Ambient Desk Companion**. Always-on background desk-mate running in `< 50 MB` active peak RAM with strict zero-code deflection.
 - **Tier 2: Manta (494M)** — **Systems Guru & DAG Architect**. High-throughput architectural and RFC planner generating structured `<manta_plan>` execution DAGs in `< 235 MB` peak RAM.
 - **Tier 3: Beluga (1.54B)** — **Sovereign Lead Architect**. Flagship cognitive companion delivering bit-exact `<think>` Chain-of-Thought reasoning proofs and system synthesis in `< 295 MB` peak RAM.
+- **Tier 4: Gar (14.7B, planned)** — **Encyclopedic Companion**. Intended for broad knowledge and synthesis, with a streaming memory target of `< 850 MB` that still requires validation.
 
 ### 📊 v-MicroLM Companion Benchmark Suite
+
+The following benchmarks cover Skate, Manta and Beluga; Gar is planned and is not included.
 
 | Metric / Specification | 🐟 Skate | 🦈 Manta | 🐋 Beluga |
 | :--- | :--- | :--- | :--- |

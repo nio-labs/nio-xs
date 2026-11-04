@@ -882,7 +882,7 @@ impl RayEngine {
 
         let bundle_arc = self.bundle.clone();
         let formatted = self.format_prompt_for_engine(&prompt)?;
-        let _is_beluga = self.is_beluga;
+        let is_beluga = self.is_beluga;
         tokio::task::spawn_blocking(move || {
             let mut guard = bundle_arc.blocking_lock();
             if tx.is_closed() {
@@ -906,9 +906,10 @@ impl RayEngine {
                 return;
             }
 
+            let repeat_penalty = if is_beluga { 1.02 } else { 1.10 };
             bundle
                 .engine
-                .set_sampling(temperature, top_p, 1.15, 64);
+                .set_sampling(temperature, top_p, repeat_penalty, 64);
 
             if tx.is_closed() {
                 return;
