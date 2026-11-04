@@ -103,6 +103,32 @@ nioxs viper -x -y "kill port 3000"
 
 ---
 
+## 🤝 State of our v-MicroLM Companion Fleet (Skate, Manta & Beluga)
+
+The **v-MicroLM Companion Fleet** represents Nio's tiered, zero-cloud edge intelligence architecture. By pairing custom `v-MicroLM Vector` codebooks (`IQ3_XXS` / `IQ4_NL`) with dynamic layer streaming and lock-free AVX2 parallelism, each companion tier delivers uncompromising domain specialization strictly within ultralight memory envelopes:
+
+- **Tier 1: NioSkate (135M)** — **Ambient Desk Companion**. Always-on background desk-mate running in `< 50 MB` active peak RAM with strict zero-code deflection.
+- **Tier 2: NioManta (494M)** — **Systems Guru & DAG Architect**. High-throughput architectural and RFC planner generating structured `<manta_plan>` execution DAGs in `< 235 MB` peak RAM.
+- **Tier 3: NioBeluga (1.54B)** — **Sovereign Lead Architect**. Flagship cognitive companion delivering bit-exact `<think>` Chain-of-Thought reasoning proofs and system synthesis in `< 295 MB` peak RAM.
+
+### 📊 v-MicroLM Companion Benchmark Suite
+
+| Metric / Specification | 🛹 NioSkate | 🦈 NioManta | 🐋 NioBeluga |
+| :--- | :--- | :--- | :--- |
+| **Model Parameters** | **135M** (134.5M) | **494M** | **1.54B** (28 Layers, 12 Heads) |
+| **Primary Specialization** | Ambient Desk Companion & Edge Chat | Systems Guru & DAG Task Planner | Sovereign Lead Architect & CoT Prover |
+| **Quantization & Format** | `IQ3_XXS` Vector / `IQ4_NL` | `IQ3_XXS` (imatrix conditioned) | `IQ3_XXS` Layers + `IQ4_NL` Vocab |
+| **On-Disk Binary Size** | **~75 – 83 MB** | **~254 – 318 MB** | **604 MB** |
+| **Idle Model RAM (Heap)** | **< 28 MB** (reclaims to 27.6 MB) | **~75 MB** (reclaims to 74.8 MB) | **~76 MB** |
+| **Active Process Peak (`VmHWM`)**| **< 50 MB** (40.8 MB default) | **~195 – 234 MB** | **295.1 MB** *(vs 1,312 MB stock)* |
+| **Inference Rate (Pure CPU)** | **35–42 tok/s** (55+ w/s default) | **20–35 words/sec** (~30–45 tok/s) | **21.58 tok/s** (14.4 words/sec) |
+| **Peak Throughput / Burst** | **115–120.8 tok/s** (`--turbo`) | **~50 tok/s** burst | **39.7 tok/s** (27.4 w/s on spec hits) |
+| **Cognitive Invariant** | Strict Zero-Code (deflects to Manta/Fin) | Strict Zero-Code Planner (`<manta_plan>`) | Bit-exact `<think>...</think>` CoT |
+| **Target Hardware SLA** | Always-on background daemon / 128MB RAM | 512MB RAM edge nodes & containers | 512MB–1GB RAM systems (Zero GPU) |
+| **CLI Direct Invocation** | `nioxs skate "<prompt>"` | `nioxs manta "<prompt>"` | `nioxs beluga "<prompt>"` |
+
+---
+
 ## 🐋 NioBeluga vs Stock Qwen 2.5 (1.5B): Side-by-Side Comparison
 
 | Technical Dimension | Stock Qwen 2.5 1.5B<br>*(Standard Ollama / llama.cpp)* | NioBeluga<br>*(Sovereign NioXS Engine)* |
