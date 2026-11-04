@@ -35,7 +35,11 @@ Commands:\n\
   undo           Rollback last applied multi-file patch (or specific patch_id)\n\
   history        Display local session turn journal from .nioxs/history.jsonl\n\
 \n\
-Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID, NIOXS_API_TOKEN_FILE (optional on loopback)."
+Options:\n\
+  --device, -d <auto|cpu|gpu> Select hardware compute device (default: auto; uses GPU if available, else pure CPU)\n\
+  --max-tokens, -n <count>    Max tokens to generate (default: 4096 / unconstrained until EOS)\n\
+\n\
+Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID."
         );
         return Ok(());
     }
@@ -238,17 +242,22 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
     if arg.as_deref() == Some("beluga") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs beluga [-n <max_tokens>] <prompt>");
+            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
 
         let mut custom_max_tokens = None;
+        let mut device_pref = nioxs_engine::DevicePreference::Auto;
         let mut prompt_parts = Vec::new();
-        let mut iter = raw_args.into_iter();
+        let mut iter = raw_args.clone().into_iter();
         while let Some(a) = iter.next() {
             if a == "-n" || a == "--max-tokens" {
                 if let Some(val) = iter.next() {
                     custom_max_tokens = val.parse::<usize>().ok();
+                }
+            } else if a == "-d" || a == "--device" {
+                if let Some(val) = iter.next() {
+                    device_pref = nioxs_engine::DevicePreference::parse(&val);
                 }
             } else {
                 prompt_parts.push(a);
@@ -256,10 +265,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
         }
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
-            eprintln!("Usage: nioxs beluga [-n <max_tokens>] <prompt>");
+            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
-        let engine = nioxs_engine::RayEngine::for_model("nio-beluga")?;
+        let engine = nioxs_engine::RayEngine::for_model_with_device("nio-beluga", device_pref)?;
         let max_tokens = custom_max_tokens.unwrap_or(4096);
         let formatted_prompt = format!(
             "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Defer raw low-level code generation to downstream coding models.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
@@ -276,32 +285,41 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
     if arg.as_deref() == Some("manta") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs manta <prompt> | nioxs manta --plan <prompt> | nioxs manta --benchmark");
+            eprintln!("Usage: nioxs manta [--device <auto|cpu|gpu>] [--plan] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
 
         let mut is_plan = false;
+        let mut custom_max_tokens = None;
+        let mut device_pref = nioxs_engine::DevicePreference::Auto;
         let mut prompt_parts = Vec::new();
-        for a in &raw_args {
+        let mut iter = raw_args.clone().into_iter();
+        while let Some(a) = iter.next() {
             if a == "--plan" {
                 is_plan = true;
-            } else if a == "--benchmark" || a == "-b" {
-                // Keep for python benchmark if needed
-            } else if a != "-i" && a != "--interactive" {
-                prompt_parts.push(a.as_str());
+            } else if a == "-n" || a == "--max-tokens" {
+                if let Some(val) = iter.next() {
+                    custom_max_tokens = val.parse::<usize>().ok();
+                }
+            } else if a == "-d" || a == "--device" {
+                if let Some(val) = iter.next() {
+                    device_pref = nioxs_engine::DevicePreference::parse(&val);
+                }
+            } else if a != "-i" && a != "--interactive" && a != "--benchmark" && a != "-b" {
+                prompt_parts.push(a);
             }
         }
         let user_prompt = prompt_parts.join(" ");
 
         // Prefer native Rust RayEngine for nio-manta
-        if let Ok(engine) = nioxs_engine::RayEngine::for_model("nio-manta") {
+        if let Ok(engine) = nioxs_engine::RayEngine::for_model_with_device("nio-manta", device_pref) {
             let sys_msg = if is_plan {
                 "You are Manta, an expert architect and systems planner for Nio. Compile the user request into a machine-verifiable <manta_plan> XML DAG with step id, name, description, command, and rollback. Respond directly without reciting your preamble."
             } else {
-                "You are Manta, an expert architect and systems planner for Nio. Provide concise, direct, and actionable architectural designs, trade-off analyses, and <manta_plan> XML DAGs. Answer directly without reciting your system preamble. Delegate all implementation to Cuda; never write raw code blocks directly."
+                "You are Manta, an expert architect and systems planner for Nio. Provide concise, direct, and actionable architectural designs, trade-off analyses, and <manta_plan> XML DAGs. Answer directly without reciting your system preamble. Delegate all implementation to downstream coding models; never write raw code blocks directly."
             };
             let formatted_prompt = format!("<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n");
-            let max_tokens = 4096;
+            let max_tokens = custom_max_tokens.unwrap_or(4096);
             let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.2, 0.9).await?;
             use std::io::Write;
             while let Some(chunk) = rx.recv().await {
@@ -582,6 +600,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
     );
     let ray_engine: Option<nioxs_engine::RayEngine> = None;
     let microlm_banner = "Sovereign MicroLM Fleet (Beluga, Manta, Viper, Dolphin)";
+    let active_hw = nioxs_engine::ActiveDevice::detect(nioxs_engine::DevicePreference::Auto);
     let listener = tokio::net::TcpListener::bind(listen).await?;
     let addr = listener.local_addr()?;
     eprintln!(
@@ -592,12 +611,14 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
   │  • Gateway API : http://{:<33} │\n\
   │  • NioDB Store : {:<40} │\n\
   │  • MicroLM     : {:<40} │\n\
+  │  • Hardware    : {:<40} │\n\
   │  • Directives  : --bash, --tools, --code, --test         │\n\
   ╰──────────────────────────────────────────────────────────╯\n",
         env!("CARGO_PKG_VERSION"),
         addr,
         db_url,
         microlm_banner,
+        active_hw.name(),
     );
     axum::serve(
         listener,

@@ -9,7 +9,9 @@ pub mod gguf;
 pub mod quants;
 pub mod pool;
 pub mod ast_engine;
+pub mod hardware;
 pub use ast_engine::{AstMicroEngine, memory_mb};
+pub use hardware::{ActiveDevice, DevicePreference};
 
 pub fn skate_system() -> Result<String> {
     if let Some(path) = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE") {
@@ -341,6 +343,7 @@ pub struct RayEngine {
     is_skate: bool,
     is_manta: bool,
     is_beluga: bool,
+    device_pref: DevicePreference,
 }
 
 impl RayEngine {
@@ -357,6 +360,10 @@ impl RayEngine {
     }
 
     pub fn for_model(model_name: &str) -> Result<Self> {
+        Self::for_model_with_device(model_name, DevicePreference::Auto)
+    }
+
+    pub fn for_model_with_device(model_name: &str, device_pref: DevicePreference) -> Result<Self> {
         let (model_path, tokenizer_path) = Self::find_or_pull_model_paths(model_name)?;
         let lowered = model_name.trim().to_ascii_lowercase();
         let is_skate = matches!(lowered.as_str(), "skate" | "nio-skate");
@@ -369,7 +376,16 @@ impl RayEngine {
             is_skate,
             is_manta,
             is_beluga,
+            device_pref,
         })
+    }
+
+    pub fn active_device(&self) -> ActiveDevice {
+        ActiveDevice::detect(self.device_pref)
+    }
+
+    pub fn set_device_preference(&mut self, pref: DevicePreference) {
+        self.device_pref = pref;
     }
 
     pub fn from_paths(model_path: PathBuf, tokenizer_path: PathBuf) -> Self {
@@ -383,6 +399,7 @@ impl RayEngine {
             is_skate,
             is_manta,
             is_beluga,
+            device_pref: DevicePreference::Auto,
         }
     }
 
@@ -730,6 +747,73 @@ impl RayEngine {
         let (tx, rx) = mpsc::channel(64);
         let temperature = temperature.clamp(0.05, 2.0) as f32;
         let top_p = top_p.clamp(0.05, 1.0) as f32;
+
+        let active_dev = self.active_device();
+        if active_dev.is_gpu() {
+            let runner_bin = std::env::var_os("NIOXS_GPU_RUNNER")
+                .or_else(|| std::env::var_os("NIOXS_LLAMA_CLI"))
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("llama-cli"));
+
+            let runner_available = if runner_bin.is_file() {
+                true
+            } else if let Ok(path_var) = std::env::var("PATH") {
+                std::env::split_paths(&path_var).any(|d| d.join(&runner_bin).is_file())
+            } else {
+                false
+            };
+
+            if runner_available {
+                let model_path = self.model_path.clone();
+                let total_layers = if self.is_beluga { 28 } else if self.is_manta { 24 } else { 30 };
+                let gpu_layers = active_dev.recommended_gpu_layers(total_layers);
+                let ngl_arg = gpu_layers.to_string();
+
+                tokio::task::spawn_blocking(move || {
+                    let temp_arg = format!("{temperature:.2}");
+                    let top_p_arg = format!("{top_p:.2}");
+                    let mut cmd = std::process::Command::new(&runner_bin);
+                    cmd.args([
+                        "-m", model_path.to_str().unwrap_or_default(),
+                        "-p", &prompt,
+                        "-n", &max_tokens.to_string(),
+                        "-c", "4096",
+                        "-ngl", &ngl_arg,
+                        "--temp", &temp_arg,
+                        "--top-p", &top_p_arg,
+                        "--min-p", "0.05",
+                        "--repeat-penalty", "1.15",
+                        "--repeat-last-n", "64",
+                        "--no-display-prompt",
+                        "--simple-io",
+                    ]);
+                    if let Some(lib_dir) = runner_bin.parent().filter(|p| !p.as_os_str().is_empty()) {
+                        let existing = std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default();
+                        let mut paths = vec![lib_dir.to_path_buf()];
+                        paths.extend(std::env::split_paths(&existing));
+                        if let Ok(joined) = std::env::join_paths(paths) {
+                            cmd.env("LD_LIBRARY_PATH", joined);
+                        }
+                    }
+                    cmd.stdout(std::process::Stdio::piped());
+                    cmd.stderr(std::process::Stdio::null());
+
+                    if let Ok(mut child) = cmd.spawn() {
+                        if let Some(stdout) = child.stdout.take() {
+                            use std::io::{BufRead, BufReader};
+                            let reader = BufReader::new(stdout);
+                            for line in reader.lines().flatten() {
+                                if !line.is_empty() {
+                                    let _ = tx.blocking_send(format!("{line}\n"));
+                                }
+                            }
+                        }
+                        let _ = child.wait();
+                    }
+                });
+                return Ok(rx);
+            }
+        }
 
         if self.is_vector_runtime() {
             let model_path = self.model_path.clone();
