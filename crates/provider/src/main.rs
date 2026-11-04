@@ -236,13 +236,31 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
         return Ok(());
     }
     if arg.as_deref() == Some("beluga") {
-        let prompt = std::env::args().skip(2).collect::<Vec<_>>().join(" ");
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        if raw_args.is_empty() {
+            eprintln!("Usage: nioxs beluga [-n <max_tokens>] <prompt>");
+            return Ok(());
+        }
+
+        let mut custom_max_tokens = None;
+        let mut prompt_parts = Vec::new();
+        let mut iter = raw_args.into_iter();
+        while let Some(a) = iter.next() {
+            if a == "-n" || a == "--max-tokens" {
+                if let Some(val) = iter.next() {
+                    custom_max_tokens = val.parse::<usize>().ok();
+                }
+            } else {
+                prompt_parts.push(a);
+            }
+        }
+        let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
-            eprintln!("Usage: nioxs beluga <prompt>");
+            eprintln!("Usage: nioxs beluga [-n <max_tokens>] <prompt>");
             return Ok(());
         }
         let engine = nioxs_engine::RayEngine::for_model("nio-beluga")?;
-        let max_tokens = if prompt.split_whitespace().count() <= 3 { 64 } else { 256 };
+        let max_tokens = custom_max_tokens.unwrap_or(1024);
         let formatted_prompt = format!(
             "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Defer raw low-level code generation to downstream coding models.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         );
@@ -283,7 +301,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, N
                 "You are Manta, an expert architect and systems planner for Nio. Provide concise, direct, and actionable architectural designs, trade-off analyses, and <manta_plan> XML DAGs. Answer directly without reciting your system preamble. Delegate all implementation to Cuda; never write raw code blocks directly."
             };
             let formatted_prompt = format!("<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n");
-            let max_tokens = if is_plan { 384 } else { 160 };
+            let max_tokens = if is_plan { 1024 } else { 512 };
             let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.2, 0.9).await?;
             use std::io::Write;
             while let Some(chunk) = rx.recv().await {

@@ -90,7 +90,7 @@ pub async fn generate(prompt: &str) -> Result<String> {
     let formatted = format!(
         "<|im_start|>system\n{policy}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
-    let generated = engine.generate(formatted, 128, 0.65, 0.9).await?;
+    let generated = engine.generate(formatted, 384, 0.65, 0.9).await?;
     if generated.trim().is_empty() || !is_allowed("model_output", &generated).await.unwrap_or(false) {
         return fallback("output_blocked_or_classifier_unavailable", prompt).await;
     }
