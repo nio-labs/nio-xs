@@ -346,6 +346,7 @@ async fn microlm_chat_handler(
     let model = match model_name {
         "nio-beluga" | "beluga" => nioxs_contracts::MODEL_BELUGA,
         "nio-manta" | "manta" | "nio-echo" | "echo" => nioxs_contracts::MODEL_MANTA,
+        "nio-skate" | "skate" => nioxs_contracts::MODEL_SKATE,
         "nio-viper" | "viper" => nioxs_contracts::MODEL_VIPER,
         "nio-cuda" | "cuda" => nioxs_contracts::MODEL_CUDA,
         _ => nioxs_contracts::MODEL_RAY,

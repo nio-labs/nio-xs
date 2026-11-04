@@ -66,9 +66,10 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
 }
 
 pub fn get_manifest_entry(model_id: &str) -> Option<ModelArtifactEntry> {
+    let clean = model_id.strip_prefix("nio-").unwrap_or(model_id);
     default_manifest()
         .into_iter()
-        .find(|e| e.model_id == model_id)
+        .find(|e| e.model_id == clean || e.model_id == model_id)
 }
 
 /// Resolves the local models cache directory (`~/.nioxs/models/` by default).

@@ -6,13 +6,13 @@ pub const PROVIDER: &str = "nioxs";
 pub const MODEL_CUDA: &str = "nio-cuda";
 pub const MODEL_RAY: &str = "nio-ray";
 pub const MODEL_VIPER: &str = "nio-viper";
-pub const MODEL_MANTA: &str = "nio-manta";
-pub const MODEL_BELUGA: &str = "nio-beluga";
+pub const MODEL_MANTA: &str = "manta";
+pub const MODEL_BELUGA: &str = "beluga";
 pub const MODEL_NANO: &str = "nio-nano";
 pub const MODEL_MICRO: &str = "nio-micro";
 pub const MODEL_MASK: &str = "nio-mask";
 pub const MODEL_MINI: &str = "nio-mini";
-pub const MODEL_SKATE: &str = "nio-skate";
+pub const MODEL_SKATE: &str = "skate";
 /// Default public model: the tactical swarm conductor & orchestrator.
 pub const MODEL: &str = MODEL_CUDA;
 /// Deprecated request alias; kept for existing clients, but no longer advertised.
