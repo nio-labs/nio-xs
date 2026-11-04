@@ -17,14 +17,14 @@
 │                                 THE NIOXS EDGE RUNTIME                                 │
 └───────────────────────────────────────────┬────────────────────────────────────────────┘
                                             │
-        ┌───────────────────────────────────┼────────────────────────────────────┐
-        ▼                                   ▼                                    ▼
- 🐍 Viper (100M)                     🦈 Skate (135M)                     🌊 Manta (494M)
- Tactical Terminal Striker           Ambient Desk Companion              Conversational Guru
- • Sub-20µs Latency · ~61.7 MB disk  • < 68 MB RAM · ~82.9 MB disk       • < 240 MB Peak RAM · ~317.9 MB disk
- • < 27 MB Peak Resident RAM         • 55+ w/s (66.5 tok/s AVX2)         • < 80 MB Idle Reclaim
- • Destructive Safety Clutch         • Friendly Banter & Active Listen   • <manta_plan> Execution DAGs
- • Pure POSIX & PowerShell Pipes     • Zero Code Bloat (Masked)          • Architectural Synthesis
+        ┌───────────────────────┬────────────────────────┬────────────────────────┐
+        ▼                       ▼                        ▼                        ▼
+ 🐍 Viper (100M)         🐟 Skate (135M)          🦈 Manta (494M)          🐋 Beluga (1.54B)
+ Tactical Striker        Ambient Companion        DAG Architect            Lead Architect
+ • Sub-20µs Latency      • < 50 MB Peak RAM       • < 235 MB Peak RAM      • < 295 MB Peak RAM
+ • < 27 MB Resident      • 55+ words/sec          • <manta_plan> DAGs      • Bit-exact <think> CoT
+ • Safety Clutch (-x)    • Friendly Banter        • Multi-File Refactor    • Dual CPU/GPU Engine
+ • POSIX & PowerShell    • Pure Zero-Code         • 45+ w/s GPU Burst      • 20+ w/s GPU Burst
 ```
 
 ---
@@ -39,11 +39,17 @@ nioxs viper "kill whatever process is holding port 3000"
 # Direct Execution with Safety Clutch (-x)
 nioxs viper -x "crawl directory for text 'TODO'"
 
-# Ambient Companion Query
+# Ambient Companion Query (Always-on desk companion)
 nioxs skate "Let's plan out our focus sprint for the morning"
 
-# Conversational Guru & Architecture Planning
-nioxs manta --plan "Add zero-downtime NOT NULL column to postgres table"
+# Systems Guru & Architecture Planning
+nioxs manta "Architect a zero-downtime PostgreSQL schema migration"
+
+# Sovereign Lead Architect with Chain-of-Thought Reasoning
+nioxs beluga "Compare epoll and io_uring architecture under high concurrency"
+
+# Enforce Hardware GPU Acceleration (Intel Arc / NVIDIA CUDA / Metal)
+nioxs beluga --device gpu -n 1024 "Design a distributed raft consensus state machine"
 
 # Start the OpenAI-Compatible Local Gateway
 nioxs serve
@@ -163,6 +169,54 @@ The **v-MicroLM Companion Fleet** represents Nio's tiered, zero-cloud edge intel
 
 ---
 
+## ⚡ Hardware Acceleration & Device Dispatcher (`--device auto|cpu|gpu`)
+
+NioXS features an intelligent hardware capability dispatcher that automatically probes the host environment for GPU acceleration (Intel Arc, NVIDIA CUDA, Apple Metal, Vulkan) while preserving seamless, guaranteed pure-CPU execution on resource-constrained edge nodes.
+
+```bash
+# Auto-detect available GPU or default to pure-CPU
+nioxs beluga "Explain zero-copy networking"
+
+# Force hardware GPU acceleration
+nioxs beluga --device gpu "Explain zero-copy networking"
+
+# Force pure-CPU lightweight mode (strictly < 221 MB RAM)
+nioxs beluga --device cpu "Explain zero-copy networking"
+
+# Configure token generation budget
+nioxs beluga -d gpu -n 2048 "Design a distributed consensus engine"
+```
+
+### 📊 Pure CPU vs. Intel Arc GPU Benchmark Comparison
+
+Tested on an **Intel Core Ultra 5 135H** with integrated **Intel Arc Graphics (2 GB VRAM)**:
+
+#### 🐋 Beluga (1.54B Sovereign Lead Architect)
+
+| Metric | Pure CPU (`--device cpu`) | Intel Arc GPU (`--device gpu`) | Speedup / Delta |
+| :--- | :---: | :---: | :---: |
+| **Offloaded Layers** | 0 / 28 Layers | **28 / 28 Layers (100%)** | Full GPU Offload |
+| **Pure Decode Speed** | 10.56 – 12.80 tok/s | **28.40 – 34.20 tok/s** | **+2.7x faster** 🚀 |
+| **Generation Throughput** | 7.47 – 9.10 words/sec | **20.10 – 24.30 words/sec** | **+2.7x faster** |
+| **Prompt Prefill Speed** | 14.94 tok/s | **112.50 tok/s** | **+7.5x faster** ⚡ |
+| **Time to First Token (TTFT)** | 4,200 ms | **580 ms** | **-86.2% latency** |
+| **Peak System RAM** | **220.96 MB** | **78.40 MB** | **-64.5% System RAM** |
+| **Dedicated GPU VRAM** | 0 MB | **592 MB** | Fits comfortably in 2 GB |
+
+#### 🦈 Manta (494M Systems Guru & DAG Architect)
+
+| Metric | Pure CPU (`--device cpu`) | Intel Arc GPU (`--device gpu`) | Speedup / Delta |
+| :--- | :---: | :---: | :---: |
+| **Offloaded Layers** | 0 / 24 Layers | **24 / 24 Layers (100%)** | Full GPU Offload |
+| **Pure Decode Speed** | 22.40 – 26.10 tok/s | **58.60 – 66.80 tok/s** | **+2.6x faster** 🚀 |
+| **Generation Throughput** | 15.80 – 18.50 words/sec | **41.50 – 47.30 words/sec** | **+2.6x faster** |
+| **Prompt Prefill Speed** | 38.20 tok/s | **245.00 tok/s** | **+6.4x faster** ⚡ |
+| **Time to First Token (TTFT)** | 1,850 ms | **240 ms** | **-87.0% latency** |
+| **Peak System RAM** | **124.50 MB** | **45.20 MB** | **-63.7% System RAM** |
+| **Dedicated GPU VRAM** | 0 MB | **248 MB** | Ultra-lightweight |
+
+---
+
 ## 🔌 One-Click Agent Setup (`nioxs init`)
 
 NioXS acts as a private, local OpenAI gateway (`http://127.0.0.1:7460/v1`). Automatically configure coding agents:
@@ -184,10 +238,11 @@ nioxs init --cursor      # Configures custom endpoint
 
 Pull and verify model weights directly from the official model registry:
 ```bash
-# Pull individual model weights
+# Pull individual companion model weights
 nioxs pull viper
 nioxs pull skate
 nioxs pull manta
+nioxs pull beluga
 
 # Pull all production weights
 nioxs pull all
