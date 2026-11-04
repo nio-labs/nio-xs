@@ -106,6 +106,121 @@ impl TokenOutputStream {
     }
 }
 
+const UNIVERSAL_SUBWORDS_JSON: &[u8] = include_bytes!("universal_subwords.json");
+
+#[derive(Debug, Clone)]
+pub struct ZwCache {
+    trigrams: std::collections::HashMap<(u32, u32), std::collections::HashMap<u32, u32>>,
+    bigrams: std::collections::HashMap<u32, std::collections::HashMap<u32, u32>>,
+    deterministic_subwords: std::collections::HashMap<u32, u32>,
+    prompt_tokens: Vec<u32>,
+}
+
+impl ZwCache {
+    pub fn new() -> Self {
+        let det: std::collections::HashMap<u32, u32> = serde_json::from_slice(UNIVERSAL_SUBWORDS_JSON).unwrap_or_default();
+
+        Self {
+            trigrams: std::collections::HashMap::new(),
+            bigrams: std::collections::HashMap::new(),
+            deterministic_subwords: det,
+            prompt_tokens: Vec::new(),
+        }
+    }
+
+    pub fn seed_prompt(&mut self, prompt: &[u32]) {
+        self.prompt_tokens = prompt.to_vec();
+        for w in prompt.windows(2) {
+            *self.bigrams.entry(w[0]).or_default().entry(w[1]).or_default() += 4;
+        }
+        for w in prompt.windows(3) {
+            *self.trigrams.entry((w[0], w[1])).or_default().entry(w[2]).or_default() += 6;
+        }
+    }
+
+    pub fn observe(&mut self, prev2: Option<u32>, prev1: u32, next: u32) {
+        let bi = self.bigrams.entry(prev1).or_default();
+        *bi.entry(next).or_default() += 2;
+
+        if let Some(p2) = prev2 {
+            let tri = self.trigrams.entry((p2, prev1)).or_default();
+            *tri.entry(next).or_default() += 4;
+        }
+    }
+
+    pub fn predict(&self, prev2: Option<u32>, prev1: u32, gen_tokens: &[u32]) -> Option<u32> {
+        // Priority 1: Deterministic BPE reasoning tokens (100% confidence)
+        if let Some(&next) = self.deterministic_subwords.get(&prev1) {
+            return Some(next);
+        }
+
+        // Priority 2: High-order Context Match in generated tokens or prompt tokens
+        if let Some(p2) = prev2 {
+            if gen_tokens.len() >= 4 {
+                for i in (2..gen_tokens.len() - 1).rev() {
+                    if gen_tokens[i - 1] == p2 && gen_tokens[i] == prev1 {
+                        return Some(gen_tokens[i + 1]);
+                    }
+                }
+            }
+            if self.prompt_tokens.len() >= 3 {
+                for i in 1..self.prompt_tokens.len() - 1 {
+                    if self.prompt_tokens[i - 1] == p2 && self.prompt_tokens[i] == prev1 {
+                        return Some(self.prompt_tokens[i + 1]);
+                    }
+                }
+            }
+
+            // High-confidence Trigram lookup (observed >= 2 times with >= 75% frequency)
+            if let Some(nexts) = self.trigrams.get(&(p2, prev1)) {
+                let mut best_tok = 0;
+                let mut best_cnt = 0;
+                let mut total_cnt = 0;
+                for (&tok, &cnt) in nexts {
+                    total_cnt += cnt;
+                    if cnt > best_cnt {
+                        best_cnt = cnt;
+                        best_tok = tok;
+                    }
+                }
+                if total_cnt >= 2 && best_cnt * 4 >= total_cnt * 3 {
+                    return Some(best_tok);
+                }
+            }
+        }
+
+        // Priority 3: High-confidence Bigram lookup (observed >= 2 times with >= 75% frequency)
+        if let Some(nexts) = self.bigrams.get(&prev1) {
+            let mut best_tok = 0;
+            let mut best_cnt = 0;
+            let mut total_cnt = 0;
+            for (&tok, &cnt) in nexts {
+                total_cnt += cnt;
+                if cnt > best_cnt {
+                    best_cnt = cnt;
+                    best_tok = tok;
+                }
+            }
+            if total_cnt >= 2 && best_cnt * 4 >= total_cnt * 3 {
+                return Some(best_tok);
+            }
+        }
+
+        None
+    }
+
+    pub fn predict_pair(&self, prev2: Option<u32>, prev1: u32, gen_tokens: &[u32]) -> (Option<u32>, Option<u32>) {
+        if let Some(d1) = self.predict(prev2, prev1, gen_tokens) {
+            let mut local_gen = gen_tokens.to_vec();
+            local_gen.push(d1);
+            let d2 = self.predict(Some(prev1), d1, &local_gen);
+            (Some(d1), d2)
+        } else {
+            (None, None)
+        }
+    }
+}
+
 struct PhraseBuffer {
     buffer: String,
     word_count: usize,
@@ -179,6 +294,8 @@ fn stop_position(text: &str) -> Option<usize> {
         .min()
 }
 
+const MAX_STOP_PHRASE_LEN: usize = 32;
+
 fn push_safe_chunk(
     chunk: &str,
     emitted: &mut String,
@@ -188,7 +305,9 @@ fn push_safe_chunk(
     let already = emitted.len();
     emitted.push_str(chunk);
 
-    if let Some(idx) = stop_position(emitted) {
+    let check_start = already.saturating_sub(MAX_STOP_PHRASE_LEN);
+    if let Some(rel_idx) = stop_position(&emitted[check_start..]) {
+        let idx = check_start + rel_idx;
         if idx > already {
             let safe = &emitted[already..idx];
             if !safe.is_empty() && !phrase_buffer.push(safe, tx) {
@@ -490,9 +609,12 @@ impl RayEngine {
             } else if is_manta {
                 engine.set_suppressed_tokens([41233, 54275, 73594]);
             } else if is_beluga {
-                engine.set_resident_layers(1);
+                engine.set_resident_layers(7);
                 engine.set_rolling_window(4);
             }
+
+            // Immediately park worker threads so nioxs sits at 0.0% CPU when idle
+            engine.park();
 
             Ok(ModelBundle {
                 engine,
@@ -670,7 +792,7 @@ impl RayEngine {
 
         let bundle_arc = self.bundle.clone();
         let formatted = self.format_prompt_for_engine(&prompt)?;
-        let is_beluga = self.is_beluga;
+        let _is_beluga = self.is_beluga;
         tokio::task::spawn_blocking(move || {
             let mut guard = bundle_arc.blocking_lock();
             if tx.is_closed() {
@@ -702,10 +824,13 @@ impl RayEngine {
                 return;
             }
 
+            bundle.engine.unpark();
+
             let _hidden = match bundle.engine.prefill(&prompt_tokens) {
                 Ok(h) => h,
                 Err(e) => {
                     let _ = tx.blocking_send(format!("AST-Micro prefill error: {e}"));
+                    bundle.engine.park();
                     return;
                 }
             };
@@ -722,12 +847,14 @@ impl RayEngine {
                 Ok(t) => t,
                 Err(e) => {
                     let _ = tx.blocking_send(format!("AST-Micro sampling error: {e}"));
+                    bundle.engine.park();
                     return;
                 }
             };
 
             if is_eos(next_token) {
                 bundle.engine.reset_cache();
+                bundle.engine.park();
                 return;
             }
 
@@ -739,91 +866,193 @@ impl RayEngine {
                 if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
                     phrase_buffer.flush(&tx);
                     bundle.engine.reset_cache();
+                    bundle.engine.park();
                     return;
                 }
             }
 
-            // Generation loop using prompt-lookup speculative decoding with KV-cache
-            let mut context_tokens = prompt_tokens.clone();
-            context_tokens.push(next_token);
-            let mut gen_tokens = vec![next_token];
+            // Generation loop using V4 Zero-Weight Lookahead (ZW-Spec) with Asymmetric Zero-Penalty Verification
+            let mut zw_cache = ZwCache::new();
+            zw_cache.seed_prompt(&prompt_tokens);
+            if let Some(&last_prompt) = prompt_tokens.last() {
+                let p2 = if prompt_tokens.len() >= 2 { Some(prompt_tokens[prompt_tokens.len() - 2]) } else { None };
+                zw_cache.observe(p2, last_prompt, next_token);
+            }
 
+            let mut gen_tokens = vec![next_token];
             let max_gen = max_tokens.max(1);
-            let mut current_pos = prompt_tokens.len();
             let mut current_confirmed = next_token;
-            let mut consecutive_draft_misses = 0usize;
+            let mut stream_pos = prompt_tokens.len();
+            let mut consecutive_misses = 0usize;
 
             while gen_tokens.len() < max_gen {
                 if tx.is_closed() {
                     break;
                 }
+
                 let remaining = max_gen.saturating_sub(gen_tokens.len());
-                // Phase-Aware Dynamic Lookahead:
-                // Beluga reasons deeply first: from token 0 until </think>, the model is in internal monologue.
-                // Reasoning monologues have ~0% n-gram draft acceptance. Suppress drafting to run full-speed pure AR.
-                // Once </think> is emitted, switch to high-momentum response lookahead (max_draft = 2).
-                let in_thinking = is_beluga && !emitted.contains("</think>");
-                let draft_limit = if in_thinking || (consecutive_draft_misses > 0 && consecutive_draft_misses < 8) {
-                    0
+                let prev2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+
+                // Predict draft candidates: strictly high-confidence context and subword drafter
+                let (d1_opt, d2_opt) = if remaining >= 3 {
+                    zw_cache.predict_pair(prev2, current_confirmed, &gen_tokens)
+                } else if remaining >= 2 {
+                    (zw_cache.predict(prev2, current_confirmed, &gen_tokens), None)
                 } else {
-                    1
-                };
-                let max_draft = draft_limit.min(remaining.saturating_sub(1));
-
-                let step_res = match bundle.engine.speculative_pld_step(
-                    &context_tokens,
-                    current_confirmed,
-                    current_pos,
-                    &gen_tokens,
-                    max_draft,
-                    &stop_tokens,
-                ) {
-                    Ok(res) => res,
-                    Err(e) => {
-                        let _ = tx.blocking_send(format!("AST-Micro forward error: {e}"));
-                        break;
-                    }
+                    (None, None)
                 };
 
-                // Track draft efficiency: only evaluate miss if drafts were actually proposed
-                if step_res.drafts_proposed > 0 {
-                    if step_res.accepted_tokens.len() <= 1 {
-                        consecutive_draft_misses += 1;
-                    } else {
-                        consecutive_draft_misses = 0;
-                    }
-                } else if consecutive_draft_misses > 0 {
-                    consecutive_draft_misses += 1;
-                    if consecutive_draft_misses >= 8 {
-                        consecutive_draft_misses = 0;
-                    }
-                }
+                let d1_valid = d1_opt.filter(|&d| !is_eos(d) && d != 0);
+                let d2_valid = d2_opt.filter(|&d| !is_eos(d) && d != 0);
 
-                let mut stopped = false;
-                for tok in step_res.accepted_tokens {
-                    context_tokens.push(tok);
-                    gen_tokens.push(tok);
-                    if is_eos(tok) {
-                        stopped = true;
-                        break;
-                    }
-                    if let Ok(Some(chunk)) = tos.next_token(tok) {
-                        if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
-                            stopped = true;
+                if let (Some(d1), Some(d2)) = (d1_valid, d2_valid) {
+                    // V5 Architecture: 3-Token Speculative Step (reads weights ONCE for 3 tokens)
+                    match bundle.engine.speculative_trio_step(
+                        current_confirmed,
+                        d1,
+                        d2,
+                        stream_pos,
+                        &gen_tokens,
+                        &stop_tokens,
+                    ) {
+                        Ok(outcome) => {
+                            if outcome.matched_count > 0 {
+                                consecutive_misses = 0;
+                            } else {
+                                consecutive_misses += 1;
+                            }
+
+                            let mut stopped = false;
+                            for &tok in &outcome.accepted_tokens {
+                                if !is_eos(tok) && tok != 0 {
+                                    let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                                    if let Some(&last_tok) = gen_tokens.last() {
+                                        zw_cache.observe(prev_p2, last_tok, tok);
+                                    }
+                                    gen_tokens.push(tok);
+
+                                    if let Ok(Some(chunk)) = tos.next_token(tok) {
+                                        if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
+                                            stopped = true;
+                                            break;
+                                        }
+                                    }
+                                    if gen_tokens.len() >= max_gen {
+                                        stopped = true;
+                                        break;
+                                    }
+                                } else {
+                                    stopped = true;
+                                    break;
+                                }
+                            }
+
+                            current_confirmed = outcome.last_confirmed;
+                            stream_pos = outcome.stream_pos;
+
+                            if stopped || outcome.is_eos {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx.blocking_send(format!("AST-Micro speculative error: {e}"));
                             break;
                         }
                     }
-                    if gen_tokens.len() >= max_gen {
-                        stopped = true;
+                } else if let Some(draft_tok) = d1_valid {
+                    // V5 Architecture: 2-Token Speculative Step fallback
+                    let predict_next_medusa = false;
+                    match bundle.engine.speculative_pair_step(
+                        current_confirmed,
+                        draft_tok,
+                        stream_pos,
+                        &gen_tokens,
+                        &stop_tokens,
+                        predict_next_medusa,
+                    ) {
+                        Ok(outcome) => {
+                            if outcome.draft_matched {
+                                consecutive_misses = 0;
+                            } else {
+                                consecutive_misses += 1;
+                            }
+
+                            let mut stopped = false;
+                            for &tok in &outcome.accepted_tokens {
+                                if !is_eos(tok) && tok != 0 {
+                                    let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                                    if let Some(&last_tok) = gen_tokens.last() {
+                                        zw_cache.observe(prev_p2, last_tok, tok);
+                                    }
+                                    gen_tokens.push(tok);
+
+                                    if let Ok(Some(chunk)) = tos.next_token(tok) {
+                                        if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
+                                            stopped = true;
+                                            break;
+                                        }
+                                    }
+                                    if gen_tokens.len() >= max_gen {
+                                        stopped = true;
+                                        break;
+                                    }
+                                } else {
+                                    stopped = true;
+                                    break;
+                                }
+                            }
+
+                            current_confirmed = outcome.last_confirmed;
+                            stream_pos = outcome.stream_pos;
+
+                            if stopped || outcome.is_eos {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx.blocking_send(format!("AST-Micro speculative error: {e}"));
+                            break;
+                        }
+                    }
+                } else {
+                    // Pure Autoregressive 1-token step
+                    if consecutive_misses > 0 {
+                        consecutive_misses -= 1;
+                    }
+
+                    if let Err(e) = bundle.engine.forward_stream(&[current_confirmed], stream_pos) {
+                        let _ = tx.blocking_send(format!("AST-Micro forward error: {e}"));
                         break;
                     }
-                }
+                    stream_pos += 1;
 
-                current_confirmed = step_res.next_confirmed;
-                current_pos = step_res.next_pos;
+                    let next_tok = match bundle.engine.next_token_with_history(None, &gen_tokens, false) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            let _ = tx.blocking_send(format!("AST-Micro sampling error: {e}"));
+                            break;
+                        }
+                    };
 
-                if stopped || step_res.is_eos {
-                    break;
+                    if is_eos(next_tok) || next_tok == 0 {
+                        break;
+                    }
+
+                    let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                    zw_cache.observe(prev_p2, current_confirmed, next_tok);
+
+                    gen_tokens.push(next_tok);
+                    current_confirmed = next_tok;
+
+                    if let Ok(Some(chunk)) = tos.next_token(next_tok) {
+                        if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
+                            break;
+                        }
+                    }
+
+                    if gen_tokens.len() >= max_gen {
+                        break;
+                    }
                 }
             }
 
@@ -834,6 +1063,7 @@ impl RayEngine {
             phrase_buffer.flush(&tx);
 
             bundle.engine.reset_cache();
+            bundle.engine.park();
         });
 
         Ok(rx)
@@ -871,6 +1101,27 @@ mod tests {
         let tokens = vec![10, 20, 30, 40, 50, 10, 20];
         let cand = RayEngine::find_candidate_ngram(&tokens, 2);
         assert_eq!(cand, Some(30));
+    }
+
+    #[test]
+    fn test_zw_cache_predicts_bigrams_and_trigrams() {
+        let mut cache = ZwCache::new();
+        // Seed a sequence: A -> B -> C -> D, then A -> B -> C
+        cache.observe(None, 1, 2);
+        cache.observe(Some(1), 2, 3);
+        cache.observe(Some(2), 3, 4);
+
+        cache.observe(None, 1, 2);
+        cache.observe(Some(1), 2, 3);
+
+        // Bigram 1 -> 2 observed twice
+        assert_eq!(cache.predict(None, 1, &[]), Some(2));
+        // Trigram (1, 2) -> 3 observed twice
+        assert_eq!(cache.predict(Some(1), 2, &[]), Some(3));
+        // Single observation trigram (2, 3) -> 4 with 100% confidence
+        assert_eq!(cache.predict(Some(2), 3, &[]), Some(4));
+        // Unknown token has no prediction
+        assert_eq!(cache.predict(None, 999, &[]), None);
     }
 
     fn tokenizer() -> Tokenizer {

@@ -809,6 +809,238 @@ impl LayerDesc {
         }
     }
 
+    pub fn forward_3tokens(
+        &self,
+        mmap: &[u8],
+        scratch0: &mut ScratchBuffers,
+        scratch1: &mut ScratchBuffers,
+        scratch2: &mut ScratchBuffers,
+        pool: &SpinThreadPool,
+        _pos0: usize,
+        _pos1: usize,
+        _pos2: usize,
+        cos0: &[f32],
+        sin0: &[f32],
+        cos1: &[f32],
+        sin1: &[f32],
+        cos2: &[f32],
+        sin2: &[f32],
+        neox: bool,
+        n_head: usize,
+        n_kv_head: usize,
+        head_dim: usize,
+        eps: f32,
+        kv_cache: &mut LayerKvCache,
+    ) {
+        // 1. Attention Norms
+        rms_norm_slice(&scratch0.x, &self.attn_norm_weight, eps, &mut scratch0.x_norm);
+        rms_norm_slice(&scratch1.x, &self.attn_norm_weight, eps, &mut scratch1.x_norm);
+        rms_norm_slice(&scratch2.x, &self.attn_norm_weight, eps, &mut scratch2.x_norm);
+        quants::quantize_row_q8_k(&scratch0.x_norm, &mut scratch0.x_q8_k);
+        quants::quantize_row_q8_k(&scratch1.x_norm, &mut scratch1.x_q8_k);
+        quants::quantize_row_q8_k(&scratch2.x_norm, &mut scratch2.x_q8_k);
+
+        // 2. QKV Joint Projection (streams wq, wk, wv ONCE)
+        let wq_slice = &mmap[self.wq.offset..self.wq.offset + self.wq.byte_len];
+        let wk_slice = &mmap[self.wk.offset..self.wk.offset + self.wk.byte_len];
+        let wv_slice = &mmap[self.wv.offset..self.wv.offset + self.wv.byte_len];
+        pool.run_task(GemvTask::QkvIq3Xxs3Tokens {
+            q0_ptr: scratch0.q.as_mut_ptr() as usize,
+            q1_ptr: scratch1.q.as_mut_ptr() as usize,
+            q2_ptr: scratch2.q.as_mut_ptr() as usize,
+            k0_ptr: scratch0.k.as_mut_ptr() as usize,
+            k1_ptr: scratch1.k.as_mut_ptr() as usize,
+            k2_ptr: scratch2.k.as_mut_ptr() as usize,
+            v0_ptr: scratch0.v.as_mut_ptr() as usize,
+            v1_ptr: scratch1.v.as_mut_ptr() as usize,
+            v2_ptr: scratch2.v.as_mut_ptr() as usize,
+            wq_ptr: wq_slice.as_ptr() as usize,
+            wk_ptr: wk_slice.as_ptr() as usize,
+            wv_ptr: wv_slice.as_ptr() as usize,
+            x0_q8_k_ptr: scratch0.x_q8_k.as_ptr() as usize,
+            x1_q8_k_ptr: scratch1.x_q8_k.as_ptr() as usize,
+            x2_q8_k_ptr: scratch2.x_q8_k.as_ptr() as usize,
+            q_rows: self.wq.n_rows,
+            k_rows: self.wk.n_rows,
+            v_rows: self.wv.n_rows,
+            n_cols: self.wq.n_cols,
+        });
+
+        // 3. Biases and head normalization
+        if !self.q_bias.is_empty() {
+            for i in 0..scratch0.q.len() {
+                scratch0.q[i] += self.q_bias[i];
+                scratch1.q[i] += self.q_bias[i];
+                scratch2.q[i] += self.q_bias[i];
+            }
+        }
+        if !self.k_bias.is_empty() {
+            for i in 0..scratch0.k.len() {
+                scratch0.k[i] += self.k_bias[i];
+                scratch1.k[i] += self.k_bias[i];
+                scratch2.k[i] += self.k_bias[i];
+            }
+        }
+        if !self.v_bias.is_empty() {
+            for i in 0..scratch0.v.len() {
+                scratch0.v[i] += self.v_bias[i];
+                scratch1.v[i] += self.v_bias[i];
+                scratch2.v[i] += self.v_bias[i];
+            }
+        }
+
+        for (values, weight) in [(&mut scratch0.q, &self.q_norm_weight), (&mut scratch0.k, &self.k_norm_weight)] {
+            if !weight.is_empty() {
+                for head in values.chunks_exact_mut(head_dim) {
+                    let scale = (head.iter().map(|x| x * x).sum::<f32>() / head_dim as f32 + eps).sqrt().recip();
+                    for (x, w) in head.iter_mut().zip(weight.iter()) { *x *= scale * w; }
+                }
+            }
+        }
+        for (values, weight) in [(&mut scratch1.q, &self.q_norm_weight), (&mut scratch1.k, &self.k_norm_weight)] {
+            if !weight.is_empty() {
+                for head in values.chunks_exact_mut(head_dim) {
+                    let scale = (head.iter().map(|x| x * x).sum::<f32>() / head_dim as f32 + eps).sqrt().recip();
+                    for (x, w) in head.iter_mut().zip(weight.iter()) { *x *= scale * w; }
+                }
+            }
+        }
+        for (values, weight) in [(&mut scratch2.q, &self.q_norm_weight), (&mut scratch2.k, &self.k_norm_weight)] {
+            if !weight.is_empty() {
+                for head in values.chunks_exact_mut(head_dim) {
+                    let scale = (head.iter().map(|x| x * x).sum::<f32>() / head_dim as f32 + eps).sqrt().recip();
+                    for (x, w) in head.iter_mut().zip(weight.iter()) { *x *= scale * w; }
+                }
+            }
+        }
+
+        // RoPE
+        apply_rope(&mut scratch0.q, n_head, head_dim, cos0, sin0, neox);
+        apply_rope(&mut scratch0.k, n_kv_head, head_dim, cos0, sin0, neox);
+        apply_rope(&mut scratch1.q, n_head, head_dim, cos1, sin1, neox);
+        apply_rope(&mut scratch1.k, n_kv_head, head_dim, cos1, sin1, neox);
+        apply_rope(&mut scratch2.q, n_head, head_dim, cos2, sin2, neox);
+        apply_rope(&mut scratch2.k, n_kv_head, head_dim, cos2, sin2, neox);
+
+        // 4. KV cache append & Attention
+        // Token 0:
+        kv_cache.k.extend_from_slice(&scratch0.k);
+        kv_cache.v.extend_from_slice(&scratch0.v);
+        kv_cache.cur_len += 1;
+        pool.run_task(GemvTask::Attention {
+            q_ptr: scratch0.q.as_ptr() as usize,
+            k_cache_ptr: kv_cache.k.as_ptr() as usize,
+            v_cache_ptr: kv_cache.v.as_ptr() as usize,
+            out_ptr: scratch0.attn_out.as_mut_ptr() as usize,
+            seq_len: kv_cache.cur_len,
+            n_head,
+            n_kv_head,
+            head_dim,
+        });
+
+        // Token 1:
+        kv_cache.k.extend_from_slice(&scratch1.k);
+        kv_cache.v.extend_from_slice(&scratch1.v);
+        kv_cache.cur_len += 1;
+        pool.run_task(GemvTask::Attention {
+            q_ptr: scratch1.q.as_ptr() as usize,
+            k_cache_ptr: kv_cache.k.as_ptr() as usize,
+            v_cache_ptr: kv_cache.v.as_ptr() as usize,
+            out_ptr: scratch1.attn_out.as_mut_ptr() as usize,
+            seq_len: kv_cache.cur_len,
+            n_head,
+            n_kv_head,
+            head_dim,
+        });
+
+        // Token 2:
+        kv_cache.k.extend_from_slice(&scratch2.k);
+        kv_cache.v.extend_from_slice(&scratch2.v);
+        kv_cache.cur_len += 1;
+        pool.run_task(GemvTask::Attention {
+            q_ptr: scratch2.q.as_ptr() as usize,
+            k_cache_ptr: kv_cache.k.as_ptr() as usize,
+            v_cache_ptr: kv_cache.v.as_ptr() as usize,
+            out_ptr: scratch2.attn_out.as_mut_ptr() as usize,
+            seq_len: kv_cache.cur_len,
+            n_head,
+            n_kv_head,
+            head_dim,
+        });
+
+        // 5. Output Projection (wo) Joint (streams wo ONCE)
+        let wo_slice = &mmap[self.wo.offset..self.wo.offset + self.wo.byte_len];
+        quants::quantize_row_q8_k(&scratch0.attn_out, &mut scratch0.attn_q8_k);
+        quants::quantize_row_q8_k(&scratch1.attn_out, &mut scratch1.attn_q8_k);
+        quants::quantize_row_q8_k(&scratch2.attn_out, &mut scratch2.attn_q8_k);
+        pool.run_task(GemvTask::Iq3Xxs3Tokens {
+            out0_ptr: scratch0.wo_out.as_mut_ptr() as usize,
+            out1_ptr: scratch1.wo_out.as_mut_ptr() as usize,
+            out2_ptr: scratch2.wo_out.as_mut_ptr() as usize,
+            weight_ptr: wo_slice.as_ptr() as usize,
+            x0_q8_k_ptr: scratch0.attn_q8_k.as_ptr() as usize,
+            x1_q8_k_ptr: scratch1.attn_q8_k.as_ptr() as usize,
+            x2_q8_k_ptr: scratch2.attn_q8_k.as_ptr() as usize,
+            n_rows: self.wo.n_rows,
+            n_cols: self.wo.n_cols,
+        });
+
+        // Residual connection
+        for i in 0..scratch0.x.len() {
+            scratch0.x[i] += scratch0.wo_out[i];
+            scratch1.x[i] += scratch1.wo_out[i];
+            scratch2.x[i] += scratch2.wo_out[i];
+        }
+
+        // 6. FFN Norms
+        rms_norm_slice(&scratch0.x, &self.ffn_norm_weight, eps, &mut scratch0.ffn_norm);
+        rms_norm_slice(&scratch1.x, &self.ffn_norm_weight, eps, &mut scratch1.ffn_norm);
+        rms_norm_slice(&scratch2.x, &self.ffn_norm_weight, eps, &mut scratch2.ffn_norm);
+        quants::quantize_row_q8_k(&scratch0.ffn_norm, &mut scratch0.ffn_q8_k);
+        quants::quantize_row_q8_k(&scratch1.ffn_norm, &mut scratch1.ffn_q8_k);
+        quants::quantize_row_q8_k(&scratch2.ffn_norm, &mut scratch2.ffn_q8_k);
+
+        // 7. Gate & Up Joint (streams w1 and w3 ONCE)
+        let w1_slice = &mmap[self.w1.offset..self.w1.offset + self.w1.byte_len];
+        let w3_slice = &mmap[self.w3.offset..self.w3.offset + self.w3.byte_len];
+        pool.run_task(GemvTask::GateUpIq3Xxs3Tokens {
+            inter0_out_ptr: scratch0.inter.as_mut_ptr() as usize,
+            inter1_out_ptr: scratch1.inter.as_mut_ptr() as usize,
+            inter2_out_ptr: scratch2.inter.as_mut_ptr() as usize,
+            w1_ptr: w1_slice.as_ptr() as usize,
+            w3_ptr: w3_slice.as_ptr() as usize,
+            x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
+            x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
+            x2_q8_k_ptr: scratch2.ffn_q8_k.as_ptr() as usize,
+            n_rows: self.w1.n_rows,
+            n_cols: self.w1.n_cols,
+        });
+
+        // 8. Down Joint (streams w2 ONCE)
+        quants::quantize_row_q8_k(&scratch0.inter, &mut scratch0.inter_q8_k);
+        quants::quantize_row_q8_k(&scratch1.inter, &mut scratch1.inter_q8_k);
+        quants::quantize_row_q8_k(&scratch2.inter, &mut scratch2.inter_q8_k);
+        let w2_slice = &mmap[self.w2.offset..self.w2.offset + self.w2.byte_len];
+        pool.run_task(GemvTask::Iq3Xxs3Tokens {
+            out0_ptr: scratch0.mlp_out.as_mut_ptr() as usize,
+            out1_ptr: scratch1.mlp_out.as_mut_ptr() as usize,
+            out2_ptr: scratch2.mlp_out.as_mut_ptr() as usize,
+            weight_ptr: w2_slice.as_ptr() as usize,
+            x0_q8_k_ptr: scratch0.inter_q8_k.as_ptr() as usize,
+            x1_q8_k_ptr: scratch1.inter_q8_k.as_ptr() as usize,
+            x2_q8_k_ptr: scratch2.inter_q8_k.as_ptr() as usize,
+            n_rows: self.w2.n_rows,
+            n_cols: self.w2.n_cols,
+        });
+
+        // Residual connection
+        for i in 0..scratch0.x.len() {
+            scratch0.x[i] += scratch0.mlp_out[i];
+            scratch1.x[i] += scratch1.mlp_out[i];
+            scratch2.x[i] += scratch2.mlp_out[i];
+        }
+    }
+
     #[inline(always)]
     pub fn madvise_layer(&self, mmap: &[u8]) {
         let page_size = 4096;
@@ -878,6 +1110,93 @@ fn precompute_freqs_cis_flat(
     (cos_table, sin_table)
 }
 
+pub struct MedusaHead {
+    pub dim: usize,
+    pub weight: Vec<f32>,
+}
+
+impl MedusaHead {
+    pub fn load_from_file<P: AsRef<std::path::Path>>(path: P, dim: usize) -> Result<Self> {
+        let bytes = std::fs::read(path)?;
+        let expected_bytes = dim * dim * std::mem::size_of::<f32>();
+        if bytes.len() != expected_bytes {
+            anyhow::bail!("invalid Medusa head size: got {} bytes, expected {}", bytes.len(), expected_bytes);
+        }
+        let mut weight = vec![0.0f32; dim * dim];
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                bytes.as_ptr() as *const f32,
+                weight.as_mut_ptr(),
+                dim * dim,
+            );
+        }
+        Ok(Self { dim, weight })
+    }
+
+    /// Linear projection: out[i] = h[i] + sum_j (weight[i, j] * silu(h[j]))
+    pub fn forward(&self, h: &[f32], out: &mut [f32]) {
+        assert_eq!(h.len(), self.dim);
+        assert_eq!(out.len(), self.dim);
+
+        let mut act = vec![0.0f32; self.dim];
+        for i in 0..self.dim {
+            let x = h[i];
+            let sig = 1.0 / (1.0 + (-x).exp());
+            act[i] = x * sig;
+        }
+
+        for i in 0..self.dim {
+            let row_offset = i * self.dim;
+            let row = &self.weight[row_offset..row_offset + self.dim];
+            let dot = vec_dot_f32_direct(row, &act);
+            out[i] = h[i] + dot;
+        }
+    }
+}
+
+#[inline]
+pub fn vec_dot_f32_direct(a: &[f32], b: &[f32]) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            return unsafe { vec_dot_f32_avx2(a, b) };
+        }
+    }
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn vec_dot_f32_avx2(a: &[f32], b: &[f32]) -> f32 {
+    use core::arch::x86_64::*;
+    let n = a.len();
+    unsafe {
+        let mut sum0 = _mm256_setzero_ps();
+        let mut sum1 = _mm256_setzero_ps();
+        let mut i = 0;
+        while i + 16 <= n {
+            let va0 = _mm256_loadu_ps(a.as_ptr().add(i));
+            let vb0 = _mm256_loadu_ps(b.as_ptr().add(i));
+            sum0 = _mm256_fmadd_ps(va0, vb0, sum0);
+
+            let va1 = _mm256_loadu_ps(a.as_ptr().add(i + 8));
+            let vb1 = _mm256_loadu_ps(b.as_ptr().add(i + 8));
+            sum1 = _mm256_fmadd_ps(va1, vb1, sum1);
+
+            i += 16;
+        }
+        let sum = _mm256_add_ps(sum0, sum1);
+        let mut acc = [0.0f32; 8];
+        _mm256_storeu_ps(acc.as_mut_ptr(), sum);
+        let mut total: f32 = acc.iter().sum();
+        while i < n {
+            total += a[i] * b[i];
+            i += 1;
+        }
+        total
+    }
+}
+
 pub struct AstMicroEngine {
     mmap: Mmap,
     gguf: gguf::GgufModel,
@@ -898,8 +1217,9 @@ pub struct AstMicroEngine {
     output_weight: Option<LinearSlice>,
     kv_caches: Vec<LayerKvCache>,
     layers: Vec<LayerDesc>,
-    scratch: ScratchBuffers,
-    scratch1: ScratchBuffers,
+    pub scratch: ScratchBuffers,
+    pub scratch1: ScratchBuffers,
+    pub scratch2: ScratchBuffers,
     sampling_temp: f32,
     sampling_top_p: f32,
     repeat_penalty: f32,
@@ -908,6 +1228,7 @@ pub struct AstMicroEngine {
     pub pool: SpinThreadPool,
     pub resident_layers: usize,
     pub rolling_window: usize,
+    pub medusa_head: Option<MedusaHead>,
 }
 
 impl AstMicroEngine {
@@ -925,6 +1246,15 @@ impl AstMicroEngine {
     pub fn new(model_path: &Path) -> Result<Self> {
         let file = File::open(model_path)?;
         let mmap = unsafe { Mmap::map(&file)? };
+
+        #[cfg(target_os = "linux")]
+        unsafe {
+            libc::madvise(
+                mmap.as_ptr() as *mut libc::c_void,
+                mmap.len(),
+                libc::MADV_HUGEPAGE,
+            );
+        }
 
         let mut cursor = std::io::Cursor::new(&mmap[..]);
         let gguf = gguf::GgufModel::read(&mut cursor)?;
@@ -1096,6 +1426,7 @@ impl AstMicroEngine {
 
         let scratch = ScratchBuffers::new(embedding_length, max_wq_rows, max_wk_rows, max_wv_rows, max_w1_rows);
         let scratch1 = ScratchBuffers::new(embedding_length, max_wq_rows, max_wk_rows, max_wv_rows, max_w1_rows);
+        let scratch2 = ScratchBuffers::new(embedding_length, max_wq_rows, max_wk_rows, max_wv_rows, max_w1_rows);
 
         let vocab_size = if let Some(output) = &output_weight {
             output.n_rows
@@ -1125,6 +1456,7 @@ impl AstMicroEngine {
             layers,
             scratch,
             scratch1,
+            scratch2,
             sampling_temp: 0.7,
             sampling_top_p: 0.9,
             repeat_penalty: 1.15,
@@ -1137,7 +1469,23 @@ impl AstMicroEngine {
             },
             resident_layers: 0,
             rolling_window: 4,
+            medusa_head: {
+                let medusa_path = model_path.with_file_name("beluga_medusa_head.bin");
+                if medusa_path.is_file() {
+                    MedusaHead::load_from_file(&medusa_path, embedding_length).ok()
+                } else {
+                    let alt = nioxs_artifacts::resolve_models_dir().join("beluga_medusa_head.bin");
+                    if alt.is_file() {
+                        MedusaHead::load_from_file(&alt, embedding_length).ok()
+                    } else {
+                        None
+                    }
+                }
+            },
         };
+        if engine.medusa_head.is_some() {
+            eprintln!("[AST-Micro] Loaded Beluga Medusa Head (Option 2) for multi-token speculative acceleration.");
+        }
         engine.evict_all();
         unsafe {
             libc::malloc_trim(0);
@@ -1297,10 +1645,10 @@ impl AstMicroEngine {
         &mut self,
         tokens: &[u32],
         index_pos: usize,
-    ) -> Result<Vec<Vec<f32>>> {
+    ) -> Result<(Vec<Vec<f32>>, Vec<Vec<f32>>)> {
         let n_tokens = tokens.len();
         if n_tokens == 0 {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), Vec::new()));
         }
 
         self.pool.unpark();
@@ -1344,7 +1692,48 @@ impl AstMicroEngine {
 
 
 
-            if n_tokens == 2 && layer.wq.dtype == 18 {
+            if n_tokens == 3 && layer.wq.dtype == 18 {
+                let pos0 = index_pos;
+                let pos1 = index_pos + 1;
+                let pos2 = index_pos + 2;
+                let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];
+                let sin0 = &self.sin_table[pos0 * half..(pos0 + 1) * half];
+                let cos1 = &self.cos_table[pos1 * half..(pos1 + 1) * half];
+                let sin1 = &self.sin_table[pos1 * half..(pos1 + 1) * half];
+                let cos2 = &self.cos_table[pos2 * half..(pos2 + 1) * half];
+                let sin2 = &self.sin_table[pos2 * half..(pos2 + 1) * half];
+
+                self.scratch.x.copy_from_slice(&activations[0]);
+                self.scratch1.x.copy_from_slice(&activations[1]);
+                self.scratch2.x.copy_from_slice(&activations[2]);
+
+                layer.forward_3tokens(
+                    &self.mmap,
+                    &mut self.scratch,
+                    &mut self.scratch1,
+                    &mut self.scratch2,
+                    &self.pool,
+                    pos0,
+                    pos1,
+                    pos2,
+                    cos0,
+                    sin0,
+                    cos1,
+                    sin1,
+                    cos2,
+                    sin2,
+                    self.rope_neox,
+                    self.head_count,
+                    self.head_count_kv,
+                    self.head_dim,
+                    self.rms_norm_eps as f32,
+                    &mut self.kv_caches[layer_idx],
+                );
+
+                activations[0].copy_from_slice(&self.scratch.x);
+                activations[1].copy_from_slice(&self.scratch1.x);
+                activations[2].copy_from_slice(&self.scratch2.x);
+            } else if n_tokens == 2 && layer.wq.dtype == 18 {
                 let pos0 = index_pos;
                 let pos1 = index_pos + 1;
                 let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];
@@ -1439,8 +1828,37 @@ impl AstMicroEngine {
             self.scratch.x.copy_from_slice(last_x);
         }
 
-        Ok(out_norms)
+        Ok((out_norms, activations))
     }
+
+    pub fn predict_medusa_draft(&mut self, h: &[f32], history: &[u32]) -> Result<Option<u32>> {
+        let Some(medusa) = &self.medusa_head else {
+            return Ok(None);
+        };
+        let embd_len = self.head_dim * self.head_count;
+        if h.len() != embd_len {
+            return Ok(None);
+        }
+        let mut draft_h = vec![0.0f32; embd_len];
+        medusa.forward(h, &mut draft_h);
+
+        let tok = self.sample_token_from_x_norm(&draft_h, None, history, false)?;
+        Ok(Some(tok))
+    }
+
+    pub fn medusa_diagnostic_logits(&mut self, h: &[f32]) -> Result<Vec<f32>> {
+        let Some(medusa) = &self.medusa_head else {
+            return Err(anyhow!("no medusa head"));
+        };
+        let embd_len = self.head_dim * self.head_count;
+        let mut draft_h = vec![0.0f32; embd_len];
+        medusa.forward(h, &mut draft_h);
+
+        self.scratch.x_norm.copy_from_slice(&draft_h);
+        self.diagnostic_logits()
+    }
+
+
 
     pub fn forward_stream(&mut self, tokens: &[u32], index_pos: usize) -> Result<Tensor> {
         self.forward_batch_layer_outer(tokens, index_pos)?;
@@ -1500,17 +1918,17 @@ impl AstMicroEngine {
         self.pool.unpark();
         quants::quantize_row_q8_0(x_norm, &mut self.scratch.x_q8_0);
         let repeat_penalty = self.repeat_penalty;
-        let recent: HashSet<u32> = history
-            .iter()
-            .rev()
-            .take(self.repeat_last_n.max(1))
-            .copied()
-            .collect();
 
         if let Some(cands) = candidates {
             if cands.is_empty() {
                 return Ok(2); // EOS
             }
+            let recent: HashSet<u32> = history
+                .iter()
+                .rev()
+                .take(self.repeat_last_n.max(1))
+                .copied()
+                .collect();
             let mut max_idx = 0;
             let mut max_val = f32::NEG_INFINITY;
             let (matrix_offset, row_bytes, is_iq4_nl) = if let Some(output) = &self.output_weight {
@@ -1630,7 +2048,7 @@ impl AstMicroEngine {
         batch.push(current_confirmed);
         batch.extend_from_slice(&drafts);
 
-        let out_norms = self.forward_batch_layer_outer(&batch, current_pos)?;
+        let (out_norms, _) = self.forward_batch_layer_outer(&batch, current_pos)?;
 
         let mut matched_drafts = 0;
         let mut final_token = 0;
@@ -1675,6 +2093,189 @@ impl AstMicroEngine {
             is_eos: final_is_eos,
         })
     }
+
+    /// Perform an asymmetric zero-penalty speculative pair step.
+    /// Evaluates current_confirmed and draft_tok simultaneously across layers (reading weights ONCE).
+    /// Asymmetrically checks current_confirmed first: if draft_tok misses, we do NOT compute
+    /// vocab GEMV for draft_tok, eliminating the 151,936 vocab penalty on miss.
+    pub fn speculative_pair_step(
+        &mut self,
+        current_confirmed: u32,
+        draft_tok: u32,
+        stream_pos: usize,
+        gen_history: &[u32],
+        eos_tokens: &[u32],
+        predict_next_medusa: bool,
+    ) -> Result<SpeculativePairOutcome> {
+        let is_eos = |t: u32| eos_tokens.contains(&t);
+        let batch = [current_confirmed, draft_tok];
+        let (out_norms, activations) = self.forward_batch_layer_outer(&batch, stream_pos)?;
+
+        // 1. Verify token 0 (current_confirmed)
+        let true_tok1 = self.sample_token_from_x_norm(&out_norms[0], None, gen_history, false)?;
+
+        if true_tok1 == draft_tok && !is_eos(true_tok1) {
+            // MATCH! Draft accepted.
+            // Sample token 2 from out_norms[1] (already computed by layer streaming)
+            let mut local_history = gen_history.to_vec();
+            local_history.push(true_tok1);
+            let true_tok2 = self.sample_token_from_x_norm(&out_norms[1], None, &local_history, false)?;
+
+            let eos2 = is_eos(true_tok2) || true_tok2 == 0;
+            let (accepted, next_pos, last_confirmed) = if !eos2 {
+                (vec![true_tok1, true_tok2], stream_pos + 2, true_tok2)
+            } else {
+                // If token 2 is EOS, only retain token 1 in active cache
+                self.truncate_cache(stream_pos + 1);
+                (vec![true_tok1, true_tok2], stream_pos + 1, true_tok1)
+            };
+
+            // Scratch is aligned with token 1 (activations[1])
+            self.scratch.x.copy_from_slice(&activations[1]);
+            self.scratch.x_norm.copy_from_slice(&out_norms[1]);
+
+            // Predict next draft token from token 1's normalized hidden state only if caller requested
+            let next_draft_tok = if predict_next_medusa && !eos2 && self.medusa_head.is_some() {
+                local_history.push(true_tok2);
+                let h = out_norms[1].clone();
+                self.predict_medusa_draft(&h, &local_history).ok().flatten()
+            } else {
+                None
+            };
+
+            Ok(SpeculativePairOutcome {
+                accepted_tokens: accepted,
+                stream_pos: next_pos,
+                last_confirmed,
+                draft_matched: true,
+                is_eos: eos2,
+                next_draft_tok,
+            })
+        } else {
+            // MISS! Draft rejected.
+            // Asymmetric zero-penalty: do NOT compute vocab GEMV for out_norms[1]!
+            // Truncate KV cache back to stream_pos + 1 to remove draft_tok
+            self.truncate_cache(stream_pos + 1);
+
+            // Re-align self.scratch with token 0
+            self.scratch.x.copy_from_slice(&activations[0]);
+            self.scratch.x_norm.copy_from_slice(&out_norms[0]);
+
+            let eos1 = is_eos(true_tok1) || true_tok1 == 0;
+
+            // Predict next draft token from token 0's normalized hidden state only if caller requested
+            let next_draft_tok = if predict_next_medusa && !eos1 && self.medusa_head.is_some() {
+                let mut local_history = gen_history.to_vec();
+                local_history.push(true_tok1);
+                let h = out_norms[0].clone();
+                self.predict_medusa_draft(&h, &local_history).ok().flatten()
+            } else {
+                None
+            };
+
+            Ok(SpeculativePairOutcome {
+                accepted_tokens: vec![true_tok1],
+                stream_pos: stream_pos + 1,
+                last_confirmed: true_tok1,
+                draft_matched: false,
+                is_eos: eos1,
+                next_draft_tok,
+            })
+        }
+    }
+
+    /// Perform a 3-token speculative step (Option 2 V5 Architecture).
+    /// Evaluates current_confirmed, draft1, draft2 in a single layer-streaming pass using AVX2.
+    /// Bit-exact stock Qwen verification on all accepted tokens.
+    pub fn speculative_trio_step(
+        &mut self,
+        current_confirmed: u32,
+        draft_tok1: u32,
+        draft_tok2: u32,
+        stream_pos: usize,
+        gen_history: &[u32],
+        eos_tokens: &[u32],
+    ) -> Result<SpeculativeTrioOutcome> {
+        let is_eos = |t: u32| eos_tokens.contains(&t);
+        let batch = [current_confirmed, draft_tok1, draft_tok2];
+        let (out_norms, activations) = self.forward_batch_layer_outer(&batch, stream_pos)?;
+
+        // 1. Verify token 0 (current_confirmed)
+        let true_tok1 = self.sample_token_from_x_norm(&out_norms[0], None, gen_history, false)?;
+        let eos1 = is_eos(true_tok1) || true_tok1 == 0;
+
+        if true_tok1 != draft_tok1 || eos1 {
+            // MISS on draft 1! Reject both drafts.
+            self.truncate_cache(stream_pos + 1);
+            self.scratch.x.copy_from_slice(&activations[0]);
+            self.scratch.x_norm.copy_from_slice(&out_norms[0]);
+
+            return Ok(SpeculativeTrioOutcome {
+                accepted_tokens: vec![true_tok1],
+                stream_pos: stream_pos + 1,
+                last_confirmed: true_tok1,
+                matched_count: 0,
+                is_eos: eos1,
+            });
+        }
+
+        // MATCH on draft 1!
+        let mut hist1 = gen_history.to_vec();
+        hist1.push(true_tok1);
+        let true_tok2 = self.sample_token_from_x_norm(&out_norms[1], None, &hist1, false)?;
+        let eos2 = is_eos(true_tok2) || true_tok2 == 0;
+
+        if true_tok2 != draft_tok2 || eos2 {
+            // MATCH on 1, MISS on draft 2! Reject draft 2.
+            self.truncate_cache(stream_pos + 2);
+            self.scratch.x.copy_from_slice(&activations[1]);
+            self.scratch.x_norm.copy_from_slice(&out_norms[1]);
+
+            return Ok(SpeculativeTrioOutcome {
+                accepted_tokens: vec![true_tok1, true_tok2],
+                stream_pos: stream_pos + 2,
+                last_confirmed: true_tok2,
+                matched_count: 1,
+                is_eos: eos2,
+            });
+        }
+
+        // BOTH DRAFTS MATCHED! (3 tokens emitted in 1 layer pass)
+        let mut hist2 = hist1;
+        hist2.push(true_tok2);
+        let true_tok3 = self.sample_token_from_x_norm(&out_norms[2], None, &hist2, false)?;
+        let eos3 = is_eos(true_tok3) || true_tok3 == 0;
+
+        self.scratch.x.copy_from_slice(&activations[2]);
+        self.scratch.x_norm.copy_from_slice(&out_norms[2]);
+
+        Ok(SpeculativeTrioOutcome {
+            accepted_tokens: vec![true_tok1, true_tok2, true_tok3],
+            stream_pos: stream_pos + 3,
+            last_confirmed: true_tok3,
+            matched_count: 2,
+            is_eos: eos3,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SpeculativeTrioOutcome {
+    pub accepted_tokens: Vec<u32>,
+    pub stream_pos: usize,
+    pub last_confirmed: u32,
+    pub matched_count: usize,
+    pub is_eos: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct SpeculativePairOutcome {
+    pub accepted_tokens: Vec<u32>,
+    pub stream_pos: usize,
+    pub last_confirmed: u32,
+    pub draft_matched: bool,
+    pub is_eos: bool,
+    pub next_draft_tok: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

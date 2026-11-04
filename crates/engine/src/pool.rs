@@ -5,7 +5,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use crate::quants::{self, BlockQ8_0, BlockQ8_K};
 
-pub const NUM_WORKERS: usize = 4;
+pub const NUM_WORKERS: usize = 6;
 
 #[derive(Clone, Copy)]
 pub enum GemvTask {
@@ -70,6 +70,18 @@ pub enum GemvTask {
         n_rows: usize,
         n_cols: usize,
     },
+    GateUpIq3Xxs3Tokens {
+        inter0_out_ptr: usize,
+        inter1_out_ptr: usize,
+        inter2_out_ptr: usize,
+        w1_ptr: usize,
+        w3_ptr: usize,
+        x0_q8_k_ptr: usize,
+        x1_q8_k_ptr: usize,
+        x2_q8_k_ptr: usize,
+        n_rows: usize,
+        n_cols: usize,
+    },
     Iq3Xxs {
         out_ptr: usize,
         weight_ptr: usize,
@@ -86,6 +98,17 @@ pub enum GemvTask {
         n_rows: usize,
         n_cols: usize,
     },
+    Iq3Xxs3Tokens {
+        out0_ptr: usize,
+        out1_ptr: usize,
+        out2_ptr: usize,
+        weight_ptr: usize,
+        x0_q8_k_ptr: usize,
+        x1_q8_k_ptr: usize,
+        x2_q8_k_ptr: usize,
+        n_rows: usize,
+        n_cols: usize,
+    },
     QkvIq3Xxs2Tokens {
         q0_ptr: usize,
         q1_ptr: usize,
@@ -98,6 +121,27 @@ pub enum GemvTask {
         wv_ptr: usize,
         x0_q8_k_ptr: usize,
         x1_q8_k_ptr: usize,
+        q_rows: usize,
+        k_rows: usize,
+        v_rows: usize,
+        n_cols: usize,
+    },
+    QkvIq3Xxs3Tokens {
+        q0_ptr: usize,
+        q1_ptr: usize,
+        q2_ptr: usize,
+        k0_ptr: usize,
+        k1_ptr: usize,
+        k2_ptr: usize,
+        v0_ptr: usize,
+        v1_ptr: usize,
+        v2_ptr: usize,
+        wq_ptr: usize,
+        wk_ptr: usize,
+        wv_ptr: usize,
+        x0_q8_k_ptr: usize,
+        x1_q8_k_ptr: usize,
+        x2_q8_k_ptr: usize,
         q_rows: usize,
         k_rows: usize,
         v_rows: usize,
@@ -309,6 +353,75 @@ impl GemvTask {
                         let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, nb);
                         *v0_base.add(j) = v0;
                         *v1_base.add(j) = v1;
+                    }
+                }
+            }
+            GemvTask::QkvIq3Xxs3Tokens {
+                q0_ptr, q1_ptr, q2_ptr,
+                k0_ptr, k1_ptr, k2_ptr,
+                v0_ptr, v1_ptr, v2_ptr,
+                wq_ptr, wk_ptr, wv_ptr,
+                x0_q8_k_ptr, x1_q8_k_ptr, x2_q8_k_ptr,
+                q_rows, k_rows, v_rows,
+                n_cols,
+            } => {
+                let nb = (n_cols + 255) / 256;
+                let row_bytes = nb * 98;
+                let x0_q8_k = x0_q8_k_ptr as *const BlockQ8_K;
+                let x1_q8_k = x1_q8_k_ptr as *const BlockQ8_K;
+                let x2_q8_k = x2_q8_k_ptr as *const BlockQ8_K;
+
+                // Q partition
+                let q_chunk = (q_rows + num_workers - 1) / num_workers;
+                let q_start = (worker_id * q_chunk).min(q_rows);
+                let q_end = ((worker_id + 1) * q_chunk).min(q_rows);
+                if q_end > q_start {
+                    let q0_base = (q0_ptr as *mut f32).add(q_start);
+                    let q1_base = (q1_ptr as *mut f32).add(q_start);
+                    let q2_base = (q2_ptr as *mut f32).add(q_start);
+                    for j in 0..(q_end - q_start) {
+                        let r = q_start + j;
+                        let w_ptr = (wq_ptr as *const u8).add(r * row_bytes);
+                        let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
+                        *q0_base.add(j) = v0;
+                        *q1_base.add(j) = v1;
+                        *q2_base.add(j) = v2;
+                    }
+                }
+
+                // K partition
+                let k_chunk = (k_rows + num_workers - 1) / num_workers;
+                let k_start = (worker_id * k_chunk).min(k_rows);
+                let k_end = ((worker_id + 1) * k_chunk).min(k_rows);
+                if k_end > k_start {
+                    let k0_base = (k0_ptr as *mut f32).add(k_start);
+                    let k1_base = (k1_ptr as *mut f32).add(k_start);
+                    let k2_base = (k2_ptr as *mut f32).add(k_start);
+                    for j in 0..(k_end - k_start) {
+                        let r = k_start + j;
+                        let w_ptr = (wk_ptr as *const u8).add(r * row_bytes);
+                        let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
+                        *k0_base.add(j) = v0;
+                        *k1_base.add(j) = v1;
+                        *k2_base.add(j) = v2;
+                    }
+                }
+
+                // V partition
+                let v_chunk = (v_rows + num_workers - 1) / num_workers;
+                let v_start = (worker_id * v_chunk).min(v_rows);
+                let v_end = ((worker_id + 1) * v_chunk).min(v_rows);
+                if v_end > v_start {
+                    let v0_base = (v0_ptr as *mut f32).add(v_start);
+                    let v1_base = (v1_ptr as *mut f32).add(v_start);
+                    let v2_base = (v2_ptr as *mut f32).add(v_start);
+                    for j in 0..(v_end - v_start) {
+                        let r = v_start + j;
+                        let w_ptr = (wv_ptr as *const u8).add(r * row_bytes);
+                        let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
+                        *v0_base.add(j) = v0;
+                        *v1_base.add(j) = v1;
+                        *v2_base.add(j) = v2;
                     }
                 }
             }
@@ -923,6 +1036,45 @@ impl GemvTask {
                     *inter1_base.add(j) = quants::fast_silu(w1_1) * w3_1;
                 }
             }
+            GemvTask::GateUpIq3Xxs3Tokens {
+                inter0_out_ptr,
+                inter1_out_ptr,
+                inter2_out_ptr,
+                w1_ptr,
+                w3_ptr,
+                x0_q8_k_ptr,
+                x1_q8_k_ptr,
+                x2_q8_k_ptr,
+                n_rows,
+                n_cols,
+            } => {
+                let chunk = (n_rows + num_workers - 1) / num_workers;
+                let start_r = (worker_id * chunk).min(n_rows);
+                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let rows = end_r - start_r;
+                if rows == 0 {
+                    return;
+                }
+                let nb = (n_cols + 255) / 256;
+                let row_bytes = nb * 98;
+                let x0_q8_k = x0_q8_k_ptr as *const BlockQ8_K;
+                let x1_q8_k = x1_q8_k_ptr as *const BlockQ8_K;
+                let x2_q8_k = x2_q8_k_ptr as *const BlockQ8_K;
+                let inter0_base = (inter0_out_ptr as *mut f32).add(start_r);
+                let inter1_base = (inter1_out_ptr as *mut f32).add(start_r);
+                let inter2_base = (inter2_out_ptr as *mut f32).add(start_r);
+
+                for j in 0..rows {
+                    let r = start_r + j;
+                    let w1_row_ptr = (w1_ptr as *const u8).add(r * row_bytes);
+                    let w3_row_ptr = (w3_ptr as *const u8).add(r * row_bytes);
+                    let (w1_0, w1_1, w1_2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w1_row_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
+                    let (w3_0, w3_1, w3_2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w3_row_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
+                    *inter0_base.add(j) = quants::fast_silu(w1_0) * w3_0;
+                    *inter1_base.add(j) = quants::fast_silu(w1_1) * w3_1;
+                    *inter2_base.add(j) = quants::fast_silu(w1_2) * w3_2;
+                }
+            }
             GemvTask::Iq3Xxs { out_ptr, weight_ptr, x_q8_k_ptr, n_rows, n_cols } => {
                 let chunk = (n_rows + num_workers - 1) / num_workers;
                 let start_r = (worker_id * chunk).min(n_rows);
@@ -966,6 +1118,42 @@ impl GemvTask {
                     let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_row_ptr, x0_q8_k, x1_q8_k, nb);
                     *out0_base.add(j) = v0;
                     *out1_base.add(j) = v1;
+                }
+            }
+            GemvTask::Iq3Xxs3Tokens {
+                out0_ptr,
+                out1_ptr,
+                out2_ptr,
+                weight_ptr,
+                x0_q8_k_ptr,
+                x1_q8_k_ptr,
+                x2_q8_k_ptr,
+                n_rows,
+                n_cols,
+            } => {
+                let chunk = (n_rows + num_workers - 1) / num_workers;
+                let start_r = (worker_id * chunk).min(n_rows);
+                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let rows = end_r - start_r;
+                if rows == 0 {
+                    return;
+                }
+                let nb = (n_cols + 255) / 256;
+                let row_bytes = nb * 98;
+                let x0_q8_k = x0_q8_k_ptr as *const BlockQ8_K;
+                let x1_q8_k = x1_q8_k_ptr as *const BlockQ8_K;
+                let x2_q8_k = x2_q8_k_ptr as *const BlockQ8_K;
+                let out0_base = (out0_ptr as *mut f32).add(start_r);
+                let out1_base = (out1_ptr as *mut f32).add(start_r);
+                let out2_base = (out2_ptr as *mut f32).add(start_r);
+
+                for j in 0..rows {
+                    let r = start_r + j;
+                    let w_row_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                    let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w_row_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
+                    *out0_base.add(j) = v0;
+                    *out1_base.add(j) = v1;
+                    *out2_base.add(j) = v2;
                 }
             }
             GemvTask::Q8_0 { out_ptr, weight_ptr, x_norm_ptr, n_rows, n_cols } => {

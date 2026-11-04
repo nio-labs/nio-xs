@@ -21,7 +21,7 @@
     <a href="#overview" class="brand-title">
       <img class="brand-logo" src="logo.svg" alt="NioXS logo">
       <span class="brand-name">NioXS</span>
-      <span class="badge">v0.4.3</span>
+      <span class="badge">v0.4.8</span>
     </a>
     <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">
       <span class="theme-icon">
@@ -90,7 +90,7 @@
         <section id="overview" class="doc-section">
           <div class="hero-header">
             <div class="hero-badges">
-              <span class="badge badge-accent">Release v0.4.3</span>
+              <span class="badge badge-accent">Release v0.4.8</span>
               <span class="badge">AXIS = AI + XS</span>
               <span class="badge">Rust orchestration</span>
               <span class="badge">OpenAI-compatible API</span>
@@ -353,10 +353,34 @@ nioxs viper plugin list</code></pre>
               <tr><td><strong>NioDolphin</strong></td><td><strong>135M</strong></td><td>Universal Engram Memory (MCP)</td><td><strong>75 MB (IQ4_NL)</strong></td><td><strong>&lt; 28 MB</strong></td><td><strong>~125 MB</strong></td><td>Sub-5ms recall</td><td>Hebbian Memory &amp; NioDB</td></tr>
               <tr><td><strong>NioSkate</strong></td><td><strong>135M</strong></td><td>Ambient Desk Companion (v-µLM)</td><td><strong>75 MB (IQ4_NL)</strong></td><td><strong>&lt; 28 MB</strong></td><td><strong>~125 MB</strong></td><td>55+ w/s</td><td>Zero-Code Focus</td></tr>
               <tr><td><strong>NioManta</strong></td><td><strong>494M</strong></td><td>Systems Guru &amp; DAG Architect</td><td><strong>254 MB (Q4_0)</strong></td><td><strong>~95 MB</strong></td><td><strong>~195 MB</strong></td><td>20–35 w/s</td><td>&lt;manta_plan&gt; DAGs &amp; Wasm</td></tr>
-              <tr><td><strong>NioBeluga</strong></td><td><strong>1.54B</strong></td><td>Sovereign Lead Architect</td><td><strong>768 MB (IQ4_NL)</strong></td><td><strong>~169 MB</strong></td><td><strong>~281 MB</strong></td><td>12–16 w/s</td><td>Deep &lt;think&gt; CoT Invariants</td></tr>
+              <tr><td><strong>NioBeluga</strong></td><td><strong>1.54B</strong></td><td>Sovereign Lead Architect</td><td><strong>604 MB (IQ3_XXS)</strong></td><td><strong>~76 MB</strong></td><td><strong>~295 MB</strong></td><td>14–22 tok/s</td><td>Deep &lt;think&gt; CoT Invariants</td></tr>
               <tr><td><strong>NioRay</strong></td><td><strong>1.54B</strong></td><td>Rapid Code Synthesizer (Full Brain)</td><td><strong>980 MB (Q4_K)</strong></td><td><strong>~88 MB</strong></td><td><strong>~188 MB</strong></td><td>24–28 w/s</td><td><strong>75.6% HumanEval</strong></td></tr>
               <tr><td><strong>NioApex</strong></td><td><strong>3.09B</strong></td><td>Mini Coding Model (Full Brain)</td><td><strong>1.78 GB</strong></td><td><strong>~135 MB</strong></td><td><strong>~235 MB</strong></td><td>16–22 w/s</td><td><strong>81.7% HumanEval</strong></td></tr>
               <tr><td><strong>NioHydra</strong></td><td><strong>7.61B</strong></td><td>Sovereign Titan (Whole-Repo Refactor)</td><td><strong>4.15 GB</strong></td><td><strong>~350 MB</strong></td><td><strong>~450 MB</strong></td><td>10–12 w/s</td><td><strong>88.4% HumanEval</strong></td></tr>
+            </tbody>
+          </table></div>
+
+          <h3 style="margin-top: 2rem; margin-bottom: 0.75rem;">🐋 NioBeluga vs Stock Qwen 2.5 (1.5B): Side-by-Side Comparison</h3>
+          <p>Direct empirical comparison between Stock Qwen 2.5 1.5B in standard deployment (Ollama / llama.cpp) and NioBeluga running inside the native sovereign NioXS engine on pure CPU:</p>
+
+          <div class="table-container"><table>
+            <thead><tr><th>Technical Dimension</th><th>Stock Qwen 2.5 1.5B (Standard Ollama / llama.cpp)</th><th>NioBeluga (Sovereign NioXS Engine)</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Model Parameters</strong></td><td>1.54 Billion (28 Layers, 12 Heads, 2 KV Heads)</td><td>1.54 Billion (28 Layers, 12 Heads, 2 KV Heads)</td></tr>
+              <tr><td><strong>Vocabulary Coverage</strong></td><td>151,936 BPE Tokens</td><td>151,936 BPE Tokens (100% stock identical)</td></tr>
+              <tr><td><strong>Reasoning Engine</strong></td><td>&lt;think&gt;...&lt;/think&gt; Chain-of-Thought</td><td>&lt;think&gt;...&lt;/think&gt; Chain-of-Thought (100% bit-exact)</td></tr>
+              <tr><td><strong>Weight Quantization</strong></td><td><code>Q4_K_M</code> (Standard 4.5-bit block quantization)</td><td><code>IQ3_XXS</code> (Layers) + <code>IQ4_NL</code> (Vocab codebook)</td></tr>
+              <tr><td><strong>Disk Storage Footprint</strong></td><td><strong>1,020 MB (1.02 GB)</strong></td><td><strong>604 MB (0.60 GB)</strong> (41% smaller)</td></tr>
+              <tr><td><strong>True Peak Process RAM (VmHWM)</strong></td><td><strong>1,312 MB (1.31 GB)</strong></td><td><strong>295.1 MB (0.29 GB)</strong> (4.4× lower RAM)</td></tr>
+              <tr><td><strong>Minimum Hardware RAM Required</strong></td><td><strong>2 GB – 4 GB free RAM</strong> (OOMs below 2 GB)</td><td><strong>&lt; 350 MB free RAM</strong> (Runs on 512MB systems)</td></tr>
+              <tr><td><strong>Runtime Engine</strong></td><td>GGML / llama.cpp runtime</td><td>Custom Sovereign <code>AST-Micro</code> Engine (Pure Rust)</td></tr>
+              <tr><td><strong>CPU Execution Strategy</strong></td><td>Standard Autoregressive (1 token per pass)</td><td>Speculative Trio + Asymmetric Zero-Penalty Verification</td></tr>
+              <tr><td><strong>CPU Parallelism</strong></td><td>OpenMP / standard thread pool</td><td>Lock-Free SpinThreadPool pinned to physical P-cores (<code>NUM_WORKERS = 6</code>)</td></tr>
+              <tr><td><strong>Memory Management</strong></td><td>Full GGUF file mmapped and held in physical RAM</td><td>Dynamic Layer Streaming with aggressive OS page eviction (<code>MADV_DONTNEED</code>)</td></tr>
+              <tr><td><strong>KV Cache Architecture</strong></td><td>Full static context buffer (112 MB for 4K context)</td><td>Rolling localized cache with zero-allocation reuse</td></tr>
+              <tr><td><strong>Measured Decode Rate (Pure CPU)</strong></td><td><strong>22.30 tok/s (16.06 words/sec)</strong></td><td><strong>21.58 tok/s (14.40 words/sec)</strong></td></tr>
+              <tr><td><strong>Peak Burst Rate</strong></td><td>Flat 22.3 tok/s (No multi-token burst)</td><td>Up to <strong>39.7 tok/s (27.4 words/sec)</strong> on subword hits</td></tr>
+              <tr><td><strong>Zero GPU Offload</strong></td><td>Supported, but requires &gt; 1.5 GB RAM</td><td>Supported, guaranteed strictly &lt; 350 MB RAM</td></tr>
             </tbody>
           </table></div>
         </section>

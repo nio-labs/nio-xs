@@ -46,7 +46,7 @@ fn main() -> Result<()> {
         ("consensus_protocols", "Compare Raft vs Multi-Paxos for distributed key-value stores under high network jitter."),
     ];
 
-    let max_draft_configs = [0, 2, 3]; // 0 = Pure AR, 2 = PLD 2, 3 = PLD 3
+    let max_draft_configs = [0, 1]; // 0 = Pure AR, 1 = PLD 1 (forward_2tokens)
 
     for &max_draft in &max_draft_configs {
         let mode_label = if max_draft == 0 {
