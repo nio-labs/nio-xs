@@ -1,9 +1,9 @@
-# NioBeluga (1.54B) — V2 Architectural Specification & Acceleration Roadmap
+# Beluga (1.54B) — Architectural Specification & Acceleration Roadmap
 
 > **Document Version:** 2.0.0  
 > **Target Throughput:** $\ge 20\text{ words/second}$ ($\sim 28\text{--}34\text{ tokens/second}$) on CPU  
 > **Memory SLA:** Strictly $< 250\text{ MB Net Model RAM}$ ($\le 500\text{ MB Peak Process Resident Memory}$)  
-> **Model Classification:** Flagship Sovereign Cognitive Companion (`v-µLM Vector`)  
+> **Model Classification:** Flagship Sovereign Cognitive Companion (`v-µLM Companion`)  
 > **Base Architecture:** 1.54B Parameters (28 Layers, $d=1536$, 12 Q-Heads, 2 KV-Heads GQA)  
 > **Vocabulary:** 100% Intact (151,936 tokens preserved via `IQ4_NL` Lloyd-Max Quantization)  
 > **Quantization:** Pure `IQ3_XXS` (dtype 18) for all 28 Attention and FFN projections  
@@ -11,9 +11,9 @@
 
 ---
 
-## 1. Executive Summary & V2 State
+## 1. Executive Summary & Production State
 
-NioBeluga is Nio's flagship sovereign companion, engineered to deliver native Chain-of-Thought (`<think>...</think>`) reasoning and deep architectural mentorship entirely on edge hardware without external cloud APIs or secondary sidecar models.
+Beluga is Nio's flagship sovereign companion, engineered to deliver native Chain-of-Thought (`<think>...</think>`) reasoning and deep architectural mentorship entirely on edge hardware without external cloud APIs or secondary sidecar models.
 
 ### Fleet Telemetry Baseline (November 2026)
 

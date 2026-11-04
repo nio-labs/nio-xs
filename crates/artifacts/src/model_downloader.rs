@@ -64,7 +64,7 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
         },
         ModelArtifactEntry {
             model_id: MODEL_BELUGA.into(),
-            brand_name: "NioBeluga (Sovereign Lead Architect)".into(),
+            brand_name: "Beluga (Sovereign Lead Architect)".into(),
             base_model: "Qwen/Qwen2.5-1.5B-Instruct (28L, v-MicroLM Companion)".into(),
             filename: "beluga.vmicrolm-vector.gguf".into(),
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/beluga.vmicrolm-vector.gguf".into(),
