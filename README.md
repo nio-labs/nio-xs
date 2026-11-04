@@ -183,8 +183,13 @@ nioxs beluga --device gpu "Explain zero-copy networking"
 # Force pure-CPU lightweight mode (strictly < 221 MB RAM)
 nioxs beluga --device cpu "Explain zero-copy networking"
 
-# Configure token generation budget
+# Configure token generation budget and flow cadence
 nioxs beluga -d gpu -n 2048 "Design a distributed consensus engine"
+
+# Choose output streaming cadence (default: token; options: token, burst, paragraph)
+nioxs beluga --flow token "Explain epoll"          # Classic instant token-by-token stream (Default)
+nioxs beluga --flow burst "Explain epoll"          # Speed-reading sentence/clause cadence
+nioxs beluga --flow paragraph "Explain epoll"      # Clean markdown paragraph blocks
 ```
 
 ### 📊 Pure CPU vs. Intel Arc GPU Benchmark Comparison

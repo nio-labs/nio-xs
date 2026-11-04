@@ -40,7 +40,7 @@ Commands:\n\
 \n\
 Options:\n\
   --device, -d <auto|cpu|gpu>        Select hardware compute device (default: auto; uses GPU if available, else pure CPU)\n\
-  --flow, -f <burst|token|paragraph> Output streaming cadence (default: burst; smooth sentence rhythm)\n\
+  --flow, -f <token|burst|paragraph> Output streaming cadence (default: token; instant token stream)\n\
   --max-tokens, -n <count>           Max tokens to generate (default: 4096 / unconstrained until EOS)\n\
 \n\
 Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID."
@@ -83,7 +83,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
         let mut custom_max_tokens = None;
         let mut device_pref = nioxs_engine::DevicePreference::Auto;
-        let mut flow_mode = FlowMode::Burst;
+        let mut flow_mode = FlowMode::Token;
         let mut prompt_parts = Vec::new();
         let mut iter = raw_args.clone().into_iter();
         while let Some(a) = iter.next() {
@@ -294,7 +294,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
         let mut custom_max_tokens = None;
         let mut device_pref = nioxs_engine::DevicePreference::Auto;
-        let mut flow_mode = FlowMode::Burst;
+        let mut flow_mode = FlowMode::Token;
         let mut prompt_parts = Vec::new();
         let mut iter = raw_args.clone().into_iter();
         while let Some(a) = iter.next() {
@@ -343,7 +343,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let mut is_plan = false;
         let mut custom_max_tokens = None;
         let mut device_pref = nioxs_engine::DevicePreference::Auto;
-        let mut flow_mode = FlowMode::Burst;
+        let mut flow_mode = FlowMode::Token;
         let mut prompt_parts = Vec::new();
         let mut iter = raw_args.clone().into_iter();
         while let Some(a) = iter.next() {

@@ -1,16 +1,16 @@
 //! Stream Output Flow Cadence Engine
 //!
 //! Provides intelligent buffering and rhythm for companion generation:
-//! - `Burst` (Default): Instant first-token feedback, followed by natural sentence/clause cadence.
-//! - `Token`: Classic raw token-by-token typewriter stream.
+//! - `Token` (Default): Classic raw token-by-token typewriter stream.
+//! - `Burst`: Instant first-token feedback, followed by natural sentence/clause cadence.
 //! - `Paragraph`: Buffers until full paragraph boundaries (`\n\n`).
 
 use std::io::Write;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FlowMode {
-    #[default]
     Burst,
+    #[default]
     Token,
     Paragraph,
 }
@@ -18,9 +18,9 @@ pub enum FlowMode {
 impl FlowMode {
     pub fn parse(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
-            "token" | "char" | "raw" => Self::Token,
+            "burst" | "sentence" | "chunk" => Self::Burst,
             "paragraph" | "block" => Self::Paragraph,
-            _ => Self::Burst,
+            _ => Self::Token,
         }
     }
 }
