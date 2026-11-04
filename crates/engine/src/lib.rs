@@ -305,16 +305,22 @@ fn push_safe_chunk(
     let already = emitted.len();
     emitted.push_str(chunk);
 
-    let check_start = already.saturating_sub(MAX_STOP_PHRASE_LEN);
+    let mut check_start = already.saturating_sub(MAX_STOP_PHRASE_LEN);
+    while !emitted.is_char_boundary(check_start) {
+        check_start = check_start.saturating_sub(1);
+    }
+
     if let Some(rel_idx) = stop_position(&emitted[check_start..]) {
         let idx = check_start + rel_idx;
-        if idx > already {
+        if idx > already && emitted.is_char_boundary(idx) && emitted.is_char_boundary(already) {
             let safe = &emitted[already..idx];
             if !safe.is_empty() && !phrase_buffer.push(safe, tx) {
                 return false;
             }
         }
-        emitted.truncate(idx);
+        if emitted.is_char_boundary(idx) {
+            emitted.truncate(idx);
+        }
         return false;
     }
 

@@ -125,7 +125,7 @@ The **v-MicroLM Companion Fleet** represents Nio's tiered, zero-cloud edge intel
 
 ### 📊 v-MicroLM Companion Benchmark Suite
 
-| Metric / Specification | 🛹 Skate | 🦈 Manta | 🐋 Beluga |
+| Metric / Specification | 🐟 Skate | 🦈 Manta | 🐋 Beluga |
 | :--- | :--- | :--- | :--- |
 | **Model Parameters** | **135M** (134.5M) | **494M** | **1.54B** (28 Layers, 12 Heads) |
 | **Primary Specialization** | Ambient Desk Companion & Edge Chat | Systems Guru & DAG Task Planner | Sovereign Lead Architect & CoT Prover |
