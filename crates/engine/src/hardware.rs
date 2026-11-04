@@ -34,6 +34,7 @@ impl DevicePreference {
 pub enum ActiveDevice {
     Cpu,
     Cuda { vram_mb: Option<u64> },
+    IntelArc { vram_mb: Option<u64> },
     Metal { unified_mem_mb: Option<u64> },
     Vulkan,
 }
@@ -47,6 +48,7 @@ impl ActiveDevice {
         match self {
             Self::Cpu => "Pure-CPU (AST-Micro AVX2)",
             Self::Cuda { .. } => "NVIDIA CUDA Acceleration",
+            Self::IntelArc { .. } => "Intel Arc GPU (DirectX/Vulkan Acceleration)",
             Self::Metal { .. } => "Apple Metal Acceleration",
             Self::Vulkan => "Vulkan Acceleration",
         }
@@ -71,12 +73,17 @@ impl ActiveDevice {
             return cuda_dev;
         }
 
-        // 2. Probe for Apple Silicon Metal (macOS aarch64)
+        // 2. Probe for Intel Arc / Intel GPU (DirectX / Level Zero / Vulkan)
+        if let Some(intel_dev) = Self::probe_intel_arc() {
+            return intel_dev;
+        }
+
+        // 3. Probe for Apple Silicon Metal (macOS aarch64)
         if let Some(metal_dev) = Self::probe_metal() {
             return metal_dev;
         }
 
-        // 3. Probe for Vulkan
+        // 4. Probe for Vulkan
         if let Some(vulkan_dev) = Self::probe_vulkan() {
             return vulkan_dev;
         }
@@ -115,6 +122,83 @@ impl ActiveDevice {
             }
         }
 
+        None
+    }
+
+    fn probe_intel_arc() -> Option<Self> {
+        // Fast path 1: WSL2 DirectX kernel passthrough (/dev/dxg)
+        #[cfg(target_os = "linux")]
+        {
+            if Path::new("/dev/dxg").exists() {
+                if let Ok(output) = std::process::Command::new("powershell.exe")
+                    .args([
+                        "-NoProfile",
+                        "-Command",
+                        "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name",
+                    ])
+                    .output()
+                {
+                    if output.status.success() {
+                        let text = String::from_utf8_lossy(&output.stdout);
+                        if text.to_ascii_lowercase().contains("intel") {
+                            let vram_mb = Self::query_wsl_intel_vram();
+                            return Some(Self::IntelArc { vram_mb });
+                        }
+                    }
+                }
+            }
+
+            // Fast path 2: Native Linux DRI render node
+            if Path::new("/dev/dri/renderD128").exists() {
+                if let Ok(vendor) = std::fs::read_to_string("/sys/class/drm/card0/device/vendor") {
+                    if vendor.trim().contains("0x8086") {
+                        return Some(Self::IntelArc { vram_mb: None });
+                    }
+                }
+            }
+        }
+
+        // Windows native path
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(output) = std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name",
+                ])
+                .output()
+            {
+                if output.status.success() {
+                    let text = String::from_utf8_lossy(&output.stdout);
+                    if text.to_ascii_lowercase().contains("intel") {
+                        let vram_mb = Self::query_wsl_intel_vram();
+                        return Some(Self::IntelArc { vram_mb });
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn query_wsl_intel_vram() -> Option<u64> {
+        let output = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty AdapterRAM",
+            ])
+            .output()
+            .ok()?;
+        if output.status.success() {
+            let text = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = text.lines().find(|l| !l.trim().is_empty()) {
+                if let Ok(bytes) = line.trim().parse::<u64>() {
+                    return Some(bytes / (1024 * 1024));
+                }
+            }
+        }
         None
     }
 
@@ -180,6 +264,19 @@ impl ActiveDevice {
                 if let Some(vram) = vram_mb {
                     if *vram >= 2048 {
                         total_layers // Full offload (e.g. 28 layers for Beluga, 24 for Manta)
+                    } else if *vram >= 1024 {
+                        total_layers / 2 // Partial offload
+                    } else {
+                        0 // VRAM too constrained; keep on CPU
+                    }
+                } else {
+                    total_layers
+                }
+            }
+            Self::IntelArc { vram_mb } => {
+                if let Some(vram) = vram_mb {
+                    if *vram >= 2048 {
+                        total_layers // Full offload (28 layers for Beluga, 24 for Manta on 2GB+ Intel Arc)
                     } else if *vram >= 1024 {
                         total_layers / 2 // Partial offload
                     } else {
