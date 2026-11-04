@@ -107,13 +107,13 @@ nioxs viper -x -y "kill port 3000"
 
 The **v-MicroLM Companion Fleet** represents Nio's tiered, zero-cloud edge intelligence architecture. By pairing custom `v-MicroLM Vector` codebooks (`IQ3_XXS` / `IQ4_NL`) with dynamic layer streaming and lock-free AVX2 parallelism, each companion tier delivers uncompromising domain specialization strictly within ultralight memory envelopes:
 
-- **Tier 1: NioSkate (135M)** — **Ambient Desk Companion**. Always-on background desk-mate running in `< 50 MB` active peak RAM with strict zero-code deflection.
-- **Tier 2: NioManta (494M)** — **Systems Guru & DAG Architect**. High-throughput architectural and RFC planner generating structured `<manta_plan>` execution DAGs in `< 235 MB` peak RAM.
-- **Tier 3: NioBeluga (1.54B)** — **Sovereign Lead Architect**. Flagship cognitive companion delivering bit-exact `<think>` Chain-of-Thought reasoning proofs and system synthesis in `< 295 MB` peak RAM.
+- **Tier 1: Skate (135M)** — **Ambient Desk Companion**. Always-on background desk-mate running in `< 50 MB` active peak RAM with strict zero-code deflection.
+- **Tier 2: Manta (494M)** — **Systems Guru & DAG Architect**. High-throughput architectural and RFC planner generating structured `<manta_plan>` execution DAGs in `< 235 MB` peak RAM.
+- **Tier 3: Beluga (1.54B)** — **Sovereign Lead Architect**. Flagship cognitive companion delivering bit-exact `<think>` Chain-of-Thought reasoning proofs and system synthesis in `< 295 MB` peak RAM.
 
 ### 📊 v-MicroLM Companion Benchmark Suite
 
-| Metric / Specification | 🛹 NioSkate | 🦈 NioManta | 🐋 NioBeluga |
+| Metric / Specification | 🛹 Skate | 🦈 Manta | 🐋 Beluga |
 | :--- | :--- | :--- | :--- |
 | **Model Parameters** | **135M** (134.5M) | **494M** | **1.54B** (28 Layers, 12 Heads) |
 | **Primary Specialization** | Ambient Desk Companion & Edge Chat | Systems Guru & DAG Task Planner | Sovereign Lead Architect & CoT Prover |
@@ -129,9 +129,9 @@ The **v-MicroLM Companion Fleet** represents Nio's tiered, zero-cloud edge intel
 
 ---
 
-## 🐋 NioBeluga vs Stock Qwen 2.5 (1.5B): Side-by-Side Comparison
+## 🐋 Beluga vs Stock Qwen 2.5 (1.5B): Side-by-Side Comparison
 
-| Technical Dimension | Stock Qwen 2.5 1.5B<br>*(Standard Ollama / llama.cpp)* | NioBeluga<br>*(Sovereign NioXS Engine)* |
+| Technical Dimension | Stock Qwen 2.5 1.5B<br>*(Standard Ollama / llama.cpp)* | Beluga<br>*(Sovereign NioXS Engine)* |
 | :--- | :--- | :--- |
 | **Model Parameters** | 1.54 Billion (28 Layers, 12 Heads, 2 KV Heads) | 1.54 Billion (28 Layers, 12 Heads, 2 KV Heads) |
 | **Vocabulary Coverage** | 151,936 BPE Tokens | 151,936 BPE Tokens (100% stock identical) |
