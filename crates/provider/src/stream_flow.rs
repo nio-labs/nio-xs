@@ -182,11 +182,14 @@ impl StreamFlow {
     }
 
     fn longest_matching_prefix(buffer: &str, candidates: &[&str]) -> usize {
-        let max_check = buffer.len().min(12);
-        for len in (1..=max_check).rev() {
-            let suffix = &buffer[buffer.len() - len..];
+        // Walk backward char-by-char to avoid slicing inside multi-byte UTF-8 sequences.
+        let chars: Vec<(usize, char)> = buffer.char_indices().collect();
+        let max_chars = chars.len().min(12);
+        for n in (1..=max_chars).rev() {
+            let byte_start = chars[chars.len() - n].0;
+            let suffix = &buffer[byte_start..];
             if candidates.iter().any(|c| c.starts_with(suffix)) {
-                return len;
+                return buffer.len() - byte_start;
             }
         }
         0
