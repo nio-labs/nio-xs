@@ -766,6 +766,108 @@ pub unsafe fn vec_dot_q8_0_48blocks_avx2(weight_ptr: *const u8, x_qs: &[core::ar
     hsum_float_8(_mm256_add_ps(acc0, acc1))
 }
 
+#[inline]
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn vec_dot_q8_0_96blocks_2rows_avx2(
+    r0_ptr: *const u8,
+    r1_ptr: *const u8,
+    x_qs: &[core::arch::x86_64::__m256i; 96],
+    x_d: &[f32; 96],
+) -> (f32, f32) {
+    use core::arch::x86_64::*;
+
+    // Prefetch 4 rows ahead (4 * 3264 = 13056 bytes)
+    _mm_prefetch(r0_ptr.add(13056) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r0_ptr.add(13056 + 1024) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r1_ptr.add(13056) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r1_ptr.add(13056 + 1024) as *const i8, _MM_HINT_T0);
+
+    let mut r0_acc0 = _mm256_setzero_ps();
+    let mut r0_acc1 = _mm256_setzero_ps();
+    let mut r1_acc0 = _mm256_setzero_ps();
+    let mut r1_acc1 = _mm256_setzero_ps();
+
+    let mut ib = 0;
+    while ib < 96 {
+        if ib + 4 < 96 {
+            _mm_prefetch(r0_ptr.add((ib + 4) * 34) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(r1_ptr.add((ib + 4) * 34) as *const i8, _MM_HINT_T0);
+        }
+        let act_q0 = x_qs[ib];
+        let act_q1 = x_qs[ib + 1];
+        let act_d0 = x_d[ib];
+        let act_d1 = x_d[ib + 1];
+
+        // Row 0
+        let r0_b0 = r0_ptr.add(ib * 34);
+        let r0_b1 = r0_ptr.add((ib + 1) * 34);
+        let r0_d0 = _mm256_set1_ps(f16_to_f32_hw((r0_b0 as *const u16).read_unaligned()) * act_d0);
+        let r0_d1 = _mm256_set1_ps(f16_to_f32_hw((r0_b1 as *const u16).read_unaligned()) * act_d1);
+        let r0_qx0 = _mm256_loadu_si256(r0_b0.add(2) as *const __m256i);
+        let r0_qx1 = _mm256_loadu_si256(r0_b1.add(2) as *const __m256i);
+        let r0_q0 = mul_sum_i8_pairs_float(r0_qx0, act_q0);
+        let r0_q1 = mul_sum_i8_pairs_float(r0_qx1, act_q1);
+        r0_acc0 = _mm256_fmadd_ps(r0_d0, r0_q0, r0_acc0);
+        r0_acc1 = _mm256_fmadd_ps(r0_d1, r0_q1, r0_acc1);
+
+        // Row 1
+        let r1_b0 = r1_ptr.add(ib * 34);
+        let r1_b1 = r1_ptr.add((ib + 1) * 34);
+        let r1_d0 = _mm256_set1_ps(f16_to_f32_hw((r1_b0 as *const u16).read_unaligned()) * act_d0);
+        let r1_d1 = _mm256_set1_ps(f16_to_f32_hw((r1_b1 as *const u16).read_unaligned()) * act_d1);
+        let r1_qx0 = _mm256_loadu_si256(r1_b0.add(2) as *const __m256i);
+        let r1_qx1 = _mm256_loadu_si256(r1_b1.add(2) as *const __m256i);
+        let r1_q0 = mul_sum_i8_pairs_float(r1_qx0, act_q0);
+        let r1_q1 = mul_sum_i8_pairs_float(r1_qx1, act_q1);
+        r1_acc0 = _mm256_fmadd_ps(r1_d0, r1_q0, r1_acc0);
+        r1_acc1 = _mm256_fmadd_ps(r1_d1, r1_q1, r1_acc1);
+
+        ib += 2;
+    }
+
+    let val0 = hsum_float_8(_mm256_add_ps(r0_acc0, r0_acc1));
+    let val1 = hsum_float_8(_mm256_add_ps(r1_acc0, r1_acc1));
+    (val0, val1)
+}
+
+#[inline]
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn vec_dot_q8_0_96blocks_avx2(weight_ptr: *const u8, x_qs: &[core::arch::x86_64::__m256i; 96], x_d: &[f32; 96]) -> f32 {
+    use core::arch::x86_64::*;
+
+    // Prefetch row ahead (96 blocks * 34 bytes = 3264 bytes)
+    _mm_prefetch(weight_ptr.add(3264) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(weight_ptr.add(3264 + 1024) as *const i8, _MM_HINT_T0);
+
+    let mut acc0 = _mm256_setzero_ps();
+    let mut acc1 = _mm256_setzero_ps();
+
+    let mut ib = 0;
+    while ib < 96 {
+        let b0_ptr = weight_ptr.add(ib * 34);
+        let b1_ptr = weight_ptr.add((ib + 1) * 34);
+
+        let d0_f32 = f16_to_f32_hw((b0_ptr as *const u16).read_unaligned());
+        let d1_f32 = f16_to_f32_hw((b1_ptr as *const u16).read_unaligned());
+
+        let d0 = _mm256_set1_ps(d0_f32 * x_d[ib]);
+        let d1 = _mm256_set1_ps(d1_f32 * x_d[ib + 1]);
+
+        let qx0 = _mm256_loadu_si256(b0_ptr.add(2) as *const __m256i);
+        let qx1 = _mm256_loadu_si256(b1_ptr.add(2) as *const __m256i);
+
+        let q0 = mul_sum_i8_pairs_float(qx0, x_qs[ib]);
+        let q1 = mul_sum_i8_pairs_float(qx1, x_qs[ib + 1]);
+
+        acc0 = _mm256_fmadd_ps(d0, q0, acc0);
+        acc1 = _mm256_fmadd_ps(d1, q1, acc1);
+
+        ib += 2;
+    }
+
+    hsum_float_8(_mm256_add_ps(acc0, acc1))
+}
+
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn vec_dot_iq4_nl_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_0]) -> f32 {
     use core::arch::x86_64::*;
@@ -931,6 +1033,137 @@ pub unsafe fn vec_dot_iq4_nl_48blocks_avx2(
 
     let mut ib = 0;
     while ib < 48 {
+        let b0_ptr = weight_ptr.add(ib * 18);
+        let b1_ptr = weight_ptr.add((ib + 1) * 18);
+
+        let d0 = _mm256_set1_ps(f16_to_f32_hw((b0_ptr as *const u16).read_unaligned()) * x_d[ib]);
+        let d1 = _mm256_set1_ps(f16_to_f32_hw((b1_ptr as *const u16).read_unaligned()) * x_d[ib + 1]);
+
+        let q4_0 = _mm_loadu_si128(b0_ptr.add(2) as *const __m128i);
+        let q4_1 = _mm_loadu_si128(b1_ptr.add(2) as *const __m128i);
+
+        let q4b_0 = _mm256_insertf128_si256(
+            _mm256_castsi128_si256(_mm_shuffle_epi8(values128, _mm_and_si128(q4_0, m4b))),
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(q4_0, 4), m4b)),
+            1,
+        );
+        let q4b_1 = _mm256_insertf128_si256(
+            _mm256_castsi128_si256(_mm_shuffle_epi8(values128, _mm_and_si128(q4_1, m4b))),
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(q4_1, 4), m4b)),
+            1,
+        );
+
+        let p_0 = _mm256_madd_epi16(mul_add_epi8(q4b_0, x_qs[ib]), mone);
+        let p_1 = _mm256_madd_epi16(mul_add_epi8(q4b_1, x_qs[ib + 1]), mone);
+
+        acc0 = _mm256_fmadd_ps(d0, _mm256_cvtepi32_ps(p_0), acc0);
+        acc1 = _mm256_fmadd_ps(d1, _mm256_cvtepi32_ps(p_1), acc1);
+
+        ib += 2;
+    }
+
+    hsum_float_8(_mm256_add_ps(acc0, acc1))
+}
+
+#[inline]
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn vec_dot_iq4_nl_96blocks_2rows_avx2(
+    r0_ptr: *const u8,
+    r1_ptr: *const u8,
+    x_qs: &[core::arch::x86_64::__m256i; 96],
+    x_d: &[f32; 96],
+) -> (f32, f32) {
+    use core::arch::x86_64::*;
+    _mm_prefetch(r0_ptr.add(1728) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r1_ptr.add(1728) as *const i8, _MM_HINT_T0);
+
+    let values128 = _mm_loadu_si128(KVALUES_IQ4NL.as_ptr() as *const __m128i);
+    let m4b = _mm_set1_epi8(0x0f);
+    let mone = _mm256_set1_epi16(1);
+
+    let mut r0_acc0 = _mm256_setzero_ps();
+    let mut r0_acc1 = _mm256_setzero_ps();
+    let mut r1_acc0 = _mm256_setzero_ps();
+    let mut r1_acc1 = _mm256_setzero_ps();
+
+    let mut ib = 0;
+    while ib < 96 {
+        let act_q0 = x_qs[ib];
+        let act_q1 = x_qs[ib + 1];
+        let act_d0 = x_d[ib];
+        let act_d1 = x_d[ib + 1];
+
+        // Row 0
+        let r0_b0 = r0_ptr.add(ib * 18);
+        let r0_b1 = r0_ptr.add((ib + 1) * 18);
+        let r0_d0 = _mm256_set1_ps(f16_to_f32_hw((r0_b0 as *const u16).read_unaligned()) * act_d0);
+        let r0_d1 = _mm256_set1_ps(f16_to_f32_hw((r0_b1 as *const u16).read_unaligned()) * act_d1);
+        let r0_q4_0 = _mm_loadu_si128(r0_b0.add(2) as *const __m128i);
+        let r0_q4_1 = _mm_loadu_si128(r0_b1.add(2) as *const __m128i);
+        let r0_q4b_0 = _mm256_insertf128_si256(
+            _mm256_castsi128_si256(_mm_shuffle_epi8(values128, _mm_and_si128(r0_q4_0, m4b))),
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(r0_q4_0, 4), m4b)),
+            1,
+        );
+        let r0_q4b_1 = _mm256_insertf128_si256(
+            _mm256_castsi128_si256(_mm_shuffle_epi8(values128, _mm_and_si128(r0_q4_1, m4b))),
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(r0_q4_1, 4), m4b)),
+            1,
+        );
+        let r0_p_0 = _mm256_madd_epi16(mul_add_epi8(r0_q4b_0, act_q0), mone);
+        let r0_p_1 = _mm256_madd_epi16(mul_add_epi8(r0_q4b_1, act_q1), mone);
+        r0_acc0 = _mm256_fmadd_ps(r0_d0, _mm256_cvtepi32_ps(r0_p_0), r0_acc0);
+        r0_acc1 = _mm256_fmadd_ps(r0_d1, _mm256_cvtepi32_ps(r0_p_1), r0_acc1);
+
+        // Row 1
+        let r1_b0 = r1_ptr.add(ib * 18);
+        let r1_b1 = r1_ptr.add((ib + 1) * 18);
+        let r1_d0 = _mm256_set1_ps(f16_to_f32_hw((r1_b0 as *const u16).read_unaligned()) * act_d0);
+        let r1_d1 = _mm256_set1_ps(f16_to_f32_hw((r1_b1 as *const u16).read_unaligned()) * act_d1);
+        let r1_q4_0 = _mm_loadu_si128(r1_b0.add(2) as *const __m128i);
+        let r1_q4_1 = _mm_loadu_si128(r1_b1.add(2) as *const __m128i);
+        let r1_q4b_0 = _mm256_insertf128_si256(
+            _mm256_castsi128_si256(_mm_shuffle_epi8(values128, _mm_and_si128(r1_q4_0, m4b))),
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(r1_q4_0, 4), m4b)),
+            1,
+        );
+        let r1_q4b_1 = _mm256_insertf128_si256(
+            _mm256_castsi128_si256(_mm_shuffle_epi8(values128, _mm_and_si128(r1_q4_1, m4b))),
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(r1_q4_1, 4), m4b)),
+            1,
+        );
+        let r1_p_0 = _mm256_madd_epi16(mul_add_epi8(r1_q4b_0, act_q0), mone);
+        let r1_p_1 = _mm256_madd_epi16(mul_add_epi8(r1_q4b_1, act_q1), mone);
+        r1_acc0 = _mm256_fmadd_ps(r1_d0, _mm256_cvtepi32_ps(r1_p_0), r1_acc0);
+        r1_acc1 = _mm256_fmadd_ps(r1_d1, _mm256_cvtepi32_ps(r1_p_1), r1_acc1);
+
+        ib += 2;
+    }
+
+    let val0 = hsum_float_8(_mm256_add_ps(r0_acc0, r0_acc1));
+    let val1 = hsum_float_8(_mm256_add_ps(r1_acc0, r1_acc1));
+    (val0, val1)
+}
+
+#[inline]
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn vec_dot_iq4_nl_96blocks_avx2(
+    weight_ptr: *const u8,
+    x_qs: &[core::arch::x86_64::__m256i; 96],
+    x_d: &[f32; 96],
+) -> f32 {
+    use core::arch::x86_64::*;
+    _mm_prefetch(weight_ptr.add(1728) as *const i8, _MM_HINT_T0);
+
+    let values128 = _mm_loadu_si128(KVALUES_IQ4NL.as_ptr() as *const __m128i);
+    let m4b = _mm_set1_epi8(0x0f);
+    let mone = _mm256_set1_epi16(1);
+
+    let mut acc0 = _mm256_setzero_ps();
+    let mut acc1 = _mm256_setzero_ps();
+
+    let mut ib = 0;
+    while ib < 96 {
         let b0_ptr = weight_ptr.add(ib * 18);
         let b1_ptr = weight_ptr.add((ib + 1) * 18);
 
@@ -2494,5 +2727,101 @@ mod tests {
         assert!((ref0 - simd0).abs() < 0.05 * ref0.abs().max(1.0), "Manta row 0 mismatch: {ref0} vs {simd0}");
         assert!((ref1 - simd1).abs() < 0.05 * ref1.abs().max(1.0), "Manta row 1 mismatch: {ref1} vs {simd1}");
         assert!((simd0 - single0).abs() < 1e-4, "Manta dual vs single mismatch: {simd0} vs {single0}");
+    }
+
+    #[test]
+    fn test_quantize_and_dot_iq4_nl_96blocks() {
+        let n = 96 * 32;
+        let mut x = vec![0f32; n];
+        let mut w0 = vec![0f32; n];
+        let mut w1 = vec![0f32; n];
+        for i in 0..n {
+            x[i] = ((i as f32) * 0.07).cos() * 0.1;
+            w0[i] = ((i as f32) * 0.13).sin() * 0.2;
+            w1[i] = ((i as f32) * 0.17).cos() * 0.15;
+        }
+
+        let mut x_q8_0 = vec![BlockQ8_0 { d: 0.0, qs: [0; 32] }; 96];
+        quantize_row_q8_0(&x, &mut x_q8_0);
+
+        let mut x_qs = unsafe { [core::arch::x86_64::_mm256_setzero_si256(); 96] };
+        let mut x_d = [0.0f32; 96];
+        for i in 0..96 {
+            x_qs[i] = unsafe { core::arch::x86_64::_mm256_loadu_si256(x_q8_0[i].qs.as_ptr() as *const _) };
+            x_d[i] = x_q8_0[i].d;
+        }
+
+        let mut raw_w0 = vec![0u8; 96 * 18];
+        let mut raw_w1 = vec![0u8; 96 * 18];
+        quantize_row_iq4_nl(&w0, &mut raw_w0);
+        quantize_row_iq4_nl(&w1, &mut raw_w1);
+
+        let mut deq0 = vec![0f32; n];
+        let mut deq1 = vec![0f32; n];
+        dequantize_row_iq4_nl(&raw_w0, &mut deq0);
+        dequantize_row_iq4_nl(&raw_w1, &mut deq1);
+
+        let ref0: f32 = deq0.iter().zip(x.iter()).map(|(a, b)| a * b).sum();
+        let ref1: f32 = deq1.iter().zip(x.iter()).map(|(a, b)| a * b).sum();
+
+        let (simd0, simd1) = unsafe {
+            vec_dot_iq4_nl_96blocks_2rows_avx2(raw_w0.as_ptr(), raw_w1.as_ptr(), &x_qs, &x_d)
+        };
+        let single0 = unsafe { vec_dot_iq4_nl_96blocks_avx2(raw_w0.as_ptr(), &x_qs, &x_d) };
+
+        assert!((ref0 - simd0).abs() < 0.05 * ref0.abs().max(1.0), "Blue row 0 mismatch: {ref0} vs {simd0}");
+        assert!((ref1 - simd1).abs() < 0.05 * ref1.abs().max(1.0), "Blue row 1 mismatch: {ref1} vs {simd1}");
+        assert!((simd0 - single0).abs() < 1e-4, "Blue dual vs single mismatch: {simd0} vs {single0}");
+    }
+
+    #[test]
+    fn test_quantize_and_dot_q8_0_96blocks() {
+        let n = 96 * 32;
+        let mut x = vec![0f32; n];
+        for i in 0..n {
+            x[i] = ((i as f32) * 0.05).sin();
+        }
+        let mut x_q8_0 = vec![BlockQ8_0 { d: 0.0, qs: [0; 32] }; 96];
+        quantize_row_q8_0(&x, &mut x_q8_0);
+
+        let mut x_qs = unsafe { [core::arch::x86_64::_mm256_setzero_si256(); 96] };
+        let mut x_d = [0.0f32; 96];
+        for i in 0..96 {
+            x_qs[i] = unsafe { core::arch::x86_64::_mm256_loadu_si256(x_q8_0[i].qs.as_ptr() as *const _) };
+            x_d[i] = x_q8_0[i].d;
+        }
+
+        // Two rows of Q8_0 weights
+        let mut w0_bytes = vec![0u8; 96 * 34];
+        let mut w1_bytes = vec![0u8; 96 * 34];
+        for b in 0..96 {
+            let d0_bytes = half::f16::from_f32(0.04).to_le_bytes();
+            w0_bytes[b * 34] = d0_bytes[0];
+            w0_bytes[b * 34 + 1] = d0_bytes[1];
+            let d1_bytes = half::f16::from_f32(0.06).to_le_bytes();
+            w1_bytes[b * 34] = d1_bytes[0];
+            w1_bytes[b * 34 + 1] = d1_bytes[1];
+            for j in 0..32 {
+                w0_bytes[b * 34 + 2 + j] = ((((j as i32 + b as i32) % 32) - 16) as i8) as u8;
+                w1_bytes[b * 34 + 2 + j] = ((((j as i32 * 2 + b as i32) % 32) - 16) as i8) as u8;
+            }
+        }
+
+        let mut w0_dequant = vec![0f32; n];
+        let mut w1_dequant = vec![0f32; n];
+        dequantize_row_q8_0(&w0_bytes, &mut w0_dequant);
+        dequantize_row_q8_0(&w1_bytes, &mut w1_dequant);
+
+        let ref0: f32 = w0_dequant.iter().zip(x.iter()).map(|(a, b)| a * b).sum();
+        let ref1: f32 = w1_dequant.iter().zip(x.iter()).map(|(a, b)| a * b).sum();
+
+        let (simd0, simd1) = unsafe {
+            vec_dot_q8_0_96blocks_2rows_avx2(w0_bytes.as_ptr(), w1_bytes.as_ptr(), &x_qs, &x_d)
+        };
+        let single0 = unsafe { vec_dot_q8_0_96blocks_avx2(w0_bytes.as_ptr(), &x_qs, &x_d) };
+
+        assert!((ref0 - simd0).abs() < 0.05 * ref0.abs().max(1.0), "Blue Q8_0 row 0 mismatch: {ref0} vs {simd0}");
+        assert!((ref1 - simd1).abs() < 0.05 * ref1.abs().max(1.0), "Blue Q8_0 row 1 mismatch: {ref1} vs {simd1}");
+        assert!((simd0 - single0).abs() < 1e-4, "Blue Q8_0 dual vs single mismatch: {simd0} vs {single0}");
     }
 }
