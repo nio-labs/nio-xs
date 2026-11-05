@@ -1,0 +1,61 @@
+{
+  "model": "blue.vmicrolm-reflex.gguf",
+  "disk_size_mb": 1429.9747619628906,
+  "num_queries": 3,
+  "avg_prefill_ms": 34408.655387,
+  "avg_prefill_tps": 7.023532668950243,
+  "avg_tokens_per_sec": 4.388361281187638,
+  "avg_words_per_sec": 2.905604603178967,
+  "peak_ram_mb": 192.296875,
+  "sub_200mb_sla_passed": true,
+  "results": [
+    {
+      "prompt_id": 1,
+      "category": "runtime_architecture",
+      "prompt": "why do we need to use Node.js and not PHP?",
+      "prompt_tokens": 153,
+      "prefill_time_ms": 68817.253847,
+      "prefill_tps": 2.2232796493182043,
+      "gen_tokens": 64,
+      "gen_time_s": 35.363992401,
+      "tokens_per_sec": 1.8097504171556789,
+      "word_count": 45,
+      "words_per_sec": 1.2724807620625866,
+      "vm_rss_mb": 190.13671875,
+      "vm_hwm_mb": 190.13671875,
+      "response": "<think>Node.js is a JavaScript runtime, so it's inherently compatible with frontend frameworks.</think>\nWe use Node.js because it allows us to leverage our existing JavaScript knowledge and integrate seamlessly with the frontend framework we choose, like React or Vue. This makes"
+    },
+    {
+      "prompt_id": 2,
+      "category": "systems_architecture",
+      "prompt": "Design an in-memory lock-free priority queue for high-frequency trading in Rust.",
+      "prompt_tokens": 162,
+      "prefill_time_ms": 17687.743677,
+      "prefill_tps": 9.1588844206655,
+      "gen_tokens": 64,
+      "gen_time_s": 9.52967725,
+      "tokens_per_sec": 6.715862281694797,
+      "word_count": 44,
+      "words_per_sec": 4.617155318665173,
+      "vm_rss_mb": 192.296875,
+      "vm_hwm_mb": 192.296875,
+      "response": "<think>Verify head/tail index wrap-around arithmetic, single-writer vs CAS contention, and acquire/release bounds.</think>\nImplement a lockless priority queue using atomic pointers for the front and back. Each node contains its own timestamp or version counter to ensure correct ordering"
+    },
+    {
+      "prompt_id": 3,
+      "category": "distributed_consensus",
+      "prompt": "Compare Raft vs Multi-Paxos for distributed key-value stores under high network jitter.",
+      "prompt_tokens": 162,
+      "prefill_time_ms": 16720.968636999998,
+      "prefill_tps": 9.688433936867028,
+      "gen_tokens": 64,
+      "gen_time_s": 13.79467573,
+      "tokens_per_sec": 4.639471144712439,
+      "word_count": 39,
+      "words_per_sec": 2.8271777288091426,
+      "vm_rss_mb": 192.296875,
+      "vm_hwm_mb": 192.296875,
+      "response": "<think>Verify term monotonicity, majority quorum intersection, and log-matching election safety invariants.</think>\nRaft offers better consistency under high network jitter due to its strong leader election mechanism. Multi-Paxos may struggle with synchronization issues in such environments."
+    }
+  ]
+}

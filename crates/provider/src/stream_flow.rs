@@ -37,6 +37,13 @@ const STRAY_TAGS: &[&str] = &[
     "<thought>",
     "</thinking>",
     "<thinking>",
+    "<|endofanswer|>",
+    "<|endoftext|>",
+    "<|im_end|>",
+    "<|im_start|>",
+    "<|end|>",
+    "<endofanswer>",
+    "</answer>",
 ];
 
 pub struct StreamFlow {
@@ -184,7 +191,7 @@ impl StreamFlow {
     fn longest_matching_prefix(buffer: &str, candidates: &[&str]) -> usize {
         // Walk backward char-by-char to avoid slicing inside multi-byte UTF-8 sequences.
         let chars: Vec<(usize, char)> = buffer.char_indices().collect();
-        let max_chars = chars.len().min(12);
+        let max_chars = chars.len().min(20);
         for n in (1..=max_chars).rev() {
             let byte_start = chars[chars.len() - n].0;
             let suffix = &buffer[byte_start..];
@@ -273,6 +280,12 @@ impl StreamFlow {
             let mut remaining = std::mem::take(&mut self.stream_buffer);
             for tag in STRAY_TAGS {
                 remaining = remaining.replace(tag, "");
+            }
+            // Strip any trailing partial or unclosed tag like `<...`
+            if let Some(pos) = remaining.rfind('<') {
+                if !remaining[pos..].contains('>') {
+                    remaining.truncate(pos);
+                }
             }
             if !remaining.is_empty() {
                 self.emit_answer_chunk(&remaining);

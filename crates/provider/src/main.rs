@@ -24,15 +24,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
-  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, all)\n\
+  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, all)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
   manta <prompt> Run local in-process Manta 494M systems guru & DAG architect (<manta_plan>)\n\
   beluga <prompt> Run local in-process Beluga 1.54B sovereign lead architect & CoT reasoning\n\
+  blue <prompt>   Run local in-process Blue 3.82B sovereign reflex lead companion\n\
   mcp            Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
   init           Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
   undo           Rollback last applied multi-file patch (or specific patch_id)\n\
@@ -40,6 +41,9 @@ Commands:\n\
 \n\
 Options:\n\
   --device, -d <auto|cpu|gpu>        Select hardware compute device (default: auto; uses GPU if available, else pure CPU)\n\
+  --gpu                              Shortcut to target GPU acceleration\n\
+  --cpu                              Shortcut to target pure-CPU execution\n\
+  --auto                             Shortcut to use automatic hardware detection\n\
   --flow, -f <token|burst|paragraph> Output streaming cadence (default: token; instant token stream)\n\
   --max-tokens, -n <count>           Max tokens to generate (default: 4096 / unconstrained until EOS)\n\
 \n\
@@ -77,7 +81,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     if arg.as_deref() == Some("skate") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs skate [--device <auto|cpu|gpu>] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            eprintln!("Usage: nioxs skate [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
 
@@ -95,6 +99,12 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 if let Some(val) = iter.next() {
                     device_pref = nioxs_engine::DevicePreference::parse(&val);
                 }
+            } else if a == "--gpu" {
+                device_pref = nioxs_engine::DevicePreference::Gpu;
+            } else if a == "--cpu" {
+                device_pref = nioxs_engine::DevicePreference::Cpu;
+            } else if a == "--auto" {
+                device_pref = nioxs_engine::DevicePreference::Auto;
             } else if a == "-f" || a == "--flow" {
                 if let Some(val) = iter.next() {
                     flow_mode = FlowMode::parse(&val);
@@ -105,7 +115,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
-            eprintln!("Usage: nioxs skate [--device <auto|cpu|gpu>] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            eprintln!("Usage: nioxs skate [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
 
@@ -221,7 +231,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             return Ok(());
         }
 
-        let engine = nioxs_engine::RayEngine::for_model("nio-viper")?;
+        let engine = nioxs_engine::AstEngine::for_model("nio-viper")?;
         let max_tokens = if prompt.split_whitespace().count() <= 2 { 32 } else { 128 };
         let mut rx = engine.generate_stream(prompt.clone(), max_tokens, 0.7, 0.9).await?;
         use std::io::Write;
@@ -288,7 +298,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     if arg.as_deref() == Some("beluga") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
 
@@ -306,6 +316,12 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 if let Some(val) = iter.next() {
                     device_pref = nioxs_engine::DevicePreference::parse(&val);
                 }
+            } else if a == "--gpu" {
+                device_pref = nioxs_engine::DevicePreference::Gpu;
+            } else if a == "--cpu" {
+                device_pref = nioxs_engine::DevicePreference::Cpu;
+            } else if a == "--auto" {
+                device_pref = nioxs_engine::DevicePreference::Auto;
             } else if a == "-f" || a == "--flow" {
                 if let Some(val) = iter.next() {
                     flow_mode = FlowMode::parse(&val);
@@ -316,10 +332,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
-            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
-        let engine = nioxs_engine::RayEngine::for_model_with_device("nio-beluga", device_pref)?;
+        let engine = nioxs_engine::AstEngine::for_model_with_device("nio-beluga", device_pref)?;
         let max_tokens = custom_max_tokens.unwrap_or(4096);
         let formatted_prompt = format!(
             "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Close your thoughts with </think> once before providing the final answer, and never repeat thought tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Be concise, accurate, and direct. Format definitions and explanations directly in natural prose or Markdown blockquotes (>), never wrap plain text definitions in ```plaintext code blocks. Reserve code blocks strictly for executable code. Defer raw low-level code generation to downstream coding models.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
@@ -333,10 +349,64 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         println!();
         return Ok(());
     }
+    if arg.as_deref() == Some("blue") {
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        if raw_args.is_empty() {
+            eprintln!("Usage: nioxs blue [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            return Ok(());
+        }
+
+        let mut custom_max_tokens = None;
+        let mut device_pref = nioxs_engine::DevicePreference::Auto;
+        let mut flow_mode = FlowMode::Token;
+        let mut prompt_parts = Vec::new();
+        let mut iter = raw_args.clone().into_iter();
+        while let Some(a) = iter.next() {
+            if a == "-n" || a == "--max-tokens" {
+                if let Some(val) = iter.next() {
+                    custom_max_tokens = val.parse::<usize>().ok();
+                }
+            } else if a == "-d" || a == "--device" {
+                if let Some(val) = iter.next() {
+                    device_pref = nioxs_engine::DevicePreference::parse(&val);
+                }
+            } else if a == "--gpu" {
+                device_pref = nioxs_engine::DevicePreference::Gpu;
+            } else if a == "--cpu" {
+                device_pref = nioxs_engine::DevicePreference::Cpu;
+            } else if a == "--auto" {
+                device_pref = nioxs_engine::DevicePreference::Auto;
+            } else if a == "-f" || a == "--flow" {
+                if let Some(val) = iter.next() {
+                    flow_mode = FlowMode::parse(&val);
+                }
+            } else {
+                prompt_parts.push(a);
+            }
+        }
+        let prompt = prompt_parts.join(" ");
+        if prompt.is_empty() {
+            eprintln!("Usage: nioxs blue [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            return Ok(());
+        }
+        let engine = nioxs_engine::AstEngine::for_model_with_device("blue", device_pref)?;
+        let max_tokens = custom_max_tokens.unwrap_or(4096);
+        let formatted_prompt = format!(
+            "<|im_start|>system\nYou are Blue, Nio's Flagship Sovereign Reflex Companion. Speak with the calm, approachable, and grounded voice of a seasoned staff engineer pair-programming with a colleague. Be conversational and engaging, but keep your dialogue focused and high-signal without fluff or sycophancy. When complex reasoning is required, verify invariants inside concise <think>...</think> tags (under 100 tokens), close your thoughts with </think>, and deliver your answer naturally. Reserve code blocks strictly for executable code.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        );
+        let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.35, 0.88).await?;
+        let mut flow = StreamFlow::new(flow_mode);
+        while let Some(chunk) = rx.recv().await {
+            flow.push(&chunk);
+        }
+        flow.finish();
+        println!();
+        return Ok(());
+    }
     if arg.as_deref() == Some("manta") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs manta [--device <auto|cpu|gpu>] [--flow <burst|token|paragraph>] [--plan] [-n <max_tokens>] <prompt>");
+            eprintln!("Usage: nioxs manta [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [--plan] [-n <max_tokens>] <prompt>");
             return Ok(());
         }
 
@@ -357,6 +427,12 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 if let Some(val) = iter.next() {
                     device_pref = nioxs_engine::DevicePreference::parse(&val);
                 }
+            } else if a == "--gpu" {
+                device_pref = nioxs_engine::DevicePreference::Gpu;
+            } else if a == "--cpu" {
+                device_pref = nioxs_engine::DevicePreference::Cpu;
+            } else if a == "--auto" {
+                device_pref = nioxs_engine::DevicePreference::Auto;
             } else if a == "-f" || a == "--flow" {
                 if let Some(val) = iter.next() {
                     flow_mode = FlowMode::parse(&val);
@@ -367,8 +443,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
         let user_prompt = prompt_parts.join(" ");
 
-        // Prefer native Rust RayEngine for nio-manta
-        if let Ok(engine) = nioxs_engine::RayEngine::for_model_with_device("nio-manta", device_pref) {
+        // Prefer native Rust AstEngine for nio-manta
+        if let Ok(engine) = nioxs_engine::AstEngine::for_model_with_device("nio-manta", device_pref) {
             let sys_msg = if is_plan {
                 "You are Manta, an expert architect and systems planner for Nio. Compile the user request into a machine-verifiable <manta_plan> XML DAG with step id, name, description, command, and rollback. Respond directly without reciting your preamble."
             } else {
@@ -585,7 +661,28 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         return nioxs_provider::mcp::run_stdio_server().map_err(|e| e.into());
     }
     if arg.is_some() && arg.as_deref() != Some("serve") {
-        return Err("unknown command; expected 'nioxs serve', 'nioxs pull', 'nioxs viper', 'nioxs skate', 'nioxs manta', 'nioxs beluga', 'nioxs mcp', 'nioxs init', 'nioxs undo', or 'nioxs history'".into());
+        return Err("unknown command; expected 'nioxs serve', 'nioxs pull', 'nioxs viper', 'nioxs skate', 'nioxs manta', 'nioxs beluga', 'nioxs blue', 'nioxs mcp', 'nioxs init', 'nioxs undo', or 'nioxs history'".into());
+    }
+
+    let mut server_device_pref = nioxs_engine::DevicePreference::Auto;
+    let mut iter = std::env::args().skip(1);
+    while let Some(a) = iter.next() {
+        if a == "--gpu" {
+            server_device_pref = nioxs_engine::DevicePreference::Gpu;
+        } else if a == "--cpu" {
+            server_device_pref = nioxs_engine::DevicePreference::Cpu;
+        } else if a == "--auto" {
+            server_device_pref = nioxs_engine::DevicePreference::Auto;
+        } else if a == "-d" || a == "--device" {
+            if let Some(val) = iter.next() {
+                server_device_pref = nioxs_engine::DevicePreference::parse(&val);
+            }
+        }
+    }
+    match server_device_pref {
+        nioxs_engine::DevicePreference::Gpu => unsafe { std::env::set_var("NIOXS_DEVICE", "gpu") },
+        nioxs_engine::DevicePreference::Cpu => unsafe { std::env::set_var("NIOXS_DEVICE", "cpu") },
+        nioxs_engine::DevicePreference::Auto => {},
     }
     let listen: std::net::SocketAddr = if let Ok(listen_str) = std::env::var("NIOXS_LISTEN") {
         listen_str.parse()?
@@ -654,9 +751,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             .duration_since(std::time::UNIX_EPOCH)?
             .as_nanos()
     );
-    let ray_engine: Option<nioxs_engine::RayEngine> = None;
-    let microlm_banner = "Sovereign MicroLM Fleet (Beluga, Manta, Viper, Dolphin)";
-    let active_hw = nioxs_engine::ActiveDevice::detect(nioxs_engine::DevicePreference::Auto);
+    let ast_engine: Option<nioxs_engine::AstEngine> = None;
+    let microlm_banner = "Sovereign MicroLM Fleet (Blue, Beluga, Manta, Viper, Dolphin)";
+    let active_hw = nioxs_engine::ActiveDevice::detect(server_device_pref);
     let listener = tokio::net::TcpListener::bind(listen).await?;
     let addr = listener.local_addr()?;
     eprintln!(
@@ -684,7 +781,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             api_token,
             active: ActiveTurns::default(),
             model: Arc::new(model),
-            ray_engine,
+            ray_engine: ast_engine,
             instance,
         }),
     )

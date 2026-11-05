@@ -79,7 +79,7 @@ pub async fn generate(prompt: &str) -> Result<String> {
         return fallback("input_blocked_or_classifier_unavailable", prompt).await;
     }
 
-    let engine = match nioxs_engine::RayEngine::for_model("nio-skate") {
+    let engine = match nioxs_engine::AstEngine::for_model("nio-skate") {
         Ok(engine) => engine,
         Err(_) => return fallback("candidate_unavailable", prompt).await,
     };
@@ -102,7 +102,7 @@ pub async fn generate_stream_with_device(
     device_pref: nioxs_engine::DevicePreference,
     max_tokens: usize,
 ) -> Result<tokio::sync::mpsc::Receiver<String>> {
-    let engine = nioxs_engine::RayEngine::for_model_with_device("nio-skate", device_pref)?;
+    let engine = nioxs_engine::AstEngine::for_model_with_device("nio-skate", device_pref)?;
     let policy = nioxs_engine::skate_system()?;
     let formatted = format!(
         "<|im_start|>system\n{policy}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"

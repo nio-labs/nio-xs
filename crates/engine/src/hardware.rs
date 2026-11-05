@@ -57,14 +57,13 @@ impl ActiveDevice {
     /// Automatically probes hardware capabilities based on user preference and environment.
     pub fn detect(pref: DevicePreference) -> Self {
         // Explicit environment override always takes priority
-        if let Ok(env_pref) = std::env::var("NIOXS_DEVICE") {
-            let parsed = DevicePreference::parse(&env_pref);
-            if parsed == DevicePreference::Cpu {
-                return Self::Cpu;
-            }
-        }
+        let effective_pref = if let Ok(env_pref) = std::env::var("NIOXS_DEVICE") {
+            DevicePreference::parse(&env_pref)
+        } else {
+            pref
+        };
 
-        if pref == DevicePreference::Cpu {
+        if effective_pref == DevicePreference::Cpu {
             return Self::Cpu;
         }
 
@@ -89,7 +88,7 @@ impl ActiveDevice {
         }
 
         // Fallback: If GPU was strictly requested but not found, log warning and use CPU
-        if pref == DevicePreference::Gpu {
+        if effective_pref == DevicePreference::Gpu {
             eprintln!("[nioxs] Notice: GPU acceleration requested but no compatible GPU was detected. Falling back to pure CPU.");
         }
 
@@ -130,21 +129,12 @@ impl ActiveDevice {
         #[cfg(target_os = "linux")]
         {
             if Path::new("/dev/dxg").exists() {
-                if let Ok(output) = std::process::Command::new("powershell.exe")
-                    .args([
-                        "-NoProfile",
-                        "-Command",
-                        "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name",
-                    ])
-                    .output()
-                {
-                    if output.status.success() {
-                        let text = String::from_utf8_lossy(&output.stdout);
-                        if text.to_ascii_lowercase().contains("intel") {
-                            let vram_mb = Self::query_wsl_intel_vram();
-                            return Some(Self::IntelArc { vram_mb });
-                        }
-                    }
+                let is_intel = std::fs::read_to_string("/proc/cpuinfo")
+                    .map(|c| c.contains("Intel"))
+                    .unwrap_or(false);
+                if is_intel || Path::new("/usr/lib/wsl/lib/libdxcore.so").exists() {
+                    let vram_mb = Self::query_linux_unified_vram_mb();
+                    return Some(Self::IntelArc { vram_mb });
                 }
             }
 
@@ -152,7 +142,8 @@ impl ActiveDevice {
             if Path::new("/dev/dri/renderD128").exists() {
                 if let Ok(vendor) = std::fs::read_to_string("/sys/class/drm/card0/device/vendor") {
                     if vendor.trim().contains("0x8086") {
-                        return Some(Self::IntelArc { vram_mb: None });
+                        let vram_mb = Self::query_linux_unified_vram_mb();
+                        return Some(Self::IntelArc { vram_mb });
                     }
                 }
             }
@@ -182,6 +173,15 @@ impl ActiveDevice {
         None
     }
 
+    fn query_linux_unified_vram_mb() -> Option<u64> {
+        let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
+        let line = meminfo.lines().find(|l| l.starts_with("MemTotal:"))?;
+        let kb = line.split_whitespace().nth(1)?.parse::<u64>().ok()?;
+        // Intel Arc iGPU shares up to 50% of unified system memory
+        Some(kb / 2048)
+    }
+
+    #[allow(dead_code)]
     fn query_wsl_intel_vram() -> Option<u64> {
         let output = std::process::Command::new("powershell.exe")
             .args([

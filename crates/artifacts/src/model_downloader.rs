@@ -4,7 +4,7 @@
 //! into `~/.nioxs/models/` with streaming progress and SHA-256 integrity verification.
 
 use futures_util::StreamExt;
-use nioxs_contracts::{MODEL_BELUGA, MODEL_MANTA, MODEL_NANO, MODEL_SKATE, MODEL_VIPER};
+use nioxs_contracts::{MODEL_BELUGA, MODEL_BLUE, MODEL_MANTA, MODEL_NANO, MODEL_SKATE, MODEL_VIPER};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::env;
@@ -61,6 +61,15 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.0/beluga.vmicrolm-vector.gguf".into(),
             sha256: "d2d4642d36b907c8658301208e8cd4ab3c6d72051a37a780ebc35a56ff83d5ba".into(),
             size_bytes: 639_362_560,
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_BLUE.into(),
+            brand_name: "Blue (Sovereign Reflex Lead)".into(),
+            base_model: "microsoft/Phi-3.5-mini-instruct (32L, vMicroLM Reflex)".into(),
+            filename: "blue.vmicrolm-reflex.gguf".into(),
+            download_url: "".into(),
+            sha256: "".into(),
+            size_bytes: 1_499_444_224,
         },
     ]
 }
@@ -416,34 +425,34 @@ mod tests {
     fn test_manifest_pins_real_upstream_artifacts() {
         let expected: [(&str, &str, u64, &str); 5] = [
             (
-                MODEL_RAY,
-                "f070cd657e929ee2d45a7d8a46c71ef0fdec6b8ae1100de57735808deae4477f",
-                284_087_232,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.1/nio-ray-ast.Q4_0.gguf",
+                MODEL_VIPER,
+                "58633aa691b80840dc85586cf2cb8616deff480c64ddf406bf848db749ecc3d4",
+                64_686_080,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.1.0/viper.Q4_0.gguf",
             ),
             (
-                MODEL_VIPER,
-                "acaa8a21c8d37d12398a2e7ac67ad367d2e3786b261ce95195e6e0cc08363e9c",
-                28_214_368,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.1.0/nio-viper.Q4_0.gguf",
+                MODEL_SKATE,
+                "a00921dca072e640bb1f9730a95e3d88ed843cba3dd0a5648a6fd5e3e9e3d86b",
+                86_958_464,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.6/skate.vmicrolm-vector.gguf",
             ),
             (
                 MODEL_MANTA,
-                "ed27ef71bf8c0c5f372efb0eef99b71a9c6480bf3e228ce2f1027fd3583d08bf",
-                265_635_936,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.2/manta.vmicrolm-vector.gguf",
-            ),
-            (
-                MODEL_CUDA,
-                "09566c2f463dfae5475b2747c4338cf3a9b887f8382a21052766d1f97803c58c",
-                284_962_368,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.2/nio-cuda-ast.Q4_0.gguf",
+                "fa981bab81c7cb32a7072dfd193f1e03f988eb800d7e6773a03b69c861d452a5",
+                333_363_520,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.7/manta.vmicrolm-vector.gguf",
             ),
             (
                 MODEL_BELUGA,
+                "d2d4642d36b907c8658301208e8cd4ab3c6d72051a37a780ebc35a56ff83d5ba",
+                639_362_560,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.0/beluga.vmicrolm-vector.gguf",
+            ),
+            (
+                MODEL_BLUE,
                 "",
-                768_230_000,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/beluga.vmicrolm-vector.gguf",
+                1_499_444_224,
+                "",
             ),
         ];
         let manifest = default_manifest();
@@ -461,7 +470,7 @@ mod tests {
     fn test_manifest_contains_all_models() {
         let manifest = default_manifest();
         assert_eq!(manifest.len(), 5);
-        for id in [MODEL_RAY, MODEL_VIPER, MODEL_MANTA, MODEL_CUDA, MODEL_BELUGA] {
+        for id in [MODEL_VIPER, MODEL_SKATE, MODEL_MANTA, MODEL_BELUGA, MODEL_BLUE] {
             assert!(manifest.iter().any(|e| e.model_id == id));
         }
     }

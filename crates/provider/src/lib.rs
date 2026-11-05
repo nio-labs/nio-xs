@@ -46,7 +46,7 @@ impl Drop for TurnGuard {
     }
 }
 
-static ENGINE_CACHE: std::sync::LazyLock<Mutex<HashMap<String, nioxs_engine::RayEngine>>> =
+static ENGINE_CACHE: std::sync::LazyLock<Mutex<HashMap<String, nioxs_engine::AstEngine>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Clone)]
@@ -56,7 +56,7 @@ pub struct App {
     pub api_token: Option<String>,
     pub active: ActiveTurns,
     pub model: Arc<Model>,
-    pub ray_engine: Option<nioxs_engine::RayEngine>,
+    pub ray_engine: Option<nioxs_engine::AstEngine>,
     pub instance: String,
 }
 
@@ -132,6 +132,7 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         "NioViper — Tactical Striker (Shell Reflex 8L, < 47 MB RAM)",
         "Manta — Systems Guru & DAG Architect (24L, < 235 MB RAM)",
         "Beluga — Sovereign Lead Architect (28L, < 295 MB RAM)",
+        "Blue — Sovereign Reflex Lead Companion (32L, < 180 MB RAM)",
         "Skate — Resident Micro-Guru & Edge Companion (v-µLM Companion, < 50 MB RAM)",
         "NioNano — Intent Reflex & MicroLM (~0.5M, sub-0.1ms)",
         "NioMicro — Contextual Policy Decision Arbiter (5.0M / cluster)",
@@ -221,7 +222,7 @@ async fn decide(
 async fn microlm_chat_handler(
     model_name: &str,
     request: ChatRequest,
-    preloaded: Option<&nioxs_engine::RayEngine>,
+    preloaded: Option<&nioxs_engine::AstEngine>,
 ) -> Response {
     let engine = if let Some(eng) = preloaded {
         eng.clone()
@@ -233,7 +234,7 @@ async fn microlm_chat_handler(
         if let Some(eng) = cache.get(model_name) {
             eng.clone()
         } else {
-            match nioxs_engine::RayEngine::for_model(model_name) {
+            match nioxs_engine::AstEngine::for_model(model_name) {
                 Ok(eng) => {
                     cache.insert(model_name.to_string(), eng.clone());
                     eng
@@ -255,6 +256,9 @@ async fn microlm_chat_handler(
     let system_prompt = match model_name {
         "nio-beluga" | "beluga" => {
             "You are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Close your thoughts with </think> once before providing the final answer, and never repeat thought tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Format definitions and explanations directly in natural prose or Markdown blockquotes (>), never wrap plain text definitions in ```plaintext code blocks. Reserve code blocks strictly for executable code. Defer raw low-level code generation to Cuda."
+        }
+        "nio-blue" | "blue" => {
+            "You are Blue, Nio's Flagship Sovereign Reflex Companion. Speak with the calm, approachable, and grounded voice of a seasoned staff engineer pair-programming with a colleague. Be conversational and engaging, but keep your dialogue focused and high-signal without fluff or sycophancy. When complex reasoning is required, verify invariants inside concise <think>...</think> tags (under 100 tokens), close your thoughts with </think>, and deliver your answer naturally. Reserve code blocks strictly for executable code."
         }
         "nio-skate" | "skate" => {
             "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and helpful. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Beluga. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."
@@ -352,6 +356,7 @@ async fn microlm_chat_handler(
     );
     let model = match model_name {
         "nio-beluga" | "beluga" => nioxs_contracts::MODEL_BELUGA,
+        "nio-blue" | "blue" => nioxs_contracts::MODEL_BLUE,
         "nio-manta" | "manta" | "nio-echo" | "echo" => nioxs_contracts::MODEL_MANTA,
         "nio-skate" | "skate" => nioxs_contracts::MODEL_SKATE,
         "nio-viper" | "viper" => nioxs_contracts::MODEL_VIPER,
@@ -360,6 +365,7 @@ async fn microlm_chat_handler(
     };
 
     let (temp, top_p) = match model_name {
+        "nio-blue" | "blue" => (0.35, 0.88),
         "nio-beluga" | "beluga" => (0.6, 0.95),
         "nio-manta" | "manta" => (0.3, 0.90),
         "nio-skate" | "skate" => (0.65, 0.90),
@@ -527,6 +533,9 @@ async fn chat(
         }
         "nio-beluga" | "beluga" => {
             return microlm_chat_handler("nio-beluga", request, None).await;
+        }
+        "nio-blue" | "blue" => {
+            return microlm_chat_handler("blue", request, None).await;
         }
         "nio-ray" | "ray" => {
             return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;

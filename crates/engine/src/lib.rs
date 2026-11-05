@@ -109,23 +109,37 @@ impl TokenOutputStream {
 }
 
 const UNIVERSAL_SUBWORDS_JSON: &[u8] = include_bytes!("universal_subwords.json");
+const BLUE_SUBWORDS_JSON: &[u8] = include_bytes!("blue_subwords.json");
+
+fn static_subwords(is_blue: bool) -> &'static std::collections::HashMap<u32, u32> {
+    static BLUE_SUB: std::sync::OnceLock<std::collections::HashMap<u32, u32>> = std::sync::OnceLock::new();
+    static UNIV_SUB: std::sync::OnceLock<std::collections::HashMap<u32, u32>> = std::sync::OnceLock::new();
+    if is_blue {
+        BLUE_SUB.get_or_init(|| serde_json::from_slice(BLUE_SUBWORDS_JSON).unwrap_or_default())
+    } else {
+        UNIV_SUB.get_or_init(|| serde_json::from_slice(UNIVERSAL_SUBWORDS_JSON).unwrap_or_default())
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ZwCache {
     trigrams: std::collections::HashMap<(u32, u32), std::collections::HashMap<u32, u32>>,
     bigrams: std::collections::HashMap<u32, std::collections::HashMap<u32, u32>>,
-    deterministic_subwords: std::collections::HashMap<u32, u32>,
+    is_blue: bool,
     prompt_tokens: Vec<u32>,
 }
 
 impl ZwCache {
     pub fn new() -> Self {
-        let det: std::collections::HashMap<u32, u32> = serde_json::from_slice(UNIVERSAL_SUBWORDS_JSON).unwrap_or_default();
+        Self::new_for_model(false)
+    }
 
+    pub fn new_for_model(is_blue: bool) -> Self {
+        let _ = static_subwords(is_blue);
         Self {
             trigrams: std::collections::HashMap::new(),
             bigrams: std::collections::HashMap::new(),
-            deterministic_subwords: det,
+            is_blue,
             prompt_tokens: Vec::new(),
         }
     }
@@ -136,13 +150,13 @@ impl ZwCache {
             *self.bigrams.entry(w[0]).or_default().entry(w[1]).or_default() += 4;
         }
         for w in prompt.windows(3) {
-            *self.trigrams.entry((w[0], w[1])).or_default().entry(w[2]).or_default() += 6;
+            *self.trigrams.entry((w[0], w[1])).or_default().entry(w[2]).or_default() += 4;
         }
     }
 
     pub fn observe(&mut self, prev2: Option<u32>, prev1: u32, next: u32) {
         let bi = self.bigrams.entry(prev1).or_default();
-        *bi.entry(next).or_default() += 2;
+        *bi.entry(next).or_default() += 4;
 
         if let Some(p2) = prev2 {
             let tri = self.trigrams.entry((p2, prev1)).or_default();
@@ -151,29 +165,19 @@ impl ZwCache {
     }
 
     pub fn predict(&self, prev2: Option<u32>, prev1: u32, gen_tokens: &[u32]) -> Option<u32> {
-        // Priority 1: Deterministic BPE reasoning tokens (100% confidence)
-        if let Some(&next) = self.deterministic_subwords.get(&prev1) {
+        if let Some(&next) = static_subwords(self.is_blue).get(&prev1) {
             return Some(next);
         }
 
-        // Priority 2: High-order Context Match in generated tokens or prompt tokens
         if let Some(p2) = prev2 {
             if gen_tokens.len() >= 4 {
-                for i in (2..gen_tokens.len() - 1).rev() {
+                for i in (1..gen_tokens.len() - 1).rev() {
                     if gen_tokens[i - 1] == p2 && gen_tokens[i] == prev1 {
                         return Some(gen_tokens[i + 1]);
                     }
                 }
             }
-            if self.prompt_tokens.len() >= 3 {
-                for i in 1..self.prompt_tokens.len() - 1 {
-                    if self.prompt_tokens[i - 1] == p2 && self.prompt_tokens[i] == prev1 {
-                        return Some(self.prompt_tokens[i + 1]);
-                    }
-                }
-            }
 
-            // High-confidence Trigram lookup (observed >= 2 times with >= 75% frequency)
             if let Some(nexts) = self.trigrams.get(&(p2, prev1)) {
                 let mut best_tok = 0;
                 let mut best_cnt = 0;
@@ -185,13 +189,12 @@ impl ZwCache {
                         best_tok = tok;
                     }
                 }
-                if total_cnt >= 2 && best_cnt * 4 >= total_cnt * 3 {
+                if total_cnt >= 4 && best_cnt * 5 >= total_cnt * 4 {
                     return Some(best_tok);
                 }
             }
         }
 
-        // Priority 3: High-confidence Bigram lookup (observed >= 2 times with >= 75% frequency)
         if let Some(nexts) = self.bigrams.get(&prev1) {
             let mut best_tok = 0;
             let mut best_cnt = 0;
@@ -203,7 +206,7 @@ impl ZwCache {
                     best_tok = tok;
                 }
             }
-            if total_cnt >= 2 && best_cnt * 4 >= total_cnt * 3 {
+            if total_cnt >= 4 && best_cnt * 20 >= total_cnt * 17 {
                 return Some(best_tok);
             }
         }
@@ -213,9 +216,10 @@ impl ZwCache {
 
     pub fn predict_pair(&self, prev2: Option<u32>, prev1: u32, gen_tokens: &[u32]) -> (Option<u32>, Option<u32>) {
         if let Some(d1) = self.predict(prev2, prev1, gen_tokens) {
-            let mut local_gen = gen_tokens.to_vec();
-            local_gen.push(d1);
-            let d2 = self.predict(Some(prev1), d1, &local_gen);
+            let d2 = static_subwords(self.is_blue)
+                .get(&d1)
+                .copied()
+                .or_else(|| self.predict(Some(prev1), d1, gen_tokens));
             (Some(d1), d2)
         } else {
             (None, None)
@@ -246,9 +250,22 @@ impl PhraseBuffer {
             self.word_count += chunk.split_whitespace().count().max(1);
         }
 
+        // Hold back any unclosed '<...' suffix so stop_position can inspect completed tags
+        // before '<' is ever emitted to the stream.
+        if let Some(lt_pos) = self.buffer.rfind('<') {
+            if !self.buffer[lt_pos..].contains('>') {
+                if lt_pos > 0 {
+                    let safe_prefix = self.buffer[..lt_pos].to_string();
+                    self.buffer.drain(..lt_pos);
+                    self.word_count = 0;
+                    return tx.blocking_send(safe_prefix).is_ok();
+                }
+                return true;
+            }
+        }
+
         let should_flush = self.buffer.contains('\n')
             || self.buffer.contains("```")
-            || self.buffer.contains('<')
             || self.buffer.contains('>')
             || self.word_count >= 4
             || (self.buffer.len() >= 32 && (self.buffer.ends_with(' ') || self.buffer.ends_with('\t')))
@@ -268,12 +285,19 @@ impl PhraseBuffer {
 
     fn flush(&mut self, tx: &mpsc::Sender<String>) -> bool {
         if !self.buffer.is_empty() {
-            let to_send = std::mem::take(&mut self.buffer);
+            let mut to_send = std::mem::take(&mut self.buffer);
             self.word_count = 0;
-            tx.blocking_send(to_send).is_ok()
-        } else {
-            true
+            // Strip any incomplete trailing open tag like `<end`, `<|`, or `<`
+            if let Some(pos) = to_send.rfind('<') {
+                if !to_send[pos..].contains('>') || stop_position(&to_send[pos..]).is_some() {
+                    to_send.truncate(pos);
+                }
+            }
+            if !to_send.is_empty() {
+                return tx.blocking_send(to_send).is_ok();
+            }
         }
+        true
     }
 }
 
@@ -281,6 +305,12 @@ const STOP_PHRASES: &[&str] = &[
     "<|im_end|>",
     "<|im_start|>",
     "<|endoftext|>",
+    "<|end",
+    "<|",
+    "<invariant",
+    "<end",
+    "</thought",
+    "<thought_tag",
     "You are Skate",
     "You are a helpful AI assistant",
     "\nuser\n",
@@ -290,10 +320,24 @@ const STOP_PHRASES: &[&str] = &[
 ];
 
 fn stop_position(text: &str) -> Option<usize> {
-    STOP_PHRASES
-        .iter()
-        .filter_map(|phrase| text.find(phrase))
-        .min()
+    if let Some(pos) = STOP_PHRASES.iter().filter_map(|phrase| text.find(phrase)).min() {
+        return Some(pos);
+    }
+    // Also intercept any trailing hallucinated XML/tag close like <endof...>, <invariant...>, <tag...>
+    if let Some(open_idx) = text.rfind('<') {
+        let suffix = &text[open_idx..];
+        if suffix.contains('>')
+            && (suffix.contains("tag")
+                || suffix.contains("invariant")
+                || suffix.contains("verif")
+                || suffix.contains("end")
+                || suffix.contains("answer")
+                || suffix.starts_with("<|"))
+        {
+            return Some(open_idx);
+        }
+    }
+    None
 }
 
 const MAX_STOP_PHRASE_LEN: usize = 32;
@@ -320,6 +364,8 @@ fn push_safe_chunk(
                 return false;
             }
         }
+        // Flush any valid completed text accumulated before the stop phrase, but drop the stop phrase itself
+        phrase_buffer.flush(tx);
         if emitted.is_char_boundary(idx) {
             emitted.truncate(idx);
         }
@@ -336,17 +382,21 @@ pub struct ModelBundle {
 }
 
 #[derive(Clone)]
-pub struct RayEngine {
+pub struct AstEngine {
     bundle: Arc<Mutex<Option<ModelBundle>>>,
     model_path: PathBuf,
     tokenizer_path: PathBuf,
     is_skate: bool,
     is_manta: bool,
     is_beluga: bool,
+    is_blue: bool,
     device_pref: DevicePreference,
 }
 
-impl RayEngine {
+#[deprecated(note = "RayEngine has been renamed to AstEngine")]
+pub type RayEngine = AstEngine;
+
+impl AstEngine {
     pub fn model_path(&self) -> &std::path::Path {
         &self.model_path
     }
@@ -356,7 +406,7 @@ impl RayEngine {
     }
 
     pub fn new() -> Result<Self> {
-        Self::for_model("nio-ray")
+        Self::for_model("blue")
     }
 
     pub fn for_model(model_name: &str) -> Result<Self> {
@@ -369,6 +419,7 @@ impl RayEngine {
         let is_skate = matches!(lowered.as_str(), "skate" | "nio-skate");
         let is_manta = matches!(lowered.as_str(), "manta" | "nio-manta") || model_path.to_string_lossy().contains("manta");
         let is_beluga = matches!(lowered.as_str(), "beluga" | "nio-beluga") || model_path.to_string_lossy().contains("beluga");
+        let is_blue = matches!(lowered.as_str(), "blue" | "nio-blue") || model_path.to_string_lossy().contains("blue");
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -376,6 +427,7 @@ impl RayEngine {
             is_skate,
             is_manta,
             is_beluga,
+            is_blue,
             device_pref,
         })
     }
@@ -392,6 +444,7 @@ impl RayEngine {
         let is_skate = model_path.to_string_lossy().contains("skate");
         let is_manta = model_path.to_string_lossy().contains("manta");
         let is_beluga = model_path.to_string_lossy().contains("beluga");
+        let is_blue = model_path.to_string_lossy().contains("blue");
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -399,6 +452,7 @@ impl RayEngine {
             is_skate,
             is_manta,
             is_beluga,
+            is_blue,
             device_pref: DevicePreference::Auto,
         }
     }
@@ -428,6 +482,7 @@ impl RayEngine {
             "manta" | "nio-manta" => "nio-manta",
             "cuda" | "nio-cuda" => "nio-cuda",
             "beluga" | "nio-beluga" => "nio-beluga",
+            "blue" | "nio-blue" => "blue",
             other => other,
         };
 
@@ -456,6 +511,10 @@ impl RayEngine {
             "beluga" | "nio-beluga" => &[
                 "beluga.vmicrolm-vector.gguf",
                 "nio-beluga.vmicrolm-vector.gguf",
+            ],
+            "blue" | "nio-blue" => &[
+                "blue.vmicrolm-reflex.gguf",
+                "nio-blue.vmicrolm-reflex.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
@@ -490,6 +549,7 @@ impl RayEngine {
         let model_override = match normalized.as_str() {
             "skate" | "nio-skate" => Some("NIOXS_SKATE_MODEL"),
             "beluga" | "nio-beluga" => Some("NIOXS_BELUGA_MODEL"),
+            "blue" | "nio-blue" => Some("NIOXS_BLUE_MODEL"),
             "ray" | "nio-ray" => Some("NIOXS_RAY_MODEL"),
             _ => None,
         };
@@ -544,6 +604,16 @@ impl RayEngine {
                     return candidate2;
                 }
             }
+            if s.contains("blue") {
+                let candidate1 = model.with_file_name("blue-tokenizer.json");
+                if candidate1.is_file() {
+                    return candidate1;
+                }
+                let candidate2 = model.with_file_name("nio-blue-tokenizer.json");
+                if candidate2.is_file() {
+                    return candidate2;
+                }
+            }
             if s.contains("manta") {
                 let candidate1 = model.with_file_name("manta-tokenizer.json");
                 if candidate1.is_file() {
@@ -558,6 +628,7 @@ impl RayEngine {
         let name = match model.file_name().and_then(|s| s.to_str()) {
             Some(s) if s.contains("skate") => "skate-tokenizer.json",
             Some(s) if s.contains("beluga") => "beluga-tokenizer.json",
+            Some(s) if s.contains("blue") => "blue-tokenizer.json",
             Some("nio-ray-dev.Q4_K_M.gguf") => "nio-ray-dev-tokenizer.json",
             Some(s) if s.contains("viper") => "nio-viper-tokenizer.json",
             Some(s) if s.contains("cuda") => "nio-cuda-tokenizer.json",
@@ -574,6 +645,25 @@ impl RayEngine {
 
     pub fn validate_tokenizer(tokenizer: &Tokenizer, tokens: &[String]) -> Result<()> {
         let vocab = tokenizer.get_vocab(true);
+        // Qwen GGUFs define padded vocab sizes (e.g. 151936) while tokenizer.json has 151665
+        let debug_mode = cfg!(debug_assertions) || std::env::var_os("NIOXS_DEBUG").is_some();
+        if !debug_mode {
+            if vocab.len() > tokens.len() {
+                return Err(anyhow!(
+                    "Tokenizer vocab size {} exceeds model vocab size {}",
+                    vocab.len(),
+                    tokens.len()
+                ));
+            }
+            // Sentinel check: index 0 and a sample landmark token
+            if let Some(expected_token) = tokens.get(0) {
+                if !expected_token.starts_with("[PAD") && vocab.get(expected_token).copied() != Some(0) {
+                    return Err(anyhow!("Tokenizer mismatch at token ID 0 ({expected_token})"));
+                }
+            }
+            return Ok(());
+        }
+
         for (token, id) in &vocab {
             let expected = tokens.get(*id as usize).map(|s| s.as_str());
             if expected != Some(token.as_str()) {
@@ -615,6 +705,9 @@ impl RayEngine {
         let is_skate = self.is_skate;
         let is_manta = self.is_manta;
         let is_beluga = self.is_beluga;
+        let is_blue = self.is_blue;
+
+        let active_dev = self.active_device();
 
         let bundle = tokio::task::spawn_blocking(move || -> Result<ModelBundle> {
             let device = Device::Cpu;
@@ -632,8 +725,23 @@ impl RayEngine {
             } else if is_manta {
                 engine.set_suppressed_tokens([41233, 54275, 73594]);
             } else if is_beluga {
-                engine.set_resident_layers(7);
-                engine.set_rolling_window(4);
+                let gpu_layers = active_dev.recommended_gpu_layers(28);
+                if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
+                    engine.set_resident_layers(gpu_layers);
+                    engine.set_rolling_window(gpu_layers.max(4));
+                } else {
+                    engine.set_resident_layers(7);
+                    engine.set_rolling_window(4);
+                }
+            } else if is_blue {
+                let gpu_layers = active_dev.recommended_gpu_layers(32);
+                if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
+                    engine.set_resident_layers(gpu_layers);
+                    engine.set_rolling_window(gpu_layers.max(4));
+                } else {
+                    engine.set_resident_layers(2);
+                    engine.set_rolling_window(2);
+                }
             }
 
             // Immediately park worker threads so nioxs sits at 0.0% CPU when idle
@@ -690,6 +798,11 @@ impl RayEngine {
         } else if self.is_beluga {
             format!(
                 "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Defer raw low-level code generation to Cuda.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                raw_prompt.trim()
+            )
+        } else if self.is_blue {
+            format!(
+                "<|im_start|>system\nYou are Blue, Nio's Flagship Sovereign Reflex Companion. Speak with the calm, approachable, and grounded voice of a seasoned staff engineer pair-programming with a colleague. Be conversational and engaging, but keep your dialogue focused and high-signal without fluff or sycophancy. When complex reasoning is required, verify invariants inside concise <think>...</think> tags (under 100 tokens), close your thoughts with </think>, and deliver your answer naturally. Reserve code blocks strictly for executable code.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 raw_prompt.trim()
             )
         } else if self.is_skate {
@@ -765,9 +878,10 @@ impl RayEngine {
 
             if runner_available {
                 let model_path = self.model_path.clone();
-                let total_layers = if self.is_beluga { 28 } else if self.is_manta { 24 } else { 30 };
+                let total_layers = if self.is_blue { 32 } else if self.is_beluga { 28 } else if self.is_manta { 24 } else { 30 };
                 let gpu_layers = active_dev.recommended_gpu_layers(total_layers);
                 let ngl_arg = gpu_layers.to_string();
+                eprintln!("[nioxs] Hardware: {} (offloading {}/{} layers to GPU)", active_dev.name(), gpu_layers, total_layers);
 
                 tokio::task::spawn_blocking(move || {
                     let temp_arg = format!("{temperature:.2}");
@@ -883,6 +997,7 @@ impl RayEngine {
         let bundle_arc = self.bundle.clone();
         let formatted = self.format_prompt_for_engine(&prompt)?;
         let is_beluga = self.is_beluga;
+        let is_blue = self.is_blue;
         tokio::task::spawn_blocking(move || {
             let mut guard = bundle_arc.blocking_lock();
             if tx.is_closed() {
@@ -906,7 +1021,7 @@ impl RayEngine {
                 return;
             }
 
-            let repeat_penalty = if is_beluga { 1.02 } else { 1.10 };
+            let repeat_penalty = if is_blue { 1.05 } else if is_beluga { 1.02 } else { 1.10 };
             bundle
                 .engine
                 .set_sampling(temperature, top_p, repeat_penalty, 64);
@@ -963,7 +1078,7 @@ impl RayEngine {
             }
 
             // Generation loop using V4 Zero-Weight Lookahead (ZW-Spec) with Asymmetric Zero-Penalty Verification
-            let mut zw_cache = ZwCache::new();
+            let mut zw_cache = ZwCache::new_for_model(is_blue);
             zw_cache.seed_prompt(&prompt_tokens);
             if let Some(&last_prompt) = prompt_tokens.last() {
                 let p2 = if prompt_tokens.len() >= 2 { Some(prompt_tokens[prompt_tokens.len() - 2]) } else { None };
@@ -1245,24 +1360,24 @@ mod tests {
     #[test]
     fn rejects_missing_model_tokens() {
         let tokens = [String::from("hello"), String::from("<|im_end|>"), String::from("world")];
-        assert!(RayEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
+        assert!(AstEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
     }
 
     #[test]
     fn variant_tokenizers_stay_beside_the_model() {
         assert_eq!(
-            RayEngine::tokenizer_for_model(std::path::Path::new("/cache/nio-ray-dev.Q4_K_M.gguf")),
+            AstEngine::tokenizer_for_model(std::path::Path::new("/cache/nio-ray-dev.Q4_K_M.gguf")),
             PathBuf::from("/cache/nio-ray-dev-tokenizer.json")
         );
         assert_eq!(
-            RayEngine::tokenizer_for_model(std::path::Path::new("/cache/nio-ray.Q4_K_M.gguf")),
+            AstEngine::tokenizer_for_model(std::path::Path::new("/cache/nio-ray.Q4_K_M.gguf")),
             PathBuf::from("/cache/tokenizer.json")
         );
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_ray_generation_speed() {
-        if let Ok(engine) = RayEngine::new() {
+        if let Ok(engine) = AstEngine::new() {
             if engine.ensure_loaded().await.is_ok() {
                 let mut guard = engine.bundle.lock().await;
                 if let Some(bundle) = guard.as_mut() {

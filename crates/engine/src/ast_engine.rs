@@ -1249,11 +1249,34 @@ impl AstMicroEngine {
 
         #[cfg(target_os = "linux")]
         unsafe {
+            use std::os::unix::io::AsRawFd;
+            libc::posix_fadvise(file.as_raw_fd(), 0, 0, libc::POSIX_FADV_WILLNEED);
             libc::madvise(
                 mmap.as_ptr() as *mut libc::c_void,
                 mmap.len(),
                 libc::MADV_HUGEPAGE,
             );
+            if std::env::var_os("NIOXS_LOW_RAM").is_none() {
+                libc::madvise(
+                    mmap.as_ptr() as *mut libc::c_void,
+                    mmap.len(),
+                    libc::MADV_WILLNEED,
+                );
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        unsafe {
+            use windows_sys::Win32::System::Memory::{PrefetchVirtualMemory, WIN32_MEMORY_RANGE_ENTRY};
+            use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+            if std::env::var_os("NIOXS_LOW_RAM").is_none() {
+                let mut entry = WIN32_MEMORY_RANGE_ENTRY {
+                    VirtualAddress: mmap.as_ptr() as *mut _,
+                    NumberOfBytes: mmap.len(),
+                };
+                PrefetchVirtualMemory(GetCurrentProcess(), 1, &mut entry, 0);
+            }
         }
 
         let mut cursor = std::io::Cursor::new(&mmap[..]);
@@ -1486,7 +1509,9 @@ impl AstMicroEngine {
         if engine.medusa_head.is_some() && std::env::var_os("NIOXS_DEBUG").is_some() {
             eprintln!("[AST-Micro] Loaded Beluga Medusa Head (Option 2) for multi-token speculative acceleration.");
         }
-        engine.evict_all();
+        if std::env::var_os("NIOXS_LOW_RAM").is_some() {
+            engine.evict_all();
+        }
         unsafe {
             libc::malloc_trim(0);
         }
@@ -1554,7 +1579,9 @@ impl AstMicroEngine {
         for c in &mut self.kv_caches {
             c.reset();
         }
-        self.evict_all();
+        if self.resident_layers < self.block_count {
+            self.evict_all();
+        }
         self.pool.park();
         unsafe {
             libc::malloc_trim(0);
@@ -1689,84 +1716,85 @@ impl AstMicroEngine {
 
         for layer_idx in 0..self.block_count {
             let layer = &self.layers[layer_idx];
+            let mut step = 0;
 
+            while step < n_tokens {
+                if step + 3 <= n_tokens && layer.wq.dtype == 18 {
+                    let pos0 = index_pos + step;
+                    let pos1 = pos0 + 1;
+                    let pos2 = pos0 + 2;
+                    let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];
+                    let sin0 = &self.sin_table[pos0 * half..(pos0 + 1) * half];
+                    let cos1 = &self.cos_table[pos1 * half..(pos1 + 1) * half];
+                    let sin1 = &self.sin_table[pos1 * half..(pos1 + 1) * half];
+                    let cos2 = &self.cos_table[pos2 * half..(pos2 + 1) * half];
+                    let sin2 = &self.sin_table[pos2 * half..(pos2 + 1) * half];
 
+                    self.scratch.x.copy_from_slice(&activations[step]);
+                    self.scratch1.x.copy_from_slice(&activations[step + 1]);
+                    self.scratch2.x.copy_from_slice(&activations[step + 2]);
 
-            if n_tokens == 3 && layer.wq.dtype == 18 {
-                let pos0 = index_pos;
-                let pos1 = index_pos + 1;
-                let pos2 = index_pos + 2;
-                let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];
-                let sin0 = &self.sin_table[pos0 * half..(pos0 + 1) * half];
-                let cos1 = &self.cos_table[pos1 * half..(pos1 + 1) * half];
-                let sin1 = &self.sin_table[pos1 * half..(pos1 + 1) * half];
-                let cos2 = &self.cos_table[pos2 * half..(pos2 + 1) * half];
-                let sin2 = &self.sin_table[pos2 * half..(pos2 + 1) * half];
+                    layer.forward_3tokens(
+                        &self.mmap,
+                        &mut self.scratch,
+                        &mut self.scratch1,
+                        &mut self.scratch2,
+                        &self.pool,
+                        pos0,
+                        pos1,
+                        pos2,
+                        cos0,
+                        sin0,
+                        cos1,
+                        sin1,
+                        cos2,
+                        sin2,
+                        self.rope_neox,
+                        self.head_count,
+                        self.head_count_kv,
+                        self.head_dim,
+                        self.rms_norm_eps as f32,
+                        &mut self.kv_caches[layer_idx],
+                    );
 
-                self.scratch.x.copy_from_slice(&activations[0]);
-                self.scratch1.x.copy_from_slice(&activations[1]);
-                self.scratch2.x.copy_from_slice(&activations[2]);
+                    activations[step].copy_from_slice(&self.scratch.x);
+                    activations[step + 1].copy_from_slice(&self.scratch1.x);
+                    activations[step + 2].copy_from_slice(&self.scratch2.x);
+                    step += 3;
+                } else if step + 2 <= n_tokens && layer.wq.dtype == 18 {
+                    let pos0 = index_pos + step;
+                    let pos1 = pos0 + 1;
+                    let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];
+                    let sin0 = &self.sin_table[pos0 * half..(pos0 + 1) * half];
+                    let cos1 = &self.cos_table[pos1 * half..(pos1 + 1) * half];
+                    let sin1 = &self.sin_table[pos1 * half..(pos1 + 1) * half];
 
-                layer.forward_3tokens(
-                    &self.mmap,
-                    &mut self.scratch,
-                    &mut self.scratch1,
-                    &mut self.scratch2,
-                    &self.pool,
-                    pos0,
-                    pos1,
-                    pos2,
-                    cos0,
-                    sin0,
-                    cos1,
-                    sin1,
-                    cos2,
-                    sin2,
-                    self.rope_neox,
-                    self.head_count,
-                    self.head_count_kv,
-                    self.head_dim,
-                    self.rms_norm_eps as f32,
-                    &mut self.kv_caches[layer_idx],
-                );
+                    self.scratch.x.copy_from_slice(&activations[step]);
+                    self.scratch1.x.copy_from_slice(&activations[step + 1]);
 
-                activations[0].copy_from_slice(&self.scratch.x);
-                activations[1].copy_from_slice(&self.scratch1.x);
-                activations[2].copy_from_slice(&self.scratch2.x);
-            } else if n_tokens == 2 && layer.wq.dtype == 18 {
-                let pos0 = index_pos;
-                let pos1 = index_pos + 1;
-                let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];
-                let sin0 = &self.sin_table[pos0 * half..(pos0 + 1) * half];
-                let cos1 = &self.cos_table[pos1 * half..(pos1 + 1) * half];
-                let sin1 = &self.sin_table[pos1 * half..(pos1 + 1) * half];
+                    layer.forward_2tokens(
+                        &self.mmap,
+                        &mut self.scratch,
+                        &mut self.scratch1,
+                        &self.pool,
+                        pos0,
+                        pos1,
+                        cos0,
+                        sin0,
+                        cos1,
+                        sin1,
+                        self.rope_neox,
+                        self.head_count,
+                        self.head_count_kv,
+                        self.head_dim,
+                        self.rms_norm_eps as f32,
+                        &mut self.kv_caches[layer_idx],
+                    );
 
-                self.scratch.x.copy_from_slice(&activations[0]);
-                self.scratch1.x.copy_from_slice(&activations[1]);
-
-                layer.forward_2tokens(
-                    &self.mmap,
-                    &mut self.scratch,
-                    &mut self.scratch1,
-                    &self.pool,
-                    pos0,
-                    pos1,
-                    cos0,
-                    sin0,
-                    cos1,
-                    sin1,
-                    self.rope_neox,
-                    self.head_count,
-                    self.head_count_kv,
-                    self.head_dim,
-                    self.rms_norm_eps as f32,
-                    &mut self.kv_caches[layer_idx],
-                );
-
-                activations[0].copy_from_slice(&self.scratch.x);
-                activations[1].copy_from_slice(&self.scratch1.x);
-            } else {
-                for step in 0..n_tokens {
+                    activations[step].copy_from_slice(&self.scratch.x);
+                    activations[step + 1].copy_from_slice(&self.scratch1.x);
+                    step += 2;
+                } else {
                     let pos = index_pos + step;
                     let cos = &self.cos_table[pos * half..(pos + 1) * half];
                     let sin = &self.sin_table[pos * half..(pos + 1) * half];
@@ -1787,6 +1815,7 @@ impl AstMicroEngine {
                         &mut self.kv_caches[layer_idx],
                     );
                     activations[step].copy_from_slice(&self.scratch.x);
+                    step += 1;
                 }
             }
 

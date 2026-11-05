@@ -5,7 +5,39 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use crate::quants::{self, BlockQ8_0, BlockQ8_K};
 
-pub const NUM_WORKERS: usize = 6;
+pub const NUM_WORKERS: usize = 4;
+
+#[inline(always)]
+fn worker_cpu_id(worker_id: usize) -> usize {
+    worker_id * 2
+}
+
+#[inline(always)]
+fn worker_bounds(total: usize, worker_id: usize, num_workers: usize) -> (usize, usize) {
+    if num_workers <= 4 {
+        let chunk = (total + num_workers - 1) / num_workers;
+        return ((worker_id * chunk).min(total), ((worker_id + 1) * chunk).min(total));
+    }
+    const P_WEIGHT: usize = 5;
+    const E_WEIGHT: usize = 2;
+    let total_weight = 4 * P_WEIGHT + (num_workers - 4) * E_WEIGHT;
+    let cum_start = if worker_id < 4 {
+        worker_id * P_WEIGHT
+    } else {
+        4 * P_WEIGHT + (worker_id - 4) * E_WEIGHT
+    };
+    let w = if worker_id < 4 { P_WEIGHT } else { E_WEIGHT };
+    let cum_end = cum_start + w;
+    let raw_start = (total * cum_start) / total_weight;
+    let raw_end = if worker_id + 1 == num_workers {
+        total
+    } else {
+        (total * cum_end) / total_weight
+    };
+    let start = if worker_id == 0 { 0 } else { (raw_start & !1).min(total) };
+    let end = if worker_id + 1 == num_workers { total } else { (raw_end & !1).min(total) };
+    (start, end.max(start))
+}
 
 #[derive(Clone, Copy)]
 pub enum GemvTask {
@@ -265,9 +297,7 @@ impl GemvTask {
                 let x_q8_k = std::slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8_K, (n_cols + 255) / 256);
 
                 // Q partition
-                let q_chunk = (q_rows + num_workers - 1) / num_workers;
-                let q_start = (worker_id * q_chunk).min(q_rows);
-                let q_end = ((worker_id + 1) * q_chunk).min(q_rows);
+                let (q_start, q_end) = worker_bounds(q_rows, worker_id, num_workers);
                 if q_end > q_start {
                     let out = std::slice::from_raw_parts_mut((q_ptr as *mut f32).add(q_start), q_end - q_start);
                     let weights = std::slice::from_raw_parts((wq_ptr as *const u8).add(q_start * row_bytes), (q_end - q_start) * row_bytes);
@@ -275,9 +305,7 @@ impl GemvTask {
                 }
 
                 // K partition
-                let k_chunk = (k_rows + num_workers - 1) / num_workers;
-                let k_start = (worker_id * k_chunk).min(k_rows);
-                let k_end = ((worker_id + 1) * k_chunk).min(k_rows);
+                let (k_start, k_end) = worker_bounds(k_rows, worker_id, num_workers);
                 if k_end > k_start {
                     let out = std::slice::from_raw_parts_mut((k_ptr as *mut f32).add(k_start), k_end - k_start);
                     let weights = std::slice::from_raw_parts((wk_ptr as *const u8).add(k_start * row_bytes), (k_end - k_start) * row_bytes);
@@ -285,9 +313,7 @@ impl GemvTask {
                 }
 
                 // V partition
-                let v_chunk = (v_rows + num_workers - 1) / num_workers;
-                let v_start = (worker_id * v_chunk).min(v_rows);
-                let v_end = ((worker_id + 1) * v_chunk).min(v_rows);
+                let (v_start, v_end) = worker_bounds(v_rows, worker_id, num_workers);
                 if v_end > v_start {
                     let out = std::slice::from_raw_parts_mut((v_ptr as *mut f32).add(v_start), v_end - v_start);
                     let weights = std::slice::from_raw_parts((wv_ptr as *const u8).add(v_start * row_bytes), (v_end - v_start) * row_bytes);
@@ -309,50 +335,86 @@ impl GemvTask {
                 let x1_q8_k = x1_q8_k_ptr as *const BlockQ8_K;
 
                 // Q partition
-                let q_chunk = (q_rows + num_workers - 1) / num_workers;
-                let q_start = (worker_id * q_chunk).min(q_rows);
-                let q_end = ((worker_id + 1) * q_chunk).min(q_rows);
+                let (q_start, q_end) = worker_bounds(q_rows, worker_id, num_workers);
                 if q_end > q_start {
                     let q0_base = (q0_ptr as *mut f32).add(q_start);
                     let q1_base = (q1_ptr as *mut f32).add(q_start);
-                    for j in 0..(q_end - q_start) {
+                    let rows = q_end - q_start;
+                    let mut j = 0;
+                    while j + 1 < rows {
+                        let r0 = q_start + j;
+                        let w0_ptr = (wq_ptr as *const u8).add(r0 * row_bytes);
+                        let w1_ptr = w0_ptr.add(row_bytes);
+                        let (r0_t0, r0_t1, r1_t0, r1_t1) = quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb);
+                        *q0_base.add(j) = r0_t0;
+                        *q1_base.add(j) = r0_t1;
+                        *q0_base.add(j + 1) = r1_t0;
+                        *q1_base.add(j + 1) = r1_t1;
+                        j += 2;
+                    }
+                    while j < rows {
                         let r = q_start + j;
                         let w_ptr = (wq_ptr as *const u8).add(r * row_bytes);
                         let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, nb);
                         *q0_base.add(j) = v0;
                         *q1_base.add(j) = v1;
+                        j += 1;
                     }
                 }
 
                 // K partition
-                let k_chunk = (k_rows + num_workers - 1) / num_workers;
-                let k_start = (worker_id * k_chunk).min(k_rows);
-                let k_end = ((worker_id + 1) * k_chunk).min(k_rows);
+                let (k_start, k_end) = worker_bounds(k_rows, worker_id, num_workers);
                 if k_end > k_start {
                     let k0_base = (k0_ptr as *mut f32).add(k_start);
                     let k1_base = (k1_ptr as *mut f32).add(k_start);
-                    for j in 0..(k_end - k_start) {
+                    let rows = k_end - k_start;
+                    let mut j = 0;
+                    while j + 1 < rows {
+                        let r0 = k_start + j;
+                        let w0_ptr = (wk_ptr as *const u8).add(r0 * row_bytes);
+                        let w1_ptr = w0_ptr.add(row_bytes);
+                        let (r0_t0, r0_t1, r1_t0, r1_t1) = quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb);
+                        *k0_base.add(j) = r0_t0;
+                        *k1_base.add(j) = r0_t1;
+                        *k0_base.add(j + 1) = r1_t0;
+                        *k1_base.add(j + 1) = r1_t1;
+                        j += 2;
+                    }
+                    while j < rows {
                         let r = k_start + j;
                         let w_ptr = (wk_ptr as *const u8).add(r * row_bytes);
                         let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, nb);
                         *k0_base.add(j) = v0;
                         *k1_base.add(j) = v1;
+                        j += 1;
                     }
                 }
 
                 // V partition
-                let v_chunk = (v_rows + num_workers - 1) / num_workers;
-                let v_start = (worker_id * v_chunk).min(v_rows);
-                let v_end = ((worker_id + 1) * v_chunk).min(v_rows);
+                let (v_start, v_end) = worker_bounds(v_rows, worker_id, num_workers);
                 if v_end > v_start {
                     let v0_base = (v0_ptr as *mut f32).add(v_start);
                     let v1_base = (v1_ptr as *mut f32).add(v_start);
-                    for j in 0..(v_end - v_start) {
+                    let rows = v_end - v_start;
+                    let mut j = 0;
+                    while j + 1 < rows {
+                        let r0 = v_start + j;
+                        let w0_ptr = (wv_ptr as *const u8).add(r0 * row_bytes);
+                        let w1_ptr = w0_ptr.add(row_bytes);
+                        let (r0_t0, r0_t1, r1_t0, r1_t1) = quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb);
+                        *v0_base.add(j) = r0_t0;
+                        *v1_base.add(j) = r0_t1;
+                        *v0_base.add(j + 1) = r1_t0;
+                        *v1_base.add(j + 1) = r1_t1;
+                        j += 2;
+                    }
+                    while j < rows {
                         let r = v_start + j;
                         let w_ptr = (wv_ptr as *const u8).add(r * row_bytes);
                         let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, nb);
                         *v0_base.add(j) = v0;
                         *v1_base.add(j) = v1;
+                        j += 1;
                     }
                 }
             }
@@ -372,9 +434,7 @@ impl GemvTask {
                 let x2_q8_k = x2_q8_k_ptr as *const BlockQ8_K;
 
                 // Q partition
-                let q_chunk = (q_rows + num_workers - 1) / num_workers;
-                let q_start = (worker_id * q_chunk).min(q_rows);
-                let q_end = ((worker_id + 1) * q_chunk).min(q_rows);
+                let (q_start, q_end) = worker_bounds(q_rows, worker_id, num_workers);
                 if q_end > q_start {
                     let q0_base = (q0_ptr as *mut f32).add(q_start);
                     let q1_base = (q1_ptr as *mut f32).add(q_start);
@@ -390,9 +450,7 @@ impl GemvTask {
                 }
 
                 // K partition
-                let k_chunk = (k_rows + num_workers - 1) / num_workers;
-                let k_start = (worker_id * k_chunk).min(k_rows);
-                let k_end = ((worker_id + 1) * k_chunk).min(k_rows);
+                let (k_start, k_end) = worker_bounds(k_rows, worker_id, num_workers);
                 if k_end > k_start {
                     let k0_base = (k0_ptr as *mut f32).add(k_start);
                     let k1_base = (k1_ptr as *mut f32).add(k_start);
@@ -408,9 +466,7 @@ impl GemvTask {
                 }
 
                 // V partition
-                let v_chunk = (v_rows + num_workers - 1) / num_workers;
-                let v_start = (worker_id * v_chunk).min(v_rows);
-                let v_end = ((worker_id + 1) * v_chunk).min(v_rows);
+                let (v_start, v_end) = worker_bounds(v_rows, worker_id, num_workers);
                 if v_end > v_start {
                     let v0_base = (v0_ptr as *mut f32).add(v_start);
                     let v1_base = (v1_ptr as *mut f32).add(v_start);
@@ -793,11 +849,14 @@ impl GemvTask {
 
                 let is_manta = num_blocks == 28;
                 let is_beluga = num_blocks == 48;
+                let is_blue = num_blocks == 96;
 
                 let mut x_qs_manta = [core::arch::x86_64::_mm256_setzero_si256(); 28];
                 let mut x_d_manta = [0.0f32; 28];
                 let mut x_qs_beluga = [core::arch::x86_64::_mm256_setzero_si256(); 48];
                 let mut x_d_beluga = [0.0f32; 48];
+                let mut x_qs_blue_hi = [core::arch::x86_64::_mm256_setzero_si256(); 48];
+                let mut x_d_blue_hi = [0.0f32; 48];
 
                 if is_manta {
                     for i in 0..28 {
@@ -808,6 +867,13 @@ impl GemvTask {
                     for i in 0..48 {
                         x_qs_beluga[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
                         x_d_beluga[i] = x_blocks[i].d;
+                    }
+                } else if is_blue {
+                    for i in 0..48 {
+                        x_qs_beluga[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_d_beluga[i] = x_blocks[i].d;
+                        x_qs_blue_hi[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i + 48].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_d_blue_hi[i] = x_blocks[i + 48].d;
                     }
                 }
 
@@ -941,6 +1007,76 @@ impl GemvTask {
                             }
                         }
                     }
+                } else if is_blue {
+                    let mut tok_id = worker_start as u32;
+                    let end_id = worker_end as u32;
+                    while tok_id + 1 < end_id {
+                        let tok0 = tok_id;
+                        let tok1 = tok_id + 1;
+                        let skip0 = (suppress_eos && (tok0 == 0 || tok0 == 1 || tok0 == 2 || tok0 == 32000 || tok0 == 32007)) || (!suppressed.is_empty() && suppressed.contains(&tok0));
+                        let skip1 = (suppress_eos && (tok1 == 0 || tok1 == 1 || tok1 == 2 || tok1 == 32000 || tok1 == 32007)) || (!suppressed.is_empty() && suppressed.contains(&tok1));
+                        let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 1728);
+                        let r1_ptr = weight_bytes.as_ptr().add((tok1 as usize) * 1728);
+                        let (lo0, lo1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(r0_ptr, r1_ptr, &x_qs_beluga, &x_d_beluga);
+                        let (hi0, hi1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(r0_ptr.add(864), r1_ptr.add(864), &x_qs_blue_hi, &x_d_blue_hi);
+                        let val0 = lo0 + hi0;
+                        let val1 = lo1 + hi1;
+
+                        if !skip0 && val0 > best_score {
+                            let mut score = val0;
+                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                            if repeat_count > 0 {
+                                if repeat_count >= 2 {
+                                    score -= ((repeat_count - 1) as f32) * 1.5;
+                                }
+                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                else { score *= pen.powi(repeat_count as i32); }
+                            }
+                            if score > best_score {
+                                best_score = score;
+                                best_tok = tok0;
+                            }
+                        }
+                        if !skip1 && val1 > best_score {
+                            let mut score = val1;
+                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok1).count();
+                            if repeat_count > 0 {
+                                if repeat_count >= 2 {
+                                    score -= ((repeat_count - 1) as f32) * 1.5;
+                                }
+                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                else { score *= pen.powi(repeat_count as i32); }
+                            }
+                            if score > best_score {
+                                best_score = score;
+                                best_tok = tok1;
+                            }
+                        }
+                        tok_id += 2;
+                    }
+                    if tok_id < end_id {
+                        let tok0 = tok_id;
+                        if !((suppress_eos && (tok0 == 0 || tok0 == 1 || tok0 == 2 || tok0 == 32000 || tok0 == 32007)) || (!suppressed.is_empty() && suppressed.contains(&tok0))) {
+                            let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 1728);
+                            let val0 = quants::vec_dot_iq4_nl_48blocks_avx2(r0_ptr, &x_qs_beluga, &x_d_beluga)
+                                + quants::vec_dot_iq4_nl_48blocks_avx2(r0_ptr.add(864), &x_qs_blue_hi, &x_d_blue_hi);
+                            if val0 > best_score {
+                                let mut score = val0;
+                                let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                                if repeat_count > 0 {
+                                    if repeat_count >= 2 {
+                                        score -= ((repeat_count - 1) as f32) * 1.5;
+                                    }
+                                    if score > 0.0 { score /= pen.powi(repeat_count as i32); }
+                                    else { score *= pen.powi(repeat_count as i32); }
+                                }
+                                if score > best_score {
+                                    best_score = score;
+                                    best_tok = tok0;
+                                }
+                            }
+                        }
+                    }
                 } else {
                     for tok_id in (worker_start as u32)..(worker_end as u32) {
                         if (suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2 || tok_id == 151645 || tok_id == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok_id)) {
@@ -982,9 +1118,7 @@ impl GemvTask {
                 n_rows,
                 n_cols,
             } => {
-                let chunk = (n_rows + num_workers - 1) / num_workers;
-                let start_r = (worker_id * chunk).min(n_rows);
-                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let (start_r, end_r) = worker_bounds(n_rows, worker_id, num_workers);
                 let rows = end_r - start_r;
                 if rows == 0 {
                     return;
@@ -1012,9 +1146,7 @@ impl GemvTask {
                 n_rows,
                 n_cols,
             } => {
-                let chunk = (n_rows + num_workers - 1) / num_workers;
-                let start_r = (worker_id * chunk).min(n_rows);
-                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let (start_r, end_r) = worker_bounds(n_rows, worker_id, num_workers);
                 let rows = end_r - start_r;
                 if rows == 0 {
                     return;
@@ -1030,8 +1162,9 @@ impl GemvTask {
                     let r = start_r + j;
                     let w1_row_ptr = (w1_ptr as *const u8).add(r * row_bytes);
                     let w3_row_ptr = (w3_ptr as *const u8).add(r * row_bytes);
-                    let (w1_0, w1_1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w1_row_ptr, x0_q8_k, x1_q8_k, nb);
-                    let (w3_0, w3_1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w3_row_ptr, x0_q8_k, x1_q8_k, nb);
+                    let (w1_0, w1_1, w3_0, w3_1) = quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
+                        w1_row_ptr, w3_row_ptr, x0_q8_k, x1_q8_k, nb,
+                    );
                     *inter0_base.add(j) = quants::fast_silu(w1_0) * w3_0;
                     *inter1_base.add(j) = quants::fast_silu(w1_1) * w3_1;
                 }
@@ -1048,9 +1181,7 @@ impl GemvTask {
                 n_rows,
                 n_cols,
             } => {
-                let chunk = (n_rows + num_workers - 1) / num_workers;
-                let start_r = (worker_id * chunk).min(n_rows);
-                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let (start_r, end_r) = worker_bounds(n_rows, worker_id, num_workers);
                 let rows = end_r - start_r;
                 if rows == 0 {
                     return;
@@ -1076,9 +1207,7 @@ impl GemvTask {
                 }
             }
             GemvTask::Iq3Xxs { out_ptr, weight_ptr, x_q8_k_ptr, n_rows, n_cols } => {
-                let chunk = (n_rows + num_workers - 1) / num_workers;
-                let start_r = (worker_id * chunk).min(n_rows);
-                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let (start_r, end_r) = worker_bounds(n_rows, worker_id, num_workers);
                 let rows = end_r - start_r;
                 if rows == 0 {
                     return;
@@ -1098,9 +1227,7 @@ impl GemvTask {
                 n_rows,
                 n_cols,
             } => {
-                let chunk = (n_rows + num_workers - 1) / num_workers;
-                let start_r = (worker_id * chunk).min(n_rows);
-                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let (start_r, end_r) = worker_bounds(n_rows, worker_id, num_workers);
                 let rows = end_r - start_r;
                 if rows == 0 {
                     return;
@@ -1112,12 +1239,27 @@ impl GemvTask {
                 let out0_base = (out0_ptr as *mut f32).add(start_r);
                 let out1_base = (out1_ptr as *mut f32).add(start_r);
 
-                for j in 0..rows {
+                let mut j = 0;
+                while j + 1 < rows {
+                    let r = start_r + j;
+                    let w0_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                    let w1_ptr = w0_ptr.add(row_bytes);
+                    let (r0_t0, r0_t1, r1_t0, r1_t1) = quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
+                        w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb,
+                    );
+                    *out0_base.add(j) = r0_t0;
+                    *out1_base.add(j) = r0_t1;
+                    *out0_base.add(j + 1) = r1_t0;
+                    *out1_base.add(j + 1) = r1_t1;
+                    j += 2;
+                }
+                while j < rows {
                     let r = start_r + j;
                     let w_row_ptr = (weight_ptr as *const u8).add(r * row_bytes);
                     let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_row_ptr, x0_q8_k, x1_q8_k, nb);
                     *out0_base.add(j) = v0;
                     *out1_base.add(j) = v1;
+                    j += 1;
                 }
             }
             GemvTask::Iq3Xxs3Tokens {
@@ -1131,9 +1273,7 @@ impl GemvTask {
                 n_rows,
                 n_cols,
             } => {
-                let chunk = (n_rows + num_workers - 1) / num_workers;
-                let start_r = (worker_id * chunk).min(n_rows);
-                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let (start_r, end_r) = worker_bounds(n_rows, worker_id, num_workers);
                 let rows = end_r - start_r;
                 if rows == 0 {
                     return;
@@ -1157,9 +1297,7 @@ impl GemvTask {
                 }
             }
             GemvTask::Q8_0 { out_ptr, weight_ptr, x_norm_ptr, n_rows, n_cols } => {
-                let chunk = (n_rows + num_workers - 1) / num_workers;
-                let start_r = (worker_id * chunk).min(n_rows);
-                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                let (start_r, end_r) = worker_bounds(n_rows, worker_id, num_workers);
                 let rows = end_r - start_r;
                 if rows == 0 {
                     return;
@@ -1180,9 +1318,7 @@ impl GemvTask {
                 n_kv_head,
                 head_dim,
             } => {
-                let chunk = (n_head + num_workers - 1) / num_workers;
-                let start_h = (worker_id * chunk).min(n_head);
-                let end_h = ((worker_id + 1) * chunk).min(n_head);
+                let (start_h, end_h) = worker_bounds(n_head, worker_id, num_workers);
                 if start_h >= end_h {
                     return;
                 }
@@ -1323,11 +1459,6 @@ pub struct SpinThreadPool {
 
 impl SpinThreadPool {
     pub fn new() -> Self {
-        // Pin calling thread (Worker 0) to physical CPU 0
-        unsafe {
-            pin_thread_to_cpu(0);
-        }
-
         let shared = Arc::new(SharedState {
             task: std::cell::UnsafeCell::new(None),
             generation: AtomicU32::new(0),
@@ -1346,9 +1477,8 @@ impl SpinThreadPool {
                 .name(format!("ast-worker-{}", worker_id))
                 .stack_size(512 * 1024)
                 .spawn(move || {
-                    // Pin worker thread to physical CPU (worker 1 -> CPU 2, worker 2 -> CPU 4, worker 3 -> CPU 6)
                     unsafe {
-                        pin_thread_to_cpu(worker_id * 2);
+                        pin_thread_to_cpu(worker_cpu_id(worker_id));
                     }
                     let mut local_gen = 0u32;
                     while shared_c.running.load(Ordering::Relaxed) {
@@ -1407,12 +1537,21 @@ impl SpinThreadPool {
     }
 
     pub fn park(&self) {
+        if !self.shared.spinning.load(Ordering::Acquire) {
+            return;
+        }
         let _guard = self.shared.mutex.lock().unwrap();
         self.shared.spinning.store(false, Ordering::Release);
         self.shared.condvar.notify_all();
     }
 
     pub fn unpark(&self) {
+        if self.shared.spinning.load(Ordering::Acquire) {
+            return;
+        }
+        unsafe {
+            pin_thread_to_cpu(0);
+        }
         let _guard = self.shared.mutex.lock().unwrap();
         self.shared.spinning.store(true, Ordering::Release);
         self.shared.condvar.notify_all();
