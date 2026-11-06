@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -44,7 +44,9 @@ fn main() -> Result<()> {
         "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(formatted.as_str(), false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     // Warmup prefill
@@ -52,7 +54,11 @@ fn main() -> Result<()> {
     let _ = engine.prefill(&prompt_tokens)?;
     let first_tok = engine.next_token_with_history(None, &[], false)?;
 
-    println!("Prefill done. First token: {} ({:?})", first_tok, tokenizer.decode(&[first_tok], false));
+    println!(
+        "Prefill done. First token: {} ({:?})",
+        first_tok,
+        tokenizer.decode(&[first_tok], false)
+    );
     let (rss_init, _) = memory_mb();
     println!("RAM after prefill: {:.2} MB", rss_init);
 
@@ -62,7 +68,12 @@ fn main() -> Result<()> {
     indexed_base.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
     println!("Base Top 5 after prefill:");
     for (tok, score) in &indexed_base[..5] {
-        println!("  tok {} ({:?}): {:.4}", tok, tokenizer.decode(&[*tok as u32], false), score);
+        println!(
+            "  tok {} ({:?}): {:.4}",
+            tok,
+            tokenizer.decode(&[*tok as u32], false),
+            score
+        );
     }
 
     // Now inspect Medusa prediction on h_init
@@ -72,7 +83,12 @@ fn main() -> Result<()> {
     indexed_medusa.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
     println!("Medusa Top 5 from h_init (draft token):");
     for (tok, score) in &indexed_medusa[..5] {
-        println!("  tok {} ({:?}): {:.4}", tok, tokenizer.decode(&[*tok as u32], false), score);
+        println!(
+            "  tok {} ({:?}): {:.4}",
+            tok,
+            tokenizer.decode(&[*tok as u32], false),
+            score
+        );
     }
 
     // Run 50 speculative steps with Medusa
@@ -142,7 +158,10 @@ fn main() -> Result<()> {
             current_confirmed = next_tok;
 
             let h_last = engine.scratch.x_norm.clone();
-            next_draft = engine.predict_medusa_draft(&h_last, &gen_tokens).ok().flatten();
+            next_draft = engine
+                .predict_medusa_draft(&h_last, &gen_tokens)
+                .ok()
+                .flatten();
 
             println!(
                 "Step {:02} [AR]   | confirmed={:6} | step_time={:5.1}ms",
@@ -167,7 +186,11 @@ fn main() -> Result<()> {
     println!("Tokens generated: {}", gen_tokens.len());
     println!("Words generated:  {}", words);
     println!("Total time:       {:.3} s", elapsed.as_secs_f64());
-    println!("Draft matches:    {} ({:.1}%)", matches, matches as f64 / (matches + misses) as f64 * 100.0);
+    println!(
+        "Draft matches:    {} ({:.1}%)",
+        matches,
+        matches as f64 / (matches + misses) as f64 * 100.0
+    );
     println!("Draft misses:     {}", misses);
     println!("Token rate:       {:.2} tok/s", tok_rate);
     println!("Word rate:        {:.2} words/sec", word_rate);

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -33,9 +33,19 @@ impl ContextCache {
     }
 
     fn observe(&mut self, prev: Option<u32>, curr: u32, next: u32) {
-        *self.bigram_counts.entry(curr).or_default().entry(next).or_default() += 1;
+        *self
+            .bigram_counts
+            .entry(curr)
+            .or_default()
+            .entry(next)
+            .or_default() += 1;
         if let Some(p) = prev {
-            *self.trigram_counts.entry((p, curr)).or_default().entry(next).or_default() += 1;
+            *self
+                .trigram_counts
+                .entry((p, curr))
+                .or_default()
+                .entry(next)
+                .or_default() += 1;
         }
     }
 
@@ -73,7 +83,9 @@ fn main() -> Result<()> {
         "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(formatted.as_str(), false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -82,11 +94,19 @@ fn main() -> Result<()> {
 
     let mut cache = ContextCache::new();
     for i in 1..prompt_tokens.len() {
-        let p = if i >= 2 { Some(prompt_tokens[i - 2]) } else { None };
+        let p = if i >= 2 {
+            Some(prompt_tokens[i - 2])
+        } else {
+            None
+        };
         cache.observe(p, prompt_tokens[i - 1], prompt_tokens[i]);
     }
     if let Some(&last_p) = prompt_tokens.last() {
-        let p = if prompt_tokens.len() >= 2 { Some(prompt_tokens[prompt_tokens.len() - 2]) } else { None };
+        let p = if prompt_tokens.len() >= 2 {
+            Some(prompt_tokens[prompt_tokens.len() - 2])
+        } else {
+            None
+        };
         cache.observe(p, last_p, first_tok);
     }
 
@@ -100,11 +120,18 @@ fn main() -> Result<()> {
     let mut ar_steps = 0usize;
 
     let h_init = engine.scratch.x_norm.clone();
-    let mut next_medusa_draft = engine.predict_medusa_draft(&h_init, &gen_tokens).ok().flatten();
+    let mut next_medusa_draft = engine
+        .predict_medusa_draft(&h_init, &gen_tokens)
+        .ok()
+        .flatten();
 
     let t_start = Instant::now();
     for step in 0..50 {
-        let prev = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+        let prev = if gen_tokens.len() >= 2 {
+            Some(gen_tokens[gen_tokens.len() - 2])
+        } else {
+            None
+        };
         let (draft_opt, is_zw) = if let Some(c_tok) = cache.predict(prev, current_confirmed) {
             (Some(c_tok), true)
         } else if let Some(m_tok) = next_medusa_draft.take() {
@@ -127,9 +154,17 @@ fn main() -> Result<()> {
             let step_dur = t_step.elapsed();
 
             if is_zw {
-                if outcome.draft_matched { zw_matches += 1; } else { zw_misses += 1; }
+                if outcome.draft_matched {
+                    zw_matches += 1;
+                } else {
+                    zw_misses += 1;
+                }
             } else {
-                if outcome.draft_matched { medusa_matches += 1; } else { medusa_misses += 1; }
+                if outcome.draft_matched {
+                    medusa_matches += 1;
+                } else {
+                    medusa_misses += 1;
+                }
             }
 
             println!(
@@ -144,7 +179,11 @@ fn main() -> Result<()> {
             );
 
             for &tok in &outcome.accepted_tokens {
-                let p = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                let p = if gen_tokens.len() >= 2 {
+                    Some(gen_tokens[gen_tokens.len() - 2])
+                } else {
+                    None
+                };
                 if let Some(&last) = gen_tokens.last() {
                     cache.observe(p, last, tok);
                 }
@@ -171,14 +210,21 @@ fn main() -> Result<()> {
                 break;
             }
 
-            let p = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+            let p = if gen_tokens.len() >= 2 {
+                Some(gen_tokens[gen_tokens.len() - 2])
+            } else {
+                None
+            };
             cache.observe(p, current_confirmed, next_tok);
 
             gen_tokens.push(next_tok);
             current_confirmed = next_tok;
 
             let h_last = engine.scratch.x_norm.clone();
-            next_medusa_draft = engine.predict_medusa_draft(&h_last, &gen_tokens).ok().flatten();
+            next_medusa_draft = engine
+                .predict_medusa_draft(&h_last, &gen_tokens)
+                .ok()
+                .flatten();
 
             println!(
                 "Step {:02} [AR  ] | confirmed={:6} ({:10?}) | time={:5.1}ms",
@@ -204,8 +250,18 @@ fn main() -> Result<()> {
     println!("Tokens generated: {}", gen_tokens.len());
     println!("Words generated:  {}", words);
     println!("Total time:       {:.3} s", elapsed.as_secs_f64());
-    println!("ZW Matches:       {} / {} ({:.1}%)", zw_matches, zw_matches + zw_misses, zw_matches as f64 / (zw_matches + zw_misses).max(1) as f64 * 100.0);
-    println!("Medusa Matches:   {} / {} ({:.1}%)", medusa_matches, medusa_matches + medusa_misses, medusa_matches as f64 / (medusa_matches + medusa_misses).max(1) as f64 * 100.0);
+    println!(
+        "ZW Matches:       {} / {} ({:.1}%)",
+        zw_matches,
+        zw_matches + zw_misses,
+        zw_matches as f64 / (zw_matches + zw_misses).max(1) as f64 * 100.0
+    );
+    println!(
+        "Medusa Matches:   {} / {} ({:.1}%)",
+        medusa_matches,
+        medusa_matches + medusa_misses,
+        medusa_matches as f64 / (medusa_matches + medusa_misses).max(1) as f64 * 100.0
+    );
     println!("AR steps:         {}", ar_steps);
     println!("Token rate:       {:.2} tok/s", tok_rate);
     println!("Word rate:        {:.2} words/sec", word_rate);

@@ -4,8 +4,8 @@
 //! Apple Metal, Vulkan) while preserving seamless, guaranteed pure-CPU execution on
 //! legacy/constrained edge nodes.
 
-use std::path::Path;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DevicePreference {
@@ -89,7 +89,9 @@ impl ActiveDevice {
 
         // Fallback: If GPU was strictly requested but not found, log warning and use CPU
         if effective_pref == DevicePreference::Gpu {
-            eprintln!("[nioxs] Notice: GPU acceleration requested but no compatible GPU was detected. Falling back to pure CPU.");
+            eprintln!(
+                "[nioxs] Notice: GPU acceleration requested but no compatible GPU was detected. Falling back to pure CPU."
+            );
         }
 
         Self::Cpu
@@ -229,10 +231,14 @@ impl ActiveDevice {
                 let text = String::from_utf8_lossy(&output.stdout);
                 if let Ok(bytes) = text.trim().parse::<u64>() {
                     let mem_mb = bytes / (1024 * 1024);
-                    return Some(Self::Metal { unified_mem_mb: Some(mem_mb) });
+                    return Some(Self::Metal {
+                        unified_mem_mb: Some(mem_mb),
+                    });
                 }
             }
-            return Some(Self::Metal { unified_mem_mb: None });
+            return Some(Self::Metal {
+                unified_mem_mb: None,
+            });
         }
         #[allow(unreachable_code)]
         None
@@ -246,7 +252,10 @@ impl ActiveDevice {
                 || Path::new("/etc/vulkan/icd.d").exists()
             {
                 // Verify vulkaninfo runs successfully
-                if let Ok(output) = std::process::Command::new("vulkaninfo").arg("--summary").output() {
+                if let Ok(output) = std::process::Command::new("vulkaninfo")
+                    .arg("--summary")
+                    .output()
+                {
                     if output.status.success() {
                         return Some(Self::Vulkan);
                     }

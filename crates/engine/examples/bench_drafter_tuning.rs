@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -36,10 +36,20 @@ impl TunedDrafter {
 
     fn update(&mut self, tokens: &[u32]) {
         for window in tokens.windows(2) {
-            *self.bigram_counts.entry(window[0]).or_default().entry(window[1]).or_default() += 1;
+            *self
+                .bigram_counts
+                .entry(window[0])
+                .or_default()
+                .entry(window[1])
+                .or_default() += 1;
         }
         for window in tokens.windows(3) {
-            *self.trigram_counts.entry((window[0], window[1])).or_default().entry(window[2]).or_default() += 1;
+            *self
+                .trigram_counts
+                .entry((window[0], window[1]))
+                .or_default()
+                .entry(window[2])
+                .or_default() += 1;
         }
     }
 
@@ -84,7 +94,9 @@ fn main() -> Result<()> {
         "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(formatted.as_str(), false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -93,7 +105,9 @@ fn main() -> Result<()> {
 
     // Also populate drafter with system prompt / common reasoning prompt patterns
     let reasoning_primer = "<think>\nThinking Process:\n1. Understand the Goal:\n2. Analyze the Mechanism:\n3. Edge Cases:\n4. Conclusion:\n</think>\n";
-    let primer_enc = tokenizer.encode(reasoning_primer, false).map_err(|e| anyhow!("{e}"))?;
+    let primer_enc = tokenizer
+        .encode(reasoning_primer, false)
+        .map_err(|e| anyhow!("{e}"))?;
     let mut drafter = TunedDrafter::new(&prompt_tokens);
     drafter.update(primer_enc.get_ids());
     drafter.update(&[first_tok]);
@@ -193,7 +207,12 @@ fn main() -> Result<()> {
     println!("Tokens:      {}", gen_tokens.len());
     println!("Words:       {}", words);
     println!("Total time:  {:.3} s", elapsed.as_secs_f64());
-    println!("Spec matches: {} / {} ({:.1}%)", spec_matches, spec_matches + spec_misses, spec_matches as f64 / (spec_matches + spec_misses).max(1) as f64 * 100.0);
+    println!(
+        "Spec matches: {} / {} ({:.1}%)",
+        spec_matches,
+        spec_matches + spec_misses,
+        spec_matches as f64 / (spec_matches + spec_misses).max(1) as f64 * 100.0
+    );
     println!("AR steps:    {}", ar_steps);
     let (rss, hwm) = memory_mb();
     println!("Token rate:  {:.2} tok/s", tok_rate);

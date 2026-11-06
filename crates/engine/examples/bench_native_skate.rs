@@ -31,17 +31,26 @@ fn main() -> Result<()> {
     println!("Loaded engine in {:.2}s!", t0.elapsed().as_secs_f64());
 
     let (rss_load, hwm_load) = memory_mb();
-    println!("Post-Load RAM: VmRSS: {:.2} MB | VmHWM: {:.2} MB", rss_load, hwm_load);
+    println!(
+        "Post-Load RAM: VmRSS: {:.2} MB | VmHWM: {:.2} MB",
+        rss_load, hwm_load
+    );
 
     let prompt = std::env::args().nth(3).expect("formatted prompt argument");
-    let encoded = tokenizer.encode(prompt.as_str(), false).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(prompt.as_str(), false)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     println!("\nPrefilling {} prompt tokens...", prompt_tokens.len());
     let t_prefill = Instant::now();
     let _ = engine.prefill(&prompt_tokens)?;
     let prefill_time = t_prefill.elapsed().as_secs_f64();
-    println!("Prefill done in {:.3}s ({:.1} t/s)", prefill_time, prompt_tokens.len() as f64 / prefill_time);
+    println!(
+        "Prefill done in {:.3}s ({:.1} t/s)",
+        prefill_time,
+        prompt_tokens.len() as f64 / prefill_time
+    );
 
     let eos_id = tokenizer.token_to_id("<|im_end|>").unwrap_or(49153);
     let mut generated_tokens = Vec::new();
@@ -54,13 +63,18 @@ fn main() -> Result<()> {
             break;
         }
         generated_tokens.push(next_tok);
-        let _ = engine.forward_stream(&[next_tok], prompt_tokens.len() + generated_tokens.len() - 1)?;
+        let _ = engine.forward_stream(
+            &[next_tok],
+            prompt_tokens.len() + generated_tokens.len() - 1,
+        )?;
     }
     let gen_time = t_gen.elapsed().as_secs_f64();
     let tps = generated_tokens.len() as f64 / gen_time;
 
     let (rss_end, hwm_end) = memory_mb();
-    let decoded = tokenizer.decode(&generated_tokens, false).unwrap_or_default();
+    let decoded = tokenizer
+        .decode(&generated_tokens, false)
+        .unwrap_or_default();
     let words = decoded.split_whitespace().count();
     let wps = words as f64 / gen_time;
 

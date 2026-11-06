@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -41,9 +41,18 @@ fn main() -> Result<()> {
     let system_prompt = "You are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Defer raw low-level code generation to Cuda.";
 
     let test_cases = [
-        ("systems_architecture", "Design an in-memory lock-free priority queue for high-frequency trading in Rust."),
-        ("memory_safety", "Explain the memory safety implications and cache hazards of uninitialized memory in tensor runtimes."),
-        ("consensus_protocols", "Compare Raft vs Multi-Paxos for distributed key-value stores under high network jitter."),
+        (
+            "systems_architecture",
+            "Design an in-memory lock-free priority queue for high-frequency trading in Rust.",
+        ),
+        (
+            "memory_safety",
+            "Explain the memory safety implications and cache hazards of uninitialized memory in tensor runtimes.",
+        ),
+        (
+            "consensus_protocols",
+            "Compare Raft vs Multi-Paxos for distributed key-value stores under high network jitter.",
+        ),
     ];
 
     let max_draft_configs = [0, 1]; // 0 = Pure AR, 1 = PLD 1 (forward_2tokens)
@@ -71,7 +80,9 @@ fn main() -> Result<()> {
             let formatted = format!(
                 "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
             );
-            let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+            let encoded = tokenizer
+                .encode(formatted.as_str(), false)
+                .map_err(|e| anyhow!("{e}"))?;
             let prompt_tokens = encoded.get_ids().to_vec();
 
             // Prefill
@@ -95,7 +106,8 @@ fn main() -> Result<()> {
                         break;
                     }
                     gen_tokens.push(next_tok);
-                    let _ = engine.forward_stream(&[next_tok], prompt_tokens.len() + gen_tokens.len() - 1)?;
+                    let _ = engine
+                        .forward_stream(&[next_tok], prompt_tokens.len() + gen_tokens.len() - 1)?;
                 }
             } else {
                 // PLD Speculative Decoding
@@ -156,10 +168,18 @@ fn main() -> Result<()> {
 
             let gen_duration = t_gen.elapsed();
             let gen_time_s = gen_duration.as_secs_f64();
-            let tps = if gen_time_s > 0.0 { gen_tokens.len() as f64 / gen_time_s } else { 0.0 };
+            let tps = if gen_time_s > 0.0 {
+                gen_tokens.len() as f64 / gen_time_s
+            } else {
+                0.0
+            };
             let decoded = tokenizer.decode(&gen_tokens, false).unwrap_or_default();
             let words = decoded.split_whitespace().count();
-            let wps = if gen_time_s > 0.0 { words as f64 / gen_time_s } else { 0.0 };
+            let wps = if gen_time_s > 0.0 {
+                words as f64 / gen_time_s
+            } else {
+                0.0
+            };
 
             total_tps += tps;
             total_wps += wps;
@@ -176,7 +196,16 @@ fn main() -> Result<()> {
 
             println!(
                 "  [Case {}/{}] {}: {:.2} tok/s | {:.2} w/s | RAM: {:.1}MB (HWM: {:.1}MB) | drafts accepted: {}/{} ({:.1}%)",
-                idx + 1, test_cases.len(), category, tps, wps, rss, hwm, drafts_accepted, drafts_proposed, accept_rate
+                idx + 1,
+                test_cases.len(),
+                category,
+                tps,
+                wps,
+                rss,
+                hwm,
+                drafts_accepted,
+                drafts_proposed,
+                accept_rate
             );
         }
 
@@ -191,7 +220,12 @@ fn main() -> Result<()> {
 
         println!(
             "  ==> Mode Summary: Avg TPS: {:.2} tok/s | Avg WPS: {:.2} w/s | Overall Draft Acceptance: {}/{} ({:.1}%) across {} steps",
-            avg_tps, avg_wps, total_drafts_accepted, total_drafts_proposed, overall_accept, total_steps
+            avg_tps,
+            avg_wps,
+            total_drafts_accepted,
+            total_drafts_proposed,
+            overall_accept,
+            total_steps
         );
     }
 

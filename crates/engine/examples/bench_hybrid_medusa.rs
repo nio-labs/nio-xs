@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -97,14 +97,20 @@ fn main() -> Result<()> {
         "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(formatted.as_str(), false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
     let _ = engine.prefill(&prompt_tokens)?;
     let first_tok = engine.next_token_with_history(None, &[], false)?;
 
-    println!("Prefill done. First token: {} ({:?})", first_tok, tokenizer.decode(&[first_tok], false));
+    println!(
+        "Prefill done. First token: {} ({:?})",
+        first_tok,
+        tokenizer.decode(&[first_tok], false)
+    );
 
     let mut drafter = SpeculativeDrafter::new(&prompt_tokens);
     drafter.update(&[first_tok]);
@@ -207,7 +213,11 @@ fn main() -> Result<()> {
     println!("Tokens generated: {}", gen_tokens.len());
     println!("Words generated:  {}", words);
     println!("Total time:       {:.3} s", elapsed.as_secs_f64());
-    println!("Draft matches:    {} ({:.1}%)", matches, matches as f64 / (matches + misses) as f64 * 100.0);
+    println!(
+        "Draft matches:    {} ({:.1}%)",
+        matches,
+        matches as f64 / (matches + misses) as f64 * 100.0
+    );
     println!("Draft misses:     {}", misses);
     println!("Token rate:       {:.2} tok/s", tok_rate);
     println!("Word rate:        {:.2} words/sec", word_rate);

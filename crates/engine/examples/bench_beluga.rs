@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -61,7 +61,9 @@ fn main() -> Result<()> {
     let model_path = std::env::args()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga.vmicrolm-vector.gguf"));
+        .unwrap_or_else(|| {
+            PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga.vmicrolm-vector.gguf")
+        });
     let tokenizer_path = PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga-tokenizer.json");
 
     if !model_path.exists() {
@@ -79,7 +81,10 @@ fn main() -> Result<()> {
     println!("========================================================");
 
     let (start_rss, start_hwm) = memory_mb();
-    println!("Process Start RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB", start_rss, start_hwm);
+    println!(
+        "Process Start RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB",
+        start_rss, start_hwm
+    );
 
     let mut tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| anyhow!("{e}"))?;
     tokenizer.with_padding(None);
@@ -87,7 +92,10 @@ fn main() -> Result<()> {
         libc::malloc_trim(0);
     }
     let (tok_rss, tok_hwm) = memory_mb();
-    println!("Post-tokenizer RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB", tok_rss, tok_hwm);
+    println!(
+        "Post-tokenizer RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB",
+        tok_rss, tok_hwm
+    );
     let t0 = Instant::now();
     let mut engine = AstMicroEngine::new(&model_path)?;
     let window: usize = std::env::args()
@@ -107,15 +115,27 @@ fn main() -> Result<()> {
 
     let load_time = t0.elapsed().as_secs_f64();
     let (load_rss, load_hwm) = memory_mb();
-    println!("Engine loaded in {:.2}s | Post-load RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB\n", load_time, load_rss, load_hwm);
+    println!(
+        "Engine loaded in {:.2}s | Post-load RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB\n",
+        load_time, load_rss, load_hwm
+    );
 
     let eos_id = tokenizer.token_to_id("<|im_end|>").unwrap_or(151645);
     let system_prompt = "You are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Defer raw low-level code generation to Cuda.";
 
     let test_cases = [
-        ("systems_architecture", "Design an in-memory lock-free priority queue for high-frequency trading in Rust."),
-        ("memory_safety", "Explain the memory safety implications and cache hazards of uninitialized memory in tensor runtimes."),
-        ("consensus_protocols", "Compare Raft vs Multi-Paxos for distributed key-value stores under high network jitter."),
+        (
+            "systems_architecture",
+            "Design an in-memory lock-free priority queue for high-frequency trading in Rust.",
+        ),
+        (
+            "memory_safety",
+            "Explain the memory safety implications and cache hazards of uninitialized memory in tensor runtimes.",
+        ),
+        (
+            "consensus_protocols",
+            "Compare Raft vs Multi-Paxos for distributed key-value stores under high network jitter.",
+        ),
     ];
 
     let mut results = Vec::new();
@@ -127,7 +147,13 @@ fn main() -> Result<()> {
 
     for (idx, &(category, prompt)) in test_cases.iter().enumerate() {
         println!("--------------------------------------------------------");
-        println!("[Case {}/{}] Category: {} | Prompt: \"{}\"", idx + 1, test_cases.len(), category, prompt);
+        println!(
+            "[Case {}/{}] Category: {} | Prompt: \"{}\"",
+            idx + 1,
+            test_cases.len(),
+            category,
+            prompt
+        );
 
         engine.reset_cache();
         engine.set_sampling(0.65, 0.90, 1.15, 64);
@@ -135,7 +161,9 @@ fn main() -> Result<()> {
         let formatted = format!(
             "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         );
-        let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+        let encoded = tokenizer
+            .encode(formatted.as_str(), false)
+            .map_err(|e| anyhow!("{e}"))?;
         let prompt_tokens = encoded.get_ids().to_vec();
 
         // Prefill
@@ -161,16 +189,25 @@ fn main() -> Result<()> {
             }
             gen_tokens.push(next_tok);
             let t_l0 = Instant::now();
-            let _ = engine.forward_stream(&[next_tok], prompt_tokens.len() + gen_tokens.len() - 1)?;
+            let _ =
+                engine.forward_stream(&[next_tok], prompt_tokens.len() + gen_tokens.len() - 1)?;
             time_layers += t_l0.elapsed();
         }
         let gen_duration = t_gen.elapsed();
         let gen_time_s = gen_duration.as_secs_f64();
-        let tps = if gen_time_s > 0.0 { gen_tokens.len() as f64 / gen_time_s } else { 0.0 };
+        let tps = if gen_time_s > 0.0 {
+            gen_tokens.len() as f64 / gen_time_s
+        } else {
+            0.0
+        };
 
         let decoded_response = tokenizer.decode(&gen_tokens, false).unwrap_or_default();
         let words = decoded_response.split_whitespace().count();
-        let wps = if gen_time_s > 0.0 { words as f64 / gen_time_s } else { 0.0 };
+        let wps = if gen_time_s > 0.0 {
+            words as f64 / gen_time_s
+        } else {
+            0.0
+        };
 
         let (cur_rss, cur_hwm) = memory_mb();
         if cur_rss > peak_net_rss_observed {
@@ -182,10 +219,25 @@ fn main() -> Result<()> {
 
         let has_think = decoded_response.contains("<think>") || decoded_response.contains("think");
 
-        println!("  Prefill: {:.1} ms ({:.1} t/s) | Gen Tokens: {} | Gen Time: {:.2}s | Speed: {:.2} t/s | {:.2} w/s", prefill_ms, prefill_tps, gen_tokens.len(), gen_time_s, tps, wps);
+        println!(
+            "  Prefill: {:.1} ms ({:.1} t/s) | Gen Tokens: {} | Gen Time: {:.2}s | Speed: {:.2} t/s | {:.2} w/s",
+            prefill_ms,
+            prefill_tps,
+            gen_tokens.len(),
+            gen_time_s,
+            tps,
+            wps
+        );
         let n_gen = gen_tokens.len().max(1) as f64;
-        println!("  Timing Breakdown per token: Vocab/LM-Head: {:.2} ms | Transformer Layers: {:.2} ms", (time_vocab.as_secs_f64() * 1000.0) / n_gen, (time_layers.as_secs_f64() * 1000.0) / n_gen);
-        println!("  RAM: Net VmRSS = {:.2} MB | Process VmHWM = {:.2} MB", cur_rss, cur_hwm);
+        println!(
+            "  Timing Breakdown per token: Vocab/LM-Head: {:.2} ms | Transformer Layers: {:.2} ms",
+            (time_vocab.as_secs_f64() * 1000.0) / n_gen,
+            (time_layers.as_secs_f64() * 1000.0) / n_gen
+        );
+        println!(
+            "  RAM: Net VmRSS = {:.2} MB | Process VmHWM = {:.2} MB",
+            cur_rss, cur_hwm
+        );
         println!("  Sample Output:\n{}\n", decoded_response.trim());
 
         total_prefill_ms += prefill_ms;
@@ -226,11 +278,30 @@ fn main() -> Result<()> {
 
     println!("========================================================");
     println!("  🐋 BENCHMARK SUMMARY & SLA VERIFICATION");
-    println!("  Peak Net Model RAM (VmRSS):    {:.2} MB", summary.peak_ram_mb);
-    println!("  Peak Process RAM (VmHWM):      {:.2} MB", peak_process_hwm_observed);
-    println!("  Sub-250MB Net RAM SLA:         {}", if summary.sub_250mb_sla_passed { "✅ PASSED (< 250 MB)" } else { "❌ FAILED" });
-    println!("  Avg Prefill TPS:               {:.2} t/s", summary.avg_prefill_tps);
-    println!("  Avg Generation TPS:            {:.2} t/s", summary.avg_tokens_per_sec);
+    println!(
+        "  Peak Net Model RAM (VmRSS):    {:.2} MB",
+        summary.peak_ram_mb
+    );
+    println!(
+        "  Peak Process RAM (VmHWM):      {:.2} MB",
+        peak_process_hwm_observed
+    );
+    println!(
+        "  Sub-250MB Net RAM SLA:         {}",
+        if summary.sub_250mb_sla_passed {
+            "✅ PASSED (< 250 MB)"
+        } else {
+            "❌ FAILED"
+        }
+    );
+    println!(
+        "  Avg Prefill TPS:               {:.2} t/s",
+        summary.avg_prefill_tps
+    );
+    println!(
+        "  Avg Generation TPS:            {:.2} t/s",
+        summary.avg_tokens_per_sec
+    );
     println!("========================================================");
 
     let output_path = PathBuf::from("/home/mn/nio-labs/beluga_production_benchmark.json");

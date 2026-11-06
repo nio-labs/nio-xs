@@ -4,14 +4,13 @@
 pub const KMASK_IQ2XS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
 
 pub const KSIGNS_IQ2XS: [u8; 128] = [
-      0, 129, 130,   3, 132,   5,   6, 135, 136,   9,  10, 139,  12, 141, 142,  15,
-    144,  17,  18, 147,  20, 149, 150,  23,  24, 153, 154,  27, 156,  29,  30, 159,
-    160,  33,  34, 163,  36, 165, 166,  39,  40, 169, 170,  43, 172,  45,  46, 175,
-     48, 177, 178,  51, 180,  53,  54, 183, 184,  57,  58, 187,  60, 189, 190,  63,
-    192,  65,  66, 195,  68, 197, 198,  71,  72, 201, 202,  75, 204,  77,  78, 207,
-     80, 209, 210,  83, 212,  85,  86, 215, 216,  89,  90, 219,  92, 221, 222,  95,
-     96, 225, 226,  99, 228, 101, 102, 231, 232, 105, 106, 235, 108, 237, 238, 111,
-    240, 113, 114, 243, 116, 245, 246, 119, 120, 249, 250, 123, 252, 125, 126, 255,
+    0, 129, 130, 3, 132, 5, 6, 135, 136, 9, 10, 139, 12, 141, 142, 15, 144, 17, 18, 147, 20, 149,
+    150, 23, 24, 153, 154, 27, 156, 29, 30, 159, 160, 33, 34, 163, 36, 165, 166, 39, 40, 169, 170,
+    43, 172, 45, 46, 175, 48, 177, 178, 51, 180, 53, 54, 183, 184, 57, 58, 187, 60, 189, 190, 63,
+    192, 65, 66, 195, 68, 197, 198, 71, 72, 201, 202, 75, 204, 77, 78, 207, 80, 209, 210, 83, 212,
+    85, 86, 215, 216, 89, 90, 219, 92, 221, 222, 95, 96, 225, 226, 99, 228, 101, 102, 231, 232,
+    105, 106, 235, 108, 237, 238, 111, 240, 113, 114, 243, 116, 245, 246, 119, 120, 249, 250, 123,
+    252, 125, 126, 255,
 ];
 
 pub const IQ3XXS_GRID: [u32; 256] = [
@@ -200,8 +199,16 @@ pub fn dequantize_row_iq3_xxs(raw_bytes: &[u8], out: &mut [f32]) {
                 let g2_bytes = IQ3XXS_GRID[qs[qs_idx + 2 * l + 1] as usize].to_le_bytes();
 
                 for j in 0..4 {
-                    let s1 = if (signs & KMASK_IQ2XS[j]) != 0 { -1.0 } else { 1.0 };
-                    let s2 = if (signs & KMASK_IQ2XS[j + 4]) != 0 { -1.0 } else { 1.0 };
+                    let s1 = if (signs & KMASK_IQ2XS[j]) != 0 {
+                        -1.0
+                    } else {
+                        1.0
+                    };
+                    let s2 = if (signs & KMASK_IQ2XS[j + 4]) != 0 {
+                        -1.0
+                    } else {
+                        1.0
+                    };
                     out[y_idx + j] = db * (g1_bytes[j] as f32) * s1;
                     out[y_idx + j + 4] = db * (g2_bytes[j] as f32) * s2;
                 }
@@ -258,38 +265,134 @@ pub fn dequantize_row_f32(raw_bytes: &[u8], out: &mut [f32]) {
 }
 
 pub const SIGNS64_IQ2XS: [u64; 128] = [
-    0x0101010101010101, 0xff010101010101ff, 0xff0101010101ff01, 0x010101010101ffff,
-    0xff01010101ff0101, 0x0101010101ff01ff, 0x0101010101ffff01, 0xff01010101ffffff,
-    0xff010101ff010101, 0x01010101ff0101ff, 0x01010101ff01ff01, 0xff010101ff01ffff,
-    0x01010101ffff0101, 0xff010101ffff01ff, 0xff010101ffffff01, 0x01010101ffffffff,
-    0xff0101ff01010101, 0x010101ff010101ff, 0x010101ff0101ff01, 0xff0101ff0101ffff,
-    0x010101ff01ff0101, 0xff0101ff01ff01ff, 0xff0101ff01ffff01, 0x010101ff01ffffff,
-    0x010101ffff010101, 0xff0101ffff0101ff, 0xff0101ffff01ff01, 0x010101ffff01ffff,
-    0xff0101ffffff0101, 0x010101ffffff01ff, 0x010101ffffffff01, 0xff0101ffffffffff,
-    0xff01ff0101010101, 0x0101ff01010101ff, 0x0101ff010101ff01, 0xff01ff010101ffff,
-    0x0101ff0101ff0101, 0xff01ff0101ff01ff, 0xff01ff0101ffff01, 0x0101ff0101ffffff,
-    0x0101ff01ff010101, 0xff01ff01ff0101ff, 0xff01ff01ff01ff01, 0x0101ff01ff01ffff,
-    0xff01ff01ffff0101, 0x0101ff01ffff01ff, 0x0101ff01ffffff01, 0xff01ff01ffffffff,
-    0x0101ffff01010101, 0xff01ffff010101ff, 0xff01ffff0101ff01, 0x0101ffff0101ffff,
-    0xff01ffff01ff0101, 0x0101ffff01ff01ff, 0x0101ffff01ffff01, 0xff01ffff01ffffff,
-    0xff01ffffff010101, 0x0101ffffff0101ff, 0x0101ffffff01ff01, 0xff01ffffff01ffff,
-    0x0101ffffffff0101, 0xff01ffffffff01ff, 0xff01ffffffffff01, 0x0101ffffffffffff,
-    0xffff010101010101, 0x01ff0101010101ff, 0x01ff01010101ff01, 0xffff01010101ffff,
-    0x01ff010101ff0101, 0xffff010101ff01ff, 0xffff010101ffff01, 0x01ff010101ffffff,
-    0x01ff0101ff010101, 0xffff0101ff0101ff, 0xffff0101ff01ff01, 0x01ff0101ff01ffff,
-    0xffff0101ffff0101, 0x01ff0101ffff01ff, 0x01ff0101ffffff01, 0xffff0101ffffffff,
-    0x01ff01ff01010101, 0xffff01ff010101ff, 0xffff01ff0101ff01, 0x01ff01ff0101ffff,
-    0xffff01ff01ff0101, 0x01ff01ff01ff01ff, 0x01ff01ff01ffff01, 0xffff01ff01ffffff,
-    0xffff01ffff010101, 0x01ff01ffff0101ff, 0x01ff01ffff01ff01, 0xffff01ffff01ffff,
-    0x01ff01ffffff0101, 0xffff01ffffff01ff, 0xffff01ffffffff01, 0x01ff01ffffffffff,
-    0x01ffff0101010101, 0xffffff01010101ff, 0xffffff010101ff01, 0x01ffff010101ffff,
-    0xffffff0101ff0101, 0x01ffff0101ff01ff, 0x01ffff0101ffff01, 0xffffff0101ffffff,
-    0xffffff01ff010101, 0x01ffff01ff0101ff, 0x01ffff01ff01ff01, 0xffffff01ff01ffff,
-    0x01ffff01ffff0101, 0xffffff01ffff01ff, 0xffffff01ffffff01, 0x01ffff01ffffffff,
-    0xffffffff01010101, 0x01ffffff010101ff, 0x01ffffff0101ff01, 0xffffffff0101ffff,
-    0x01ffffff01ff0101, 0xffffffff01ff01ff, 0xffffffff01ffff01, 0x01ffffff01ffffff,
-    0x01ffffffff010101, 0xffffffffff0101ff, 0xffffffffff01ff01, 0x01ffffffff01ffff,
-    0xffffffffffff0101, 0x01ffffffffff01ff, 0xffffffffffff01, 0xffffffffffffffff,
+    0x0101010101010101,
+    0xff010101010101ff,
+    0xff0101010101ff01,
+    0x010101010101ffff,
+    0xff01010101ff0101,
+    0x0101010101ff01ff,
+    0x0101010101ffff01,
+    0xff01010101ffffff,
+    0xff010101ff010101,
+    0x01010101ff0101ff,
+    0x01010101ff01ff01,
+    0xff010101ff01ffff,
+    0x01010101ffff0101,
+    0xff010101ffff01ff,
+    0xff010101ffffff01,
+    0x01010101ffffffff,
+    0xff0101ff01010101,
+    0x010101ff010101ff,
+    0x010101ff0101ff01,
+    0xff0101ff0101ffff,
+    0x010101ff01ff0101,
+    0xff0101ff01ff01ff,
+    0xff0101ff01ffff01,
+    0x010101ff01ffffff,
+    0x010101ffff010101,
+    0xff0101ffff0101ff,
+    0xff0101ffff01ff01,
+    0x010101ffff01ffff,
+    0xff0101ffffff0101,
+    0x010101ffffff01ff,
+    0x010101ffffffff01,
+    0xff0101ffffffffff,
+    0xff01ff0101010101,
+    0x0101ff01010101ff,
+    0x0101ff010101ff01,
+    0xff01ff010101ffff,
+    0x0101ff0101ff0101,
+    0xff01ff0101ff01ff,
+    0xff01ff0101ffff01,
+    0x0101ff0101ffffff,
+    0x0101ff01ff010101,
+    0xff01ff01ff0101ff,
+    0xff01ff01ff01ff01,
+    0x0101ff01ff01ffff,
+    0xff01ff01ffff0101,
+    0x0101ff01ffff01ff,
+    0x0101ff01ffffff01,
+    0xff01ff01ffffffff,
+    0x0101ffff01010101,
+    0xff01ffff010101ff,
+    0xff01ffff0101ff01,
+    0x0101ffff0101ffff,
+    0xff01ffff01ff0101,
+    0x0101ffff01ff01ff,
+    0x0101ffff01ffff01,
+    0xff01ffff01ffffff,
+    0xff01ffffff010101,
+    0x0101ffffff0101ff,
+    0x0101ffffff01ff01,
+    0xff01ffffff01ffff,
+    0x0101ffffffff0101,
+    0xff01ffffffff01ff,
+    0xff01ffffffffff01,
+    0x0101ffffffffffff,
+    0xffff010101010101,
+    0x01ff0101010101ff,
+    0x01ff01010101ff01,
+    0xffff01010101ffff,
+    0x01ff010101ff0101,
+    0xffff010101ff01ff,
+    0xffff010101ffff01,
+    0x01ff010101ffffff,
+    0x01ff0101ff010101,
+    0xffff0101ff0101ff,
+    0xffff0101ff01ff01,
+    0x01ff0101ff01ffff,
+    0xffff0101ffff0101,
+    0x01ff0101ffff01ff,
+    0x01ff0101ffffff01,
+    0xffff0101ffffffff,
+    0x01ff01ff01010101,
+    0xffff01ff010101ff,
+    0xffff01ff0101ff01,
+    0x01ff01ff0101ffff,
+    0xffff01ff01ff0101,
+    0x01ff01ff01ff01ff,
+    0x01ff01ff01ffff01,
+    0xffff01ff01ffffff,
+    0xffff01ffff010101,
+    0x01ff01ffff0101ff,
+    0x01ff01ffff01ff01,
+    0xffff01ffff01ffff,
+    0x01ff01ffffff0101,
+    0xffff01ffffff01ff,
+    0xffff01ffffffff01,
+    0x01ff01ffffffffff,
+    0x01ffff0101010101,
+    0xffffff01010101ff,
+    0xffffff010101ff01,
+    0x01ffff010101ffff,
+    0xffffff0101ff0101,
+    0x01ffff0101ff01ff,
+    0x01ffff0101ffff01,
+    0xffffff0101ffffff,
+    0xffffff01ff010101,
+    0x01ffff01ff0101ff,
+    0x01ffff01ff01ff01,
+    0xffffff01ff01ffff,
+    0x01ffff01ffff0101,
+    0xffffff01ffff01ff,
+    0xffffff01ffffff01,
+    0x01ffff01ffffffff,
+    0xffffffff01010101,
+    0x01ffffff010101ff,
+    0x01ffffff0101ff01,
+    0xffffffff0101ffff,
+    0x01ffffff01ff0101,
+    0xffffffff01ff01ff,
+    0xffffffff01ffff01,
+    0x01ffffff01ffffff,
+    0x01ffffffff010101,
+    0xffffffffff0101ff,
+    0xffffffffff01ff01,
+    0x01ffffffff01ffff,
+    0xffffffffffff0101,
+    0x01ffffffffff01ff,
+    0xffffffffffff01,
+    0xffffffffffffffff,
 ];
 
 #[inline]
@@ -366,8 +469,12 @@ pub unsafe fn quantize_row_q8_k_avx2(x: &[f32], out: &mut [BlockQ8_K]) {
             let mut pos_max = max_arr[0];
             let mut neg_min = min_arr[0];
             for k in 1..8 {
-                if max_arr[k] > pos_max { pos_max = max_arr[k]; }
-                if min_arr[k] < neg_min { neg_min = min_arr[k]; }
+                if max_arr[k] > pos_max {
+                    pos_max = max_arr[k];
+                }
+                if min_arr[k] < neg_min {
+                    neg_min = min_arr[k];
+                }
             }
 
             let max = if -neg_min > pos_max { neg_min } else { pos_max };
@@ -402,7 +509,10 @@ pub unsafe fn quantize_row_q8_k_avx2(x: &[f32], out: &mut [BlockQ8_K]) {
                 let packed8 = _mm256_packs_epi16(p01_perm, p23_perm);
                 let packed8_perm = _mm256_permute4x64_epi64(packed8, 0xd8);
 
-                _mm256_storeu_si256(block.qs.as_mut_ptr().add(offset) as *mut __m256i, packed8_perm);
+                _mm256_storeu_si256(
+                    block.qs.as_mut_ptr().add(offset) as *mut __m256i,
+                    packed8_perm,
+                );
             }
         }
     }
@@ -475,7 +585,10 @@ unsafe fn hsum_float_8(x: core::arch::x86_64::__m256) -> f32 {
 
 #[inline]
 #[target_feature(enable = "avx2,fma")]
-unsafe fn mul_add_epi8(x: core::arch::x86_64::__m256i, y: core::arch::x86_64::__m256i) -> core::arch::x86_64::__m256i {
+unsafe fn mul_add_epi8(
+    x: core::arch::x86_64::__m256i,
+    y: core::arch::x86_64::__m256i,
+) -> core::arch::x86_64::__m256i {
     use core::arch::x86_64::*;
     let ax = _mm256_sign_epi8(x, x);
     let sy = _mm256_sign_epi8(y, x);
@@ -493,7 +606,10 @@ unsafe fn sum_i16_pairs_float(x: core::arch::x86_64::__m256i) -> core::arch::x86
 
 #[inline]
 #[target_feature(enable = "avx2,fma")]
-unsafe fn mul_sum_i8_pairs_float(x: core::arch::x86_64::__m256i, y: core::arch::x86_64::__m256i) -> core::arch::x86_64::__m256 {
+unsafe fn mul_sum_i8_pairs_float(
+    x: core::arch::x86_64::__m256i,
+    y: core::arch::x86_64::__m256i,
+) -> core::arch::x86_64::__m256 {
     use core::arch::x86_64::*;
     let ax = _mm256_sign_epi8(x, x);
     let sy = _mm256_sign_epi8(y, x);
@@ -510,7 +626,10 @@ pub unsafe fn vec_dot_q8_0_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_0]
     let mut acc = _mm256_setzero_ps();
     for ib in 0..nb {
         if (ib & 3) == 0 && ib + 8 < nb {
-            _mm_prefetch(weight_bytes.as_ptr().add((ib + 8) * 34) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(
+                weight_bytes.as_ptr().add((ib + 8) * 34) as *const i8,
+                _MM_HINT_T0,
+            );
         }
         let block_ptr = weight_bytes.as_ptr().add(ib * 34);
         let d_f32 = f16_to_f32_hw((block_ptr as *const u16).read_unaligned());
@@ -525,7 +644,11 @@ pub unsafe fn vec_dot_q8_0_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_0]
 
 #[inline]
 #[target_feature(enable = "avx2,fma,f16c")]
-pub unsafe fn vec_dot_q8_0_18blocks_avx2(weight_ptr: *const u8, x_qs: &[core::arch::x86_64::__m256i; 18], x_d: &[f32; 18]) -> f32 {
+pub unsafe fn vec_dot_q8_0_18blocks_avx2(
+    weight_ptr: *const u8,
+    x_qs: &[core::arch::x86_64::__m256i; 18],
+    x_d: &[f32; 18],
+) -> f32 {
     use core::arch::x86_64::*;
 
     // Prefetch row ahead
@@ -626,7 +749,11 @@ pub unsafe fn vec_dot_q8_0_28blocks_2rows_avx2(
 
 #[inline]
 #[target_feature(enable = "avx2,fma,f16c")]
-pub unsafe fn vec_dot_q8_0_28blocks_avx2(weight_ptr: *const u8, x_qs: &[core::arch::x86_64::__m256i; 28], x_d: &[f32; 28]) -> f32 {
+pub unsafe fn vec_dot_q8_0_28blocks_avx2(
+    weight_ptr: *const u8,
+    x_qs: &[core::arch::x86_64::__m256i; 28],
+    x_d: &[f32; 28],
+) -> f32 {
     use core::arch::x86_64::*;
 
     // Prefetch row ahead (28 blocks * 34 bytes = 952 bytes)
@@ -730,7 +857,11 @@ pub unsafe fn vec_dot_q8_0_48blocks_2rows_avx2(
 
 #[inline]
 #[target_feature(enable = "avx2,fma,f16c")]
-pub unsafe fn vec_dot_q8_0_48blocks_avx2(weight_ptr: *const u8, x_qs: &[core::arch::x86_64::__m256i; 48], x_d: &[f32; 48]) -> f32 {
+pub unsafe fn vec_dot_q8_0_48blocks_avx2(
+    weight_ptr: *const u8,
+    x_qs: &[core::arch::x86_64::__m256i; 48],
+    x_d: &[f32; 48],
+) -> f32 {
     use core::arch::x86_64::*;
 
     // Prefetch row ahead (48 blocks * 34 bytes = 1632 bytes)
@@ -832,7 +963,11 @@ pub unsafe fn vec_dot_q8_0_96blocks_2rows_avx2(
 
 #[inline]
 #[target_feature(enable = "avx2,fma,f16c")]
-pub unsafe fn vec_dot_q8_0_96blocks_avx2(weight_ptr: *const u8, x_qs: &[core::arch::x86_64::__m256i; 96], x_d: &[f32; 96]) -> f32 {
+pub unsafe fn vec_dot_q8_0_96blocks_avx2(
+    weight_ptr: *const u8,
+    x_qs: &[core::arch::x86_64::__m256i; 96],
+    x_d: &[f32; 96],
+) -> f32 {
     use core::arch::x86_64::*;
 
     // Prefetch row ahead (96 blocks * 34 bytes = 3264 bytes)
@@ -883,7 +1018,10 @@ pub unsafe fn vec_dot_iq4_nl_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_
     let mut ib = 0;
     while ib + 1 < nb {
         if (ib & 3) == 0 && ib + 8 < nb {
-            _mm_prefetch(weight_bytes.as_ptr().add((ib + 8) * 18) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(
+                weight_bytes.as_ptr().add((ib + 8) * 18) as *const i8,
+                _MM_HINT_T0,
+            );
         }
         let b0_ptr = weight_bytes.as_ptr().add(ib * 18);
         let b1_ptr = weight_bytes.as_ptr().add((ib + 1) * 18);
@@ -895,11 +1033,13 @@ pub unsafe fn vec_dot_iq4_nl_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_
         let q8b_2 = _mm256_loadu_si256(x_blocks[ib + 1].qs.as_ptr() as *const __m256i);
 
         let q4b_1_low = _mm_shuffle_epi8(values128, _mm_and_si128(q4bits_1, m4b));
-        let q4b_1_high = _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(q4bits_1, 4), m4b));
+        let q4b_1_high =
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(q4bits_1, 4), m4b));
         let q4b_1 = _mm256_insertf128_si256(_mm256_castsi128_si256(q4b_1_low), q4b_1_high, 1);
 
         let q4b_2_low = _mm_shuffle_epi8(values128, _mm_and_si128(q4bits_2, m4b));
-        let q4b_2_high = _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(q4bits_2, 4), m4b));
+        let q4b_2_high =
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(q4bits_2, 4), m4b));
         let q4b_2 = _mm256_insertf128_si256(_mm256_castsi128_si256(q4b_2_low), q4b_2_high, 1);
 
         let p16_1 = mul_add_epi8(q4b_1, q8b_1);
@@ -926,7 +1066,8 @@ pub unsafe fn vec_dot_iq4_nl_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_
         let mut sumi2 = 0i32;
         for j in 0..16 {
             sumi1 += (x_blocks[ib].qs[j] as i32) * (KVALUES_IQ4NL[(qs[j] & 0xf) as usize] as i32);
-            sumi2 += (x_blocks[ib].qs[j + 16] as i32) * (KVALUES_IQ4NL[(qs[j] >> 4) as usize] as i32);
+            sumi2 +=
+                (x_blocks[ib].qs[j + 16] as i32) * (KVALUES_IQ4NL[(qs[j] >> 4) as usize] as i32);
         }
         sumf += d * (sumi1 + sumi2) as f32;
         ib += 1;
@@ -1037,7 +1178,8 @@ pub unsafe fn vec_dot_iq4_nl_48blocks_avx2(
         let b1_ptr = weight_ptr.add((ib + 1) * 18);
 
         let d0 = _mm256_set1_ps(f16_to_f32_hw((b0_ptr as *const u16).read_unaligned()) * x_d[ib]);
-        let d1 = _mm256_set1_ps(f16_to_f32_hw((b1_ptr as *const u16).read_unaligned()) * x_d[ib + 1]);
+        let d1 =
+            _mm256_set1_ps(f16_to_f32_hw((b1_ptr as *const u16).read_unaligned()) * x_d[ib + 1]);
 
         let q4_0 = _mm_loadu_si128(b0_ptr.add(2) as *const __m128i);
         let q4_1 = _mm_loadu_si128(b1_ptr.add(2) as *const __m128i);
@@ -1168,7 +1310,8 @@ pub unsafe fn vec_dot_iq4_nl_96blocks_avx2(
         let b1_ptr = weight_ptr.add((ib + 1) * 18);
 
         let d0 = _mm256_set1_ps(f16_to_f32_hw((b0_ptr as *const u16).read_unaligned()) * x_d[ib]);
-        let d1 = _mm256_set1_ps(f16_to_f32_hw((b1_ptr as *const u16).read_unaligned()) * x_d[ib + 1]);
+        let d1 =
+            _mm256_set1_ps(f16_to_f32_hw((b1_ptr as *const u16).read_unaligned()) * x_d[ib + 1]);
 
         let q4_0 = _mm_loadu_si128(b0_ptr.add(2) as *const __m128i);
         let q4_1 = _mm_loadu_si128(b1_ptr.add(2) as *const __m128i);
@@ -1299,7 +1442,8 @@ pub unsafe fn vec_dot_iq4_nl_28blocks_avx2(
         let b1_ptr = weight_ptr.add((ib + 1) * 18);
 
         let d0 = _mm256_set1_ps(f16_to_f32_hw((b0_ptr as *const u16).read_unaligned()) * x_d[ib]);
-        let d1 = _mm256_set1_ps(f16_to_f32_hw((b1_ptr as *const u16).read_unaligned()) * x_d[ib + 1]);
+        let d1 =
+            _mm256_set1_ps(f16_to_f32_hw((b1_ptr as *const u16).read_unaligned()) * x_d[ib + 1]);
 
         let q4_0 = _mm_loadu_si128(b0_ptr.add(2) as *const __m128i);
         let q4_1 = _mm_loadu_si128(b1_ptr.add(2) as *const __m128i);
@@ -1363,12 +1507,16 @@ pub unsafe fn gate_up_iq4_nl_silu_avx2(
         let w1_q4_2 = _mm_loadu_si128(w1_b1.add(2) as *const __m128i);
 
         let w1_q4b_1_low = _mm_shuffle_epi8(values128, _mm_and_si128(w1_q4_1, m4b));
-        let w1_q4b_1_high = _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(w1_q4_1, 4), m4b));
-        let w1_q4b_1 = _mm256_insertf128_si256(_mm256_castsi128_si256(w1_q4b_1_low), w1_q4b_1_high, 1);
+        let w1_q4b_1_high =
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(w1_q4_1, 4), m4b));
+        let w1_q4b_1 =
+            _mm256_insertf128_si256(_mm256_castsi128_si256(w1_q4b_1_low), w1_q4b_1_high, 1);
 
         let w1_q4b_2_low = _mm_shuffle_epi8(values128, _mm_and_si128(w1_q4_2, m4b));
-        let w1_q4b_2_high = _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(w1_q4_2, 4), m4b));
-        let w1_q4b_2 = _mm256_insertf128_si256(_mm256_castsi128_si256(w1_q4b_2_low), w1_q4b_2_high, 1);
+        let w1_q4b_2_high =
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(w1_q4_2, 4), m4b));
+        let w1_q4b_2 =
+            _mm256_insertf128_si256(_mm256_castsi128_si256(w1_q4b_2_low), w1_q4b_2_high, 1);
 
         let w1_p16_1 = mul_add_epi8(w1_q4b_1, q8b_1);
         let w1_p16_2 = mul_add_epi8(w1_q4b_2, q8b_2);
@@ -1387,12 +1535,16 @@ pub unsafe fn gate_up_iq4_nl_silu_avx2(
         let w3_q4_2 = _mm_loadu_si128(w3_b1.add(2) as *const __m128i);
 
         let w3_q4b_1_low = _mm_shuffle_epi8(values128, _mm_and_si128(w3_q4_1, m4b));
-        let w3_q4b_1_high = _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(w3_q4_1, 4), m4b));
-        let w3_q4b_1 = _mm256_insertf128_si256(_mm256_castsi128_si256(w3_q4b_1_low), w3_q4b_1_high, 1);
+        let w3_q4b_1_high =
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(w3_q4_1, 4), m4b));
+        let w3_q4b_1 =
+            _mm256_insertf128_si256(_mm256_castsi128_si256(w3_q4b_1_low), w3_q4b_1_high, 1);
 
         let w3_q4b_2_low = _mm_shuffle_epi8(values128, _mm_and_si128(w3_q4_2, m4b));
-        let w3_q4b_2_high = _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(w3_q4_2, 4), m4b));
-        let w3_q4b_2 = _mm256_insertf128_si256(_mm256_castsi128_si256(w3_q4b_2_low), w3_q4b_2_high, 1);
+        let w3_q4b_2_high =
+            _mm_shuffle_epi8(values128, _mm_and_si128(_mm_srli_epi16(w3_q4_2, 4), m4b));
+        let w3_q4b_2 =
+            _mm256_insertf128_si256(_mm256_castsi128_si256(w3_q4b_2_low), w3_q4b_2_high, 1);
 
         let w3_p16_1 = mul_add_epi8(w3_q4b_1, q8b_1);
         let w3_p16_2 = mul_add_epi8(w3_q4b_2, q8b_2);
@@ -1944,7 +2096,13 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_avx2(
 }
 
 #[target_feature(enable = "avx2,fma,f16c")]
-pub unsafe fn gemv_iq4_nl_prequant(out: &mut [f32], weight_bytes: &[u8], x_blocks: &[BlockQ8_0], n_rows: usize, n_cols: usize) {
+pub unsafe fn gemv_iq4_nl_prequant(
+    out: &mut [f32],
+    weight_bytes: &[u8],
+    x_blocks: &[BlockQ8_0],
+    n_rows: usize,
+    n_cols: usize,
+) {
     use core::arch::x86_64::*;
     let nb = x_blocks.len();
     let row_bytes = (n_cols / 32) * 18;
@@ -1962,10 +2120,22 @@ pub unsafe fn gemv_iq4_nl_prequant(out: &mut [f32], weight_bytes: &[u8], x_block
         let r3_ptr = weight_bytes.as_ptr().add((r + 3) * row_bytes);
 
         if r + 7 < n_rows {
-            _mm_prefetch(weight_bytes.as_ptr().add((r + 4) * row_bytes) as *const i8, _MM_HINT_T0);
-            _mm_prefetch(weight_bytes.as_ptr().add((r + 5) * row_bytes) as *const i8, _MM_HINT_T0);
-            _mm_prefetch(weight_bytes.as_ptr().add((r + 6) * row_bytes) as *const i8, _MM_HINT_T0);
-            _mm_prefetch(weight_bytes.as_ptr().add((r + 7) * row_bytes) as *const i8, _MM_HINT_T0);
+            _mm_prefetch(
+                weight_bytes.as_ptr().add((r + 4) * row_bytes) as *const i8,
+                _MM_HINT_T0,
+            );
+            _mm_prefetch(
+                weight_bytes.as_ptr().add((r + 5) * row_bytes) as *const i8,
+                _MM_HINT_T0,
+            );
+            _mm_prefetch(
+                weight_bytes.as_ptr().add((r + 6) * row_bytes) as *const i8,
+                _MM_HINT_T0,
+            );
+            _mm_prefetch(
+                weight_bytes.as_ptr().add((r + 7) * row_bytes) as *const i8,
+                _MM_HINT_T0,
+            );
         }
 
         let mut acc0 = _mm256_setzero_ps();
@@ -2153,10 +2323,34 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_4rows_avx2_ptr(
 
             let q3_off = 2 + sub * 16;
             let gas_off = 66 + sub * 8;
-            sumi_0 = iq3_xxs_subblock_step_avx2(b0_ptr.add(q3_off), b0_ptr.add(gas_off), q8_1, q8_2, sumi_0);
-            sumi_1 = iq3_xxs_subblock_step_avx2(b1_ptr.add(q3_off), b1_ptr.add(gas_off), q8_1, q8_2, sumi_1);
-            sumi_2 = iq3_xxs_subblock_step_avx2(b2_ptr.add(q3_off), b2_ptr.add(gas_off), q8_1, q8_2, sumi_2);
-            sumi_3 = iq3_xxs_subblock_step_avx2(b3_ptr.add(q3_off), b3_ptr.add(gas_off), q8_1, q8_2, sumi_3);
+            sumi_0 = iq3_xxs_subblock_step_avx2(
+                b0_ptr.add(q3_off),
+                b0_ptr.add(gas_off),
+                q8_1,
+                q8_2,
+                sumi_0,
+            );
+            sumi_1 = iq3_xxs_subblock_step_avx2(
+                b1_ptr.add(q3_off),
+                b1_ptr.add(gas_off),
+                q8_1,
+                q8_2,
+                sumi_1,
+            );
+            sumi_2 = iq3_xxs_subblock_step_avx2(
+                b2_ptr.add(q3_off),
+                b2_ptr.add(gas_off),
+                q8_1,
+                q8_2,
+                sumi_2,
+            );
+            sumi_3 = iq3_xxs_subblock_step_avx2(
+                b3_ptr.add(q3_off),
+                b3_ptr.add(gas_off),
+                q8_1,
+                q8_2,
+                sumi_3,
+            );
         }
 
         accumf0 = _mm256_fmadd_ps(_mm256_set1_ps(d0), _mm256_cvtepi32_ps(sumi_0), accumf0);
@@ -2269,11 +2463,23 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
 
                 let dot1_t0 = _mm256_maddubs_epi16(q2_1, _mm256_sign_epi8(q8_1_t0, s2_1));
                 let dot2_t0 = _mm256_maddubs_epi16(q2_2, _mm256_sign_epi8(q8_2_t0, s2_2));
-                sumi_r0_t0 = _mm256_add_epi32(sumi_r0_t0, _mm256_add_epi32(_mm256_madd_epi16(dot1_t0, scale1), _mm256_madd_epi16(dot2_t0, scale2)));
+                sumi_r0_t0 = _mm256_add_epi32(
+                    sumi_r0_t0,
+                    _mm256_add_epi32(
+                        _mm256_madd_epi16(dot1_t0, scale1),
+                        _mm256_madd_epi16(dot2_t0, scale2),
+                    ),
+                );
 
                 let dot1_t1 = _mm256_maddubs_epi16(q2_1, _mm256_sign_epi8(q8_1_t1, s2_1));
                 let dot2_t1 = _mm256_maddubs_epi16(q2_2, _mm256_sign_epi8(q8_2_t1, s2_2));
-                sumi_r0_t1 = _mm256_add_epi32(sumi_r0_t1, _mm256_add_epi32(_mm256_madd_epi16(dot1_t1, scale1), _mm256_madd_epi16(dot2_t1, scale2)));
+                sumi_r0_t1 = _mm256_add_epi32(
+                    sumi_r0_t1,
+                    _mm256_add_epi32(
+                        _mm256_madd_epi16(dot1_t1, scale1),
+                        _mm256_madd_epi16(dot2_t1, scale2),
+                    ),
+                );
             }
 
             // Row 1
@@ -2319,18 +2525,46 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
 
                 let dot1_t0 = _mm256_maddubs_epi16(q2_1, _mm256_sign_epi8(q8_1_t0, s2_1));
                 let dot2_t0 = _mm256_maddubs_epi16(q2_2, _mm256_sign_epi8(q8_2_t0, s2_2));
-                sumi_r1_t0 = _mm256_add_epi32(sumi_r1_t0, _mm256_add_epi32(_mm256_madd_epi16(dot1_t0, scale1), _mm256_madd_epi16(dot2_t0, scale2)));
+                sumi_r1_t0 = _mm256_add_epi32(
+                    sumi_r1_t0,
+                    _mm256_add_epi32(
+                        _mm256_madd_epi16(dot1_t0, scale1),
+                        _mm256_madd_epi16(dot2_t0, scale2),
+                    ),
+                );
 
                 let dot1_t1 = _mm256_maddubs_epi16(q2_1, _mm256_sign_epi8(q8_1_t1, s2_1));
                 let dot2_t1 = _mm256_maddubs_epi16(q2_2, _mm256_sign_epi8(q8_2_t1, s2_2));
-                sumi_r1_t1 = _mm256_add_epi32(sumi_r1_t1, _mm256_add_epi32(_mm256_madd_epi16(dot1_t1, scale1), _mm256_madd_epi16(dot2_t1, scale2)));
+                sumi_r1_t1 = _mm256_add_epi32(
+                    sumi_r1_t1,
+                    _mm256_add_epi32(
+                        _mm256_madd_epi16(dot1_t1, scale1),
+                        _mm256_madd_epi16(dot2_t1, scale2),
+                    ),
+                );
             }
         }
 
-        accumf_r0_t0 = _mm256_fmadd_ps(_mm256_set1_ps(d_r0_t0), _mm256_cvtepi32_ps(sumi_r0_t0), accumf_r0_t0);
-        accumf_r0_t1 = _mm256_fmadd_ps(_mm256_set1_ps(d_r0_t1), _mm256_cvtepi32_ps(sumi_r0_t1), accumf_r0_t1);
-        accumf_r1_t0 = _mm256_fmadd_ps(_mm256_set1_ps(d_r1_t0), _mm256_cvtepi32_ps(sumi_r1_t0), accumf_r1_t0);
-        accumf_r1_t1 = _mm256_fmadd_ps(_mm256_set1_ps(d_r1_t1), _mm256_cvtepi32_ps(sumi_r1_t1), accumf_r1_t1);
+        accumf_r0_t0 = _mm256_fmadd_ps(
+            _mm256_set1_ps(d_r0_t0),
+            _mm256_cvtepi32_ps(sumi_r0_t0),
+            accumf_r0_t0,
+        );
+        accumf_r0_t1 = _mm256_fmadd_ps(
+            _mm256_set1_ps(d_r0_t1),
+            _mm256_cvtepi32_ps(sumi_r0_t1),
+            accumf_r0_t1,
+        );
+        accumf_r1_t0 = _mm256_fmadd_ps(
+            _mm256_set1_ps(d_r1_t0),
+            _mm256_cvtepi32_ps(sumi_r1_t0),
+            accumf_r1_t0,
+        );
+        accumf_r1_t1 = _mm256_fmadd_ps(
+            _mm256_set1_ps(d_r1_t1),
+            _mm256_cvtepi32_ps(sumi_r1_t1),
+            accumf_r1_t1,
+        );
     }
 
     (
@@ -2402,21 +2636,81 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_3tokens_avx2_ptr(
             let q3_off = 2 + sub * 16;
             let gas_off = 66 + sub * 8;
 
-            sumi_r0_t0 = iq3_xxs_subblock_step_avx2(b0_ptr.add(q3_off), b0_ptr.add(gas_off), q8_1_t0, q8_2_t0, sumi_r0_t0);
-            sumi_r0_t1 = iq3_xxs_subblock_step_avx2(b0_ptr.add(q3_off), b0_ptr.add(gas_off), q8_1_t1, q8_2_t1, sumi_r0_t1);
-            sumi_r0_t2 = iq3_xxs_subblock_step_avx2(b0_ptr.add(q3_off), b0_ptr.add(gas_off), q8_1_t2, q8_2_t2, sumi_r0_t2);
+            sumi_r0_t0 = iq3_xxs_subblock_step_avx2(
+                b0_ptr.add(q3_off),
+                b0_ptr.add(gas_off),
+                q8_1_t0,
+                q8_2_t0,
+                sumi_r0_t0,
+            );
+            sumi_r0_t1 = iq3_xxs_subblock_step_avx2(
+                b0_ptr.add(q3_off),
+                b0_ptr.add(gas_off),
+                q8_1_t1,
+                q8_2_t1,
+                sumi_r0_t1,
+            );
+            sumi_r0_t2 = iq3_xxs_subblock_step_avx2(
+                b0_ptr.add(q3_off),
+                b0_ptr.add(gas_off),
+                q8_1_t2,
+                q8_2_t2,
+                sumi_r0_t2,
+            );
 
-            sumi_r1_t0 = iq3_xxs_subblock_step_avx2(b1_ptr.add(q3_off), b1_ptr.add(gas_off), q8_1_t0, q8_2_t0, sumi_r1_t0);
-            sumi_r1_t1 = iq3_xxs_subblock_step_avx2(b1_ptr.add(q3_off), b1_ptr.add(gas_off), q8_1_t1, q8_2_t1, sumi_r1_t1);
-            sumi_r1_t2 = iq3_xxs_subblock_step_avx2(b1_ptr.add(q3_off), b1_ptr.add(gas_off), q8_1_t2, q8_2_t2, sumi_r1_t2);
+            sumi_r1_t0 = iq3_xxs_subblock_step_avx2(
+                b1_ptr.add(q3_off),
+                b1_ptr.add(gas_off),
+                q8_1_t0,
+                q8_2_t0,
+                sumi_r1_t0,
+            );
+            sumi_r1_t1 = iq3_xxs_subblock_step_avx2(
+                b1_ptr.add(q3_off),
+                b1_ptr.add(gas_off),
+                q8_1_t1,
+                q8_2_t1,
+                sumi_r1_t1,
+            );
+            sumi_r1_t2 = iq3_xxs_subblock_step_avx2(
+                b1_ptr.add(q3_off),
+                b1_ptr.add(gas_off),
+                q8_1_t2,
+                q8_2_t2,
+                sumi_r1_t2,
+            );
         }
 
-        accumf_r0_t0 = _mm256_fmadd_ps(_mm256_set1_ps(w0_scale * blk0.d), _mm256_cvtepi32_ps(sumi_r0_t0), accumf_r0_t0);
-        accumf_r0_t1 = _mm256_fmadd_ps(_mm256_set1_ps(w0_scale * blk1.d), _mm256_cvtepi32_ps(sumi_r0_t1), accumf_r0_t1);
-        accumf_r0_t2 = _mm256_fmadd_ps(_mm256_set1_ps(w0_scale * blk2.d), _mm256_cvtepi32_ps(sumi_r0_t2), accumf_r0_t2);
-        accumf_r1_t0 = _mm256_fmadd_ps(_mm256_set1_ps(w1_scale * blk0.d), _mm256_cvtepi32_ps(sumi_r1_t0), accumf_r1_t0);
-        accumf_r1_t1 = _mm256_fmadd_ps(_mm256_set1_ps(w1_scale * blk1.d), _mm256_cvtepi32_ps(sumi_r1_t1), accumf_r1_t1);
-        accumf_r1_t2 = _mm256_fmadd_ps(_mm256_set1_ps(w1_scale * blk2.d), _mm256_cvtepi32_ps(sumi_r1_t2), accumf_r1_t2);
+        accumf_r0_t0 = _mm256_fmadd_ps(
+            _mm256_set1_ps(w0_scale * blk0.d),
+            _mm256_cvtepi32_ps(sumi_r0_t0),
+            accumf_r0_t0,
+        );
+        accumf_r0_t1 = _mm256_fmadd_ps(
+            _mm256_set1_ps(w0_scale * blk1.d),
+            _mm256_cvtepi32_ps(sumi_r0_t1),
+            accumf_r0_t1,
+        );
+        accumf_r0_t2 = _mm256_fmadd_ps(
+            _mm256_set1_ps(w0_scale * blk2.d),
+            _mm256_cvtepi32_ps(sumi_r0_t2),
+            accumf_r0_t2,
+        );
+        accumf_r1_t0 = _mm256_fmadd_ps(
+            _mm256_set1_ps(w1_scale * blk0.d),
+            _mm256_cvtepi32_ps(sumi_r1_t0),
+            accumf_r1_t0,
+        );
+        accumf_r1_t1 = _mm256_fmadd_ps(
+            _mm256_set1_ps(w1_scale * blk1.d),
+            _mm256_cvtepi32_ps(sumi_r1_t1),
+            accumf_r1_t1,
+        );
+        accumf_r1_t2 = _mm256_fmadd_ps(
+            _mm256_set1_ps(w1_scale * blk2.d),
+            _mm256_cvtepi32_ps(sumi_r1_t2),
+            accumf_r1_t2,
+        );
     }
 
     (
@@ -2430,7 +2724,13 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_3tokens_avx2_ptr(
 }
 
 #[target_feature(enable = "avx2,fma")]
-pub unsafe fn gemv_iq3_xxs_prequant(out: &mut [f32], weight_bytes: &[u8], x_q8_k: &[BlockQ8_K], n_rows: usize, n_cols: usize) {
+pub unsafe fn gemv_iq3_xxs_prequant(
+    out: &mut [f32],
+    weight_bytes: &[u8],
+    x_q8_k: &[BlockQ8_K],
+    n_rows: usize,
+    n_cols: usize,
+) {
     let row_bytes = (n_cols / 256) * 98;
     assert_eq!(weight_bytes.len(), n_rows * row_bytes);
 
@@ -2457,7 +2757,13 @@ pub fn gemv_iq4_nl(out: &mut [f32], weight_bytes: &[u8], x: &[f32], n_rows: usiz
     assert_eq!(n_cols % 32, 0);
     assert_eq!(out.len(), n_rows);
     let nb = n_cols / 32;
-    let mut x_q8_0 = vec![BlockQ8_0 { d: 0.0, qs: [0; 32] }; nb];
+    let mut x_q8_0 = vec![
+        BlockQ8_0 {
+            d: 0.0,
+            qs: [0; 32]
+        };
+        nb
+    ];
     quantize_row_q8_0(x, &mut x_q8_0);
     unsafe { gemv_iq4_nl_prequant(out, weight_bytes, &x_q8_0, n_rows, n_cols) };
 }
@@ -2467,7 +2773,14 @@ pub fn gemv_iq3_xxs(out: &mut [f32], weight_bytes: &[u8], x: &[f32], n_rows: usi
     assert_eq!(n_cols % 256, 0);
     assert_eq!(out.len(), n_rows);
     let nb = n_cols / 256;
-    let mut x_q8_k = vec![BlockQ8_K { d: 0.0, qs: [0; 256], bsums: [0; 16] }; nb];
+    let mut x_q8_k = vec![
+        BlockQ8_K {
+            d: 0.0,
+            qs: [0; 256],
+            bsums: [0; 16]
+        };
+        nb
+    ];
     quantize_row_q8_k(x, &mut x_q8_k);
     unsafe { gemv_iq3_xxs_prequant(out, weight_bytes, &x_q8_k, n_rows, n_cols) };
 }
@@ -2480,7 +2793,13 @@ pub fn gemv_q8_0(out: &mut [f32], weight_bytes: &[u8], x: &[f32], n_rows: usize,
     assert_eq!(weight_bytes.len(), n_rows * row_bytes);
 
     let nb = n_cols / 32;
-    let mut x_q8_0 = vec![BlockQ8_0 { d: 0.0, qs: [0; 32] }; nb];
+    let mut x_q8_0 = vec![
+        BlockQ8_0 {
+            d: 0.0,
+            qs: [0; 32]
+        };
+        nb
+    ];
     quantize_row_q8_0(x, &mut x_q8_0);
 
     for r in 0..n_rows {
@@ -2499,7 +2818,8 @@ mod tests {
         let x: Vec<f32> = (0..cols).map(|i| (i as f32 * 0.17).sin()).collect();
         let mut weights = vec![0u8; 2 * (cols / 32) * 34];
         for (block, bytes) in weights.chunks_exact_mut(34).enumerate() {
-            bytes[..2].copy_from_slice(&half::f16::from_f32(0.03 * (block + 1) as f32).to_le_bytes());
+            bytes[..2]
+                .copy_from_slice(&half::f16::from_f32(0.03 * (block + 1) as f32).to_le_bytes());
             for (i, byte) in bytes[2..].iter_mut().enumerate() {
                 *byte = (i as i8 - 16) as u8;
             }
@@ -2522,7 +2842,13 @@ mod tests {
             x[i] = ((i as f32) * 0.1).sin();
         }
         let nb = n / 32;
-        let mut x_q8_0 = vec![BlockQ8_0 { d: 0.0, qs: [0; 32] }; nb];
+        let mut x_q8_0 = vec![
+            BlockQ8_0 {
+                d: 0.0,
+                qs: [0; 32]
+            };
+            nb
+        ];
         quantize_row_q8_0(&x, &mut x_q8_0);
 
         // Synthetic Q8_0 weights
@@ -2545,7 +2871,10 @@ mod tests {
 
         println!("Q8_0 scalar_dot: {scalar_dot}, simd_dot: {simd_dot}");
         let diff = (scalar_dot - simd_dot).abs();
-        assert!(diff < 0.05 * scalar_dot.abs().max(1.0), "Q8_0 mismatch: {scalar_dot} vs {simd_dot}");
+        assert!(
+            diff < 0.05 * scalar_dot.abs().max(1.0),
+            "Q8_0 mismatch: {scalar_dot} vs {simd_dot}"
+        );
     }
 
     #[test]
@@ -2556,7 +2885,13 @@ mod tests {
             x[i] = ((i as f32) * 0.2).cos();
         }
         let nb = n / 32;
-        let mut x_q8_0 = vec![BlockQ8_0 { d: 0.0, qs: [0; 32] }; nb];
+        let mut x_q8_0 = vec![
+            BlockQ8_0 {
+                d: 0.0,
+                qs: [0; 32]
+            };
+            nb
+        ];
         quantize_row_q8_0(&x, &mut x_q8_0);
 
         // Synthetic IQ4_NL weights
@@ -2579,7 +2914,10 @@ mod tests {
 
         println!("IQ4_NL scalar_dot: {scalar_dot}, simd_dot: {simd_dot}");
         let diff = (scalar_dot - simd_dot).abs();
-        assert!(diff < 0.05 * scalar_dot.abs().max(1.0), "IQ4_NL mismatch: {scalar_dot} vs {simd_dot}");
+        assert!(
+            diff < 0.05 * scalar_dot.abs().max(1.0),
+            "IQ4_NL mismatch: {scalar_dot} vs {simd_dot}"
+        );
     }
 
     #[test]
@@ -2590,7 +2928,14 @@ mod tests {
             x[i] = ((i as f32) * 0.05).sin();
         }
         let nb = n / 256;
-        let mut x_q8_k = vec![BlockQ8_K { d: 0.0, qs: [0; 256], bsums: [0; 16] }; nb];
+        let mut x_q8_k = vec![
+            BlockQ8_K {
+                d: 0.0,
+                qs: [0; 256],
+                bsums: [0; 16]
+            };
+            nb
+        ];
         quantize_row_q8_k(&x, &mut x_q8_k);
 
         // Synthetic IQ3_XXS weights
@@ -2616,27 +2961,69 @@ mod tests {
 
         println!("IQ3_XXS scalar_dot: {scalar_dot}, simd_dot: {simd_dot}");
         let diff = (scalar_dot - simd_dot).abs();
-        assert!(diff < 0.05 * scalar_dot.abs().max(1.0), "IQ3_XXS mismatch: {scalar_dot} vs {simd_dot}");
+        assert!(
+            diff < 0.05 * scalar_dot.abs().max(1.0),
+            "IQ3_XXS mismatch: {scalar_dot} vs {simd_dot}"
+        );
 
         let (dot0, dot1) = unsafe { vec_dot_iq3_xxs_q8_k_2rows_avx2(&w_bytes, &w_bytes, &x_q8_k) };
-        assert!((dot0 - simd_dot).abs() < 1e-4, "2rows dot0 mismatch: {dot0} vs {simd_dot}");
-        assert!((dot1 - simd_dot).abs() < 1e-4, "2rows dot1 mismatch: {dot1} vs {simd_dot}");
+        assert!(
+            (dot0 - simd_dot).abs() < 1e-4,
+            "2rows dot0 mismatch: {dot0} vs {simd_dot}"
+        );
+        assert!(
+            (dot1 - simd_dot).abs() < 1e-4,
+            "2rows dot1 mismatch: {dot1} vs {simd_dot}"
+        );
 
-        let (t_dot0, t_dot1) = unsafe { vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_bytes.as_ptr(), x_q8_k.as_ptr(), x_q8_k.as_ptr(), nb) };
-        assert!((t_dot0 - simd_dot).abs() < 1e-4, "2tokens dot0 mismatch: {t_dot0} vs {simd_dot}");
-        assert!((t_dot1 - simd_dot).abs() < 1e-4, "2tokens dot1 mismatch: {t_dot1} vs {simd_dot}");
+        let (t_dot0, t_dot1) = unsafe {
+            vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(
+                w_bytes.as_ptr(),
+                x_q8_k.as_ptr(),
+                x_q8_k.as_ptr(),
+                nb,
+            )
+        };
+        assert!(
+            (t_dot0 - simd_dot).abs() < 1e-4,
+            "2tokens dot0 mismatch: {t_dot0} vs {simd_dot}"
+        );
+        assert!(
+            (t_dot1 - simd_dot).abs() < 1e-4,
+            "2tokens dot1 mismatch: {t_dot1} vs {simd_dot}"
+        );
 
         let mut x2 = vec![0f32; n];
         for i in 0..n {
             x2[i] = ((i as f32) * 0.12).cos();
         }
-        let mut x2_q8_k = vec![BlockQ8_K { d: 0.0, qs: [0; 256], bsums: [0; 16] }; nb];
+        let mut x2_q8_k = vec![
+            BlockQ8_K {
+                d: 0.0,
+                qs: [0; 256],
+                bsums: [0; 16]
+            };
+            nb
+        ];
         quantize_row_q8_k(&x2, &mut x2_q8_k);
         let simd_dot2 = unsafe { vec_dot_iq3_xxs_q8_k_avx2(&w_bytes, &x2_q8_k) };
 
-        let (t_dot0_diff, t_dot1_diff) = unsafe { vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_bytes.as_ptr(), x_q8_k.as_ptr(), x2_q8_k.as_ptr(), nb) };
-        assert!((t_dot0_diff - simd_dot).abs() < 1e-4, "2tokens different x0 mismatch: {t_dot0_diff} vs {simd_dot}");
-        assert!((t_dot1_diff - simd_dot2).abs() < 1e-4, "2tokens different x1 mismatch: {t_dot1_diff} vs {simd_dot2}");
+        let (t_dot0_diff, t_dot1_diff) = unsafe {
+            vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(
+                w_bytes.as_ptr(),
+                x_q8_k.as_ptr(),
+                x2_q8_k.as_ptr(),
+                nb,
+            )
+        };
+        assert!(
+            (t_dot0_diff - simd_dot).abs() < 1e-4,
+            "2tokens different x0 mismatch: {t_dot0_diff} vs {simd_dot}"
+        );
+        assert!(
+            (t_dot1_diff - simd_dot2).abs() < 1e-4,
+            "2tokens different x1 mismatch: {t_dot1_diff} vs {simd_dot2}"
+        );
     }
 
     #[test]
@@ -2651,13 +3038,21 @@ mod tests {
             w1[i] = ((i as f32) * 0.17).sin() * 0.15;
         }
 
-        let mut x_q8_0 = vec![BlockQ8_0 { d: 0.0, qs: [0; 32] }; 48];
+        let mut x_q8_0 = vec![
+            BlockQ8_0 {
+                d: 0.0,
+                qs: [0; 32]
+            };
+            48
+        ];
         quantize_row_q8_0(&x, &mut x_q8_0);
 
         let mut x_qs = unsafe { [core::arch::x86_64::_mm256_setzero_si256(); 48] };
         let mut x_d = [0.0f32; 48];
         for i in 0..48 {
-            x_qs[i] = unsafe { core::arch::x86_64::_mm256_loadu_si256(x_q8_0[i].qs.as_ptr() as *const _) };
+            x_qs[i] = unsafe {
+                core::arch::x86_64::_mm256_loadu_si256(x_q8_0[i].qs.as_ptr() as *const _)
+            };
             x_d[i] = x_q8_0[i].d;
         }
 
@@ -2679,9 +3074,18 @@ mod tests {
         };
         let single0 = unsafe { vec_dot_iq4_nl_48blocks_avx2(raw_w0.as_ptr(), &x_qs, &x_d) };
 
-        assert!((ref0 - simd0).abs() < 0.05 * ref0.abs().max(1.0), "Beluga row 0 mismatch: {ref0} vs {simd0}");
-        assert!((ref1 - simd1).abs() < 0.05 * ref1.abs().max(1.0), "Beluga row 1 mismatch: {ref1} vs {simd1}");
-        assert!((simd0 - single0).abs() < 1e-4, "Beluga dual vs single mismatch: {simd0} vs {single0}");
+        assert!(
+            (ref0 - simd0).abs() < 0.05 * ref0.abs().max(1.0),
+            "Beluga row 0 mismatch: {ref0} vs {simd0}"
+        );
+        assert!(
+            (ref1 - simd1).abs() < 0.05 * ref1.abs().max(1.0),
+            "Beluga row 1 mismatch: {ref1} vs {simd1}"
+        );
+        assert!(
+            (simd0 - single0).abs() < 1e-4,
+            "Beluga dual vs single mismatch: {simd0} vs {single0}"
+        );
     }
 
     #[test]
@@ -2696,13 +3100,21 @@ mod tests {
             w1[i] = ((i as f32) * 0.15).cos() * 0.15;
         }
 
-        let mut x_q8_0 = vec![BlockQ8_0 { d: 0.0, qs: [0; 32] }; 28];
+        let mut x_q8_0 = vec![
+            BlockQ8_0 {
+                d: 0.0,
+                qs: [0; 32]
+            };
+            28
+        ];
         quantize_row_q8_0(&x, &mut x_q8_0);
 
         let mut x_qs = unsafe { [core::arch::x86_64::_mm256_setzero_si256(); 28] };
         let mut x_d = [0.0f32; 28];
         for i in 0..28 {
-            x_qs[i] = unsafe { core::arch::x86_64::_mm256_loadu_si256(x_q8_0[i].qs.as_ptr() as *const _) };
+            x_qs[i] = unsafe {
+                core::arch::x86_64::_mm256_loadu_si256(x_q8_0[i].qs.as_ptr() as *const _)
+            };
             x_d[i] = x_q8_0[i].d;
         }
 
@@ -2724,9 +3136,18 @@ mod tests {
         };
         let single0 = unsafe { vec_dot_iq4_nl_28blocks_avx2(raw_w0.as_ptr(), &x_qs, &x_d) };
 
-        assert!((ref0 - simd0).abs() < 0.05 * ref0.abs().max(1.0), "Manta row 0 mismatch: {ref0} vs {simd0}");
-        assert!((ref1 - simd1).abs() < 0.05 * ref1.abs().max(1.0), "Manta row 1 mismatch: {ref1} vs {simd1}");
-        assert!((simd0 - single0).abs() < 1e-4, "Manta dual vs single mismatch: {simd0} vs {single0}");
+        assert!(
+            (ref0 - simd0).abs() < 0.05 * ref0.abs().max(1.0),
+            "Manta row 0 mismatch: {ref0} vs {simd0}"
+        );
+        assert!(
+            (ref1 - simd1).abs() < 0.05 * ref1.abs().max(1.0),
+            "Manta row 1 mismatch: {ref1} vs {simd1}"
+        );
+        assert!(
+            (simd0 - single0).abs() < 1e-4,
+            "Manta dual vs single mismatch: {simd0} vs {single0}"
+        );
     }
 
     #[test]
@@ -2741,13 +3162,21 @@ mod tests {
             w1[i] = ((i as f32) * 0.17).cos() * 0.15;
         }
 
-        let mut x_q8_0 = vec![BlockQ8_0 { d: 0.0, qs: [0; 32] }; 96];
+        let mut x_q8_0 = vec![
+            BlockQ8_0 {
+                d: 0.0,
+                qs: [0; 32]
+            };
+            96
+        ];
         quantize_row_q8_0(&x, &mut x_q8_0);
 
         let mut x_qs = unsafe { [core::arch::x86_64::_mm256_setzero_si256(); 96] };
         let mut x_d = [0.0f32; 96];
         for i in 0..96 {
-            x_qs[i] = unsafe { core::arch::x86_64::_mm256_loadu_si256(x_q8_0[i].qs.as_ptr() as *const _) };
+            x_qs[i] = unsafe {
+                core::arch::x86_64::_mm256_loadu_si256(x_q8_0[i].qs.as_ptr() as *const _)
+            };
             x_d[i] = x_q8_0[i].d;
         }
 
@@ -2769,9 +3198,18 @@ mod tests {
         };
         let single0 = unsafe { vec_dot_iq4_nl_96blocks_avx2(raw_w0.as_ptr(), &x_qs, &x_d) };
 
-        assert!((ref0 - simd0).abs() < 0.05 * ref0.abs().max(1.0), "Blue row 0 mismatch: {ref0} vs {simd0}");
-        assert!((ref1 - simd1).abs() < 0.05 * ref1.abs().max(1.0), "Blue row 1 mismatch: {ref1} vs {simd1}");
-        assert!((simd0 - single0).abs() < 1e-4, "Blue dual vs single mismatch: {simd0} vs {single0}");
+        assert!(
+            (ref0 - simd0).abs() < 0.05 * ref0.abs().max(1.0),
+            "Blue row 0 mismatch: {ref0} vs {simd0}"
+        );
+        assert!(
+            (ref1 - simd1).abs() < 0.05 * ref1.abs().max(1.0),
+            "Blue row 1 mismatch: {ref1} vs {simd1}"
+        );
+        assert!(
+            (simd0 - single0).abs() < 1e-4,
+            "Blue dual vs single mismatch: {simd0} vs {single0}"
+        );
     }
 
     #[test]
@@ -2781,13 +3219,21 @@ mod tests {
         for i in 0..n {
             x[i] = ((i as f32) * 0.05).sin();
         }
-        let mut x_q8_0 = vec![BlockQ8_0 { d: 0.0, qs: [0; 32] }; 96];
+        let mut x_q8_0 = vec![
+            BlockQ8_0 {
+                d: 0.0,
+                qs: [0; 32]
+            };
+            96
+        ];
         quantize_row_q8_0(&x, &mut x_q8_0);
 
         let mut x_qs = unsafe { [core::arch::x86_64::_mm256_setzero_si256(); 96] };
         let mut x_d = [0.0f32; 96];
         for i in 0..96 {
-            x_qs[i] = unsafe { core::arch::x86_64::_mm256_loadu_si256(x_q8_0[i].qs.as_ptr() as *const _) };
+            x_qs[i] = unsafe {
+                core::arch::x86_64::_mm256_loadu_si256(x_q8_0[i].qs.as_ptr() as *const _)
+            };
             x_d[i] = x_q8_0[i].d;
         }
 
@@ -2820,8 +3266,17 @@ mod tests {
         };
         let single0 = unsafe { vec_dot_q8_0_96blocks_avx2(w0_bytes.as_ptr(), &x_qs, &x_d) };
 
-        assert!((ref0 - simd0).abs() < 0.05 * ref0.abs().max(1.0), "Blue Q8_0 row 0 mismatch: {ref0} vs {simd0}");
-        assert!((ref1 - simd1).abs() < 0.05 * ref1.abs().max(1.0), "Blue Q8_0 row 1 mismatch: {ref1} vs {simd1}");
-        assert!((simd0 - single0).abs() < 1e-4, "Blue Q8_0 dual vs single mismatch: {simd0} vs {single0}");
+        assert!(
+            (ref0 - simd0).abs() < 0.05 * ref0.abs().max(1.0),
+            "Blue Q8_0 row 0 mismatch: {ref0} vs {simd0}"
+        );
+        assert!(
+            (ref1 - simd1).abs() < 0.05 * ref1.abs().max(1.0),
+            "Blue Q8_0 row 1 mismatch: {ref1} vs {simd1}"
+        );
+        assert!(
+            (simd0 - single0).abs() < 1e-4,
+            "Blue Q8_0 dual vs single mismatch: {simd0} vs {single0}"
+        );
     }
 }

@@ -17,7 +17,10 @@ fn main() -> Result<()> {
     let t1 = Instant::now();
     let prompt_tokens = vec![1, 32002, 100, 32007];
     let _ = engine.prefill(&prompt_tokens)?;
-    println!("Prefill finished in {:.2}ms", t1.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "Prefill finished in {:.2}ms",
+        t1.elapsed().as_secs_f64() * 1000.0
+    );
 
     let next_tok = engine.next_token_with_history(None, &[], false)?;
     println!("First generated token: {}", next_tok);
@@ -29,7 +32,12 @@ fn main() -> Result<()> {
         let _ = engine.forward_stream(&[gen_tokens[step]], prompt_tokens.len() + step)?;
         let tok = engine.next_token_with_history(None, &gen_tokens, false)?;
         gen_tokens.push(tok);
-        println!("  Step {}: token {} in {:.2}ms", step, tok, t_step.elapsed().as_secs_f64() * 1000.0);
+        println!(
+            "  Step {}: token {} in {:.2}ms",
+            step,
+            tok,
+            t_step.elapsed().as_secs_f64() * 1000.0
+        );
     }
     println!("🎉 AstMicroEngine verification passed for Blue (3.82B)!");
     Ok(())

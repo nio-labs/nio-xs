@@ -230,21 +230,21 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                                 Ok(handle) => tokio::task::block_in_place(|| {
                                     handle.block_on(nioxs_browser::fetch_url(url))
                                 }),
-                                Err(_) => {
-                                    tokio::runtime::Runtime::new()
-                                        .map_err(|e| e.to_string())
-                                        .and_then(|rt| rt.block_on(nioxs_browser::fetch_url(url)))
-                                }
+                                Err(_) => tokio::runtime::Runtime::new()
+                                    .map_err(|e| e.to_string())
+                                    .and_then(|rt| rt.block_on(nioxs_browser::fetch_url(url))),
                             };
                             match fetch_res {
                                 Ok(raw_html) => {
                                     let raw_len = raw_html.len();
                                     let clean_text = nioxs_browser::extract_text(&raw_html);
-                                    let focus = args["focus"].as_str().filter(|f| !f.trim().is_empty());
-                                    
+                                    let focus =
+                                        args["focus"].as_str().filter(|f| !f.trim().is_empty());
+
                                     let (distilled_text, focus_note) = if let Some(target) = focus {
                                         let lower_target = target.to_lowercase();
-                                        let paragraphs: Vec<&str> = clean_text.split("\n\n").collect();
+                                        let paragraphs: Vec<&str> =
+                                            clean_text.split("\n\n").collect();
                                         let matching_paras: Vec<&str> = paragraphs
                                             .iter()
                                             .copied()
@@ -258,7 +258,9 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                                         } else {
                                             (
                                                 clean_text.chars().take(3000).collect(),
-                                                format!(" *(Focus `{target}` not matched, showing top excerpt)*"),
+                                                format!(
+                                                    " *(Focus `{target}` not matched, showing top excerpt)*"
+                                                ),
                                             )
                                         }
                                     } else {
@@ -290,20 +292,25 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                                 Ok(handle) => tokio::task::block_in_place(|| {
                                     handle.block_on(nioxs_browser::search(q, 5))
                                 }),
-                                Err(_) => {
-                                    tokio::runtime::Runtime::new()
-                                        .map_err(|e| e.to_string())
-                                        .and_then(|rt| rt.block_on(nioxs_browser::search(q, 5)))
-                                }
+                                Err(_) => tokio::runtime::Runtime::new()
+                                    .map_err(|e| e.to_string())
+                                    .and_then(|rt| rt.block_on(nioxs_browser::search(q, 5))),
                             };
                             match search_res {
                                 Ok(results) => {
                                     if results.is_empty() {
                                         format!("No search results found for '{q}'.")
                                     } else {
-                                        let mut out = format!("### 🦈 Mako Search Results for: `{q}`\n\n");
+                                        let mut out =
+                                            format!("### 🦈 Mako Search Results for: `{q}`\n\n");
                                         for (idx, r) in results.iter().enumerate() {
-                                            out.push_str(&format!("{}. [{}]({})\n   {}\n\n", idx + 1, r.title, r.url, r.snippet));
+                                            out.push_str(&format!(
+                                                "{}. [{}]({})\n   {}\n\n",
+                                                idx + 1,
+                                                r.title,
+                                                r.url,
+                                                r.snippet
+                                            ));
                                         }
                                         out
                                     }
@@ -318,17 +325,18 @@ pub fn handle_rpc(line: &str) -> Option<String> {
                             Ok(handle) => tokio::task::block_in_place(|| {
                                 handle.block_on(nioxs_browser::search_wikipedia(q, 3))
                             }),
-                            Err(_) => {
-                                tokio::runtime::Runtime::new()
-                                    .map_err(|e| e.to_string())
-                                    .and_then(|rt| rt.block_on(nioxs_browser::search_wikipedia(q, 3)))
-                            }
+                            Err(_) => tokio::runtime::Runtime::new()
+                                .map_err(|e| e.to_string())
+                                .and_then(|rt| rt.block_on(nioxs_browser::search_wikipedia(q, 3))),
                         };
                         match res {
                             Ok(results) => {
                                 let mut out = format!("### Wikipedia Results for: `{q}`\n\n");
                                 for r in results {
-                                    out.push_str(&format!("• [{}]({}): {}\n", r.title, r.url, r.snippet));
+                                    out.push_str(&format!(
+                                        "• [{}]({}): {}\n",
+                                        r.title, r.url, r.snippet
+                                    ));
                                 }
                                 out
                             }

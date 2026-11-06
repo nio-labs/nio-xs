@@ -1,9 +1,9 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
+use crate::quants::{self, BlockQ8_0, BlockQ8_K};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
-use crate::quants::{self, BlockQ8_0, BlockQ8_K};
 
 pub const NUM_WORKERS: usize = 4;
 
@@ -26,7 +26,10 @@ mod tests {
                 k_cache_ptr: keys.as_ptr() as usize,
                 v_cache_ptr: values.as_ptr() as usize,
                 out_ptr: output.as_mut_ptr() as usize,
-                seq_len, n_head: 1, n_kv_head: 1, head_dim: 8,
+                seq_len,
+                n_head: 1,
+                n_kv_head: 1,
+                head_dim: 8,
             };
             unsafe { task.execute(0, 1) };
             assert!(output.iter().all(|&x| (x - 2.0).abs() < 0.001));
@@ -43,7 +46,10 @@ fn worker_cpu_id(worker_id: usize) -> usize {
 fn worker_bounds(total: usize, worker_id: usize, num_workers: usize) -> (usize, usize) {
     if num_workers <= 4 {
         let chunk = (total + num_workers - 1) / num_workers;
-        return ((worker_id * chunk).min(total), ((worker_id + 1) * chunk).min(total));
+        return (
+            (worker_id * chunk).min(total),
+            ((worker_id + 1) * chunk).min(total),
+        );
     }
     const P_WEIGHT: usize = 5;
     const E_WEIGHT: usize = 2;
@@ -61,8 +67,16 @@ fn worker_bounds(total: usize, worker_id: usize, num_workers: usize) -> (usize, 
     } else {
         (total * cum_end) / total_weight
     };
-    let start = if worker_id == 0 { 0 } else { (raw_start & !1).min(total) };
-    let end = if worker_id + 1 == num_workers { total } else { (raw_end & !1).min(total) };
+    let start = if worker_id == 0 {
+        0
+    } else {
+        (raw_start & !1).min(total)
+    };
+    let end = if worker_id + 1 == num_workers {
+        total
+    } else {
+        (raw_end & !1).min(total)
+    };
     (start, end.max(start))
 }
 
@@ -259,7 +273,13 @@ impl GemvTask {
     #[inline(always)]
     pub unsafe fn execute(&self, worker_id: usize, num_workers: usize) {
         match *self {
-            GemvTask::Iq4Nl { out_ptr, weight_ptr, x_blocks_ptr, n_rows, n_cols } => {
+            GemvTask::Iq4Nl {
+                out_ptr,
+                weight_ptr,
+                x_blocks_ptr,
+                n_rows,
+                n_cols,
+            } => {
                 let chunk = (n_rows + num_workers - 1) / num_workers;
                 let start_r = (worker_id * chunk).min(n_rows);
                 let end_r = ((worker_id + 1) * chunk).min(n_rows);
@@ -268,28 +288,46 @@ impl GemvTask {
                     return;
                 }
                 let row_bytes = (n_cols / 32) * 18;
-                let out_slice = std::slice::from_raw_parts_mut((out_ptr as *mut f32).add(start_r), rows);
-                let weight_slice = std::slice::from_raw_parts((weight_ptr as *const u8).add(start_r * row_bytes), rows * row_bytes);
-                let x_blocks = std::slice::from_raw_parts(x_blocks_ptr as *const BlockQ8_0, n_cols / 32);
+                let out_slice =
+                    std::slice::from_raw_parts_mut((out_ptr as *mut f32).add(start_r), rows);
+                let weight_slice = std::slice::from_raw_parts(
+                    (weight_ptr as *const u8).add(start_r * row_bytes),
+                    rows * row_bytes,
+                );
+                let x_blocks =
+                    std::slice::from_raw_parts(x_blocks_ptr as *const BlockQ8_0, n_cols / 32);
                 quants::gemv_iq4_nl_prequant(out_slice, weight_slice, x_blocks, rows, n_cols);
             }
             GemvTask::QkvIq4Nl {
-                q_ptr, k_ptr, v_ptr,
-                wq_ptr, wk_ptr, wv_ptr,
+                q_ptr,
+                k_ptr,
+                v_ptr,
+                wq_ptr,
+                wk_ptr,
+                wv_ptr,
                 x_blocks_ptr,
-                q_rows, k_rows, v_rows,
+                q_rows,
+                k_rows,
+                v_rows,
                 n_cols,
             } => {
                 let row_bytes = (n_cols / 32) * 18;
-                let x_blocks = std::slice::from_raw_parts(x_blocks_ptr as *const BlockQ8_0, n_cols / 32);
+                let x_blocks =
+                    std::slice::from_raw_parts(x_blocks_ptr as *const BlockQ8_0, n_cols / 32);
 
                 // Q partition
                 let q_chunk = (q_rows + num_workers - 1) / num_workers;
                 let q_start = (worker_id * q_chunk).min(q_rows);
                 let q_end = ((worker_id + 1) * q_chunk).min(q_rows);
                 if q_end > q_start {
-                    let out = std::slice::from_raw_parts_mut((q_ptr as *mut f32).add(q_start), q_end - q_start);
-                    let weights = std::slice::from_raw_parts((wq_ptr as *const u8).add(q_start * row_bytes), (q_end - q_start) * row_bytes);
+                    let out = std::slice::from_raw_parts_mut(
+                        (q_ptr as *mut f32).add(q_start),
+                        q_end - q_start,
+                    );
+                    let weights = std::slice::from_raw_parts(
+                        (wq_ptr as *const u8).add(q_start * row_bytes),
+                        (q_end - q_start) * row_bytes,
+                    );
                     quants::gemv_iq4_nl_prequant(out, weights, x_blocks, q_end - q_start, n_cols);
                 }
 
@@ -298,8 +336,14 @@ impl GemvTask {
                 let k_start = (worker_id * k_chunk).min(k_rows);
                 let k_end = ((worker_id + 1) * k_chunk).min(k_rows);
                 if k_end > k_start {
-                    let out = std::slice::from_raw_parts_mut((k_ptr as *mut f32).add(k_start), k_end - k_start);
-                    let weights = std::slice::from_raw_parts((wk_ptr as *const u8).add(k_start * row_bytes), (k_end - k_start) * row_bytes);
+                    let out = std::slice::from_raw_parts_mut(
+                        (k_ptr as *mut f32).add(k_start),
+                        k_end - k_start,
+                    );
+                    let weights = std::slice::from_raw_parts(
+                        (wk_ptr as *const u8).add(k_start * row_bytes),
+                        (k_end - k_start) * row_bytes,
+                    );
                     quants::gemv_iq4_nl_prequant(out, weights, x_blocks, k_end - k_start, n_cols);
                 }
 
@@ -308,52 +352,93 @@ impl GemvTask {
                 let v_start = (worker_id * v_chunk).min(v_rows);
                 let v_end = ((worker_id + 1) * v_chunk).min(v_rows);
                 if v_end > v_start {
-                    let out = std::slice::from_raw_parts_mut((v_ptr as *mut f32).add(v_start), v_end - v_start);
-                    let weights = std::slice::from_raw_parts((wv_ptr as *const u8).add(v_start * row_bytes), (v_end - v_start) * row_bytes);
+                    let out = std::slice::from_raw_parts_mut(
+                        (v_ptr as *mut f32).add(v_start),
+                        v_end - v_start,
+                    );
+                    let weights = std::slice::from_raw_parts(
+                        (wv_ptr as *const u8).add(v_start * row_bytes),
+                        (v_end - v_start) * row_bytes,
+                    );
                     quants::gemv_iq4_nl_prequant(out, weights, x_blocks, v_end - v_start, n_cols);
                 }
             }
             GemvTask::QkvIq3Xxs {
-                q_ptr, k_ptr, v_ptr,
-                wq_ptr, wk_ptr, wv_ptr,
+                q_ptr,
+                k_ptr,
+                v_ptr,
+                wq_ptr,
+                wk_ptr,
+                wv_ptr,
                 x_q8_k_ptr,
-                q_rows, k_rows, v_rows,
+                q_rows,
+                k_rows,
+                v_rows,
                 n_cols,
             } => {
                 let row_bytes = (n_cols / 256) * 98;
-                let x_q8_k = std::slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8_K, (n_cols + 255) / 256);
+                let x_q8_k = std::slice::from_raw_parts(
+                    x_q8_k_ptr as *const BlockQ8_K,
+                    (n_cols + 255) / 256,
+                );
 
                 // Q partition
                 let (q_start, q_end) = worker_bounds(q_rows, worker_id, num_workers);
                 if q_end > q_start {
-                    let out = std::slice::from_raw_parts_mut((q_ptr as *mut f32).add(q_start), q_end - q_start);
-                    let weights = std::slice::from_raw_parts((wq_ptr as *const u8).add(q_start * row_bytes), (q_end - q_start) * row_bytes);
+                    let out = std::slice::from_raw_parts_mut(
+                        (q_ptr as *mut f32).add(q_start),
+                        q_end - q_start,
+                    );
+                    let weights = std::slice::from_raw_parts(
+                        (wq_ptr as *const u8).add(q_start * row_bytes),
+                        (q_end - q_start) * row_bytes,
+                    );
                     quants::gemv_iq3_xxs_prequant(out, weights, x_q8_k, q_end - q_start, n_cols);
                 }
 
                 // K partition
                 let (k_start, k_end) = worker_bounds(k_rows, worker_id, num_workers);
                 if k_end > k_start {
-                    let out = std::slice::from_raw_parts_mut((k_ptr as *mut f32).add(k_start), k_end - k_start);
-                    let weights = std::slice::from_raw_parts((wk_ptr as *const u8).add(k_start * row_bytes), (k_end - k_start) * row_bytes);
+                    let out = std::slice::from_raw_parts_mut(
+                        (k_ptr as *mut f32).add(k_start),
+                        k_end - k_start,
+                    );
+                    let weights = std::slice::from_raw_parts(
+                        (wk_ptr as *const u8).add(k_start * row_bytes),
+                        (k_end - k_start) * row_bytes,
+                    );
                     quants::gemv_iq3_xxs_prequant(out, weights, x_q8_k, k_end - k_start, n_cols);
                 }
 
                 // V partition
                 let (v_start, v_end) = worker_bounds(v_rows, worker_id, num_workers);
                 if v_end > v_start {
-                    let out = std::slice::from_raw_parts_mut((v_ptr as *mut f32).add(v_start), v_end - v_start);
-                    let weights = std::slice::from_raw_parts((wv_ptr as *const u8).add(v_start * row_bytes), (v_end - v_start) * row_bytes);
+                    let out = std::slice::from_raw_parts_mut(
+                        (v_ptr as *mut f32).add(v_start),
+                        v_end - v_start,
+                    );
+                    let weights = std::slice::from_raw_parts(
+                        (wv_ptr as *const u8).add(v_start * row_bytes),
+                        (v_end - v_start) * row_bytes,
+                    );
                     quants::gemv_iq3_xxs_prequant(out, weights, x_q8_k, v_end - v_start, n_cols);
                 }
             }
             GemvTask::QkvIq3Xxs2Tokens {
-                q0_ptr, q1_ptr,
-                k0_ptr, k1_ptr,
-                v0_ptr, v1_ptr,
-                wq_ptr, wk_ptr, wv_ptr,
-                x0_q8_k_ptr, x1_q8_k_ptr,
-                q_rows, k_rows, v_rows,
+                q0_ptr,
+                q1_ptr,
+                k0_ptr,
+                k1_ptr,
+                v0_ptr,
+                v1_ptr,
+                wq_ptr,
+                wk_ptr,
+                wv_ptr,
+                x0_q8_k_ptr,
+                x1_q8_k_ptr,
+                q_rows,
+                k_rows,
+                v_rows,
                 n_cols,
             } => {
                 let nb = (n_cols + 255) / 256;
@@ -372,7 +457,10 @@ impl GemvTask {
                         let r0 = q_start + j;
                         let w0_ptr = (wq_ptr as *const u8).add(r0 * row_bytes);
                         let w1_ptr = w0_ptr.add(row_bytes);
-                        let (r0_t0, r0_t1, r1_t0, r1_t1) = quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb);
+                        let (r0_t0, r0_t1, r1_t0, r1_t1) =
+                            quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
+                                w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb,
+                            );
                         *q0_base.add(j) = r0_t0;
                         *q1_base.add(j) = r0_t1;
                         *q0_base.add(j + 1) = r1_t0;
@@ -382,7 +470,9 @@ impl GemvTask {
                     while j < rows {
                         let r = q_start + j;
                         let w_ptr = (wq_ptr as *const u8).add(r * row_bytes);
-                        let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, nb);
+                        let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(
+                            w_ptr, x0_q8_k, x1_q8_k, nb,
+                        );
                         *q0_base.add(j) = v0;
                         *q1_base.add(j) = v1;
                         j += 1;
@@ -400,7 +490,10 @@ impl GemvTask {
                         let r0 = k_start + j;
                         let w0_ptr = (wk_ptr as *const u8).add(r0 * row_bytes);
                         let w1_ptr = w0_ptr.add(row_bytes);
-                        let (r0_t0, r0_t1, r1_t0, r1_t1) = quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb);
+                        let (r0_t0, r0_t1, r1_t0, r1_t1) =
+                            quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
+                                w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb,
+                            );
                         *k0_base.add(j) = r0_t0;
                         *k1_base.add(j) = r0_t1;
                         *k0_base.add(j + 1) = r1_t0;
@@ -410,7 +503,9 @@ impl GemvTask {
                     while j < rows {
                         let r = k_start + j;
                         let w_ptr = (wk_ptr as *const u8).add(r * row_bytes);
-                        let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, nb);
+                        let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(
+                            w_ptr, x0_q8_k, x1_q8_k, nb,
+                        );
                         *k0_base.add(j) = v0;
                         *k1_base.add(j) = v1;
                         j += 1;
@@ -428,7 +523,10 @@ impl GemvTask {
                         let r0 = v_start + j;
                         let w0_ptr = (wv_ptr as *const u8).add(r0 * row_bytes);
                         let w1_ptr = w0_ptr.add(row_bytes);
-                        let (r0_t0, r0_t1, r1_t0, r1_t1) = quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb);
+                        let (r0_t0, r0_t1, r1_t0, r1_t1) =
+                            quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
+                                w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb,
+                            );
                         *v0_base.add(j) = r0_t0;
                         *v1_base.add(j) = r0_t1;
                         *v0_base.add(j + 1) = r1_t0;
@@ -438,7 +536,9 @@ impl GemvTask {
                     while j < rows {
                         let r = v_start + j;
                         let w_ptr = (wv_ptr as *const u8).add(r * row_bytes);
-                        let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, nb);
+                        let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(
+                            w_ptr, x0_q8_k, x1_q8_k, nb,
+                        );
                         *v0_base.add(j) = v0;
                         *v1_base.add(j) = v1;
                         j += 1;
@@ -446,12 +546,24 @@ impl GemvTask {
                 }
             }
             GemvTask::QkvIq3Xxs3Tokens {
-                q0_ptr, q1_ptr, q2_ptr,
-                k0_ptr, k1_ptr, k2_ptr,
-                v0_ptr, v1_ptr, v2_ptr,
-                wq_ptr, wk_ptr, wv_ptr,
-                x0_q8_k_ptr, x1_q8_k_ptr, x2_q8_k_ptr,
-                q_rows, k_rows, v_rows,
+                q0_ptr,
+                q1_ptr,
+                q2_ptr,
+                k0_ptr,
+                k1_ptr,
+                k2_ptr,
+                v0_ptr,
+                v1_ptr,
+                v2_ptr,
+                wq_ptr,
+                wk_ptr,
+                wv_ptr,
+                x0_q8_k_ptr,
+                x1_q8_k_ptr,
+                x2_q8_k_ptr,
+                q_rows,
+                k_rows,
+                v_rows,
                 n_cols,
             } => {
                 let nb = (n_cols + 255) / 256;
@@ -469,7 +581,9 @@ impl GemvTask {
                     for j in 0..(q_end - q_start) {
                         let r = q_start + j;
                         let w_ptr = (wq_ptr as *const u8).add(r * row_bytes);
-                        let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
+                        let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(
+                            w_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb,
+                        );
                         *q0_base.add(j) = v0;
                         *q1_base.add(j) = v1;
                         *q2_base.add(j) = v2;
@@ -485,7 +599,9 @@ impl GemvTask {
                     for j in 0..(k_end - k_start) {
                         let r = k_start + j;
                         let w_ptr = (wk_ptr as *const u8).add(r * row_bytes);
-                        let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
+                        let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(
+                            w_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb,
+                        );
                         *k0_base.add(j) = v0;
                         *k1_base.add(j) = v1;
                         *k2_base.add(j) = v2;
@@ -501,7 +617,9 @@ impl GemvTask {
                     for j in 0..(v_end - v_start) {
                         let r = v_start + j;
                         let w_ptr = (wv_ptr as *const u8).add(r * row_bytes);
-                        let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
+                        let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(
+                            w_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb,
+                        );
                         *v0_base.add(j) = v0;
                         *v1_base.add(j) = v1;
                         *v2_base.add(j) = v2;
@@ -510,13 +628,16 @@ impl GemvTask {
             }
             GemvTask::GateUpIq4Nl {
                 inter_out_ptr,
-                w1_ptr, w3_ptr,
+                w1_ptr,
+                w3_ptr,
                 x_blocks_ptr,
-                n_rows, n_cols,
+                n_rows,
+                n_cols,
                 ..
             } => {
                 let row_bytes = (n_cols / 32) * 18;
-                let x_blocks = std::slice::from_raw_parts(x_blocks_ptr as *const BlockQ8_0, n_cols / 32);
+                let x_blocks =
+                    std::slice::from_raw_parts(x_blocks_ptr as *const BlockQ8_0, n_cols / 32);
                 let chunk = (n_rows + num_workers - 1) / num_workers;
                 let start_r = (worker_id * chunk).min(n_rows);
                 let end_r = ((worker_id + 1) * chunk).min(n_rows);
@@ -524,14 +645,19 @@ impl GemvTask {
                 if rows > 0 {
                     let weights1_ptr = (w1_ptr as *const u8).add(start_r * row_bytes);
                     let weights3_ptr = (w3_ptr as *const u8).add(start_r * row_bytes);
-                    let inter = std::slice::from_raw_parts_mut((inter_out_ptr as *mut f32).add(start_r), rows);
+                    let inter = std::slice::from_raw_parts_mut(
+                        (inter_out_ptr as *mut f32).add(start_r),
+                        rows,
+                    );
 
                     let nb = n_cols / 32;
                     if nb == 48 {
                         let mut x_qs = [core::arch::x86_64::_mm256_setzero_si256(); 48];
                         let mut x_d = [0.0f32; 48];
                         for i in 0..48 {
-                            x_qs[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                            x_qs[i] = core::arch::x86_64::_mm256_loadu_si256(
+                                x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i,
+                            );
                             x_d[i] = x_blocks[i].d;
                         }
                         let mut j = 0;
@@ -540,8 +666,12 @@ impl GemvTask {
                             let w1_r1 = weights1_ptr.add((j + 1) * 864);
                             let w3_r0 = weights3_ptr.add(j * 864);
                             let w3_r1 = weights3_ptr.add((j + 1) * 864);
-                            let (w1_0, w1_1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(w1_r0, w1_r1, &x_qs, &x_d);
-                            let (w3_0, w3_1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(w3_r0, w3_r1, &x_qs, &x_d);
+                            let (w1_0, w1_1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(
+                                w1_r0, w1_r1, &x_qs, &x_d,
+                            );
+                            let (w3_0, w3_1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(
+                                w3_r0, w3_r1, &x_qs, &x_d,
+                            );
                             inter[j] = quants::fast_silu(w1_0) * w3_0;
                             inter[j + 1] = quants::fast_silu(w1_1) * w3_1;
                             j += 2;
@@ -557,7 +687,9 @@ impl GemvTask {
                         let mut x_qs = [core::arch::x86_64::_mm256_setzero_si256(); 28];
                         let mut x_d = [0.0f32; 28];
                         for i in 0..28 {
-                            x_qs[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                            x_qs[i] = core::arch::x86_64::_mm256_loadu_si256(
+                                x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i,
+                            );
                             x_d[i] = x_blocks[i].d;
                         }
                         let mut j = 0;
@@ -566,8 +698,12 @@ impl GemvTask {
                             let w1_r1 = weights1_ptr.add((j + 1) * 504);
                             let w3_r0 = weights3_ptr.add(j * 504);
                             let w3_r1 = weights3_ptr.add((j + 1) * 504);
-                            let (w1_0, w1_1) = quants::vec_dot_iq4_nl_28blocks_2rows_avx2(w1_r0, w1_r1, &x_qs, &x_d);
-                            let (w3_0, w3_1) = quants::vec_dot_iq4_nl_28blocks_2rows_avx2(w3_r0, w3_r1, &x_qs, &x_d);
+                            let (w1_0, w1_1) = quants::vec_dot_iq4_nl_28blocks_2rows_avx2(
+                                w1_r0, w1_r1, &x_qs, &x_d,
+                            );
+                            let (w3_0, w3_1) = quants::vec_dot_iq4_nl_28blocks_2rows_avx2(
+                                w3_r0, w3_r1, &x_qs, &x_d,
+                            );
                             inter[j] = quants::fast_silu(w1_0) * w3_0;
                             inter[j + 1] = quants::fast_silu(w1_1) * w3_1;
                             j += 2;
@@ -583,7 +719,9 @@ impl GemvTask {
                         let mut x_qs = [core::arch::x86_64::_mm256_setzero_si256(); 96];
                         let mut x_d = [0.0f32; 96];
                         for i in 0..96 {
-                            x_qs[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                            x_qs[i] = core::arch::x86_64::_mm256_loadu_si256(
+                                x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i,
+                            );
                             x_d[i] = x_blocks[i].d;
                         }
                         let mut j = 0;
@@ -592,8 +730,12 @@ impl GemvTask {
                             let w1_r1 = weights1_ptr.add((j + 1) * 1728);
                             let w3_r0 = weights3_ptr.add(j * 1728);
                             let w3_r1 = weights3_ptr.add((j + 1) * 1728);
-                            let (w1_0, w1_1) = quants::vec_dot_iq4_nl_96blocks_2rows_avx2(w1_r0, w1_r1, &x_qs, &x_d);
-                            let (w3_0, w3_1) = quants::vec_dot_iq4_nl_96blocks_2rows_avx2(w3_r0, w3_r1, &x_qs, &x_d);
+                            let (w1_0, w1_1) = quants::vec_dot_iq4_nl_96blocks_2rows_avx2(
+                                w1_r0, w1_r1, &x_qs, &x_d,
+                            );
+                            let (w3_0, w3_1) = quants::vec_dot_iq4_nl_96blocks_2rows_avx2(
+                                w3_r0, w3_r1, &x_qs, &x_d,
+                            );
                             inter[j] = quants::fast_silu(w1_0) * w3_0;
                             inter[j + 1] = quants::fast_silu(w1_1) * w3_1;
                             j += 2;
@@ -612,12 +754,26 @@ impl GemvTask {
                             if j + 1 < rows {
                                 let next_w1 = weights1_ptr.add((j + 1) * row_bytes);
                                 let next_w3 = weights3_ptr.add((j + 1) * row_bytes);
-                                core::arch::x86_64::_mm_prefetch(next_w1 as *const i8, core::arch::x86_64::_MM_HINT_T0);
-                                core::arch::x86_64::_mm_prefetch(next_w1.add(64) as *const i8, core::arch::x86_64::_MM_HINT_T0);
-                                core::arch::x86_64::_mm_prefetch(next_w3 as *const i8, core::arch::x86_64::_MM_HINT_T0);
-                                core::arch::x86_64::_mm_prefetch(next_w3.add(64) as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                                core::arch::x86_64::_mm_prefetch(
+                                    next_w1 as *const i8,
+                                    core::arch::x86_64::_MM_HINT_T0,
+                                );
+                                core::arch::x86_64::_mm_prefetch(
+                                    next_w1.add(64) as *const i8,
+                                    core::arch::x86_64::_MM_HINT_T0,
+                                );
+                                core::arch::x86_64::_mm_prefetch(
+                                    next_w3 as *const i8,
+                                    core::arch::x86_64::_MM_HINT_T0,
+                                );
+                                core::arch::x86_64::_mm_prefetch(
+                                    next_w3.add(64) as *const i8,
+                                    core::arch::x86_64::_MM_HINT_T0,
+                                );
                             }
-                            inter[j] = quants::gate_up_iq4_nl_silu_avx2(w1_row_ptr, w3_row_ptr, x_blocks, nb);
+                            inter[j] = quants::gate_up_iq4_nl_silu_avx2(
+                                w1_row_ptr, w3_row_ptr, x_blocks, nb,
+                            );
                         }
                     }
                 }
@@ -644,8 +800,12 @@ impl GemvTask {
                     return;
                 }
                 let num_blocks = bytes_per_token / 34;
-                let weight_bytes = std::slice::from_raw_parts(weight_ptr as *const u8, (start_tok + vocab_count) * bytes_per_token);
-                let x_blocks = std::slice::from_raw_parts(x_blocks_ptr as *const BlockQ8_0, num_blocks);
+                let weight_bytes = std::slice::from_raw_parts(
+                    weight_ptr as *const u8,
+                    (start_tok + vocab_count) * bytes_per_token,
+                );
+                let x_blocks =
+                    std::slice::from_raw_parts(x_blocks_ptr as *const BlockQ8_0, num_blocks);
                 let history = std::slice::from_raw_parts(history_ptr as *const u32, history_len);
                 let suppressed = if suppressed_len > 0 {
                     std::slice::from_raw_parts(suppressed_ptr as *const u32, suppressed_len)
@@ -669,22 +829,30 @@ impl GemvTask {
                 let mut x_d_blue = [0.0f32; 96];
                 if is_skate {
                     for i in 0..18 {
-                        x_qs_skate[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_qs_skate[i] = core::arch::x86_64::_mm256_loadu_si256(
+                            x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i,
+                        );
                         x_d_skate[i] = x_blocks[i].d;
                     }
                 } else if is_manta {
                     for i in 0..28 {
-                        x_qs_manta[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_qs_manta[i] = core::arch::x86_64::_mm256_loadu_si256(
+                            x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i,
+                        );
                         x_d_manta[i] = x_blocks[i].d;
                     }
                 } else if is_beluga {
                     for i in 0..48 {
-                        x_qs_beluga[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_qs_beluga[i] = core::arch::x86_64::_mm256_loadu_si256(
+                            x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i,
+                        );
                         x_d_beluga[i] = x_blocks[i].d;
                     }
                 } else if is_blue {
                     for i in 0..96 {
-                        x_qs_blue[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_qs_blue[i] = core::arch::x86_64::_mm256_loadu_si256(
+                            x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i,
+                        );
                         x_d_blue[i] = x_blocks[i].d;
                     }
                 }
@@ -697,7 +865,11 @@ impl GemvTask {
 
                 let mut best_tok = worker_start as u32;
                 let mut best_score = f32::NEG_INFINITY;
-                let pen = if repeat_penalty > 1.0 { repeat_penalty } else { 1.25 };
+                let pen = if repeat_penalty > 1.0 {
+                    repeat_penalty
+                } else {
+                    1.25
+                };
 
                 if is_manta {
                     let mut tok_id = worker_start as u32;
@@ -705,19 +877,30 @@ impl GemvTask {
                     while tok_id + 1 < end_id {
                         let tok0 = tok_id;
                         let tok1 = tok_id + 1;
-                        let skip0 = (suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0));
-                        let skip1 = (suppress_eos && (tok1 == 151645 || tok1 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok1));
+                        let skip0 = (suppress_eos && (tok0 == 151645 || tok0 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0));
+                        let skip1 = (suppress_eos && (tok1 == 151645 || tok1 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok1));
                         let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 952);
                         let r1_ptr = weight_bytes.as_ptr().add((tok1 as usize) * 952);
-                        let (val0, val1) = quants::vec_dot_q8_0_28blocks_2rows_avx2(r0_ptr, r1_ptr, &x_qs_manta, &x_d_manta);
+                        let (val0, val1) = quants::vec_dot_q8_0_28blocks_2rows_avx2(
+                            r0_ptr,
+                            r1_ptr,
+                            &x_qs_manta,
+                            &x_d_manta,
+                        );
 
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok0).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -726,11 +909,15 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok1).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok1).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -741,16 +928,23 @@ impl GemvTask {
                     }
                     if tok_id < end_id {
                         let tok0 = tok_id;
-                        if !((suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0))) {
+                        if !((suppress_eos && (tok0 == 151645 || tok0 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0)))
+                        {
                             let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 952);
-                            let val0 = quants::vec_dot_q8_0_28blocks_avx2(r0_ptr, &x_qs_manta, &x_d_manta);
+                            let val0 =
+                                quants::vec_dot_q8_0_28blocks_avx2(r0_ptr, &x_qs_manta, &x_d_manta);
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                                let repeat_count =
+                                    recent_slice.iter().filter(|&&id| id == tok0).count();
                                 if repeat_count > 0 {
                                     score -= (repeat_count as f32) * 2.5;
-                                    if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                    else { score *= pen.powi(repeat_count as i32); }
+                                    if score > 0.0 {
+                                        score /= pen.powi(repeat_count as i32);
+                                    } else {
+                                        score *= pen.powi(repeat_count as i32);
+                                    }
                                 }
                                 if score > best_score {
                                     best_score = score;
@@ -765,19 +959,30 @@ impl GemvTask {
                     while tok_id + 1 < end_id {
                         let tok0 = tok_id;
                         let tok1 = tok_id + 1;
-                        let skip0 = (suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0));
-                        let skip1 = (suppress_eos && (tok1 == 151645 || tok1 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok1));
+                        let skip0 = (suppress_eos && (tok0 == 151645 || tok0 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0));
+                        let skip1 = (suppress_eos && (tok1 == 151645 || tok1 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok1));
                         let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 1632);
                         let r1_ptr = weight_bytes.as_ptr().add((tok1 as usize) * 1632);
-                        let (val0, val1) = quants::vec_dot_q8_0_48blocks_2rows_avx2(r0_ptr, r1_ptr, &x_qs_beluga, &x_d_beluga);
+                        let (val0, val1) = quants::vec_dot_q8_0_48blocks_2rows_avx2(
+                            r0_ptr,
+                            r1_ptr,
+                            &x_qs_beluga,
+                            &x_d_beluga,
+                        );
 
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok0).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -786,11 +991,15 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok1).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok1).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -801,16 +1010,26 @@ impl GemvTask {
                     }
                     if tok_id < end_id {
                         let tok0 = tok_id;
-                        if !((suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0))) {
+                        if !((suppress_eos && (tok0 == 151645 || tok0 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0)))
+                        {
                             let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 1632);
-                            let val0 = quants::vec_dot_q8_0_48blocks_avx2(r0_ptr, &x_qs_beluga, &x_d_beluga);
+                            let val0 = quants::vec_dot_q8_0_48blocks_avx2(
+                                r0_ptr,
+                                &x_qs_beluga,
+                                &x_d_beluga,
+                            );
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                                let repeat_count =
+                                    recent_slice.iter().filter(|&&id| id == tok0).count();
                                 if repeat_count > 0 {
                                     score -= (repeat_count as f32) * 2.5;
-                                    if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                    else { score *= pen.powi(repeat_count as i32); }
+                                    if score > 0.0 {
+                                        score /= pen.powi(repeat_count as i32);
+                                    } else {
+                                        score *= pen.powi(repeat_count as i32);
+                                    }
                                 }
                                 if score > best_score {
                                     best_score = score;
@@ -825,18 +1044,36 @@ impl GemvTask {
                     while tok_id + 1 < end_id {
                         let tok0 = tok_id;
                         let tok1 = tok_id + 1;
-                        let skip0 = (suppress_eos && (tok0 == 0 || tok0 == 1 || tok0 == 2 || tok0 == 32000 || tok0 == 32007)) || (!suppressed.is_empty() && suppressed.contains(&tok0));
-                        let skip1 = (suppress_eos && (tok1 == 0 || tok1 == 1 || tok1 == 2 || tok1 == 32000 || tok1 == 32007)) || (!suppressed.is_empty() && suppressed.contains(&tok1));
+                        let skip0 = (suppress_eos
+                            && (tok0 == 0
+                                || tok0 == 1
+                                || tok0 == 2
+                                || tok0 == 32000
+                                || tok0 == 32007))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0));
+                        let skip1 = (suppress_eos
+                            && (tok1 == 0
+                                || tok1 == 1
+                                || tok1 == 2
+                                || tok1 == 32000
+                                || tok1 == 32007))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok1));
                         let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 3264);
                         let r1_ptr = weight_bytes.as_ptr().add((tok1 as usize) * 3264);
-                        let (val0, val1) = quants::vec_dot_q8_0_96blocks_2rows_avx2(r0_ptr, r1_ptr, &x_qs_blue, &x_d_blue);
+                        let (val0, val1) = quants::vec_dot_q8_0_96blocks_2rows_avx2(
+                            r0_ptr, r1_ptr, &x_qs_blue, &x_d_blue,
+                        );
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok0).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -845,11 +1082,15 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok1).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok1).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -860,16 +1101,28 @@ impl GemvTask {
                     }
                     if tok_id < end_id {
                         let tok0 = tok_id;
-                        if !((suppress_eos && (tok0 == 0 || tok0 == 1 || tok0 == 2 || tok0 == 32000 || tok0 == 32007)) || (!suppressed.is_empty() && suppressed.contains(&tok0))) {
+                        if !((suppress_eos
+                            && (tok0 == 0
+                                || tok0 == 1
+                                || tok0 == 2
+                                || tok0 == 32000
+                                || tok0 == 32007))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0)))
+                        {
                             let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 3264);
-                            let val0 = quants::vec_dot_q8_0_96blocks_avx2(r0_ptr, &x_qs_blue, &x_d_blue);
+                            let val0 =
+                                quants::vec_dot_q8_0_96blocks_avx2(r0_ptr, &x_qs_blue, &x_d_blue);
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                                let repeat_count =
+                                    recent_slice.iter().filter(|&&id| id == tok0).count();
                                 if repeat_count > 0 {
                                     score -= (repeat_count as f32) * 2.5;
-                                    if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                    else { score *= pen.powi(repeat_count as i32); }
+                                    if score > 0.0 {
+                                        score /= pen.powi(repeat_count as i32);
+                                    } else {
+                                        score *= pen.powi(repeat_count as i32);
+                                    }
                                 }
                                 if score > best_score {
                                     best_score = score;
@@ -880,15 +1133,21 @@ impl GemvTask {
                     }
                 } else if is_skate {
                     for tok_id in (worker_start as u32)..(worker_end as u32) {
-                        if (suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2)) || (!suppressed.is_empty() && suppressed.contains(&tok_id)) || tok_id == 3725 || tok_id == 47182 {
+                        if (suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok_id))
+                            || tok_id == 3725
+                            || tok_id == 47182
+                        {
                             continue;
                         }
                         let row_offset = (tok_id as usize) * 612;
                         let row_ptr = weight_bytes.as_ptr().add(row_offset);
-                        let val = quants::vec_dot_q8_0_18blocks_avx2(row_ptr, &x_qs_skate, &x_d_skate);
+                        let val =
+                            quants::vec_dot_q8_0_18blocks_avx2(row_ptr, &x_qs_skate, &x_d_skate);
                         if val > best_score {
                             let mut score = val;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok_id).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok_id).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
                                 if score > 0.0 {
@@ -905,7 +1164,14 @@ impl GemvTask {
                     }
                 } else {
                     for tok_id in (worker_start as u32)..(worker_end as u32) {
-                        if (suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2 || tok_id == 151645 || tok_id == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok_id)) {
+                        if (suppress_eos
+                            && (tok_id == 0
+                                || tok_id == 1
+                                || tok_id == 2
+                                || tok_id == 151645
+                                || tok_id == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok_id))
+                        {
                             continue;
                         }
                         let row_offset = (tok_id as usize) * bytes_per_token;
@@ -914,7 +1180,8 @@ impl GemvTask {
                         let val = quants::vec_dot_q8_0_q8_0_avx2(row_slice, x_blocks);
                         if val > best_score {
                             let mut score = val;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok_id).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok_id).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
                                 if score > 0.0 {
@@ -932,7 +1199,8 @@ impl GemvTask {
                 }
 
                 let top_toks = std::slice::from_raw_parts_mut(top_tok_ptr as *mut u32, num_workers);
-                let top_scores = std::slice::from_raw_parts_mut(top_score_ptr as *mut f32, num_workers);
+                let top_scores =
+                    std::slice::from_raw_parts_mut(top_score_ptr as *mut f32, num_workers);
                 top_toks[worker_id] = best_tok;
                 top_scores[worker_id] = best_score;
             }
@@ -958,8 +1226,12 @@ impl GemvTask {
                     return;
                 }
                 let num_blocks = bytes_per_token / 18;
-                let weight_bytes = std::slice::from_raw_parts(weight_ptr as *const u8, (start_tok + vocab_count) * bytes_per_token);
-                let x_blocks = std::slice::from_raw_parts(x_blocks_ptr as *const BlockQ8_0, num_blocks);
+                let weight_bytes = std::slice::from_raw_parts(
+                    weight_ptr as *const u8,
+                    (start_tok + vocab_count) * bytes_per_token,
+                );
+                let x_blocks =
+                    std::slice::from_raw_parts(x_blocks_ptr as *const BlockQ8_0, num_blocks);
                 let history = std::slice::from_raw_parts(history_ptr as *const u32, history_len);
                 let suppressed = if suppressed_len > 0 {
                     std::slice::from_raw_parts(suppressed_ptr as *const u32, suppressed_len)
@@ -980,19 +1252,27 @@ impl GemvTask {
 
                 if is_manta {
                     for i in 0..28 {
-                        x_qs_manta[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_qs_manta[i] = core::arch::x86_64::_mm256_loadu_si256(
+                            x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i,
+                        );
                         x_d_manta[i] = x_blocks[i].d;
                     }
                 } else if is_beluga {
                     for i in 0..48 {
-                        x_qs_beluga[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_qs_beluga[i] = core::arch::x86_64::_mm256_loadu_si256(
+                            x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i,
+                        );
                         x_d_beluga[i] = x_blocks[i].d;
                     }
                 } else if is_blue {
                     for i in 0..48 {
-                        x_qs_beluga[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_qs_beluga[i] = core::arch::x86_64::_mm256_loadu_si256(
+                            x_blocks[i].qs.as_ptr() as *const core::arch::x86_64::__m256i,
+                        );
                         x_d_beluga[i] = x_blocks[i].d;
-                        x_qs_blue_hi[i] = core::arch::x86_64::_mm256_loadu_si256(x_blocks[i + 48].qs.as_ptr() as *const core::arch::x86_64::__m256i);
+                        x_qs_blue_hi[i] = core::arch::x86_64::_mm256_loadu_si256(
+                            x_blocks[i + 48].qs.as_ptr() as *const core::arch::x86_64::__m256i,
+                        );
                         x_d_blue_hi[i] = x_blocks[i + 48].d;
                     }
                 }
@@ -1005,7 +1285,11 @@ impl GemvTask {
 
                 let mut best_tok = worker_start as u32;
                 let mut best_score = f32::NEG_INFINITY;
-                let pen = if repeat_penalty > 1.0 { repeat_penalty } else { 1.25 };
+                let pen = if repeat_penalty > 1.0 {
+                    repeat_penalty
+                } else {
+                    1.25
+                };
 
                 if is_manta {
                     let mut tok_id = worker_start as u32;
@@ -1013,19 +1297,30 @@ impl GemvTask {
                     while tok_id + 1 < end_id {
                         let tok0 = tok_id;
                         let tok1 = tok_id + 1;
-                        let skip0 = (suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0));
-                        let skip1 = (suppress_eos && (tok1 == 151645 || tok1 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok1));
+                        let skip0 = (suppress_eos && (tok0 == 151645 || tok0 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0));
+                        let skip1 = (suppress_eos && (tok1 == 151645 || tok1 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok1));
                         let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 504);
                         let r1_ptr = weight_bytes.as_ptr().add((tok1 as usize) * 504);
-                        let (val0, val1) = quants::vec_dot_iq4_nl_28blocks_2rows_avx2(r0_ptr, r1_ptr, &x_qs_manta, &x_d_manta);
+                        let (val0, val1) = quants::vec_dot_iq4_nl_28blocks_2rows_avx2(
+                            r0_ptr,
+                            r1_ptr,
+                            &x_qs_manta,
+                            &x_d_manta,
+                        );
 
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok0).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -1034,11 +1329,15 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok1).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok1).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -1049,16 +1348,26 @@ impl GemvTask {
                     }
                     if tok_id < end_id {
                         let tok0 = tok_id;
-                        if !((suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0))) {
+                        if !((suppress_eos && (tok0 == 151645 || tok0 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0)))
+                        {
                             let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 504);
-                            let val0 = quants::vec_dot_iq4_nl_28blocks_avx2(r0_ptr, &x_qs_manta, &x_d_manta);
+                            let val0 = quants::vec_dot_iq4_nl_28blocks_avx2(
+                                r0_ptr,
+                                &x_qs_manta,
+                                &x_d_manta,
+                            );
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                                let repeat_count =
+                                    recent_slice.iter().filter(|&&id| id == tok0).count();
                                 if repeat_count > 0 {
                                     score -= (repeat_count as f32) * 2.5;
-                                    if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                    else { score *= pen.powi(repeat_count as i32); }
+                                    if score > 0.0 {
+                                        score /= pen.powi(repeat_count as i32);
+                                    } else {
+                                        score *= pen.powi(repeat_count as i32);
+                                    }
                                 }
                                 if score > best_score {
                                     best_score = score;
@@ -1073,19 +1382,30 @@ impl GemvTask {
                     while tok_id + 1 < end_id {
                         let tok0 = tok_id;
                         let tok1 = tok_id + 1;
-                        let skip0 = (suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0));
-                        let skip1 = (suppress_eos && (tok1 == 151645 || tok1 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok1));
+                        let skip0 = (suppress_eos && (tok0 == 151645 || tok0 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0));
+                        let skip1 = (suppress_eos && (tok1 == 151645 || tok1 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok1));
                         let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 864);
                         let r1_ptr = weight_bytes.as_ptr().add((tok1 as usize) * 864);
-                        let (val0, val1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(r0_ptr, r1_ptr, &x_qs_beluga, &x_d_beluga);
+                        let (val0, val1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(
+                            r0_ptr,
+                            r1_ptr,
+                            &x_qs_beluga,
+                            &x_d_beluga,
+                        );
 
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok0).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -1094,11 +1414,15 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok1).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok1).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -1109,16 +1433,26 @@ impl GemvTask {
                     }
                     if tok_id < end_id {
                         let tok0 = tok_id;
-                        if !((suppress_eos && (tok0 == 151645 || tok0 == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok0))) {
+                        if !((suppress_eos && (tok0 == 151645 || tok0 == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0)))
+                        {
                             let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 864);
-                            let val0 = quants::vec_dot_iq4_nl_48blocks_avx2(r0_ptr, &x_qs_beluga, &x_d_beluga);
+                            let val0 = quants::vec_dot_iq4_nl_48blocks_avx2(
+                                r0_ptr,
+                                &x_qs_beluga,
+                                &x_d_beluga,
+                            );
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                                let repeat_count =
+                                    recent_slice.iter().filter(|&&id| id == tok0).count();
                                 if repeat_count > 0 {
                                     score -= (repeat_count as f32) * 2.5;
-                                    if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                    else { score *= pen.powi(repeat_count as i32); }
+                                    if score > 0.0 {
+                                        score /= pen.powi(repeat_count as i32);
+                                    } else {
+                                        score *= pen.powi(repeat_count as i32);
+                                    }
                                 }
                                 if score > best_score {
                                     best_score = score;
@@ -1133,24 +1467,50 @@ impl GemvTask {
                     while tok_id + 1 < end_id {
                         let tok0 = tok_id;
                         let tok1 = tok_id + 1;
-                        let skip0 = (suppress_eos && (tok0 == 0 || tok0 == 1 || tok0 == 2 || tok0 == 32000 || tok0 == 32007)) || (!suppressed.is_empty() && suppressed.contains(&tok0));
-                        let skip1 = (suppress_eos && (tok1 == 0 || tok1 == 1 || tok1 == 2 || tok1 == 32000 || tok1 == 32007)) || (!suppressed.is_empty() && suppressed.contains(&tok1));
+                        let skip0 = (suppress_eos
+                            && (tok0 == 0
+                                || tok0 == 1
+                                || tok0 == 2
+                                || tok0 == 32000
+                                || tok0 == 32007))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0));
+                        let skip1 = (suppress_eos
+                            && (tok1 == 0
+                                || tok1 == 1
+                                || tok1 == 2
+                                || tok1 == 32000
+                                || tok1 == 32007))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok1));
                         let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 1728);
                         let r1_ptr = weight_bytes.as_ptr().add((tok1 as usize) * 1728);
-                        let (lo0, lo1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(r0_ptr, r1_ptr, &x_qs_beluga, &x_d_beluga);
-                        let (hi0, hi1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(r0_ptr.add(864), r1_ptr.add(864), &x_qs_blue_hi, &x_d_blue_hi);
+                        let (lo0, lo1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(
+                            r0_ptr,
+                            r1_ptr,
+                            &x_qs_beluga,
+                            &x_d_beluga,
+                        );
+                        let (hi0, hi1) = quants::vec_dot_iq4_nl_48blocks_2rows_avx2(
+                            r0_ptr.add(864),
+                            r1_ptr.add(864),
+                            &x_qs_blue_hi,
+                            &x_d_blue_hi,
+                        );
                         let val0 = lo0 + hi0;
                         let val1 = lo1 + hi1;
 
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok0).count();
                             if repeat_count > 0 {
                                 if repeat_count >= 2 {
                                     score -= ((repeat_count - 1) as f32) * 1.5;
                                 }
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -1159,13 +1519,17 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok1).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok1).count();
                             if repeat_count > 0 {
                                 if repeat_count >= 2 {
                                     score -= ((repeat_count - 1) as f32) * 1.5;
                                 }
-                                if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                else { score *= pen.powi(repeat_count as i32); }
+                                if score > 0.0 {
+                                    score /= pen.powi(repeat_count as i32);
+                                } else {
+                                    score *= pen.powi(repeat_count as i32);
+                                }
                             }
                             if score > best_score {
                                 best_score = score;
@@ -1176,19 +1540,37 @@ impl GemvTask {
                     }
                     if tok_id < end_id {
                         let tok0 = tok_id;
-                        if !((suppress_eos && (tok0 == 0 || tok0 == 1 || tok0 == 2 || tok0 == 32000 || tok0 == 32007)) || (!suppressed.is_empty() && suppressed.contains(&tok0))) {
+                        if !((suppress_eos
+                            && (tok0 == 0
+                                || tok0 == 1
+                                || tok0 == 2
+                                || tok0 == 32000
+                                || tok0 == 32007))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok0)))
+                        {
                             let r0_ptr = weight_bytes.as_ptr().add((tok0 as usize) * 1728);
-                            let val0 = quants::vec_dot_iq4_nl_48blocks_avx2(r0_ptr, &x_qs_beluga, &x_d_beluga)
-                                + quants::vec_dot_iq4_nl_48blocks_avx2(r0_ptr.add(864), &x_qs_blue_hi, &x_d_blue_hi);
+                            let val0 = quants::vec_dot_iq4_nl_48blocks_avx2(
+                                r0_ptr,
+                                &x_qs_beluga,
+                                &x_d_beluga,
+                            ) + quants::vec_dot_iq4_nl_48blocks_avx2(
+                                r0_ptr.add(864),
+                                &x_qs_blue_hi,
+                                &x_d_blue_hi,
+                            );
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count = recent_slice.iter().filter(|&&id| id == tok0).count();
+                                let repeat_count =
+                                    recent_slice.iter().filter(|&&id| id == tok0).count();
                                 if repeat_count > 0 {
                                     if repeat_count >= 2 {
                                         score -= ((repeat_count - 1) as f32) * 1.5;
                                     }
-                                    if score > 0.0 { score /= pen.powi(repeat_count as i32); }
-                                    else { score *= pen.powi(repeat_count as i32); }
+                                    if score > 0.0 {
+                                        score /= pen.powi(repeat_count as i32);
+                                    } else {
+                                        score *= pen.powi(repeat_count as i32);
+                                    }
                                 }
                                 if score > best_score {
                                     best_score = score;
@@ -1199,7 +1581,14 @@ impl GemvTask {
                     }
                 } else {
                     for tok_id in (worker_start as u32)..(worker_end as u32) {
-                        if (suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2 || tok_id == 151645 || tok_id == 151643)) || (!suppressed.is_empty() && suppressed.contains(&tok_id)) {
+                        if (suppress_eos
+                            && (tok_id == 0
+                                || tok_id == 1
+                                || tok_id == 2
+                                || tok_id == 151645
+                                || tok_id == 151643))
+                            || (!suppressed.is_empty() && suppressed.contains(&tok_id))
+                        {
                             continue;
                         }
                         let row_offset = (tok_id as usize) * bytes_per_token;
@@ -1208,7 +1597,8 @@ impl GemvTask {
                         let val = quants::vec_dot_iq4_nl_q8_0_avx2(row_slice, x_blocks);
                         if val > best_score {
                             let mut score = val;
-                            let repeat_count = recent_slice.iter().filter(|&&id| id == tok_id).count();
+                            let repeat_count =
+                                recent_slice.iter().filter(|&&id| id == tok_id).count();
                             if repeat_count > 0 {
                                 score -= (repeat_count as f32) * 2.5;
                                 if score > 0.0 {
@@ -1226,7 +1616,8 @@ impl GemvTask {
                 }
 
                 let top_toks = std::slice::from_raw_parts_mut(top_tok_ptr as *mut u32, num_workers);
-                let top_scores = std::slice::from_raw_parts_mut(top_score_ptr as *mut f32, num_workers);
+                let top_scores =
+                    std::slice::from_raw_parts_mut(top_score_ptr as *mut f32, num_workers);
                 top_toks[worker_id] = best_tok;
                 top_scores[worker_id] = best_score;
             }
@@ -1252,7 +1643,9 @@ impl GemvTask {
                     let r = start_r + j;
                     let w1_row_ptr = (w1_ptr as *const u8).add(r * row_bytes);
                     let w3_row_ptr = (w3_ptr as *const u8).add(r * row_bytes);
-                    let (w1_val, w3_val) = quants::vec_dot_iq3_xxs_q8_k_2rows_avx2_ptr(w1_row_ptr, w3_row_ptr, x_q8_k, nb);
+                    let (w1_val, w3_val) = quants::vec_dot_iq3_xxs_q8_k_2rows_avx2_ptr(
+                        w1_row_ptr, w3_row_ptr, x_q8_k, nb,
+                    );
                     *inter_base.add(j) = quants::fast_silu(w1_val) * w3_val;
                 }
             }
@@ -1282,9 +1675,10 @@ impl GemvTask {
                     let r = start_r + j;
                     let w1_row_ptr = (w1_ptr as *const u8).add(r * row_bytes);
                     let w3_row_ptr = (w3_ptr as *const u8).add(r * row_bytes);
-                    let (w1_0, w1_1, w3_0, w3_1) = quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
-                        w1_row_ptr, w3_row_ptr, x0_q8_k, x1_q8_k, nb,
-                    );
+                    let (w1_0, w1_1, w3_0, w3_1) =
+                        quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
+                            w1_row_ptr, w3_row_ptr, x0_q8_k, x1_q8_k, nb,
+                        );
                     *inter0_base.add(j) = quants::fast_silu(w1_0) * w3_0;
                     *inter1_base.add(j) = quants::fast_silu(w1_1) * w3_1;
                 }
@@ -1319,23 +1713,40 @@ impl GemvTask {
                     let r = start_r + j;
                     let w1_row_ptr = (w1_ptr as *const u8).add(r * row_bytes);
                     let w3_row_ptr = (w3_ptr as *const u8).add(r * row_bytes);
-                    let (w1_0, w1_1, w1_2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w1_row_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
-                    let (w3_0, w3_1, w3_2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w3_row_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
+                    let (w1_0, w1_1, w1_2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(
+                        w1_row_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb,
+                    );
+                    let (w3_0, w3_1, w3_2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(
+                        w3_row_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb,
+                    );
                     *inter0_base.add(j) = quants::fast_silu(w1_0) * w3_0;
                     *inter1_base.add(j) = quants::fast_silu(w1_1) * w3_1;
                     *inter2_base.add(j) = quants::fast_silu(w1_2) * w3_2;
                 }
             }
-            GemvTask::Iq3Xxs { out_ptr, weight_ptr, x_q8_k_ptr, n_rows, n_cols } => {
+            GemvTask::Iq3Xxs {
+                out_ptr,
+                weight_ptr,
+                x_q8_k_ptr,
+                n_rows,
+                n_cols,
+            } => {
                 let (start_r, end_r) = worker_bounds(n_rows, worker_id, num_workers);
                 let rows = end_r - start_r;
                 if rows == 0 {
                     return;
                 }
                 let row_bytes = (n_cols / 256) * 98;
-                let out_slice = std::slice::from_raw_parts_mut((out_ptr as *mut f32).add(start_r), rows);
-                let weight_slice = std::slice::from_raw_parts((weight_ptr as *const u8).add(start_r * row_bytes), rows * row_bytes);
-                let x_q8_k = std::slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8_K, (n_cols + 255) / 256);
+                let out_slice =
+                    std::slice::from_raw_parts_mut((out_ptr as *mut f32).add(start_r), rows);
+                let weight_slice = std::slice::from_raw_parts(
+                    (weight_ptr as *const u8).add(start_r * row_bytes),
+                    rows * row_bytes,
+                );
+                let x_q8_k = std::slice::from_raw_parts(
+                    x_q8_k_ptr as *const BlockQ8_K,
+                    (n_cols + 255) / 256,
+                );
                 quants::gemv_iq3_xxs_prequant(out_slice, weight_slice, x_q8_k, rows, n_cols);
             }
             GemvTask::Iq3Xxs2Tokens {
@@ -1364,9 +1775,10 @@ impl GemvTask {
                     let r = start_r + j;
                     let w0_ptr = (weight_ptr as *const u8).add(r * row_bytes);
                     let w1_ptr = w0_ptr.add(row_bytes);
-                    let (r0_t0, r0_t1, r1_t0, r1_t1) = quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
-                        w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb,
-                    );
+                    let (r0_t0, r0_t1, r1_t0, r1_t1) =
+                        quants::vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
+                            w0_ptr, w1_ptr, x0_q8_k, x1_q8_k, nb,
+                        );
                     *out0_base.add(j) = r0_t0;
                     *out1_base.add(j) = r0_t1;
                     *out0_base.add(j + 1) = r1_t0;
@@ -1376,7 +1788,9 @@ impl GemvTask {
                 while j < rows {
                     let r = start_r + j;
                     let w_row_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                    let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w_row_ptr, x0_q8_k, x1_q8_k, nb);
+                    let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(
+                        w_row_ptr, x0_q8_k, x1_q8_k, nb,
+                    );
                     *out0_base.add(j) = v0;
                     *out1_base.add(j) = v1;
                     j += 1;
@@ -1410,21 +1824,33 @@ impl GemvTask {
                 for j in 0..rows {
                     let r = start_r + j;
                     let w_row_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                    let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w_row_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb);
+                    let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(
+                        w_row_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb,
+                    );
                     *out0_base.add(j) = v0;
                     *out1_base.add(j) = v1;
                     *out2_base.add(j) = v2;
                 }
             }
-            GemvTask::Q8_0 { out_ptr, weight_ptr, x_norm_ptr, n_rows, n_cols } => {
+            GemvTask::Q8_0 {
+                out_ptr,
+                weight_ptr,
+                x_norm_ptr,
+                n_rows,
+                n_cols,
+            } => {
                 let (start_r, end_r) = worker_bounds(n_rows, worker_id, num_workers);
                 let rows = end_r - start_r;
                 if rows == 0 {
                     return;
                 }
                 let row_bytes = (n_cols / 32) * 34;
-                let out_slice = std::slice::from_raw_parts_mut((out_ptr as *mut f32).add(start_r), rows);
-                let weight_slice = std::slice::from_raw_parts((weight_ptr as *const u8).add(start_r * row_bytes), rows * row_bytes);
+                let out_slice =
+                    std::slice::from_raw_parts_mut((out_ptr as *mut f32).add(start_r), rows);
+                let weight_slice = std::slice::from_raw_parts(
+                    (weight_ptr as *const u8).add(start_r * row_bytes),
+                    rows * row_bytes,
+                );
                 let x_norm = std::slice::from_raw_parts(x_norm_ptr as *const f32, n_cols);
                 quants::gemv_q8_0(out_slice, weight_slice, x_norm, rows, n_cols);
             }
@@ -1443,8 +1869,14 @@ impl GemvTask {
                     return;
                 }
                 let q = std::slice::from_raw_parts(q_ptr as *const f32, n_head * head_dim);
-                let k_cache = std::slice::from_raw_parts(k_cache_ptr as *const f32, seq_len * n_kv_head * head_dim);
-                let v_cache = std::slice::from_raw_parts(v_cache_ptr as *const f32, seq_len * n_kv_head * head_dim);
+                let k_cache = std::slice::from_raw_parts(
+                    k_cache_ptr as *const f32,
+                    seq_len * n_kv_head * head_dim,
+                );
+                let v_cache = std::slice::from_raw_parts(
+                    v_cache_ptr as *const f32,
+                    seq_len * n_kv_head * head_dim,
+                );
                 let out = std::slice::from_raw_parts_mut(out_ptr as *mut f32, n_head * head_dim);
 
                 let mut scores = [0.0f32; 8192];
@@ -1474,7 +1906,10 @@ impl GemvTask {
                         // Lookahead prefetch for k_cache
                         if t + 4 < seq_len {
                             let k_next = (t + 4) * kv_stride + kv_h * head_dim;
-                            core::arch::x86_64::_mm_prefetch(k_cache.as_ptr().add(k_next) as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                            core::arch::x86_64::_mm_prefetch(
+                                k_cache.as_ptr().add(k_next) as *const i8,
+                                core::arch::x86_64::_MM_HINT_T0,
+                            );
                         }
 
                         let mut dot_vec = core::arch::x86_64::_mm256_setzero_ps();
@@ -1484,9 +1919,18 @@ impl GemvTask {
                         }
 
                         let mut res = core::arch::x86_64::_mm256_extractf128_ps(dot_vec, 1);
-                        res = core::arch::x86_64::_mm_add_ps(res, core::arch::x86_64::_mm256_castps256_ps128(dot_vec));
-                        res = core::arch::x86_64::_mm_add_ps(res, core::arch::x86_64::_mm_movehl_ps(res, res));
-                        res = core::arch::x86_64::_mm_add_ss(res, core::arch::x86_64::_mm_movehdup_ps(res));
+                        res = core::arch::x86_64::_mm_add_ps(
+                            res,
+                            core::arch::x86_64::_mm256_castps256_ps128(dot_vec),
+                        );
+                        res = core::arch::x86_64::_mm_add_ps(
+                            res,
+                            core::arch::x86_64::_mm_movehl_ps(res, res),
+                        );
+                        res = core::arch::x86_64::_mm_add_ss(
+                            res,
+                            core::arch::x86_64::_mm_movehdup_ps(res),
+                        );
                         let mut dot = core::arch::x86_64::_mm_cvtss_f32(res);
 
                         for d in (head_dim_vec * 8)..head_dim {
@@ -1521,7 +1965,10 @@ impl GemvTask {
                         // Lookahead prefetch for v_cache
                         if t + 4 < seq_len {
                             let v_next = (t + 4) * kv_stride + kv_h * head_dim;
-                            core::arch::x86_64::_mm_prefetch(v_cache.as_ptr().add(v_next) as *const i8, core::arch::x86_64::_MM_HINT_T0);
+                            core::arch::x86_64::_mm_prefetch(
+                                v_cache.as_ptr().add(v_next) as *const i8,
+                                core::arch::x86_64::_MM_HINT_T0,
+                            );
                         }
 
                         let s = scores_slice[t];
@@ -1622,7 +2069,10 @@ impl SpinThreadPool {
                             let guard = shared_c.mutex.lock().unwrap();
                             let _guard = shared_c
                                 .condvar
-                                .wait_while(guard, |_| !shared_c.spinning.load(Ordering::Acquire) && shared_c.running.load(Ordering::Relaxed))
+                                .wait_while(guard, |_| {
+                                    !shared_c.spinning.load(Ordering::Acquire)
+                                        && shared_c.running.load(Ordering::Relaxed)
+                                })
                                 .unwrap();
                         }
                     }

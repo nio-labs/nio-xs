@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use tokenizers::Tokenizer;
 
 fn collect_files(dir: &Path, files: &mut Vec<PathBuf>, depth: usize) {
-    if depth > 4 { return; }
+    if depth > 4 {
+        return;
+    }
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let p = entry.path();
@@ -15,7 +17,9 @@ fn collect_files(dir: &Path, files: &mut Vec<PathBuf>, depth: usize) {
             if p.is_dir() {
                 collect_files(&p, files, depth + 1);
             } else if let Some(ext) = p.extension() {
-                if (ext == "md" || ext == "rs" || ext == "py") && entry.metadata().map(|m| m.len() < 500_000).unwrap_or(false) {
+                if (ext == "md" || ext == "rs" || ext == "py")
+                    && entry.metadata().map(|m| m.len() < 500_000).unwrap_or(false)
+                {
                     files.push(p);
                 }
             }
@@ -32,7 +36,9 @@ fn main() -> Result<()> {
     let mut total_tokens = 0usize;
 
     // 1. Mine Blue's exact training dataset (weighted 5x so Blue's native phrasing dominates)
-    if let Ok(gold) = std::fs::read_to_string("/home/mn/nio-labs/nio-ideas/dataset/nio_blue_gold_dataset.jsonl") {
+    if let Ok(gold) =
+        std::fs::read_to_string("/home/mn/nio-labs/nio-ideas/dataset/nio_blue_gold_dataset.jsonl")
+    {
         for line in gold.lines() {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
                 let prompt = val.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
@@ -45,7 +51,11 @@ fn main() -> Result<()> {
                             *bigrams.entry(w[0]).or_default().entry(w[1]).or_default() += weight;
                         }
                         for w in ids.windows(3) {
-                            *trigrams.entry((w[0], w[1])).or_default().entry(w[2]).or_default() += weight;
+                            *trigrams
+                                .entry((w[0], w[1]))
+                                .or_default()
+                                .entry(w[2])
+                                .or_default() += weight;
                         }
                     }
                 }
@@ -66,7 +76,11 @@ fn main() -> Result<()> {
                     *bigrams.entry(w[0]).or_default().entry(w[1]).or_default() += 1;
                 }
                 for w in ids.windows(3) {
-                    *trigrams.entry((w[0], w[1])).or_default().entry(w[2]).or_default() += 1;
+                    *trigrams
+                        .entry((w[0], w[1]))
+                        .or_default()
+                        .entry(w[2])
+                        .or_default() += 1;
                 }
             }
         }
@@ -118,10 +132,16 @@ fn main() -> Result<()> {
     println!("Blue trigrams saved: {}", out_trigrams.len());
 
     let bi_bytes = serde_json::to_vec(&out_bigrams)?;
-    std::fs::write("/home/mn/nio-labs/nio-xs/crates/engine/src/blue_subwords.json", &bi_bytes)?;
+    std::fs::write(
+        "/home/mn/nio-labs/nio-xs/crates/engine/src/blue_subwords.json",
+        &bi_bytes,
+    )?;
 
     let tri_bytes = serde_json::to_vec(&out_trigrams)?;
-    std::fs::write("/home/mn/nio-labs/nio-xs/crates/engine/src/blue_trigrams.json", &tri_bytes)?;
+    std::fs::write(
+        "/home/mn/nio-labs/nio-xs/crates/engine/src/blue_trigrams.json",
+        &tri_bytes,
+    )?;
     println!(
         "Wrote blue_subwords.json ({:.1} KB) and blue_trigrams.json ({:.1} KB)",
         bi_bytes.len() as f64 / 1024.0,

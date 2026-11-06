@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use tokenizers::Tokenizer;
@@ -14,7 +14,9 @@ fn main() -> Result<()> {
     engine.set_rolling_window(4);
 
     let prompt = "Explain Raft.";
-    let encoded = tokenizer.encode(prompt, false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(prompt, false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -33,12 +35,22 @@ fn main() -> Result<()> {
 
     println!("Base Top 5 from prompt last token:");
     for (tok, s) in &b_idx[..5] {
-        println!("  tok {} ({:?}): {:.4}", tok, tokenizer.decode(&[*tok as u32], false), s);
+        println!(
+            "  tok {} ({:?}): {:.4}",
+            tok,
+            tokenizer.decode(&[*tok as u32], false),
+            s
+        );
     }
 
     println!("\nMedusa Top 5 from prompt last token:");
     for (tok, s) in &m_idx[..5] {
-        println!("  tok {} ({:?}): {:.4}", tok, tokenizer.decode(&[*tok as u32], false), s);
+        println!(
+            "  tok {} ({:?}): {:.4}",
+            tok,
+            tokenizer.decode(&[*tok as u32], false),
+            s
+        );
     }
 
     Ok(())

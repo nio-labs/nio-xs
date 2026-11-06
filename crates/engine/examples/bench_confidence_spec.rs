@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -36,18 +36,38 @@ impl GatedDrafter {
         if let Ok(enc) = tokenizer.encode(text, false) {
             let ids = enc.get_ids();
             for window in ids.windows(2) {
-                *self.bigram_counts.entry(window[0]).or_default().entry(window[1]).or_default() += 3;
+                *self
+                    .bigram_counts
+                    .entry(window[0])
+                    .or_default()
+                    .entry(window[1])
+                    .or_default() += 3;
             }
             for window in ids.windows(3) {
-                *self.trigram_counts.entry((window[0], window[1])).or_default().entry(window[2]).or_default() += 5;
+                *self
+                    .trigram_counts
+                    .entry((window[0], window[1]))
+                    .or_default()
+                    .entry(window[2])
+                    .or_default() += 5;
             }
         }
     }
 
     fn observe(&mut self, prev: Option<u32>, curr: u32, next: u32) {
-        *self.bigram_counts.entry(curr).or_default().entry(next).or_default() += 1;
+        *self
+            .bigram_counts
+            .entry(curr)
+            .or_default()
+            .entry(next)
+            .or_default() += 1;
         if let Some(p) = prev {
-            *self.trigram_counts.entry((p, curr)).or_default().entry(next).or_default() += 2;
+            *self
+                .trigram_counts
+                .entry((p, curr))
+                .or_default()
+                .entry(next)
+                .or_default() += 2;
         }
     }
 
@@ -90,7 +110,9 @@ fn main() -> Result<()> {
         "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(formatted.as_str(), false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -109,7 +131,11 @@ fn main() -> Result<()> {
 
     let t_start = Instant::now();
     for step in 0..50 {
-        let prev = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+        let prev = if gen_tokens.len() >= 2 {
+            Some(gen_tokens[gen_tokens.len() - 2])
+        } else {
+            None
+        };
         let draft_opt = drafter.predict_gated(prev, current_confirmed);
 
         if let Some(draft_tok) = draft_opt.filter(|&d| d != eos_id && d != 0) {
@@ -141,7 +167,11 @@ fn main() -> Result<()> {
             );
 
             for &tok in &outcome.accepted_tokens {
-                let p = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                let p = if gen_tokens.len() >= 2 {
+                    Some(gen_tokens[gen_tokens.len() - 2])
+                } else {
+                    None
+                };
                 if let Some(&last) = gen_tokens.last() {
                     drafter.observe(p, last, tok);
                 }
@@ -169,7 +199,11 @@ fn main() -> Result<()> {
                 break;
             }
 
-            let p = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+            let p = if gen_tokens.len() >= 2 {
+                Some(gen_tokens[gen_tokens.len() - 2])
+            } else {
+                None
+            };
             drafter.observe(p, current_confirmed, next_tok);
 
             gen_tokens.push(next_tok);
@@ -201,7 +235,12 @@ fn main() -> Result<()> {
     println!("Tokens:      {}", gen_tokens.len());
     println!("Words:       {}", words);
     println!("Total time:  {:.3} s", elapsed.as_secs_f64());
-    println!("Spec:        {} / {} ({:.1}%)", spec_matches, spec_matches + spec_misses, spec_matches as f64 / (spec_matches + spec_misses).max(1) as f64 * 100.0);
+    println!(
+        "Spec:        {} / {} ({:.1}%)",
+        spec_matches,
+        spec_matches + spec_misses,
+        spec_matches as f64 / (spec_matches + spec_misses).max(1) as f64 * 100.0
+    );
     println!("AR steps:    {}", ar_steps);
     println!("Token rate:  {:.2} tok/s", tok_rate);
     println!("Word rate:   {:.2} words/sec", word_rate);

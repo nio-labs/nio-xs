@@ -278,7 +278,9 @@ async fn microlm_chat_handler(
     };
 
     let tools_xml = if !request.tools.is_empty() {
-        let mut t_str = String::from("\n\n# Tools\n\nYou may call one or more functions to inspect the project or perform tasks.\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n");
+        let mut t_str = String::from(
+            "\n\n# Tools\n\nYou may call one or more functions to inspect the project or perform tasks.\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n",
+        );
         for t in &request.tools {
             if let Ok(serialized) = serde_json::to_string(t) {
                 t_str.push_str(&serialized);
@@ -307,7 +309,9 @@ async fn microlm_chat_handler(
         if client_system.is_empty() {
             format!("{system_prompt}{tools_xml}")
         } else {
-            format!("{system_prompt}\n\n# Context & Project Instructions\n{client_system}{tools_xml}")
+            format!(
+                "{system_prompt}\n\n# Context & Project Instructions\n{client_system}{tools_xml}"
+            )
         }
     } else if client_system.is_empty() {
         format!("{system_prompt}{tools_xml}")
@@ -323,19 +327,27 @@ async fn microlm_chat_handler(
         let role = &msg.role;
         if role == "tool" {
             let content = msg.content.as_str().unwrap_or("");
-            prompt.push_str(&format!("<|im_start|>user\n<tool_response>\n{content}\n</tool_response><|im_end|>\n"));
+            prompt.push_str(&format!(
+                "<|im_start|>user\n<tool_response>\n{content}\n</tool_response><|im_end|>\n"
+            ));
         } else if role == "assistant" && !msg.tool_calls.is_empty() {
             let mut tool_calls_xml = String::new();
             for call in &msg.tool_calls {
                 let name = &call.function.name;
                 let args = &call.function.arguments;
-                tool_calls_xml.push_str(&format!("<tool_call>\n{{\"name\": \"{name}\", \"arguments\": {args}}}\n</tool_call>\n"));
+                tool_calls_xml.push_str(&format!(
+                    "<tool_call>\n{{\"name\": \"{name}\", \"arguments\": {args}}}\n</tool_call>\n"
+                ));
             }
             let content = msg.content.as_str().unwrap_or("");
             if content.is_empty() {
-                prompt.push_str(&format!("<|im_start|>assistant\n{tool_calls_xml}<|im_end|>\n"));
+                prompt.push_str(&format!(
+                    "<|im_start|>assistant\n{tool_calls_xml}<|im_end|>\n"
+                ));
             } else {
-                prompt.push_str(&format!("<|im_start|>assistant\n{content}\n{tool_calls_xml}<|im_end|>\n"));
+                prompt.push_str(&format!(
+                    "<|im_start|>assistant\n{content}\n{tool_calls_xml}<|im_end|>\n"
+                ));
             }
         } else {
             let content = msg.content.as_str().unwrap_or("");
@@ -381,7 +393,8 @@ async fn microlm_chat_handler(
                         .into_iter()
                         .enumerate()
                         .map(|(i, c)| {
-                            let args_val = serde_json::from_str::<Value>(&c.arguments).unwrap_or(json!({}));
+                            let args_val =
+                                serde_json::from_str::<Value>(&c.arguments).unwrap_or(json!({}));
                             json!({
                                 "index": i,
                                 "id": c.id,
@@ -431,7 +444,10 @@ async fn microlm_chat_handler(
             ),
         }
     } else {
-        match engine.generate_stream(prompt, max_gen_tokens, temp, top_p).await {
+        match engine
+            .generate_stream(prompt, max_gen_tokens, temp, top_p)
+            .await
+        {
             Ok(rx) => {
                 let id_clone = id.clone();
                 let accumulated = Arc::new(tokio::sync::Mutex::new(String::new()));
@@ -464,7 +480,8 @@ async fn microlm_chat_handler(
                             .into_iter()
                             .enumerate()
                             .map(|(i, c)| {
-                                let args_val = serde_json::from_str::<Value>(&c.arguments).unwrap_or(json!({}));
+                                let args_val = serde_json::from_str::<Value>(&c.arguments)
+                                    .unwrap_or(json!({}));
                                 json!({
                                     "index": i,
                                     "id": c.id,
@@ -487,7 +504,12 @@ async fn microlm_chat_handler(
                         ]
                     } else {
                         vec![
-                            Ok(Event::default().data(sse_chunk(&id_tail, model, json!({}), json!("stop")))),
+                            Ok(Event::default().data(sse_chunk(
+                                &id_tail,
+                                model,
+                                json!({}),
+                                json!("stop"),
+                            ))),
                             Ok(Event::default().data("[DONE]")),
                         ]
                     }
@@ -526,7 +548,10 @@ async fn chat(
             );
         }
     };
-    let model_norm = request.model.strip_prefix("nioxs::").unwrap_or(&request.model);
+    let model_norm = request
+        .model
+        .strip_prefix("nioxs::")
+        .unwrap_or(&request.model);
     match model_norm {
         "nio-skate" | "skate" => {
             return microlm_chat_handler("nio-skate", request, None).await;
@@ -540,7 +565,9 @@ async fn chat(
         "nio-ray" | "ray" => {
             return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;
         }
-        "nio-manta" | "manta" | "nio-echo" | "echo" => return microlm_chat_handler("nio-manta", request, None).await,
+        "nio-manta" | "manta" | "nio-echo" | "echo" => {
+            return microlm_chat_handler("nio-manta", request, None).await;
+        }
         "nio-viper" | "viper" => return microlm_chat_handler("nio-viper", request, None).await,
         "nio-cuda" | "cuda" => return microlm_chat_handler("nio-cuda", request, None).await,
         _ => {}

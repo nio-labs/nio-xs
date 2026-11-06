@@ -81,7 +81,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     if arg.as_deref() == Some("skate") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs skate [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            eprintln!(
+                "Usage: nioxs skate [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
             return Ok(());
         }
 
@@ -115,7 +117,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
-            eprintln!("Usage: nioxs skate [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            eprintln!(
+                "Usage: nioxs skate [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
             return Ok(());
         }
 
@@ -150,15 +154,22 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             let home = std::env::var("HOME")
                 .or_else(|_| std::env::var("USERPROFILE"))
                 .unwrap_or_else(|_| ".".into());
-            let plugin_dir = std::path::PathBuf::from(home).join(".nioxs").join("plugins");
+            let plugin_dir = std::path::PathBuf::from(home)
+                .join(".nioxs")
+                .join("plugins");
             let venv_dir = plugin_dir.join("venv");
             std::fs::create_dir_all(&plugin_dir)?;
 
             match action {
                 "install" => {
-                    let pkg = raw_args.get(2).ok_or("Usage: nioxs viper plugin install <package_name>")?;
+                    let pkg = raw_args
+                        .get(2)
+                        .ok_or("Usage: nioxs viper plugin install <package_name>")?;
                     if !venv_dir.exists() {
-                        println!("📦 Initializing isolated Viper plugin sandbox in {}...", venv_dir.display());
+                        println!(
+                            "📦 Initializing isolated Viper plugin sandbox in {}...",
+                            venv_dir.display()
+                        );
                         let venv_status = std::process::Command::new("python3")
                             .args(["-m", "venv", &venv_dir.to_string_lossy()])
                             .status()
@@ -168,7 +179,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                                     .status()
                             })?;
                         if !venv_status.success() {
-                            return Err("Failed to create Python virtualenv. Ensure python3 is installed.".into());
+                            return Err(
+                                "Failed to create Python virtualenv. Ensure python3 is installed."
+                                    .into(),
+                            );
                         }
                     }
                     #[cfg(target_os = "windows")]
@@ -189,7 +203,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 }
                 "list" => {
                     if !venv_dir.exists() {
-                        println!("No plugins installed yet. Use 'nioxs viper plugin install <package>'");
+                        println!(
+                            "No plugins installed yet. Use 'nioxs viper plugin install <package>'"
+                        );
                         return Ok(());
                     }
                     #[cfg(target_os = "windows")]
@@ -197,14 +213,19 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     #[cfg(not(target_os = "windows"))]
                     let pip_bin = venv_dir.join("bin").join("pip");
 
-                    println!("📦 Installed NioViper Plugins (isolated in {}):", venv_dir.display());
+                    println!(
+                        "📦 Installed NioViper Plugins (isolated in {}):",
+                        venv_dir.display()
+                    );
                     let _ = std::process::Command::new(pip_bin)
                         .args(["list"])
                         .status()?;
                     return Ok(());
                 }
                 _ => {
-                    println!("Usage:\n  nioxs viper plugin install <package>\n  nioxs viper plugin list");
+                    println!(
+                        "Usage:\n  nioxs viper plugin install <package>\n  nioxs viper plugin list"
+                    );
                     return Ok(());
                 }
             }
@@ -232,8 +253,14 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
 
         let engine = nioxs_engine::AstEngine::for_model("nio-viper")?;
-        let max_tokens = if prompt.split_whitespace().count() <= 2 { 32 } else { 128 };
-        let mut rx = engine.generate_stream(prompt.clone(), max_tokens, 0.7, 0.9).await?;
+        let max_tokens = if prompt.split_whitespace().count() <= 2 {
+            32
+        } else {
+            128
+        };
+        let mut rx = engine
+            .generate_stream(prompt.clone(), max_tokens, 0.7, 0.9)
+            .await?;
         use std::io::Write;
         let mut generated_cmd = String::new();
         while let Some(chunk) = rx.recv().await {
@@ -298,7 +325,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     if arg.as_deref() == Some("beluga") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            eprintln!(
+                "Usage: nioxs beluga [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
             return Ok(());
         }
 
@@ -332,7 +361,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
-            eprintln!("Usage: nioxs beluga [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            eprintln!(
+                "Usage: nioxs beluga [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
             return Ok(());
         }
         let engine = nioxs_engine::AstEngine::for_model_with_device("nio-beluga", device_pref)?;
@@ -340,7 +371,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let formatted_prompt = format!(
             "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Close your thoughts with </think> once before providing the final answer, and never repeat thought tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Be concise, accurate, and direct. Format definitions and explanations directly in natural prose or Markdown blockquotes (>), never wrap plain text definitions in ```plaintext code blocks. Reserve code blocks strictly for executable code. Defer raw low-level code generation to downstream coding models.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         );
-        let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.6, 0.9).await?;
+        let mut rx = engine
+            .generate_stream(formatted_prompt, max_tokens, 0.6, 0.9)
+            .await?;
         let mut flow = StreamFlow::new(flow_mode);
         while let Some(chunk) = rx.recv().await {
             flow.push(&chunk);
@@ -352,7 +385,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     if arg.as_deref() == Some("blue") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs blue [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            eprintln!(
+                "Usage: nioxs blue [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
             return Ok(());
         }
 
@@ -386,7 +421,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
-            eprintln!("Usage: nioxs blue [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>");
+            eprintln!(
+                "Usage: nioxs blue [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
             return Ok(());
         }
         let engine = nioxs_engine::AstEngine::for_model_with_device("blue", device_pref)?;
@@ -394,7 +431,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let formatted_prompt = format!(
             "<|im_start|>system\nYou are Blue, Nio's Flagship Sovereign Reflex Companion. Speak with the calm, approachable, and grounded voice of a seasoned staff engineer pair-programming with a colleague. Be conversational and engaging, but keep your dialogue focused and high-signal without fluff or sycophancy. When complex reasoning is required, verify invariants inside concise <think>...</think> tags (under 100 tokens), close your thoughts with </think>, and deliver your answer naturally. Reserve code blocks strictly for executable code.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         );
-        let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.35, 0.88).await?;
+        let mut rx = engine
+            .generate_stream(formatted_prompt, max_tokens, 0.35, 0.88)
+            .await?;
         let mut flow = StreamFlow::new(flow_mode);
         while let Some(chunk) = rx.recv().await {
             flow.push(&chunk);
@@ -406,7 +445,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     if arg.as_deref() == Some("manta") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            eprintln!("Usage: nioxs manta [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [--plan] [-n <max_tokens>] <prompt>");
+            eprintln!(
+                "Usage: nioxs manta [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [--plan] [-n <max_tokens>] <prompt>"
+            );
             return Ok(());
         }
 
@@ -444,15 +485,20 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let user_prompt = prompt_parts.join(" ");
 
         // Prefer native Rust AstEngine for nio-manta
-        if let Ok(engine) = nioxs_engine::AstEngine::for_model_with_device("nio-manta", device_pref) {
+        if let Ok(engine) = nioxs_engine::AstEngine::for_model_with_device("nio-manta", device_pref)
+        {
             let sys_msg = if is_plan {
                 "You are Manta, an expert architect and systems planner for Nio. Compile the user request into a machine-verifiable <manta_plan> XML DAG with step id, name, description, command, and rollback. Respond directly without reciting your preamble."
             } else {
                 "You are Manta, an expert architect and systems planner for Nio. Provide concise, direct, and actionable architectural designs, trade-off analyses, and <manta_plan> XML DAGs. Answer directly without reciting your system preamble. Delegate all implementation to downstream coding models; never write raw code blocks directly."
             };
-            let formatted_prompt = format!("<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n");
+            let formatted_prompt = format!(
+                "<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n"
+            );
             let max_tokens = custom_max_tokens.unwrap_or(4096);
-            let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.2, 0.9).await?;
+            let mut rx = engine
+                .generate_stream(formatted_prompt, max_tokens, 0.2, 0.9)
+                .await?;
             let mut flow = StreamFlow::new(flow_mode);
             while let Some(chunk) = rx.recv().await {
                 flow.push(&chunk);
@@ -463,7 +509,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
 
         // Fallback: Locate runner script
-        let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf()));
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()));
         let mut script_candidates = vec![
             std::path::PathBuf::from("scripts/run_niomanta_onnx.py"),
             std::path::PathBuf::from("/home/mn/nio-labs/nio-xs/scripts/run_niomanta_onnx.py"),
@@ -482,12 +530,16 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             Some(".venv/bin/python3".into()),
             Some("python3".into()),
         ];
-        let python = py_candidates.into_iter().flatten().find(|p| {
-            std::process::Command::new(p)
-                .arg("--version")
-                .output()
-                .is_ok()
-        }).unwrap_or_else(|| "python3".into());
+        let python = py_candidates
+            .into_iter()
+            .flatten()
+            .find(|p| {
+                std::process::Command::new(p)
+                    .arg("--version")
+                    .output()
+                    .is_ok()
+            })
+            .unwrap_or_else(|| "python3".into());
 
         if let Some(script_path) = script {
             let mut cmd = std::process::Command::new(&python);
@@ -522,7 +574,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             }
             return Ok(());
         } else {
-            eprintln!("NioManta ONNX runner script not found. Expected at scripts/run_niomanta_onnx.py");
+            eprintln!(
+                "NioManta ONNX runner script not found. Expected at scripts/run_niomanta_onnx.py"
+            );
             return Ok(());
         }
     }
@@ -682,7 +736,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     match server_device_pref {
         nioxs_engine::DevicePreference::Gpu => unsafe { std::env::set_var("NIOXS_DEVICE", "gpu") },
         nioxs_engine::DevicePreference::Cpu => unsafe { std::env::set_var("NIOXS_DEVICE", "cpu") },
-        nioxs_engine::DevicePreference::Auto => {},
+        nioxs_engine::DevicePreference::Auto => {}
     }
     let listen: std::net::SocketAddr = if let Ok(listen_str) = std::env::var("NIOXS_LISTEN") {
         listen_str.parse()?
@@ -865,7 +919,9 @@ fn ground_and_sanitize_command(prompt: &str, raw_cmd: &str) -> String {
                 if let Some(first_q) = clean_cmd.find(quote) {
                     if let Some(second_q) = clean_cmd[first_q + 1..].find(quote) {
                         let matched_slice = &clean_cmd[first_q..first_q + 1 + second_q + 1];
-                        if !matched_slice.contains('/') && matched_slice != format!("{quote}.{quote}") {
+                        if !matched_slice.contains('/')
+                            && matched_slice != format!("{quote}.{quote}")
+                        {
                             let replacement = format!("'{user_term}'");
                             clean_cmd = clean_cmd.replace(matched_slice, &replacement);
                             break;
@@ -880,11 +936,16 @@ fn ground_and_sanitize_command(prompt: &str, raw_cmd: &str) -> String {
     // If prompt didn't specify system paths like /var/log, /opt, /var/cache, /data, /home/app,
     // don't scan them with grep/find, fallback to '.'
     let system_paths = [
-        "'/var/log'", "\"/var/log\"",
-        "'/var/cache'", "\"/var/cache\"",
-        "'/home/app'", "\"/home/app\"",
-        "'/opt'", "\"/opt\"",
-        "'/data'", "\"/data\"",
+        "'/var/log'",
+        "\"/var/log\"",
+        "'/var/cache'",
+        "\"/var/cache\"",
+        "'/home/app'",
+        "\"/home/app\"",
+        "'/opt'",
+        "\"/opt\"",
+        "'/data'",
+        "\"/data\"",
     ];
 
     for path in system_paths {
@@ -922,7 +983,10 @@ fn ground_and_sanitize_command(prompt: &str, raw_cmd: &str) -> String {
         }
 
         // Exclude build artifacts and caches
-        if !clean_cmd.contains("--exclude-dir") && !prompt.contains("target") && !prompt.contains(".git") {
+        if !clean_cmd.contains("--exclude-dir")
+            && !prompt.contains("target")
+            && !prompt.contains(".git")
+        {
             clean_cmd.push_str(" --exclude-dir={target,.git,node_modules}");
         }
 
@@ -930,7 +994,11 @@ fn ground_and_sanitize_command(prompt: &str, raw_cmd: &str) -> String {
         if !clean_cmd.contains("--include") {
             for word in prompt.split_whitespace() {
                 let clean_w = word.trim_matches(|c: char| c == '\'' || c == '"' || c == ',');
-                if clean_w.starts_with('.') && clean_w.len() >= 2 && clean_w.len() <= 6 && clean_w[1..].chars().all(|c| c.is_alphanumeric()) {
+                if clean_w.starts_with('.')
+                    && clean_w.len() >= 2
+                    && clean_w.len() <= 6
+                    && clean_w[1..].chars().all(|c| c.is_alphanumeric())
+                {
                     let ext = clean_w.trim_start_matches('.');
                     clean_cmd.push_str(&format!(" --include=\"*.{ext}\""));
                     break;
@@ -941,7 +1009,11 @@ fn ground_and_sanitize_command(prompt: &str, raw_cmd: &str) -> String {
         // Ensure search directory anchor exists
         let parts: Vec<&str> = clean_cmd.split_whitespace().collect();
         let last = parts.last().copied().unwrap_or("");
-        if last.starts_with('-') || clean_cmd.ends_with('}') || clean_cmd.ends_with('"') || clean_cmd.ends_with('\'') {
+        if last.starts_with('-')
+            || clean_cmd.ends_with('}')
+            || clean_cmd.ends_with('"')
+            || clean_cmd.ends_with('\'')
+        {
             clean_cmd.push_str(" .");
         }
     }

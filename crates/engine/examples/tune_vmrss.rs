@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -30,7 +30,9 @@ fn test_config(res: usize, win: usize) -> Result<()> {
     engine.set_rolling_window(win);
 
     let prompt = "Explain how Raft avoids split-brain.";
-    let encoded = tokenizer.encode(prompt, false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(prompt, false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -53,7 +55,13 @@ fn test_config(res: usize, win: usize) -> Result<()> {
 
     println!(
         "res={:2} win={:2} | 20 tokens: {:.3}s ({:5.2} tok/s, {:5.1} ms/tok) | VmRSS: {:5.1} MB (HWM: {:5.1} MB)",
-        res, win, dt, 20.0 / dt, dt / 20.0 * 1000.0, rss, hwm
+        res,
+        win,
+        dt,
+        20.0 / dt,
+        dt / 20.0 * 1000.0,
+        rss,
+        hwm
     );
 
     Ok(())

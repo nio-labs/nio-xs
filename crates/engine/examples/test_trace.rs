@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use tokenizers::Tokenizer;
@@ -16,7 +16,9 @@ fn main() -> Result<()> {
         "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(formatted.as_str(), false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -27,7 +29,12 @@ fn main() -> Result<()> {
     for i in 1..15 {
         engine.forward_stream(&[tok], prompt_tokens.len() + i - 1)?;
         tok = engine.next_token_with_history(None, &[], false)?;
-        println!("Tok {:2}: {:6} {:?}", i, tok, tokenizer.decode(&[tok], false));
+        println!(
+            "Tok {:2}: {:6} {:?}",
+            i,
+            tok,
+            tokenizer.decode(&[tok], false)
+        );
     }
     Ok(())
 }

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -16,7 +16,9 @@ fn main() -> Result<()> {
     engine.set_rolling_window(4);
 
     let prompt = "Explain Raft.";
-    let encoded = tokenizer.encode(prompt, false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(prompt, false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -37,7 +39,8 @@ fn main() -> Result<()> {
         t_2 += t1.elapsed().as_secs_f64();
 
         let t2 = Instant::now();
-        engine.forward_batch_layer_outer(&[first_tok, 100, 200], prompt_tokens.len() + i * 4 + 2)?;
+        engine
+            .forward_batch_layer_outer(&[first_tok, 100, 200], prompt_tokens.len() + i * 4 + 2)?;
         t_3 += t2.elapsed().as_secs_f64();
     }
 

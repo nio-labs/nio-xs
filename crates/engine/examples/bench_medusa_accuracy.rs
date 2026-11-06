@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use tokenizers::Tokenizer;
@@ -19,7 +19,9 @@ fn main() -> Result<()> {
         "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(formatted.as_str(), false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -64,10 +66,18 @@ fn main() -> Result<()> {
         let in_top3 = in_top2 || true_tok == top3;
         let in_top5 = in_top3 || true_tok == top4 || true_tok == top5;
 
-        if in_top1 { top1_matches += 1; }
-        if in_top2 { top2_matches += 1; }
-        if in_top3 { top3_matches += 1; }
-        if in_top5 { top5_matches += 1; }
+        if in_top1 {
+            top1_matches += 1;
+        }
+        if in_top2 {
+            top2_matches += 1;
+        }
+        if in_top3 {
+            top3_matches += 1;
+        }
+        if in_top5 {
+            top5_matches += 1;
+        }
         total_eval += 1;
 
         println!(
@@ -85,10 +95,30 @@ fn main() -> Result<()> {
     }
 
     println!("\n=== ACCURACY OVER {} STEPS ===", total_eval);
-    println!("Top-1 Accuracy: {} / {} ({:.1}%)", top1_matches, total_eval, top1_matches as f64 / total_eval as f64 * 100.0);
-    println!("Top-2 Accuracy: {} / {} ({:.1}%)", top2_matches, total_eval, top2_matches as f64 / total_eval as f64 * 100.0);
-    println!("Top-3 Accuracy: {} / {} ({:.1}%)", top3_matches, total_eval, top3_matches as f64 / total_eval as f64 * 100.0);
-    println!("Top-5 Accuracy: {} / {} ({:.1}%)", top5_matches, total_eval, top5_matches as f64 / total_eval as f64 * 100.0);
+    println!(
+        "Top-1 Accuracy: {} / {} ({:.1}%)",
+        top1_matches,
+        total_eval,
+        top1_matches as f64 / total_eval as f64 * 100.0
+    );
+    println!(
+        "Top-2 Accuracy: {} / {} ({:.1}%)",
+        top2_matches,
+        total_eval,
+        top2_matches as f64 / total_eval as f64 * 100.0
+    );
+    println!(
+        "Top-3 Accuracy: {} / {} ({:.1}%)",
+        top3_matches,
+        total_eval,
+        top3_matches as f64 / total_eval as f64 * 100.0
+    );
+    println!(
+        "Top-5 Accuracy: {} / {} ({:.1}%)",
+        top5_matches,
+        total_eval,
+        top5_matches as f64 / total_eval as f64 * 100.0
+    );
 
     Ok(())
 }

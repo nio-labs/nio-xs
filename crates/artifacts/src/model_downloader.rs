@@ -4,7 +4,9 @@
 //! into `~/.nioxs/models/` with streaming progress and SHA-256 integrity verification.
 
 use futures_util::StreamExt;
-use nioxs_contracts::{MODEL_BELUGA, MODEL_BLUE, MODEL_MANTA, MODEL_NANO, MODEL_SKATE, MODEL_VIPER};
+use nioxs_contracts::{
+    MODEL_BELUGA, MODEL_BLUE, MODEL_MANTA, MODEL_NANO, MODEL_SKATE, MODEL_VIPER,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::env;
@@ -265,7 +267,9 @@ pub async fn download_and_verify_model<P: ProgressListener>(
     // Companion tokenizer sync (e.g. nio-viper-tokenizer.json)
     if entry.filename.contains("viper") {
         let tok_path = target_dir.join("nio-viper-tokenizer.json");
-        let tok_url = entry.download_url.replace("nio-viper.Q4_0.gguf", "nio-viper-tokenizer.json");
+        let tok_url = entry
+            .download_url
+            .replace("nio-viper.Q4_0.gguf", "nio-viper-tokenizer.json");
         if let Ok(resp) = client.get(&tok_url).send().await {
             if resp.status().is_success() {
                 if let Ok(bytes) = resp.bytes().await {
@@ -320,7 +324,8 @@ pub fn ensure_model_ready(model_id: &str, custom_dir: Option<&Path>) -> Result<P
             ))
         })
     } else {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| format!("failed to create runtime: {e}"))?;
+        let rt =
+            tokio::runtime::Runtime::new().map_err(|e| format!("failed to create runtime: {e}"))?;
         rt.block_on(download_and_verify_model(
             &client,
             &entry,
@@ -448,12 +453,7 @@ mod tests {
                 639_362_560,
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.0/beluga.vmicrolm-vector.gguf",
             ),
-            (
-                MODEL_BLUE,
-                "",
-                1_499_444_224,
-                "",
-            ),
+            (MODEL_BLUE, "", 1_499_444_224, ""),
         ];
         let manifest = default_manifest();
         assert_eq!(manifest.len(), expected.len());
@@ -470,7 +470,13 @@ mod tests {
     fn test_manifest_contains_all_models() {
         let manifest = default_manifest();
         assert_eq!(manifest.len(), 5);
-        for id in [MODEL_VIPER, MODEL_SKATE, MODEL_MANTA, MODEL_BELUGA, MODEL_BLUE] {
+        for id in [
+            MODEL_VIPER,
+            MODEL_SKATE,
+            MODEL_MANTA,
+            MODEL_BELUGA,
+            MODEL_BLUE,
+        ] {
             assert!(manifest.iter().any(|e| e.model_id == id));
         }
     }

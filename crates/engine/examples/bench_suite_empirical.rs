@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -36,18 +36,38 @@ impl FastAdaptiveDrafter {
         if let Ok(enc) = tokenizer.encode(text, false) {
             let ids = enc.get_ids();
             for window in ids.windows(2) {
-                *self.bigram_counts.entry(window[0]).or_default().entry(window[1]).or_default() += weight;
+                *self
+                    .bigram_counts
+                    .entry(window[0])
+                    .or_default()
+                    .entry(window[1])
+                    .or_default() += weight;
             }
             for window in ids.windows(3) {
-                *self.trigram_counts.entry((window[0], window[1])).or_default().entry(window[2]).or_default() += weight * 2;
+                *self
+                    .trigram_counts
+                    .entry((window[0], window[1]))
+                    .or_default()
+                    .entry(window[2])
+                    .or_default() += weight * 2;
             }
         }
     }
 
     fn observe(&mut self, prev: Option<u32>, curr: u32, next: u32) {
-        *self.bigram_counts.entry(curr).or_default().entry(next).or_default() += 2;
+        *self
+            .bigram_counts
+            .entry(curr)
+            .or_default()
+            .entry(next)
+            .or_default() += 2;
         if let Some(p) = prev {
-            *self.trigram_counts.entry((p, curr)).or_default().entry(next).or_default() += 4;
+            *self
+                .trigram_counts
+                .entry((p, curr))
+                .or_default()
+                .entry(next)
+                .or_default() += 4;
         }
     }
 
@@ -88,7 +108,9 @@ fn run_prompt(
         "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(formatted.as_str(), false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -108,7 +130,11 @@ fn run_prompt(
 
     let t_start = Instant::now();
     for _ in 0..max_steps {
-        let prev = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+        let prev = if gen_tokens.len() >= 2 {
+            Some(gen_tokens[gen_tokens.len() - 2])
+        } else {
+            None
+        };
         let draft_opt = drafter.predict(prev, current_confirmed);
 
         if let Some(draft_tok) = draft_opt.filter(|&d| d != eos_id && d != 0) {
@@ -128,7 +154,11 @@ fn run_prompt(
             }
 
             for &tok in &outcome.accepted_tokens {
-                let p = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                let p = if gen_tokens.len() >= 2 {
+                    Some(gen_tokens[gen_tokens.len() - 2])
+                } else {
+                    None
+                };
                 if let Some(&last) = gen_tokens.last() {
                     drafter.observe(p, last, tok);
                 }
@@ -151,7 +181,11 @@ fn run_prompt(
                 break;
             }
 
-            let p = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+            let p = if gen_tokens.len() >= 2 {
+                Some(gen_tokens[gen_tokens.len() - 2])
+            } else {
+                None
+            };
             drafter.observe(p, current_confirmed, next_tok);
 
             gen_tokens.push(next_tok);
@@ -165,7 +199,15 @@ fn run_prompt(
     let tok_rate = gen_tokens.len() as f64 / elapsed;
     let word_rate = words as f64 / elapsed;
 
-    Ok((gen_tokens.len(), words, elapsed, tok_rate, word_rate, spec_matches, spec_misses))
+    Ok((
+        gen_tokens.len(),
+        words,
+        elapsed,
+        tok_rate,
+        word_rate,
+        spec_matches,
+        spec_misses,
+    ))
 }
 
 fn main() -> Result<()> {
@@ -180,9 +222,18 @@ fn main() -> Result<()> {
     engine.set_rolling_window(4);
 
     let prompts = [
-        ("Distributed Raft", "Explain how Raft avoids split-brain during leader election when a network partition occurs."),
-        ("Systems Concurrency", "Compare epoll and io_uring architecture. What is the fundamental mechanism that eliminates context switching in io_uring?"),
-        ("Storage Engine", "When designing an embedded edge database, evaluate the trade-offs between an LSM-Tree and a B-Tree for write amplification vs read latency."),
+        (
+            "Distributed Raft",
+            "Explain how Raft avoids split-brain during leader election when a network partition occurs.",
+        ),
+        (
+            "Systems Concurrency",
+            "Compare epoll and io_uring architecture. What is the fundamental mechanism that eliminates context switching in io_uring?",
+        ),
+        (
+            "Storage Engine",
+            "When designing an embedded edge database, evaluate the trade-offs between an LSM-Tree and a B-Tree for write amplification vs read latency.",
+        ),
     ];
 
     println!("\n========================================================");
@@ -196,9 +247,17 @@ fn main() -> Result<()> {
 
         println!(
             "[{:20}] Tokens: {:3} | Words: {:3} | Time: {:.2}s | Matches: {:2}/{:2} ({:4.1}%) | {:5.2} tok/s | {:5.2} words/sec | RAM: {:.1}MB (HWM: {:.1}MB)",
-            name, tokens, words, elapsed, matches, matches + misses,
+            name,
+            tokens,
+            words,
+            elapsed,
+            matches,
+            matches + misses,
             matches as f64 / (matches + misses).max(1) as f64 * 100.0,
-            tok_rate, word_rate, rss, hwm
+            tok_rate,
+            word_rate,
+            rss,
+            hwm
         );
     }
 

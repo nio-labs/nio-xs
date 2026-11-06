@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use tokenizers::Tokenizer;
@@ -12,7 +12,9 @@ fn main() -> Result<()> {
     let mut engine = AstMicroEngine::new(&model_path)?;
 
     let prompt = "Explain how Raft avoids split-brain.";
-    let encoded = tokenizer.encode(prompt, false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(prompt, false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -20,10 +22,19 @@ fn main() -> Result<()> {
     let first_tok = engine.next_token_with_history(None, &[], false)?;
 
     let norm_x: f32 = engine.scratch.x.iter().map(|v| v * v).sum::<f32>().sqrt();
-    let norm_x_norm: f32 = engine.scratch.x_norm.iter().map(|v| v * v).sum::<f32>().sqrt();
+    let norm_x_norm: f32 = engine
+        .scratch
+        .x_norm
+        .iter()
+        .map(|v| v * v)
+        .sum::<f32>()
+        .sqrt();
 
     println!("scratch.x (unnormalized) L2 norm:      {:.4}", norm_x);
-    println!("scratch.x_norm (RMS-normalized) L2 norm: {:.4}", norm_x_norm);
+    println!(
+        "scratch.x_norm (RMS-normalized) L2 norm: {:.4}",
+        norm_x_norm
+    );
     println!("Ratio: {:.2}x", norm_x / norm_x_norm);
 
     Ok(())

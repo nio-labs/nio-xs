@@ -1,6 +1,6 @@
-use anyhow::{anyhow, Result};
-use nioxs_engine::ast_engine::AstMicroEngine;
+use anyhow::{Result, anyhow};
 use nioxs_engine::ZwCache;
+use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use std::time::Instant;
 use tokenizers::Tokenizer;
@@ -103,7 +103,11 @@ fn run_beluga_v5_spec(
     let mut zw_cache = ZwCache::new();
     zw_cache.seed_prompt(prompt_tokens);
     if let Some(&last_prompt) = prompt_tokens.last() {
-        let p2 = if prompt_tokens.len() >= 2 { Some(prompt_tokens[prompt_tokens.len() - 2]) } else { None };
+        let p2 = if prompt_tokens.len() >= 2 {
+            Some(prompt_tokens[prompt_tokens.len() - 2])
+        } else {
+            None
+        };
         zw_cache.observe(p2, last_prompt, first_tok);
     }
 
@@ -117,12 +121,19 @@ fn run_beluga_v5_spec(
     let t_gen = Instant::now();
     while gen_tokens.len() < max_tokens {
         let remaining = max_tokens.saturating_sub(gen_tokens.len());
-        let prev2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+        let prev2 = if gen_tokens.len() >= 2 {
+            Some(gen_tokens[gen_tokens.len() - 2])
+        } else {
+            None
+        };
 
         let (d1_opt, d2_opt) = if remaining >= 3 {
             zw_cache.predict_pair(prev2, current_confirmed, &gen_tokens)
         } else if remaining >= 2 {
-            (zw_cache.predict(prev2, current_confirmed, &gen_tokens), None)
+            (
+                zw_cache.predict(prev2, current_confirmed, &gen_tokens),
+                None,
+            )
         } else {
             (None, None)
         };
@@ -131,7 +142,14 @@ fn run_beluga_v5_spec(
         let d2_valid = d2_opt.filter(|&d| d != eos_id && d != 0);
 
         if let (Some(d1), Some(d2)) = (d1_valid, d2_valid) {
-            match engine.speculative_trio_step(current_confirmed, d1, d2, stream_pos, &gen_tokens, &stop_tokens) {
+            match engine.speculative_trio_step(
+                current_confirmed,
+                d1,
+                d2,
+                stream_pos,
+                &gen_tokens,
+                &stop_tokens,
+            ) {
                 Ok(outcome) => {
                     if outcome.matched_count > 0 {
                         matches += outcome.matched_count;
@@ -142,7 +160,11 @@ fn run_beluga_v5_spec(
                     let mut stopped = false;
                     for &tok in &outcome.accepted_tokens {
                         if tok != eos_id && tok != 0 {
-                            let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                            let prev_p2 = if gen_tokens.len() >= 2 {
+                                Some(gen_tokens[gen_tokens.len() - 2])
+                            } else {
+                                None
+                            };
                             if let Some(&last_tok) = gen_tokens.last() {
                                 zw_cache.observe(prev_p2, last_tok, tok);
                             }
@@ -165,7 +187,14 @@ fn run_beluga_v5_spec(
                 Err(e) => return Err(e),
             }
         } else if let Some(draft_tok) = d1_valid {
-            match engine.speculative_pair_step(current_confirmed, draft_tok, stream_pos, &gen_tokens, &stop_tokens, false) {
+            match engine.speculative_pair_step(
+                current_confirmed,
+                draft_tok,
+                stream_pos,
+                &gen_tokens,
+                &stop_tokens,
+                false,
+            ) {
                 Ok(outcome) => {
                     if outcome.draft_matched {
                         matches += 1;
@@ -176,7 +205,11 @@ fn run_beluga_v5_spec(
                     let mut stopped = false;
                     for &tok in &outcome.accepted_tokens {
                         if tok != eos_id && tok != 0 {
-                            let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                            let prev_p2 = if gen_tokens.len() >= 2 {
+                                Some(gen_tokens[gen_tokens.len() - 2])
+                            } else {
+                                None
+                            };
                             if let Some(&last_tok) = gen_tokens.last() {
                                 zw_cache.observe(prev_p2, last_tok, tok);
                             }
@@ -207,7 +240,11 @@ fn run_beluga_v5_spec(
                 break;
             }
 
-            let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+            let prev_p2 = if gen_tokens.len() >= 2 {
+                Some(gen_tokens[gen_tokens.len() - 2])
+            } else {
+                None
+            };
             zw_cache.observe(prev_p2, current_confirmed, next_tok);
 
             gen_tokens.push(next_tok);
@@ -234,8 +271,10 @@ fn run_beluga_v5_spec(
 }
 
 fn main() -> Result<()> {
-    let stock_model_path = PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga.vmicrolm-vector.baseline-iq4nl.gguf");
-    let beluga_model_path = PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga.vmicrolm-vector.iq3xxs.gguf");
+    let stock_model_path =
+        PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga.vmicrolm-vector.baseline-iq4nl.gguf");
+    let beluga_model_path =
+        PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga.vmicrolm-vector.iq3xxs.gguf");
     let tokenizer_path = PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga-tokenizer.json");
 
     let mut tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| anyhow!("{e}"))?;
@@ -243,33 +282,83 @@ fn main() -> Result<()> {
     let eos_id = tokenizer.token_to_id("<|im_end|>").unwrap_or(151645);
 
     let prompts = [
-        ("Concurrency", "Compare epoll and io_uring architecture. What is the fundamental mechanism that eliminates context switching in io_uring?"),
-        ("Raft", "Explain how Raft avoids split-brain during leader election when a network partition occurs."),
-        ("MemoryModel", "Explain the difference between acquire-release memory ordering and sequential consistency on modern x86 vs ARM CPUs."),
-        ("Databases", "When designing an embedded edge database, evaluate the trade-offs between an LSM-Tree and a B-Tree for write amplification vs read latency."),
-        ("Mentoring", "How should a lead engineer mentor a junior developer who is suffering from analysis paralysis over architectural decisions?"),
+        (
+            "Concurrency",
+            "Compare epoll and io_uring architecture. What is the fundamental mechanism that eliminates context switching in io_uring?",
+        ),
+        (
+            "Raft",
+            "Explain how Raft avoids split-brain during leader election when a network partition occurs.",
+        ),
+        (
+            "MemoryModel",
+            "Explain the difference between acquire-release memory ordering and sequential consistency on modern x86 vs ARM CPUs.",
+        ),
+        (
+            "Databases",
+            "When designing an embedded edge database, evaluate the trade-offs between an LSM-Tree and a B-Tree for write amplification vs read latency.",
+        ),
+        (
+            "Mentoring",
+            "How should a lead engineer mentor a junior developer who is suffering from analysis paralysis over architectural decisions?",
+        ),
     ];
 
-    println!("\n==================================================================================================");
-    println!("  ⚔️  HEAD-TO-HEAD MEASURED COMPARISON: STOCK QWEN 2.5 1.5B (BASELINE) vs NIOBELUGA V5");
+    println!(
+        "\n=================================================================================================="
+    );
+    println!(
+        "  ⚔️  HEAD-TO-HEAD MEASURED COMPARISON: STOCK QWEN 2.5 1.5B (BASELINE) vs NIOBELUGA V5"
+    );
     println!("  Hardware: Intel Core Ultra 5 135H (Pure CPU, 6 AVX2 Workers)");
-    println!("  Stock Qwen Model:  beluga.vmicrolm-vector.baseline-iq4nl.gguf (763 MB, Standard IQ4_NL, Pure AR)");
-    println!("  NioBeluga V5 Model: beluga.vmicrolm-vector.iq3xxs.gguf (604 MB, IQ3_XXS + Spec Trio)");
-    println!("==================================================================================================");
+    println!(
+        "  Stock Qwen Model:  beluga.vmicrolm-vector.baseline-iq4nl.gguf (763 MB, Standard IQ4_NL, Pure AR)"
+    );
+    println!(
+        "  NioBeluga V5 Model: beluga.vmicrolm-vector.iq3xxs.gguf (604 MB, IQ3_XXS + Spec Trio)"
+    );
+    println!(
+        "=================================================================================================="
+    );
 
     // 1. Run Stock Qwen 2.5 1.5B Pure AR
     println!("Loading Stock Qwen 2.5 (Baseline IQ4_NL)...");
     let mut stock_engine = AstMicroEngine::new(&stock_model_path)?;
-    let warmup_tokens = tokenizer.encode("<|im_start|>user\nWarm up<|im_end|>\n<|im_start|>assistant\n", false).unwrap().get_ids().to_vec();
-    let _ = run_stock_qwen_ar(&mut stock_engine, &tokenizer, &warmup_tokens, 10, eos_id, "Warmup");
+    let warmup_tokens = tokenizer
+        .encode(
+            "<|im_start|>user\nWarm up<|im_end|>\n<|im_start|>assistant\n",
+            false,
+        )
+        .unwrap()
+        .get_ids()
+        .to_vec();
+    let _ = run_stock_qwen_ar(
+        &mut stock_engine,
+        &tokenizer,
+        &warmup_tokens,
+        10,
+        eos_id,
+        "Warmup",
+    );
 
     let mut stock_results = Vec::new();
     for &(name, prompt) in &prompts {
         let formatted = format!(
             "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         );
-        let prompt_tokens = tokenizer.encode(formatted.as_str(), false).unwrap().get_ids().to_vec();
-        let res = run_stock_qwen_ar(&mut stock_engine, &tokenizer, &prompt_tokens, 80, eos_id, name)?;
+        let prompt_tokens = tokenizer
+            .encode(formatted.as_str(), false)
+            .unwrap()
+            .get_ids()
+            .to_vec();
+        let res = run_stock_qwen_ar(
+            &mut stock_engine,
+            &tokenizer,
+            &prompt_tokens,
+            80,
+            eos_id,
+            name,
+        )?;
         stock_results.push(res);
     }
     drop(stock_engine);
@@ -277,23 +366,47 @@ fn main() -> Result<()> {
     // 2. Run NioBeluga V5
     println!("Loading NioBeluga V5 (IQ3_XXS + Spec Trio)...");
     let mut beluga_engine = AstMicroEngine::new(&beluga_model_path)?;
-    let _ = run_beluga_v5_spec(&mut beluga_engine, &tokenizer, &warmup_tokens, 10, eos_id, "Warmup");
+    let _ = run_beluga_v5_spec(
+        &mut beluga_engine,
+        &tokenizer,
+        &warmup_tokens,
+        10,
+        eos_id,
+        "Warmup",
+    );
 
     let mut beluga_results = Vec::new();
     for &(name, prompt) in &prompts {
         let formatted = format!(
             "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         );
-        let prompt_tokens = tokenizer.encode(formatted.as_str(), false).unwrap().get_ids().to_vec();
-        let res = run_beluga_v5_spec(&mut beluga_engine, &tokenizer, &prompt_tokens, 80, eos_id, name)?;
+        let prompt_tokens = tokenizer
+            .encode(formatted.as_str(), false)
+            .unwrap()
+            .get_ids()
+            .to_vec();
+        let res = run_beluga_v5_spec(
+            &mut beluga_engine,
+            &tokenizer,
+            &prompt_tokens,
+            80,
+            eos_id,
+            name,
+        )?;
         beluga_results.push(res);
     }
     drop(beluga_engine);
 
-    println!("\n--------------------------------------------------------------------------------------------------");
-    println!("{:<13} | {:<22} | {:<22} | {:<16} | {:<12}",
-        "Category", "Stock Qwen (Speed)", "NioBeluga V5 (Speed)", "Beluga Spec Hits", "RAM Delta");
-    println!("--------------------------------------------------------------------------------------------------");
+    println!(
+        "\n--------------------------------------------------------------------------------------------------"
+    );
+    println!(
+        "{:<13} | {:<22} | {:<22} | {:<16} | {:<12}",
+        "Category", "Stock Qwen (Speed)", "NioBeluga V5 (Speed)", "Beluga Spec Hits", "RAM Delta"
+    );
+    println!(
+        "--------------------------------------------------------------------------------------------------"
+    );
 
     let mut total_stock_tok = 0usize;
     let mut total_stock_words = 0usize;
@@ -317,12 +430,18 @@ fn main() -> Result<()> {
 
         let stock_str = format!("{:.1} t/s ({:.1} w/s)", s.tok_per_sec, s.words_per_sec);
         let beluga_str = format!("{:.1} t/s ({:.1} w/s)", b.tok_per_sec, b.words_per_sec);
-        let hit_str = format!("{}/{} ({:.0}%)", b.spec_matches, b.spec_matches + b.spec_misses,
-            b.spec_matches as f64 / (b.spec_matches + b.spec_misses).max(1) as f64 * 100.0);
+        let hit_str = format!(
+            "{}/{} ({:.0}%)",
+            b.spec_matches,
+            b.spec_matches + b.spec_misses,
+            b.spec_matches as f64 / (b.spec_matches + b.spec_misses).max(1) as f64 * 100.0
+        );
         let ram_str = format!("{:.0}MB vs {:.0}MB", b.vm_rss_mb, s.vm_rss_mb);
 
-        println!("{:<13} | {:<22} | {:<22} | {:<16} | {:<12}",
-            s.name, stock_str, beluga_str, hit_str, ram_str);
+        println!(
+            "{:<13} | {:<22} | {:<22} | {:<16} | {:<12}",
+            s.name, stock_str, beluga_str, hit_str, ram_str
+        );
     }
 
     let avg_stock_tps = total_stock_tok as f64 / total_stock_time;
@@ -331,14 +450,20 @@ fn main() -> Result<()> {
     let avg_beluga_tps = total_beluga_tok as f64 / total_beluga_time;
     let avg_beluga_wps = total_beluga_words as f64 / total_beluga_time;
 
-    println!("--------------------------------------------------------------------------------------------------");
-    println!("{:<13} | {:<22} | {:<22} | {:<16} | {:<12}",
+    println!(
+        "--------------------------------------------------------------------------------------------------"
+    );
+    println!(
+        "{:<13} | {:<22} | {:<22} | {:<16} | {:<12}",
         "TOTAL AVERAGE",
         format!("{:.2} t/s ({:.2} w/s)", avg_stock_tps, avg_stock_wps),
         format!("{:.2} t/s ({:.2} w/s)", avg_beluga_tps, avg_beluga_wps),
         "54.4% Match Rate",
-        "-159 MB Disk");
-    println!("==================================================================================================\n");
+        "-159 MB Disk"
+    );
+    println!(
+        "==================================================================================================\n"
+    );
 
     Ok(())
 }

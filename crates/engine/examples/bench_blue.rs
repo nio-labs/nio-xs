@@ -1,6 +1,6 @@
-use anyhow::{anyhow, Result};
-use nioxs_engine::ast_engine::AstMicroEngine;
+use anyhow::{Result, anyhow};
 use nioxs_engine::ZwCache;
+use nioxs_engine::ast_engine::AstMicroEngine;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -73,7 +73,10 @@ fn main() -> Result<()> {
     println!("========================================================");
 
     let (start_rss, start_hwm) = memory_mb();
-    println!("Process Start RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB", start_rss, start_hwm);
+    println!(
+        "Process Start RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB",
+        start_rss, start_hwm
+    );
 
     let mut tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| anyhow!("{e}"))?;
     tokenizer.with_padding(None);
@@ -81,9 +84,14 @@ fn main() -> Result<()> {
         libc::malloc_trim(0);
     }
     let (tok_rss, tok_hwm) = memory_mb();
-    println!("Post-tokenizer RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB", tok_rss, tok_hwm);
+    println!(
+        "Post-tokenizer RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB",
+        tok_rss, tok_hwm
+    );
 
-    let low_ram = std::env::var("NIOXS_LOW_RAM").map(|v| v == "1").unwrap_or(false);
+    let low_ram = std::env::var("NIOXS_LOW_RAM")
+        .map(|v| v == "1")
+        .unwrap_or(false);
     let t0 = Instant::now();
     let mut engine = AstMicroEngine::new(&model_path)?;
     if low_ram {
@@ -96,21 +104,36 @@ fn main() -> Result<()> {
 
     let load_time = t0.elapsed().as_secs_f64();
     let (load_rss, load_hwm) = memory_mb();
-    println!("Engine loaded in {:.2}s | Post-load RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB\n", load_time, load_rss, load_hwm);
+    println!(
+        "Engine loaded in {:.2}s | Post-load RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB\n",
+        load_time, load_rss, load_hwm
+    );
 
     let stop_tokens: Vec<u32> = [
         engine.eos_token_id(),
         tokenizer.token_to_id("<|im_end|>"),
         tokenizer.token_to_id("<|endoftext|>"),
         tokenizer.token_to_id("<|im_start|>"),
-    ].into_iter().flatten().collect();
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     let is_eos = |tok: u32| stop_tokens.contains(&tok) || tok == 0;
     let max_gen_tokens = 64;
 
     let test_cases = [
-        ("runtime_architecture", "why do we need to use Node.js and not PHP?"),
-        ("systems_architecture", "Design an in-memory lock-free priority queue for high-frequency trading in Rust."),
-        ("distributed_consensus", "Compare Raft vs Multi-Paxos for distributed key-value stores under high network jitter."),
+        (
+            "runtime_architecture",
+            "why do we need to use Node.js and not PHP?",
+        ),
+        (
+            "systems_architecture",
+            "Design an in-memory lock-free priority queue for high-frequency trading in Rust.",
+        ),
+        (
+            "distributed_consensus",
+            "Compare Raft vs Multi-Paxos for distributed key-value stores under high network jitter.",
+        ),
     ];
 
     let mut results = Vec::new();
@@ -122,7 +145,13 @@ fn main() -> Result<()> {
 
     for (idx, &(category, prompt)) in test_cases.iter().enumerate() {
         println!("--------------------------------------------------------");
-        println!("[Case {}/{}] Category: {} | Prompt: \"{}\"", idx + 1, test_cases.len(), category, prompt);
+        println!(
+            "[Case {}/{}] Category: {} | Prompt: \"{}\"",
+            idx + 1,
+            test_cases.len(),
+            category,
+            prompt
+        );
 
         engine.reset_cache();
         engine.set_sampling(0.35, 0.88, 1.05, 64);
@@ -130,7 +159,9 @@ fn main() -> Result<()> {
         let formatted = format!(
             "<|im_start|>system\nYou are Blue, Nio's Flagship Sovereign Reflex Companion. Speak with the calm, approachable, and grounded voice of a seasoned staff engineer pair-programming with a colleague. Be conversational and engaging, but keep your dialogue focused and high-signal without fluff or sycophancy. When complex reasoning is required, verify invariants inside concise <think>...</think> tags (under 100 tokens), close your thoughts with </think>, and deliver your answer naturally. Reserve code blocks strictly for executable code.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         );
-        let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+        let encoded = tokenizer
+            .encode(formatted.as_str(), false)
+            .map_err(|e| anyhow!("{e}"))?;
         let prompt_tokens = encoded.get_ids().to_vec();
 
         // Prefill
@@ -151,7 +182,11 @@ fn main() -> Result<()> {
         let mut zw_cache = ZwCache::new_for_model(true);
         zw_cache.seed_prompt(&prompt_tokens);
         if let Some(&last_prompt) = prompt_tokens.last() {
-            let p2 = if prompt_tokens.len() >= 2 { Some(prompt_tokens[prompt_tokens.len() - 2]) } else { None };
+            let p2 = if prompt_tokens.len() >= 2 {
+                Some(prompt_tokens[prompt_tokens.len() - 2])
+            } else {
+                None
+            };
             zw_cache.observe(p2, last_prompt, first_tok);
         }
 
@@ -160,12 +195,19 @@ fn main() -> Result<()> {
 
         while gen_tokens.len() < max_gen_tokens && !is_eos(current_confirmed) {
             let remaining = max_gen_tokens.saturating_sub(gen_tokens.len());
-            let prev2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+            let prev2 = if gen_tokens.len() >= 2 {
+                Some(gen_tokens[gen_tokens.len() - 2])
+            } else {
+                None
+            };
 
             let (d1_opt, d2_opt) = if remaining >= 3 {
                 zw_cache.predict_pair(prev2, current_confirmed, &gen_tokens)
             } else if remaining >= 2 {
-                (zw_cache.predict(prev2, current_confirmed, &gen_tokens), None)
+                (
+                    zw_cache.predict(prev2, current_confirmed, &gen_tokens),
+                    None,
+                )
             } else {
                 (None, None)
             };
@@ -185,7 +227,11 @@ fn main() -> Result<()> {
                 let mut stopped = false;
                 for &tok in &outcome.accepted_tokens {
                     if !is_eos(tok) {
-                        let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                        let prev_p2 = if gen_tokens.len() >= 2 {
+                            Some(gen_tokens[gen_tokens.len() - 2])
+                        } else {
+                            None
+                        };
                         if let Some(&last_tok) = gen_tokens.last() {
                             zw_cache.observe(prev_p2, last_tok, tok);
                         }
@@ -216,7 +262,11 @@ fn main() -> Result<()> {
                 let mut stopped = false;
                 for &tok in &outcome.accepted_tokens {
                     if !is_eos(tok) {
-                        let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                        let prev_p2 = if gen_tokens.len() >= 2 {
+                            Some(gen_tokens[gen_tokens.len() - 2])
+                        } else {
+                            None
+                        };
                         if let Some(&last_tok) = gen_tokens.last() {
                             zw_cache.observe(prev_p2, last_tok, tok);
                         }
@@ -242,7 +292,11 @@ fn main() -> Result<()> {
                 if is_eos(next_tok) {
                     break;
                 }
-                let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                let prev_p2 = if gen_tokens.len() >= 2 {
+                    Some(gen_tokens[gen_tokens.len() - 2])
+                } else {
+                    None
+                };
                 if let Some(&last_tok) = gen_tokens.last() {
                     zw_cache.observe(prev_p2, last_tok, next_tok);
                 }
@@ -253,14 +307,22 @@ fn main() -> Result<()> {
 
         let gen_duration = t_gen.elapsed();
         let gen_time_s = gen_duration.as_secs_f64();
-        let tps = if gen_time_s > 0.0 { gen_tokens.len() as f64 / gen_time_s } else { 0.0 };
+        let tps = if gen_time_s > 0.0 {
+            gen_tokens.len() as f64 / gen_time_s
+        } else {
+            0.0
+        };
 
         let decoded_response = tokenizer.decode(&gen_tokens, false).unwrap_or_default();
         let words = decoded_response
             .split(|c: char| !c.is_alphanumeric())
             .filter(|s| !s.is_empty())
             .count();
-        let wps = if gen_time_s > 0.0 { words as f64 / gen_time_s } else { 0.0 };
+        let wps = if gen_time_s > 0.0 {
+            words as f64 / gen_time_s
+        } else {
+            0.0
+        };
 
         let (cur_rss, cur_hwm) = memory_mb();
         if cur_hwm > peak_process_hwm_observed {
@@ -268,11 +330,32 @@ fn main() -> Result<()> {
         }
 
         println!("  Prompt Tokens:  {}", prompt_tokens.len());
-        println!("  Prefill Time:   {:.2} ms ({:.2} tok/s)", prefill_ms, prefill_tps);
-        println!("  Gen Tokens:     {} tokens ({} words) in {:.2}s", gen_tokens.len(), words, gen_time_s);
-        println!("  Throughput:     {:.2} tokens/sec | {:.2} words/sec", tps, wps);
-        println!("  Current RAM:    VmRSS = {:.2} MB | VmHWM = {:.2} MB", cur_rss, cur_hwm);
-        println!("  Output Snippet: {}", decoded_response.replace('\n', " ").chars().take(120).collect::<String>());
+        println!(
+            "  Prefill Time:   {:.2} ms ({:.2} tok/s)",
+            prefill_ms, prefill_tps
+        );
+        println!(
+            "  Gen Tokens:     {} tokens ({} words) in {:.2}s",
+            gen_tokens.len(),
+            words,
+            gen_time_s
+        );
+        println!(
+            "  Throughput:     {:.2} tokens/sec | {:.2} words/sec",
+            tps, wps
+        );
+        println!(
+            "  Current RAM:    VmRSS = {:.2} MB | VmHWM = {:.2} MB",
+            cur_rss, cur_hwm
+        );
+        println!(
+            "  Output Snippet: {}",
+            decoded_response
+                .replace('\n', " ")
+                .chars()
+                .take(120)
+                .collect::<String>()
+        );
 
         total_prefill_ms += prefill_ms;
         total_prefill_tps += prefill_tps;
@@ -309,9 +392,22 @@ fn main() -> Result<()> {
     println!("========================================================");
     println!("  Avg Prefill Time:       {:.2} ms", avg_prefill_ms);
     println!("  Avg Prefill Throughput: {:.2} tok/s", avg_prefill_tps);
-    println!("  Avg Generation Speed:   {:.2} tok/s ({:.2} words/sec)", avg_tokens_per_sec, avg_words_per_sec);
-    println!("  Peak RAM (VmHWM):       {:.2} MB", peak_process_hwm_observed);
-    println!("  < 200 MB SLA Status:    {}", if sub_200mb_sla_passed { "PASSED ✅" } else { "EXCEEDED ⚠️" });
+    println!(
+        "  Avg Generation Speed:   {:.2} tok/s ({:.2} words/sec)",
+        avg_tokens_per_sec, avg_words_per_sec
+    );
+    println!(
+        "  Peak RAM (VmHWM):       {:.2} MB",
+        peak_process_hwm_observed
+    );
+    println!(
+        "  < 200 MB SLA Status:    {}",
+        if sub_200mb_sla_passed {
+            "PASSED ✅"
+        } else {
+            "EXCEEDED ⚠️"
+        }
+    );
     println!("========================================================\n");
 
     let summary = BlueSummary {
@@ -328,7 +424,10 @@ fn main() -> Result<()> {
     };
 
     let json_out = serde_json::to_string_pretty(&summary)?;
-    std::fs::write("/home/mn/nio-labs/nio-xs/blue_production_benchmark.json", json_out)?;
+    std::fs::write(
+        "/home/mn/nio-labs/nio-xs/blue_production_benchmark.json",
+        json_out,
+    )?;
     println!("Saved benchmark report to /home/mn/nio-labs/nio-xs/blue_production_benchmark.json");
 
     Ok(())

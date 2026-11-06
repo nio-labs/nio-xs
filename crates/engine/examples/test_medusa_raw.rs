@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use tokenizers::Tokenizer;
@@ -16,7 +16,9 @@ fn main() -> Result<()> {
         "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(formatted.as_str(), false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -50,11 +52,21 @@ fn main() -> Result<()> {
         (d_norm, d_raw)
     };
 
-    let pred_norm = engine.sample_token_from_x_norm(&draft_from_norm, None, &[tok0, tok1, tok2], false)?;
-    let pred_raw = engine.sample_token_from_x_norm(&draft_from_raw, None, &[tok0, tok1, tok2], false)?;
+    let pred_norm =
+        engine.sample_token_from_x_norm(&draft_from_norm, None, &[tok0, tok1, tok2], false)?;
+    let pred_raw =
+        engine.sample_token_from_x_norm(&draft_from_raw, None, &[tok0, tok1, tok2], false)?;
 
-    println!("Pred from x_norm: {} ({:?})", pred_norm, tokenizer.decode(&[pred_norm], false));
-    println!("Pred from raw x:  {} ({:?})", pred_raw, tokenizer.decode(&[pred_raw], false));
+    println!(
+        "Pred from x_norm: {} ({:?})",
+        pred_norm,
+        tokenizer.decode(&[pred_norm], false)
+    );
+    println!(
+        "Pred from raw x:  {} ({:?})",
+        pred_raw,
+        tokenizer.decode(&[pred_raw], false)
+    );
 
     Ok(())
 }

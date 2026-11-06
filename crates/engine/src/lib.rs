@@ -5,15 +5,19 @@ use std::sync::Arc;
 use tokenizers::Tokenizer;
 use tokio::sync::{Mutex, mpsc};
 
-pub mod gguf;
-pub mod quants;
-pub mod pool;
 pub mod ast_engine;
+pub mod gguf;
 pub mod hardware;
+pub mod pool;
+pub mod quants;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 pub use hardware::{ActiveDevice, DevicePreference};
 
-fn valid_draft_token(token: u32, stop_tokens: &[u32], accepts_input: impl FnOnce(u32) -> bool) -> bool {
+fn valid_draft_token(
+    token: u32,
+    stop_tokens: &[u32],
+    accepts_input: impl FnOnce(u32) -> bool,
+) -> bool {
     token != 0 && !stop_tokens.contains(&token) && accepts_input(token)
 }
 
@@ -39,7 +43,6 @@ pub fn skate_system() -> Result<String> {
     let default_policy = "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and concise. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Fin. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate.";
     Ok(default_policy.to_owned())
 }
-
 
 pub struct TokenOutputStream {
     tokenizer: Tokenizer,
@@ -116,8 +119,10 @@ const UNIVERSAL_SUBWORDS_JSON: &[u8] = include_bytes!("universal_subwords.json")
 const BLUE_SUBWORDS_JSON: &[u8] = include_bytes!("blue_subwords.json");
 
 fn static_subwords(is_blue: bool) -> &'static std::collections::HashMap<u32, u32> {
-    static BLUE_SUB: std::sync::OnceLock<std::collections::HashMap<u32, u32>> = std::sync::OnceLock::new();
-    static UNIV_SUB: std::sync::OnceLock<std::collections::HashMap<u32, u32>> = std::sync::OnceLock::new();
+    static BLUE_SUB: std::sync::OnceLock<std::collections::HashMap<u32, u32>> =
+        std::sync::OnceLock::new();
+    static UNIV_SUB: std::sync::OnceLock<std::collections::HashMap<u32, u32>> =
+        std::sync::OnceLock::new();
     if is_blue {
         BLUE_SUB.get_or_init(|| serde_json::from_slice(BLUE_SUBWORDS_JSON).unwrap_or_default())
     } else {
@@ -151,10 +156,20 @@ impl ZwCache {
     pub fn seed_prompt(&mut self, prompt: &[u32]) {
         self.prompt_tokens = prompt.to_vec();
         for w in prompt.windows(2) {
-            *self.bigrams.entry(w[0]).or_default().entry(w[1]).or_default() += 4;
+            *self
+                .bigrams
+                .entry(w[0])
+                .or_default()
+                .entry(w[1])
+                .or_default() += 4;
         }
         for w in prompt.windows(3) {
-            *self.trigrams.entry((w[0], w[1])).or_default().entry(w[2]).or_default() += 4;
+            *self
+                .trigrams
+                .entry((w[0], w[1]))
+                .or_default()
+                .entry(w[2])
+                .or_default() += 4;
         }
     }
 
@@ -218,7 +233,12 @@ impl ZwCache {
         None
     }
 
-    pub fn predict_pair(&self, prev2: Option<u32>, prev1: u32, gen_tokens: &[u32]) -> (Option<u32>, Option<u32>) {
+    pub fn predict_pair(
+        &self,
+        prev2: Option<u32>,
+        prev1: u32,
+        gen_tokens: &[u32],
+    ) -> (Option<u32>, Option<u32>) {
         if let Some(d1) = self.predict(prev2, prev1, gen_tokens) {
             let d2 = static_subwords(self.is_blue)
                 .get(&d1)
@@ -272,11 +292,13 @@ impl PhraseBuffer {
             || self.buffer.contains("```")
             || self.buffer.contains('>')
             || self.word_count >= 4
-            || (self.buffer.len() >= 32 && (self.buffer.ends_with(' ') || self.buffer.ends_with('\t')))
+            || (self.buffer.len() >= 32
+                && (self.buffer.ends_with(' ') || self.buffer.ends_with('\t')))
             || self.buffer.ends_with(". ")
             || self.buffer.ends_with("! ")
             || self.buffer.ends_with("? ")
-            || (self.word_count >= 3 && (self.buffer.ends_with(": ") || self.buffer.ends_with(", ")));
+            || (self.word_count >= 3
+                && (self.buffer.ends_with(": ") || self.buffer.ends_with(", ")));
 
         if should_flush && !self.buffer.is_empty() {
             let to_send = std::mem::take(&mut self.buffer);
@@ -324,7 +346,11 @@ const STOP_PHRASES: &[&str] = &[
 ];
 
 fn stop_position(text: &str) -> Option<usize> {
-    if let Some(pos) = STOP_PHRASES.iter().filter_map(|phrase| text.find(phrase)).min() {
+    if let Some(pos) = STOP_PHRASES
+        .iter()
+        .filter_map(|phrase| text.find(phrase))
+        .min()
+    {
         return Some(pos);
     }
     // Also intercept any trailing hallucinated XML/tag close like <endof...>, <invariant...>, <tag...>
@@ -421,9 +447,12 @@ impl AstEngine {
         let (model_path, tokenizer_path) = Self::find_or_pull_model_paths(model_name)?;
         let lowered = model_name.trim().to_ascii_lowercase();
         let is_skate = matches!(lowered.as_str(), "skate" | "nio-skate");
-        let is_manta = matches!(lowered.as_str(), "manta" | "nio-manta") || model_path.to_string_lossy().contains("manta");
-        let is_beluga = matches!(lowered.as_str(), "beluga" | "nio-beluga") || model_path.to_string_lossy().contains("beluga");
-        let is_blue = matches!(lowered.as_str(), "blue" | "nio-blue") || model_path.to_string_lossy().contains("blue");
+        let is_manta = matches!(lowered.as_str(), "manta" | "nio-manta")
+            || model_path.to_string_lossy().contains("manta");
+        let is_beluga = matches!(lowered.as_str(), "beluga" | "nio-beluga")
+            || model_path.to_string_lossy().contains("beluga");
+        let is_blue = matches!(lowered.as_str(), "blue" | "nio-blue")
+            || model_path.to_string_lossy().contains("blue");
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -470,8 +499,10 @@ impl AstEngine {
     }
 
     pub fn find_or_pull_model_paths(model_name: &str) -> Result<(PathBuf, PathBuf)> {
-        if matches!(model_name.trim().to_ascii_lowercase().as_str(), "skate" | "nio-skate")
-            && std::env::var_os("NIOXS_SKATE_MODEL").is_some()
+        if matches!(
+            model_name.trim().to_ascii_lowercase().as_str(),
+            "skate" | "nio-skate"
+        ) && std::env::var_os("NIOXS_SKATE_MODEL").is_some()
         {
             return Self::find_model_paths_for(model_name);
         }
@@ -516,10 +547,7 @@ impl AstEngine {
                 "beluga.vmicrolm-vector.gguf",
                 "nio-beluga.vmicrolm-vector.gguf",
             ],
-            "blue" | "nio-blue" => &[
-                "blue.vmicrolm-reflex.gguf",
-                "nio-blue.vmicrolm-reflex.gguf",
-            ],
+            "blue" | "nio-blue" => &["blue.vmicrolm-reflex.gguf", "nio-blue.vmicrolm-reflex.gguf"],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
                 "nio-viper-ast-32k.Q4_0.gguf",
@@ -565,12 +593,14 @@ impl AstEngine {
                 } else {
                     std::env::var_os("NIOXS_TOKENIZER")
                 }
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| if variable == "NIOXS_SKATE_MODEL" {
+                .map(PathBuf::from)
+                .unwrap_or_else(|| {
+                    if variable == "NIOXS_SKATE_MODEL" {
                         model.with_file_name("skate-tokenizer.json")
                     } else {
                         Self::tokenizer_for_model(&model)
-                    });
+                    }
+                });
                 if model.is_file() && tokenizer.is_file() {
                     return Ok((model, tokenizer));
                 }
@@ -661,8 +691,12 @@ impl AstEngine {
             }
             // Sentinel check: index 0 and a sample landmark token
             if let Some(expected_token) = tokens.get(0) {
-                if !expected_token.starts_with("[PAD") && vocab.get(expected_token).copied() != Some(0) {
-                    return Err(anyhow!("Tokenizer mismatch at token ID 0 ({expected_token})"));
+                if !expected_token.starts_with("[PAD")
+                    && vocab.get(expected_token).copied() != Some(0)
+                {
+                    return Err(anyhow!(
+                        "Tokenizer mismatch at token ID 0 ({expected_token})"
+                    ));
                 }
             }
             return Ok(());
@@ -694,7 +728,10 @@ impl AstEngine {
     pub async fn ensure_loaded(&self) -> Result<()> {
         if self.is_vector_runtime() {
             if !self.model_path.is_file() {
-                return Err(anyhow!("Vector model file not found at {:?}", self.model_path));
+                return Err(anyhow!(
+                    "Vector model file not found at {:?}",
+                    self.model_path
+                ));
             }
             return Ok(());
         }
@@ -719,8 +756,9 @@ impl AstEngine {
                 .map_err(|e| anyhow!("Failed loading tokenizer: {e}"))?;
             tokenizer.with_padding(None);
 
-            let mut engine = AstMicroEngine::new(&model_path)
-                .map_err(|e| anyhow!("Failed loading AST-Micro engine for {:?}: {e}", model_path))?;
+            let mut engine = AstMicroEngine::new(&model_path).map_err(|e| {
+                anyhow!("Failed loading AST-Micro engine for {:?}: {e}", model_path)
+            })?;
             Self::validate_tokenizer(&tokenizer, &engine.tokenizer_tokens()?)
                 .map_err(|e| anyhow!("Tokenizer does not match model: {e}"))?;
 
@@ -786,7 +824,9 @@ impl AstEngine {
             raw_prompt.to_string()
         } else if self.model_path.to_string_lossy().contains("viper") {
             #[cfg(target_os = "windows")]
-            let os_prefix = if !raw_prompt.to_ascii_lowercase().contains("powershell") && !raw_prompt.to_ascii_lowercase().contains("cmd") {
+            let os_prefix = if !raw_prompt.to_ascii_lowercase().contains("powershell")
+                && !raw_prompt.to_ascii_lowercase().contains("cmd")
+            {
                 "powershell "
             } else {
                 ""
@@ -883,30 +923,54 @@ impl AstEngine {
             if runner_available {
                 let model_path = self.model_path.clone();
                 let context_size = if self.is_skate { "8192" } else { "4096" };
-                let total_layers = if self.is_blue { 32 } else if self.is_beluga { 28 } else if self.is_manta { 24 } else { 30 };
+                let total_layers = if self.is_blue {
+                    32
+                } else if self.is_beluga {
+                    28
+                } else if self.is_manta {
+                    24
+                } else {
+                    30
+                };
                 let gpu_layers = active_dev.recommended_gpu_layers(total_layers);
                 let ngl_arg = gpu_layers.to_string();
-                eprintln!("[nioxs] Hardware: {} (offloading {}/{} layers to GPU)", active_dev.name(), gpu_layers, total_layers);
+                eprintln!(
+                    "[nioxs] Hardware: {} (offloading {}/{} layers to GPU)",
+                    active_dev.name(),
+                    gpu_layers,
+                    total_layers
+                );
 
                 tokio::task::spawn_blocking(move || {
                     let temp_arg = format!("{temperature:.2}");
                     let top_p_arg = format!("{top_p:.2}");
                     let mut cmd = std::process::Command::new(&runner_bin);
                     cmd.args([
-                        "-m", model_path.to_str().unwrap_or_default(),
-                        "-p", &prompt,
-                        "-n", &max_tokens.to_string(),
-                        "-c", context_size,
-                        "-ngl", &ngl_arg,
-                        "--temp", &temp_arg,
-                        "--top-p", &top_p_arg,
-                        "--min-p", "0.05",
-                        "--repeat-penalty", "1.15",
-                        "--repeat-last-n", "64",
+                        "-m",
+                        model_path.to_str().unwrap_or_default(),
+                        "-p",
+                        &prompt,
+                        "-n",
+                        &max_tokens.to_string(),
+                        "-c",
+                        context_size,
+                        "-ngl",
+                        &ngl_arg,
+                        "--temp",
+                        &temp_arg,
+                        "--top-p",
+                        &top_p_arg,
+                        "--min-p",
+                        "0.05",
+                        "--repeat-penalty",
+                        "1.15",
+                        "--repeat-last-n",
+                        "64",
                         "--no-display-prompt",
                         "--simple-io",
                     ]);
-                    if let Some(lib_dir) = runner_bin.parent().filter(|p| !p.as_os_str().is_empty()) {
+                    if let Some(lib_dir) = runner_bin.parent().filter(|p| !p.as_os_str().is_empty())
+                    {
                         let existing = std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default();
                         let mut paths = vec![lib_dir.to_path_buf()];
                         paths.extend(std::env::split_paths(&existing));
@@ -945,17 +1009,27 @@ impl AstEngine {
                 let top_p_arg = format!("{top_p:.2}");
                 let mut cmd = std::process::Command::new(&runner_bin);
                 cmd.args([
-                    "-m", model_path.to_str().unwrap_or_default(),
-                    "-p", &prompt,
-                    "-n", &max_tokens.to_string(),
-                    "-c", "512",
-                    "-t", "2",
+                    "-m",
+                    model_path.to_str().unwrap_or_default(),
+                    "-p",
+                    &prompt,
+                    "-n",
+                    &max_tokens.to_string(),
+                    "-c",
+                    "512",
+                    "-t",
+                    "2",
                     "-st",
-                    "--temp", &temp_arg,
-                    "--top-p", &top_p_arg,
-                    "--min-p", "0.05",
-                    "--repeat-penalty", "1.15",
-                    "--repeat-last-n", "64",
+                    "--temp",
+                    &temp_arg,
+                    "--top-p",
+                    &top_p_arg,
+                    "--min-p",
+                    "0.05",
+                    "--repeat-penalty",
+                    "1.15",
+                    "--repeat-last-n",
+                    "64",
                     "--no-display-prompt",
                     "--simple-io",
                 ]);
@@ -1026,7 +1100,13 @@ impl AstEngine {
                 return;
             }
 
-            let repeat_penalty = if is_blue { 1.05 } else if is_beluga { 1.02 } else { 1.10 };
+            let repeat_penalty = if is_blue {
+                1.05
+            } else if is_beluga {
+                1.02
+            } else {
+                1.10
+            };
             bundle
                 .engine
                 .set_sampling(temperature, top_p, repeat_penalty, 64);
@@ -1051,7 +1131,10 @@ impl AstEngine {
                 bundle.tokenizer.token_to_id("<|im_end|>"),
                 bundle.tokenizer.token_to_id("<|endoftext|>"),
                 bundle.tokenizer.token_to_id("<|im_start|>"),
-            ].into_iter().flatten().collect();
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
             let is_eos = |tok: u32| stop_tokens.contains(&tok);
 
             let next_token = match bundle.engine.next_token_with_history(None, &[], false) {
@@ -1086,7 +1169,11 @@ impl AstEngine {
             let mut zw_cache = ZwCache::new_for_model(is_blue);
             zw_cache.seed_prompt(&prompt_tokens);
             if let Some(&last_prompt) = prompt_tokens.last() {
-                let p2 = if prompt_tokens.len() >= 2 { Some(prompt_tokens[prompt_tokens.len() - 2]) } else { None };
+                let p2 = if prompt_tokens.len() >= 2 {
+                    Some(prompt_tokens[prompt_tokens.len() - 2])
+                } else {
+                    None
+                };
                 zw_cache.observe(p2, last_prompt, next_token);
             }
 
@@ -1094,7 +1181,9 @@ impl AstEngine {
             // The prefill already produces the first output token. Do not
             // forward beyond the final position when generation reaches the
             // model's context boundary.
-            let max_gen = max_tokens.max(1).min(bundle.engine.context_length() - prompt_tokens.len() + 1);
+            let max_gen = max_tokens
+                .max(1)
+                .min(bundle.engine.context_length() - prompt_tokens.len() + 1);
             let mut current_confirmed = next_token;
             let mut stream_pos = prompt_tokens.len();
             let mut consecutive_misses = 0usize;
@@ -1105,20 +1194,29 @@ impl AstEngine {
                 }
 
                 let remaining = max_gen.saturating_sub(gen_tokens.len());
-                let prev2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                let prev2 = if gen_tokens.len() >= 2 {
+                    Some(gen_tokens[gen_tokens.len() - 2])
+                } else {
+                    None
+                };
 
                 // Predict draft candidates: strictly high-confidence context and subword drafter
                 let (d1_opt, d2_opt) = if remaining >= 3 {
                     zw_cache.predict_pair(prev2, current_confirmed, &gen_tokens)
                 } else if remaining >= 2 {
-                    (zw_cache.predict(prev2, current_confirmed, &gen_tokens), None)
+                    (
+                        zw_cache.predict(prev2, current_confirmed, &gen_tokens),
+                        None,
+                    )
                 } else {
                     (None, None)
                 };
 
                 // Static draft tables may come from a different tokenizer. Never
                 // feed a guess outside this model's embedding vocabulary.
-                let valid_draft = |d: &u32| valid_draft_token(*d, &stop_tokens, |t| bundle.engine.accepts_input_token(t));
+                let valid_draft = |d: &u32| {
+                    valid_draft_token(*d, &stop_tokens, |t| bundle.engine.accepts_input_token(t))
+                };
                 let d1_valid = d1_opt.filter(valid_draft);
                 let d2_valid = d2_opt.filter(valid_draft);
 
@@ -1142,14 +1240,23 @@ impl AstEngine {
                             let mut stopped = false;
                             for &tok in &outcome.accepted_tokens {
                                 if !is_eos(tok) && tok != 0 {
-                                    let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                                    let prev_p2 = if gen_tokens.len() >= 2 {
+                                        Some(gen_tokens[gen_tokens.len() - 2])
+                                    } else {
+                                        None
+                                    };
                                     if let Some(&last_tok) = gen_tokens.last() {
                                         zw_cache.observe(prev_p2, last_tok, tok);
                                     }
                                     gen_tokens.push(tok);
 
                                     if let Ok(Some(chunk)) = tos.next_token(tok) {
-                                        if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
+                                        if !push_safe_chunk(
+                                            &chunk,
+                                            &mut emitted,
+                                            &mut phrase_buffer,
+                                            &tx,
+                                        ) {
                                             stopped = true;
                                             break;
                                         }
@@ -1197,14 +1304,23 @@ impl AstEngine {
                             let mut stopped = false;
                             for &tok in &outcome.accepted_tokens {
                                 if !is_eos(tok) && tok != 0 {
-                                    let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                                    let prev_p2 = if gen_tokens.len() >= 2 {
+                                        Some(gen_tokens[gen_tokens.len() - 2])
+                                    } else {
+                                        None
+                                    };
                                     if let Some(&last_tok) = gen_tokens.last() {
                                         zw_cache.observe(prev_p2, last_tok, tok);
                                     }
                                     gen_tokens.push(tok);
 
                                     if let Ok(Some(chunk)) = tos.next_token(tok) {
-                                        if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
+                                        if !push_safe_chunk(
+                                            &chunk,
+                                            &mut emitted,
+                                            &mut phrase_buffer,
+                                            &tx,
+                                        ) {
                                             stopped = true;
                                             break;
                                         }
@@ -1237,25 +1353,36 @@ impl AstEngine {
                         consecutive_misses -= 1;
                     }
 
-                    if let Err(e) = bundle.engine.forward_stream(&[current_confirmed], stream_pos) {
+                    if let Err(e) = bundle
+                        .engine
+                        .forward_stream(&[current_confirmed], stream_pos)
+                    {
                         let _ = tx.blocking_send(format!("AST-Micro forward error: {e}"));
                         break;
                     }
                     stream_pos += 1;
 
-                    let next_tok = match bundle.engine.next_token_with_history(None, &gen_tokens, false) {
-                        Ok(t) => t,
-                        Err(e) => {
-                            let _ = tx.blocking_send(format!("AST-Micro sampling error: {e}"));
-                            break;
-                        }
-                    };
+                    let next_tok =
+                        match bundle
+                            .engine
+                            .next_token_with_history(None, &gen_tokens, false)
+                        {
+                            Ok(t) => t,
+                            Err(e) => {
+                                let _ = tx.blocking_send(format!("AST-Micro sampling error: {e}"));
+                                break;
+                            }
+                        };
 
                     if is_eos(next_tok) || next_tok == 0 {
                         break;
                     }
 
-                    let prev_p2 = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                    let prev_p2 = if gen_tokens.len() >= 2 {
+                        Some(gen_tokens[gen_tokens.len() - 2])
+                    } else {
+                        None
+                    };
                     zw_cache.observe(prev_p2, current_confirmed, next_tok);
 
                     gen_tokens.push(next_tok);
@@ -1313,7 +1440,9 @@ mod tests {
             assert!(pb.push(" NioXS", &tx));
             assert!(pb.push(" tail", &tx));
             pb.flush(&tx);
-        }).join().unwrap();
+        })
+        .join()
+        .unwrap();
 
         let chunk1 = rx.blocking_recv().expect("Should flush on 4 words");
         assert_eq!(chunk1, "Hello world from NioXS");
@@ -1365,7 +1494,11 @@ mod tests {
 
     #[test]
     fn matching_tokenizer_accepts_unused_gguf_padding() {
-        let tokens = [String::from("hello"), String::from("<|im_end|>"), String::from("[PAD2]")];
+        let tokens = [
+            String::from("hello"),
+            String::from("<|im_end|>"),
+            String::from("[PAD2]"),
+        ];
         RayEngine::validate_tokenizer(&tokenizer(), &tokens).unwrap();
     }
 
@@ -1379,7 +1512,11 @@ mod tests {
 
     #[test]
     fn rejects_missing_model_tokens() {
-        let tokens = [String::from("hello"), String::from("<|im_end|>"), String::from("world")];
+        let tokens = [
+            String::from("hello"),
+            String::from("<|im_end|>"),
+            String::from("world"),
+        ];
         assert!(AstEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
     }
 
@@ -1403,7 +1540,7 @@ mod tests {
                 if let Some(bundle) = guard.as_mut() {
                     let prompt_tokens = vec![1, 2, 3, 4, 5];
                     bundle.engine.reset_cache();
-            bundle.engine.evict_all();
+                    bundle.engine.evict_all();
                     let hidden = bundle.engine.forward_stream(&prompt_tokens, 0).unwrap();
                     let tok = bundle.engine.next_token(&hidden, None).unwrap();
                     assert!(tok > 0);

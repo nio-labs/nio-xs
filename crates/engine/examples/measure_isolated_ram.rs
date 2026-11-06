@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -12,17 +12,43 @@ fn print_detailed_ram(label: &str) {
         let mut rssfile = 0.0;
         for line in status.lines() {
             if line.starts_with("VmRSS:") {
-                vmrss = line.split_whitespace().nth(1).unwrap().parse::<f64>().unwrap() / 1024.0;
+                vmrss = line
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+                    / 1024.0;
             } else if line.starts_with("VmHWM:") {
-                vmhwm = line.split_whitespace().nth(1).unwrap().parse::<f64>().unwrap() / 1024.0;
+                vmhwm = line
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+                    / 1024.0;
             } else if line.starts_with("RssAnon:") {
-                rssanon = line.split_whitespace().nth(1).unwrap().parse::<f64>().unwrap() / 1024.0;
+                rssanon = line
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+                    / 1024.0;
             } else if line.starts_with("RssFile:") {
-                rssfile = line.split_whitespace().nth(1).unwrap().parse::<f64>().unwrap() / 1024.0;
+                rssfile = line
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+                    / 1024.0;
             }
         }
-        println!("[{label}] Peak VmHWM: {:6.1} MB | Current VmRSS: {:6.1} MB (Anon Heap: {:5.1} MB, File Mmap: {:5.1} MB)",
-            vmhwm, vmrss, rssanon, rssfile);
+        println!(
+            "[{label}] Peak VmHWM: {:6.1} MB | Current VmRSS: {:6.1} MB (Anon Heap: {:5.1} MB, File Mmap: {:5.1} MB)",
+            vmhwm, vmrss, rssanon, rssfile
+        );
     }
 }
 
@@ -45,7 +71,11 @@ fn main() -> Result<()> {
 
     let prompt = "Explain how Raft avoids split-brain during leader election when a network partition occurs.";
     let formatted = format!("<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n");
-    let prompt_tokens = tokenizer.encode(formatted.as_str(), false).unwrap().get_ids().to_vec();
+    let prompt_tokens = tokenizer
+        .encode(formatted.as_str(), false)
+        .unwrap()
+        .get_ids()
+        .to_vec();
 
     let _ = engine.prefill(&prompt_tokens)?;
     print_detailed_ram("Post Prefill");
@@ -65,7 +95,12 @@ fn main() -> Result<()> {
     let elapsed = t0.elapsed().as_secs_f64();
     print_detailed_ram("During/Post Generation");
 
-    println!("Generated {} tokens in {:.2}s ({:.2} tok/s)", gen_tokens.len(), elapsed, gen_tokens.len() as f64 / elapsed);
+    println!(
+        "Generated {} tokens in {:.2}s ({:.2} tok/s)",
+        gen_tokens.len(),
+        elapsed,
+        gen_tokens.len() as f64 / elapsed
+    );
 
     Ok(())
 }

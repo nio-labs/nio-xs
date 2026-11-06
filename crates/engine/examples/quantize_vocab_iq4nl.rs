@@ -1,11 +1,11 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use memmap2::Mmap;
 use nioxs_engine::quants;
 use rayon::prelude::*;
 use std::fs::File;
 use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
-use std::path::{PathBuf};
+use std::path::PathBuf;
 
 #[derive(Clone)]
 struct TensorEntry {
@@ -94,10 +94,16 @@ fn main() -> Result<()> {
     let embd_offset = tensors[embd_idx].offset as usize;
     let embd_dtype = tensors[embd_idx].dtype;
     let embd_dims = tensors[embd_idx].dims.clone();
-    println!("Found token_embd.weight: dims={:?}, dtype={}, offset={}", embd_dims, embd_dtype, embd_offset);
+    println!(
+        "Found token_embd.weight: dims={:?}, dtype={}, offset={}",
+        embd_dims, embd_dtype, embd_offset
+    );
 
     if embd_dtype != 8 {
-        return Err(anyhow!("token_embd.weight is not Q8_0 (found dtype {})", embd_dtype));
+        return Err(anyhow!(
+            "token_embd.weight is not Q8_0 (found dtype {})",
+            embd_dtype
+        ));
     }
 
     let dim_d = embd_dims[0] as usize;
@@ -110,12 +116,26 @@ fn main() -> Result<()> {
 
     println!("   Embedding dimension: {}", dim_d);
     println!("   Vocabulary count:    {}", vocab_v);
-    println!("   Current row size:    {} bytes (Total: {:.2} MB)", old_row_bytes, old_total_bytes as f64 / 1_048_576.0);
-    println!("   Target IQ4_NL size:  {} bytes (Total: {:.2} MB)", new_row_bytes, new_total_bytes as f64 / 1_048_576.0);
-    println!("   Net RAM reduction:   {:.2} MB ({:.1}%)", (old_total_bytes - new_total_bytes) as f64 / 1_048_576.0, (1.0 - new_total_bytes as f64 / old_total_bytes as f64) * 100.0);
+    println!(
+        "   Current row size:    {} bytes (Total: {:.2} MB)",
+        old_row_bytes,
+        old_total_bytes as f64 / 1_048_576.0
+    );
+    println!(
+        "   Target IQ4_NL size:  {} bytes (Total: {:.2} MB)",
+        new_row_bytes,
+        new_total_bytes as f64 / 1_048_576.0
+    );
+    println!(
+        "   Net RAM reduction:   {:.2} MB ({:.1}%)",
+        (old_total_bytes - new_total_bytes) as f64 / 1_048_576.0,
+        (1.0 - new_total_bytes as f64 / old_total_bytes as f64) * 100.0
+    );
 
     // Multithreaded quantization of token_embd.weight
-    println!("\n⚡ Quantizing token_embd.weight to IQ4_NL with Rayon (Lloyd-Max centroid optimization)...");
+    println!(
+        "\n⚡ Quantizing token_embd.weight to IQ4_NL with Rayon (Lloyd-Max centroid optimization)..."
+    );
     let embd_data_start = input_data_start + embd_offset;
     let old_embd_slice = &mmap[embd_data_start..embd_data_start + old_total_bytes];
 
@@ -131,7 +151,10 @@ fn main() -> Result<()> {
             quants::quantize_row_iq4_nl(&f32_buf, out_row);
         });
 
-    println!("✅ Quantization completed in {:.2}s!", start_time.elapsed().as_secs_f64());
+    println!(
+        "✅ Quantization completed in {:.2}s!",
+        start_time.elapsed().as_secs_f64()
+    );
 
     // Update tensor list
     tensors[embd_idx].dtype = 20; // IQ4_NL
@@ -185,7 +208,8 @@ fn main() -> Result<()> {
     writer.flush()?;
 
     let final_size = output_path.metadata()?.len();
-    println!("🎉 DONE! Output artifact size: {:.2} MB (saved {:.2} MB)",
+    println!(
+        "🎉 DONE! Output artifact size: {:.2} MB (saved {:.2} MB)",
         final_size as f64 / 1_048_576.0,
         (mmap.len() as i64 - final_size as i64) as f64 / 1_048_576.0
     );
@@ -195,9 +219,15 @@ fn main() -> Result<()> {
 
 fn skip_kv_value<R: Read + Seek>(reader: &mut R, vtype: u32) -> Result<()> {
     match vtype {
-        0 | 1 | 7 => { reader.seek(SeekFrom::Current(1))?; }
-        2 | 3 => { reader.seek(SeekFrom::Current(2))?; }
-        4 | 5 | 6 => { reader.seek(SeekFrom::Current(4))?; }
+        0 | 1 | 7 => {
+            reader.seek(SeekFrom::Current(1))?;
+        }
+        2 | 3 => {
+            reader.seek(SeekFrom::Current(2))?;
+        }
+        4 | 5 | 6 => {
+            reader.seek(SeekFrom::Current(4))?;
+        }
         8 => {
             let len = reader.read_u64::<LittleEndian>()?;
             reader.seek(SeekFrom::Current(len as i64))?;
@@ -209,7 +239,9 @@ fn skip_kv_value<R: Read + Seek>(reader: &mut R, vtype: u32) -> Result<()> {
                 skip_kv_value(reader, subtype)?;
             }
         }
-        10 | 11 | 12 => { reader.seek(SeekFrom::Current(8))?; }
+        10 | 11 | 12 => {
+            reader.seek(SeekFrom::Current(8))?;
+        }
         other => return Err(anyhow!("unsupported GGUF value type {other}")),
     }
     Ok(())

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -35,7 +35,9 @@ fn main() -> Result<()> {
         "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(formatted.as_str(), false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -56,7 +58,12 @@ fn main() -> Result<()> {
         let dt = t0.elapsed();
         tokens.push(tok);
         curr = tok;
-        println!("  AR token: {} ({:?}) | dt: {:.2}ms", tok, tokenizer.decode(&[tok], false), dt.as_secs_f64() * 1000.0);
+        println!(
+            "  AR token: {} ({:?}) | dt: {:.2}ms",
+            tok,
+            tokenizer.decode(&[tok], false),
+            dt.as_secs_f64() * 1000.0
+        );
         if tok == eos_id {
             break;
         }
@@ -70,8 +77,14 @@ fn main() -> Result<()> {
     println!("Tokens: {}", tokens.len());
     println!("Words: {}", words);
     println!("Total time: {:.3}s", total_dt.as_secs_f64());
-    println!("Token rate: {:.2} tok/s", (tokens.len() - 1) as f64 / total_dt.as_secs_f64());
-    println!("Word rate: {:.2} words/sec", words as f64 / total_dt.as_secs_f64());
+    println!(
+        "Token rate: {:.2} tok/s",
+        (tokens.len() - 1) as f64 / total_dt.as_secs_f64()
+    );
+    println!(
+        "Word rate: {:.2} words/sec",
+        words as f64 / total_dt.as_secs_f64()
+    );
     println!("VmRSS: {:.2} MB | VmHWM: {:.2} MB", rss, hwm);
 
     Ok(())

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nioxs_engine::ast_engine::AstMicroEngine;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -34,10 +34,20 @@ impl HighConfidenceDrafter {
         };
         // Seed from prompt
         for w in prompt.windows(3) {
-            *drafter.trigrams.entry((w[0], w[1])).or_default().entry(w[2]).or_default() += 3;
+            *drafter
+                .trigrams
+                .entry((w[0], w[1]))
+                .or_default()
+                .entry(w[2])
+                .or_default() += 3;
         }
         for w in prompt.windows(2) {
-            *drafter.bigrams.entry(w[0]).or_default().entry(w[1]).or_default() += 2;
+            *drafter
+                .bigrams
+                .entry(w[0])
+                .or_default()
+                .entry(w[1])
+                .or_default() += 2;
         }
         drafter
     }
@@ -46,19 +56,39 @@ impl HighConfidenceDrafter {
         if let Ok(enc) = tokenizer.encode(text, false) {
             let ids = enc.get_ids();
             for w in ids.windows(3) {
-                *self.trigrams.entry((w[0], w[1])).or_default().entry(w[2]).or_default() += 2;
+                *self
+                    .trigrams
+                    .entry((w[0], w[1]))
+                    .or_default()
+                    .entry(w[2])
+                    .or_default() += 2;
             }
             for w in ids.windows(2) {
-                *self.bigrams.entry(w[0]).or_default().entry(w[1]).or_default() += 1;
+                *self
+                    .bigrams
+                    .entry(w[0])
+                    .or_default()
+                    .entry(w[1])
+                    .or_default() += 1;
             }
         }
     }
 
     fn observe(&mut self, prev: Option<u32>, curr: u32, next: u32) {
         if let Some(p) = prev {
-            *self.trigrams.entry((p, curr)).or_default().entry(next).or_default() += 3;
+            *self
+                .trigrams
+                .entry((p, curr))
+                .or_default()
+                .entry(next)
+                .or_default() += 3;
         }
-        *self.bigrams.entry(curr).or_default().entry(next).or_default() += 2;
+        *self
+            .bigrams
+            .entry(curr)
+            .or_default()
+            .entry(next)
+            .or_default() += 2;
     }
 
     fn predict(&self, prev: Option<u32>, curr: u32, gen_tokens: &[u32]) -> Option<u32> {
@@ -116,7 +146,9 @@ fn test_prompt(
         "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let encoded = tokenizer.encode(formatted.as_str(), false).map_err(|e| anyhow!("{e}"))?;
+    let encoded = tokenizer
+        .encode(formatted.as_str(), false)
+        .map_err(|e| anyhow!("{e}"))?;
     let prompt_tokens = encoded.get_ids().to_vec();
 
     engine.reset_cache();
@@ -135,7 +167,11 @@ fn test_prompt(
 
     let t_start = Instant::now();
     for _ in 0..max_steps {
-        let prev = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+        let prev = if gen_tokens.len() >= 2 {
+            Some(gen_tokens[gen_tokens.len() - 2])
+        } else {
+            None
+        };
         let draft_opt = drafter.predict(prev, current_confirmed, &gen_tokens);
 
         if let Some(draft_tok) = draft_opt.filter(|&d| d != eos_id && d != 0) {
@@ -155,7 +191,11 @@ fn test_prompt(
             }
 
             for &tok in &outcome.accepted_tokens {
-                let p = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+                let p = if gen_tokens.len() >= 2 {
+                    Some(gen_tokens[gen_tokens.len() - 2])
+                } else {
+                    None
+                };
                 if let Some(&last) = gen_tokens.last() {
                     drafter.observe(p, last, tok);
                 }
@@ -179,7 +219,11 @@ fn test_prompt(
                 break;
             }
 
-            let p = if gen_tokens.len() >= 2 { Some(gen_tokens[gen_tokens.len() - 2]) } else { None };
+            let p = if gen_tokens.len() >= 2 {
+                Some(gen_tokens[gen_tokens.len() - 2])
+            } else {
+                None
+            };
             drafter.observe(p, current_confirmed, next_tok);
 
             gen_tokens.push(next_tok);
@@ -196,9 +240,17 @@ fn test_prompt(
 
     println!(
         "[{:20}] Tokens: {:3} | Words: {:3} | Time: {:.2}s | Match: {:2}/{:2} ({:4.1}%) | AR: {:2} | {:5.2} tok/s | {:5.2} words/sec | RAM: {:.1}MB",
-        name, gen_tokens.len(), words, elapsed, spec_matches, spec_matches + spec_misses,
+        name,
+        gen_tokens.len(),
+        words,
+        elapsed,
+        spec_matches,
+        spec_matches + spec_misses,
         spec_matches as f64 / (spec_matches + spec_misses).max(1) as f64 * 100.0,
-        ar_steps, tok_rate, word_rate, rss
+        ar_steps,
+        tok_rate,
+        word_rate,
+        rss
     );
 
     Ok(())
@@ -216,9 +268,18 @@ fn main() -> Result<()> {
     engine.set_rolling_window(4);
 
     let prompts = [
-        ("Distributed Raft", "Explain how Raft avoids split-brain during leader election when a network partition occurs."),
-        ("Systems Concurrency", "Compare epoll and io_uring architecture. What is the fundamental mechanism that eliminates context switching in io_uring?"),
-        ("Storage Engine", "When designing an embedded edge database, evaluate the trade-offs between an LSM-Tree and a B-Tree for write amplification vs read latency."),
+        (
+            "Distributed Raft",
+            "Explain how Raft avoids split-brain during leader election when a network partition occurs.",
+        ),
+        (
+            "Systems Concurrency",
+            "Compare epoll and io_uring architecture. What is the fundamental mechanism that eliminates context switching in io_uring?",
+        ),
+        (
+            "Storage Engine",
+            "When designing an embedded edge database, evaluate the trade-offs between an LSM-Tree and a B-Tree for write amplification vs read latency.",
+        ),
     ];
 
     println!("\n========================================================");
