@@ -23,3 +23,6 @@ lz4_flex = "0.14.0"
 half = "2.4"
 byteorder = "1.5"
 rayon = "1.8"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Memory", "Win32_System_Threading"] }

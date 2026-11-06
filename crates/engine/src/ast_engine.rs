@@ -111,6 +111,7 @@ fn sample_top_p(top: &[(u32, f32); 16], temperature: f32, top_p: f32) -> u32 {
     top[0].0
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn rms_norm_slice_avx2(x: &[f32], weight: &[f32], eps: f32, out: &mut [f32]) {
     use core::arch::x86_64::*;
@@ -1203,6 +1204,7 @@ impl LayerDesc {
         let aligned_start = (self.min_offset / page_size) * page_size;
         let aligned_len =
             ((self.max_offset - aligned_start + page_size - 1) / page_size) * page_size;
+        #[cfg(unix)]
         unsafe {
             libc::madvise(
                 mmap.as_ptr().add(aligned_start) as *mut libc::c_void,
@@ -1790,6 +1792,7 @@ impl AstMicroEngine {
         if std::env::var_os("NIOXS_LOW_RAM").is_some() {
             engine.evict_all();
         }
+        #[cfg(target_os = "linux")]
         unsafe {
             libc::malloc_trim(0);
         }
@@ -1821,6 +1824,7 @@ impl AstMicroEngine {
         let page_size = 4096;
         let aligned_start = (offset / page_size) * page_size;
         let aligned_len = ((offset + len - aligned_start + page_size - 1) / page_size) * page_size;
+        #[cfg(unix)]
         unsafe {
             libc::madvise(
                 mmap.as_ptr().add(aligned_start) as *mut libc::c_void,
@@ -1867,6 +1871,7 @@ impl AstMicroEngine {
             self.evict_all();
         }
         self.pool.park();
+        #[cfg(target_os = "linux")]
         unsafe {
             libc::malloc_trim(0);
         }
@@ -1880,6 +1885,7 @@ impl AstMicroEngine {
     }
 
     pub fn evict_all(&mut self) {
+        #[cfg(unix)]
         unsafe {
             libc::madvise(
                 self.mmap.as_ptr() as *mut libc::c_void,

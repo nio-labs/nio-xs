@@ -1,5 +1,6 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
+#[cfg(target_arch = "x86_64")]
 use crate::quants::{self, BlockQ8_0, BlockQ8_K};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -269,6 +270,7 @@ pub enum GemvTask {
     },
 }
 
+#[cfg(target_arch = "x86_64")]
 impl GemvTask {
     #[inline(always)]
     pub unsafe fn execute(&self, worker_id: usize, num_workers: usize) {
@@ -2013,11 +2015,19 @@ struct SharedState {
 
 unsafe impl Sync for SharedState {}
 
+#[cfg(target_os = "linux")]
 unsafe fn pin_thread_to_cpu(cpu_id: usize) {
     let mut set: libc::cpu_set_t = std::mem::zeroed();
     libc::CPU_SET(cpu_id, &mut set);
     libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &set);
 }
+
+#[cfg(not(target_os = "linux"))]
+unsafe fn pin_thread_to_cpu(_cpu_id: usize) {}
+
+#[cfg(any(test, not(target_arch = "x86_64")))]
+#[path = "pool_scalar.rs"]
+mod scalar;
 
 pub struct SpinThreadPool {
     shared: Arc<SharedState>,

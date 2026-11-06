@@ -396,6 +396,7 @@ pub const SIGNS64_IQ2XS: [u64; 128] = [
 ];
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn f16_to_f32_hw(bits: u16) -> f32 {
     use core::arch::x86_64::*;
@@ -441,6 +442,7 @@ pub struct BlockQ8_K {
     pub bsums: [i16; 16],
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn quantize_row_q8_k_avx2(x: &[f32], out: &mut [BlockQ8_K]) {
     use core::arch::x86_64::*;
@@ -573,6 +575,7 @@ pub fn fast_silu(x: f32) -> f32 {
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 unsafe fn hsum_float_8(x: core::arch::x86_64::__m256) -> f32 {
     use core::arch::x86_64::*;
@@ -584,6 +587,7 @@ unsafe fn hsum_float_8(x: core::arch::x86_64::__m256) -> f32 {
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 unsafe fn mul_add_epi8(
     x: core::arch::x86_64::__m256i,
@@ -596,6 +600,7 @@ unsafe fn mul_add_epi8(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 unsafe fn sum_i16_pairs_float(x: core::arch::x86_64::__m256i) -> core::arch::x86_64::__m256 {
     use core::arch::x86_64::*;
@@ -605,6 +610,7 @@ unsafe fn sum_i16_pairs_float(x: core::arch::x86_64::__m256i) -> core::arch::x86
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 unsafe fn mul_sum_i8_pairs_float(
     x: core::arch::x86_64::__m256i,
@@ -617,6 +623,7 @@ unsafe fn mul_sum_i8_pairs_float(
     sum_i16_pairs_float(dot)
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_q8_0_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_0]) -> f32 {
     use core::arch::x86_64::*;
@@ -643,6 +650,7 @@ pub unsafe fn vec_dot_q8_0_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_0]
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_q8_0_18blocks_avx2(
     weight_ptr: *const u8,
@@ -684,6 +692,7 @@ pub unsafe fn vec_dot_q8_0_18blocks_avx2(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_q8_0_28blocks_2rows_avx2(
     r0_ptr: *const u8,
@@ -748,6 +757,7 @@ pub unsafe fn vec_dot_q8_0_28blocks_2rows_avx2(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_q8_0_28blocks_avx2(
     weight_ptr: *const u8,
@@ -790,6 +800,7 @@ pub unsafe fn vec_dot_q8_0_28blocks_avx2(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_q8_0_48blocks_2rows_avx2(
     r0_ptr: *const u8,
@@ -856,6 +867,7 @@ pub unsafe fn vec_dot_q8_0_48blocks_2rows_avx2(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_q8_0_48blocks_avx2(
     weight_ptr: *const u8,
@@ -898,6 +910,7 @@ pub unsafe fn vec_dot_q8_0_48blocks_avx2(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_q8_0_96blocks_2rows_avx2(
     r0_ptr: *const u8,
@@ -962,6 +975,7 @@ pub unsafe fn vec_dot_q8_0_96blocks_2rows_avx2(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_q8_0_96blocks_avx2(
     weight_ptr: *const u8,
@@ -1003,6 +1017,7 @@ pub unsafe fn vec_dot_q8_0_96blocks_avx2(
     hsum_float_8(_mm256_add_ps(acc0, acc1))
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn vec_dot_iq4_nl_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_0]) -> f32 {
     use core::arch::x86_64::*;
@@ -1076,6 +1091,7 @@ pub unsafe fn vec_dot_iq4_nl_q8_0_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq4_nl_48blocks_2rows_avx2(
     r0_ptr: *const u8,
@@ -1156,6 +1172,7 @@ pub unsafe fn vec_dot_iq4_nl_48blocks_2rows_avx2(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq4_nl_48blocks_avx2(
     weight_ptr: *const u8,
@@ -1208,6 +1225,7 @@ pub unsafe fn vec_dot_iq4_nl_48blocks_avx2(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq4_nl_96blocks_2rows_avx2(
     r0_ptr: *const u8,
@@ -1288,6 +1306,7 @@ pub unsafe fn vec_dot_iq4_nl_96blocks_2rows_avx2(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq4_nl_96blocks_avx2(
     weight_ptr: *const u8,
@@ -1340,6 +1359,7 @@ pub unsafe fn vec_dot_iq4_nl_96blocks_avx2(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq4_nl_28blocks_2rows_avx2(
     r0_ptr: *const u8,
@@ -1420,6 +1440,7 @@ pub unsafe fn vec_dot_iq4_nl_28blocks_2rows_avx2(
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq4_nl_28blocks_avx2(
     weight_ptr: *const u8,
@@ -1471,6 +1492,7 @@ pub unsafe fn vec_dot_iq4_nl_28blocks_avx2(
     hsum_float_8(_mm256_add_ps(acc0, acc1))
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn gate_up_iq4_nl_silu_avx2(
     w1_ptr: *const u8,
@@ -1564,6 +1586,7 @@ pub unsafe fn gate_up_iq4_nl_silu_avx2(
     fast_silu(w1_val) * w3_val
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq3_xxs_q8_k_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8_K]) -> f32 {
     use core::arch::x86_64::*;
@@ -1657,6 +1680,7 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_avx2(weight_bytes: &[u8], x_blocks: &[BlockQ8
     0.25f32 * hsum_float_8(accumf)
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_avx2_ptr(
     b0_base: *const u8,
@@ -1816,6 +1840,7 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_avx2_ptr(
     )
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(
     w_base: *const u8,
@@ -1937,6 +1962,7 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(
     )
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(
     w_base: *const u8,
@@ -2083,6 +2109,7 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(
     )
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_avx2(
     w0_bytes: &[u8],
@@ -2095,6 +2122,7 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_avx2(
     vec_dot_iq3_xxs_q8_k_2rows_avx2_ptr(w0_bytes.as_ptr(), w1_bytes.as_ptr(), x_blocks.as_ptr(), nb)
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn gemv_iq4_nl_prequant(
     out: &mut [f32],
@@ -2220,6 +2248,7 @@ pub unsafe fn gemv_iq4_nl_prequant(
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 #[inline]
 unsafe fn iq3_xxs_subblock_step_avx2(
@@ -2276,6 +2305,7 @@ unsafe fn iq3_xxs_subblock_step_avx2(
     _mm256_add_epi32(sumi, _mm256_add_epi32(p1, p2))
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq3_xxs_q8_k_4rows_avx2_ptr(
     b0_base: *const u8,
@@ -2367,6 +2397,7 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_4rows_avx2_ptr(
     )
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
     w0_base: *const u8,
@@ -2575,6 +2606,7 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(
     )
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_3tokens_avx2_ptr(
     w0_base: *const u8,
@@ -2723,6 +2755,7 @@ pub unsafe fn vec_dot_iq3_xxs_q8_k_2rows_3tokens_avx2_ptr(
     )
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn gemv_iq3_xxs_prequant(
     out: &mut [f32],
@@ -2808,7 +2841,7 @@ pub fn gemv_q8_0(out: &mut [f32], weight_bytes: &[u8], x: &[f32], n_rows: usize,
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
     use super::*;
 
@@ -3280,3 +3313,9 @@ mod tests {
         );
     }
 }
+
+#[cfg(any(test, not(target_arch = "x86_64")))]
+#[path = "quants_scalar.rs"]
+pub(crate) mod scalar;
+#[cfg(not(target_arch = "x86_64"))]
+pub use scalar::*;
