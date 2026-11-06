@@ -13,6 +13,10 @@ pub mod hardware;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 pub use hardware::{ActiveDevice, DevicePreference};
 
+fn valid_draft_token(token: u32, stop_tokens: &[u32], accepts_input: impl FnOnce(u32) -> bool) -> bool {
+    token != 0 && !stop_tokens.contains(&token) && accepts_input(token)
+}
+
 pub fn skate_system() -> Result<String> {
     if let Some(path) = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE") {
         if let Ok(prompt) = std::fs::read_to_string(&path) {
@@ -1108,8 +1112,11 @@ impl AstEngine {
                     (None, None)
                 };
 
-                let d1_valid = d1_opt.filter(|&d| !is_eos(d) && d != 0);
-                let d2_valid = d2_opt.filter(|&d| !is_eos(d) && d != 0);
+                // Static draft tables may come from a different tokenizer. Never
+                // feed a guess outside this model's embedding vocabulary.
+                let valid_draft = |d: &u32| valid_draft_token(*d, &stop_tokens, |t| bundle.engine.accepts_input_token(t));
+                let d1_valid = d1_opt.filter(valid_draft);
+                let d2_valid = d2_opt.filter(valid_draft);
 
                 if let (Some(d1), Some(d2)) = (d1_valid, d2_valid) {
                     // V5 Architecture: 3-Token Speculative Step (reads weights ONCE for 3 tokens)
@@ -1280,6 +1287,15 @@ impl AstEngine {
 mod tests {
     use super::*;
     use tokenizers::models::wordlevel::WordLevel;
+
+    #[test]
+    fn speculative_drafts_must_fit_the_model_vocabulary() {
+        let in_skate_vocab = |token| token < 49_152;
+        assert!(valid_draft_token(49_151, &[2], in_skate_vocab));
+        assert!(!valid_draft_token(56_928, &[2], in_skate_vocab));
+        assert!(!valid_draft_token(2, &[2], in_skate_vocab));
+        assert!(!valid_draft_token(0, &[2], in_skate_vocab));
+    }
 
     #[test]
     fn test_phrase_buffer_groups_words_before_flushing() {

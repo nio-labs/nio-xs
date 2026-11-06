@@ -1232,6 +1232,12 @@ pub struct AstMicroEngine {
 }
 
 impl AstMicroEngine {
+    pub fn accepts_input_token(&self, token: u32) -> bool {
+        self.gguf.tensors.get("token_embd.weight")
+            .and_then(|tensor| tensor.shape.first())
+            .is_some_and(|&vocab| (token as usize) < vocab)
+    }
+
     pub fn eos_token_id(&self) -> Option<u32> {
         self.gguf.metadata.get("tokenizer.ggml.eos_token_id").and_then(|v| v.to_u32().ok())
     }
