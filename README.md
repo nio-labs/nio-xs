@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT"></a>
 </p>
 
-> **AXIS = AI + XS**: NioXS is a high-performance, edge-first coding companion built in native Rust. It embeds dedicated task-specialized Micro Learning Models (MicroLMs) running directly on your CPU in sub-10ms and under 28MB RAM, alongside an OpenAI-compatible gateway (`:7460`) for coding agents like Aider, Cursor, Cline, and OpenCode.
+> **AXIS = AI + XS**: NioXS is a high-performance, edge-first coding companion built in native Rust. It embeds dedicated task-specialized Micro Learning Models (MicroLMs) running directly on your CPU, alongside an OpenAI-compatible gateway (`:7460`) for coding agents like Aider, Cursor, Cline, and OpenCode.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -21,8 +21,8 @@
         ▼                       ▼                        ▼                        ▼
  🐍 Viper (100M)         🐟 Skate (135M)          🦈 Manta (494M)          🐋 Beluga (1.54B)
  Tactical Striker        Ambient Companion        DAG Architect            Lead Architect
- • Sub-20µs Latency      • < 50 MB Peak RAM       • < 235 MB Peak RAM      • < 295 MB Peak RAM
- • < 27 MB Resident      • 55+ words/sec          • <manta_plan> DAGs      • Bit-exact <think> CoT
+ • Sub-20µs Latency      • 33.9–39.3 MiB anon*       • < 235 MB Peak RAM      • < 295 MB Peak RAM
+ • < 27 MB Resident      • 23–53 words/sec*       • <manta_plan> DAGs      • Bit-exact <think> CoT
  • Safety Clutch (-x)    • Friendly Banter        • Multi-File Refactor    • Dual CPU/GPU Engine
  • POSIX & PowerShell    • Pure Zero-Code         • 45+ w/s GPU Burst      • 20+ w/s GPU Burst
 ```
@@ -102,7 +102,7 @@ nioxs viper -x -y "kill port 3000"
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Viper** | **100M** | Tactical Terminal Striker | **~61.7 MB** (`Q4_0`) | **< 27 MB** | **~124 MB** | Sub-20µs | Pure CLI Pipes |
 | **Dolphin** | **135M** | Universal Engram Memory (MCP) | **~75 MB** (`IQ4_NL`) | **< 28 MB** | **~125 MB** | Sub-5ms recall | Hebbian Fast Weights & NioDB |
-| **Skate** | **135M** | Ambient Desk Companion | **~75 MB** (`IQ4_NL`) | **< 28 MB** | **~125 MB** | 55+ w/s | Friendly Banter & Zero-Code Focus |
+| **Skate** | **135M** | Ambient Desk Companion | **82.93 MiB** (`IQ3_XXS`) | **33.86–39.25 MiB anon*** | **98.48–100.64 MiB*** | 23–53 w/s* | Friendly Banter & Zero-Code Focus |
 | **Mako** | **150M** | Live Web Intelligence & Scout | **~65.4 MB** (`IQ3_XXS`) | **< 22 MB** | **~120 MB** | 200+ tok/s | DOM Noise Stripping & Wire DSL |
 | **Manta** | **494M** | Systems Guru & DAG Architect | **~254 MB** (`Q4_0`) | **~95 MB** | **~195 MB** | 20–35 w/s | `<manta_plan>` DAGs & Wasm Engine |
 | **Beluga** | **1.54B** | Sovereign Lead Architect | **~604 MB** (`IQ3_XXS`) | **~76 MB** | **~295 MB** | 14–22 tok/s | Deep `<think>` CoT Invariant Proofs |
@@ -117,7 +117,7 @@ Nio's proprietary **v-µLM (V-MicroLM)** architecture eliminates reliance on bri
 | :--- | :--- | :--- | :--- |
 | **`v-µLM Reflex`** | Instant Grammar & In-Process Decision Engine | **Nano (~0.5M)**, **Mask (1.1M)**, **Micro (5.0M)**, **Mini (7.1M)**, **Viper (100M)** | `< 28 MB RAM`, sub-0.1ms to sub-20µs sampling |
 | **`v-µLM Vector`** | Vector Codebook Lattice & Web Scout | **Mako (150M)** | `92 MB disk`, >0.999 cosine fidelity, wire scraping |
-| **`v-µLM Companion`** | Sovereign Edge Companion Fleet | **Skate (135M)**, **Manta (494M)**, **Beluga (1.54B)** & **Gar (14.7B, planned)** | Existing models: `< 50 MB to < 295 MB peak RAM`; Gar targets `< 850 MB` |
+| **`v-µLM Companion`** | Sovereign Edge Companion Fleet | **Skate (135M)**, **Manta (494M)**, **Beluga (1.54B)** & **Gar (14.7B, planned)** | Memory varies with model and context; see Skate measurements below |
 
 ---
 
@@ -125,7 +125,7 @@ Nio's proprietary **v-µLM (V-MicroLM)** architecture eliminates reliance on bri
 
 The **v-MicroLM Companion Fleet** represents Nio's tiered, zero-cloud edge intelligence architecture. By pairing custom `v-MicroLM Vector` codebooks (`IQ3_XXS` / `IQ4_NL`) with dynamic layer streaming and lock-free AVX2 parallelism, each companion tier delivers uncompromising domain specialization strictly within ultralight memory envelopes:
 
-- **Tier 1: Skate (135M)** — **Ambient Desk Companion**. Always-on background desk-mate running in `< 50 MB` active peak RAM with strict zero-code deflection.
+- **Tier 1: Skate (135M)** — **Ambient Desk Companion**. Ambient companion with an 8,192-token context; memory grows with the tokens processed.
 - **Tier 2: Manta (494M)** — **Systems Guru & DAG Architect**. High-throughput architectural and RFC planner generating structured `<manta_plan>` execution DAGs in `< 235 MB` peak RAM.
 - **Tier 3: Beluga (1.54B)** — **Sovereign Lead Architect**. Flagship cognitive companion delivering bit-exact `<think>` Chain-of-Thought reasoning proofs and system synthesis in `< 295 MB` peak RAM.
 - **Tier 4: Gar (14.7B, planned)** — **Encyclopedic Companion**. Intended for broad knowledge and synthesis, with a streaming memory target of `< 850 MB` that still requires validation.
@@ -138,15 +138,28 @@ The following benchmarks cover Skate, Manta and Beluga; Gar is planned and is no
 | :--- | :--- | :--- | :--- |
 | **Model Parameters** | **135M** (134.5M) | **494M** | **1.54B** (28 Layers, 12 Heads) |
 | **Primary Specialization** | Ambient Desk Companion & Edge Chat | Systems Guru & DAG Task Planner | Sovereign Lead Architect & CoT Prover |
-| **Quantization & Format** | `IQ3_XXS` Vector / `IQ4_NL` | `IQ3_XXS` (imatrix conditioned) | `IQ3_XXS` Layers + `IQ4_NL` Vocab |
-| **On-Disk Binary Size** | **~75 – 83 MB** | **~254 – 318 MB** | **604 MB** |
-| **Idle Model RAM (Heap)** | **< 28 MB** (reclaims to 27.6 MB) | **~75 MB** (reclaims to 74.8 MB) | **~76 MB** |
-| **Active Process Peak (`VmHWM`)**| **< 50 MB** (40.8 MB default) | **~195 – 234 MB** | **295.1 MB** *(vs 1,312 MB stock)* |
-| **Inference Rate (Pure CPU)** | **35–42 tok/s** (55+ w/s default) | **20–35 words/sec** (~30–45 tok/s) | **21.58 tok/s** (14.4 words/sec) |
-| **Peak Throughput / Burst** | **115–120.8 tok/s** (`--turbo`) | **~50 tok/s** burst | **39.7 tok/s** (27.4 w/s on spec hits) |
+| **Quantization & Format** | `IQ3_XXS` Vector | `IQ3_XXS` (imatrix conditioned) | `IQ3_XXS` Layers + `IQ4_NL` Vocab |
+| **On-Disk Binary Size** | **82.93 MiB** | **~254 – 318 MB** | **604 MB** |
+| **Idle Model RAM (Heap)** | Depends on workload | **~75 MB** (reclaims to 74.8 MB) | **~76 MB** |
+| **Active Process Peak (`VmHWM`)**| **98.48–100.64 MiB*** | **~195 – 234 MB** | **295.1 MB** *(vs 1,312 MB stock)* |
+| **Inference Rate (Pure CPU)** | **23–53 words/s*** | **20–35 words/sec** (~30–45 tok/s) | **21.58 tok/s** (14.4 words/sec) |
+| **Peak Throughput / Burst** | Workload-dependent | **~50 tok/s** burst | **39.7 tok/s** (27.4 w/s on spec hits) |
 | **Cognitive Invariant** | Strict Zero-Code (deflects to Manta/Fin) | Strict Zero-Code Planner (`<manta_plan>`) | Bit-exact `<think>...</think>` CoT |
-| **Target Hardware SLA** | Always-on background daemon / 128MB RAM | 512MB RAM edge nodes & containers | 512MB–1GB RAM systems (Zero GPU) |
+| **Target Hardware SLA** | Memory grows with context | 512MB RAM edge nodes & containers | 512MB–1GB RAM systems (Zero GPU) |
 | **CLI Direct Invocation** | `nioxs skate "<prompt>"` | `nioxs manta "<prompt>"` | `nioxs beluga "<prompt>"` |
+
+### Skate context and memory measurements (v0.5.1)
+
+Skate supports an **8,192-token context**, capped by the model's declared context length. The KV cache grows as tokens are processed. A short prompt does not allocate the same cache as a filled context.
+
+| Test on Intel Core Ultra 5 135H | Peak anonymous RAM (`RssAnon`) | Peak resident RAM (`VmHWM`) | Elapsed |
+| :--- | ---: | ---: | ---: |
+| Three short prompts, default CLI settings | 33.86–39.25 MiB, sampled | 98.48–100.64 MiB | 0.64–1.39 s |
+| 8,180-token synthetic input, leaving room for output | 418.62 MiB, sampled | 465.41 MiB | 15 min 52 s |
+
+*Short-prompt speed was 23–53 words/s end-to-end, including startup; the prompts produced different response lengths. Anonymous RAM was sampled from `/proc/<pid>/status`, so brief peaks can be missed. Resident RAM includes file-backed model pages. The long test verifies context capacity, not answer quality; its repetitive input produced incoherent text. Long-context latency and memory remain substantial.*
+
+For reference, a [published SmolLM2-135M-Instruct Q8_0 llama-server example](https://note.com/tane_log/n/n348b006eafdb) reports about **204.1 MiB anonymous RAM after startup** with an 8,192-token context. Its hardware, runtime, quantization, allocation, and workload differ; this is not a matched inference benchmark or a general memory reduction claim.
 
 ---
 

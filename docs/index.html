@@ -21,7 +21,7 @@
     <a href="#overview" class="brand-title">
       <img class="brand-logo" src="logo.svg" alt="NioXS logo">
       <span class="brand-name">NioXS</span>
-      <span class="badge">v0.5.0</span>
+      <span class="badge">v0.5.1</span>
     </a>
     <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">
       <span class="theme-icon">
@@ -90,7 +90,7 @@
         <section id="overview" class="doc-section">
           <div class="hero-header">
             <div class="hero-badges">
-              <span class="badge badge-accent">Release v0.5.0</span>
+              <span class="badge badge-accent">Release v0.5.1</span>
               <span class="badge">AXIS = AI + XS</span>
               <span class="badge">Rust orchestration</span>
               <span class="badge">OpenAI-compatible API</span>
@@ -351,7 +351,7 @@ nioxs viper plugin list</code></pre>
             <tbody>
               <tr><td><strong>NioViper</strong></td><td><strong>100M</strong></td><td>Terminal Swiss Gear &amp; Reflex Oracle</td><td><strong>61.7 MB (Q4_0)</strong></td><td><strong>&lt; 27 MB</strong></td><td><strong>~124 MB</strong></td><td>Sub-20µs</td><td>Instant CLI Reflex</td></tr>
               <tr><td><strong>NioDolphin</strong></td><td><strong>135M</strong></td><td>Universal Engram Memory (MCP)</td><td><strong>75 MB (IQ4_NL)</strong></td><td><strong>&lt; 28 MB</strong></td><td><strong>~125 MB</strong></td><td>Sub-5ms recall</td><td>Hebbian Memory &amp; NioDB</td></tr>
-              <tr><td><strong>Skate</strong></td><td><strong>135M</strong></td><td>Ambient Desk Companion (v-µLM)</td><td><strong>75 MB (IQ4_NL)</strong></td><td><strong>&lt; 28 MB</strong></td><td><strong>~125 MB</strong></td><td>55+ w/s</td><td>Zero-Code Focus</td></tr>
+              <tr><td><strong>Skate</strong></td><td><strong>135M</strong></td><td>Ambient Desk Companion (v-µLM)</td><td><strong>82.93 MiB (IQ3_XXS)</strong></td><td><strong>33.86–39.25 MiB anonymous*</strong></td><td><strong>98.48–100.64 MiB*</strong></td><td>23–53 w/s*</td><td>8,192-token context</td></tr>
               <tr><td><strong>Manta</strong></td><td><strong>494M</strong></td><td>Systems Guru &amp; DAG Architect</td><td><strong>254 MB (Q4_0)</strong></td><td><strong>~95 MB</strong></td><td><strong>~195 MB</strong></td><td>20–35 w/s</td><td>&lt;manta_plan&gt; DAGs &amp; Wasm</td></tr>
               <tr><td><strong>Beluga</strong></td><td><strong>1.54B</strong></td><td>Sovereign Lead Architect</td><td><strong>604 MB (IQ3_XXS)</strong></td><td><strong>~76 MB</strong></td><td><strong>~295 MB</strong></td><td>14–22 tok/s</td><td>Deep &lt;think&gt; CoT Invariants</td></tr>
               <tr><td><strong>NioRay</strong></td><td><strong>1.54B</strong></td><td>Rapid Code Synthesizer (Full Brain)</td><td><strong>980 MB (Q4_K)</strong></td><td><strong>~88 MB</strong></td><td><strong>~188 MB</strong></td><td>24–28 w/s</td><td><strong>75.6% HumanEval</strong></td></tr>
@@ -367,14 +367,14 @@ nioxs viper plugin list</code></pre>
             <tbody>
               <tr><td><code>v-µLM Reflex</code></td><td>Instant Grammar &amp; In-Process Decision Engine</td><td><strong>Nano (~0.5M)</strong>, <strong>Mask (1.1M)</strong>, <strong>Micro (5.0M)</strong>, <strong>Mini (7.1M)</strong>, <strong>Viper (100M)</strong></td><td><code>&lt; 28 MB RAM</code>, sub-0.1ms to sub-20µs sampling</td></tr>
               <tr><td><code>v-µLM Vector</code></td><td>Vector Codebook Lattice &amp; Web Scout</td><td><strong>Mako (150M)</strong></td><td><code>92 MB disk</code>, &gt;0.999 cosine fidelity, wire scraping</td></tr>
-              <tr><td><code>v-µLM Companion</code></td><td>Sovereign Edge Companion Fleet</td><td><strong>Skate (135M)</strong>, <strong>Manta (494M)</strong> &amp; <strong>Beluga (1.54B)</strong></td><td><code>&lt; 50 MB to &lt; 295 MB peak RAM</code>, pure CPU zero-GPU</td></tr>
+              <tr><td><code>v-µLM Companion</code></td><td>Sovereign Edge Companion Fleet</td><td><strong>Skate (135M)</strong>, <strong>Manta (494M)</strong> &amp; <strong>Beluga (1.54B)</strong></td><td>Memory varies with model and context</td></tr>
             </tbody>
           </table></div>
 
           <h3 style="margin-top: 2rem; margin-bottom: 0.75rem;">🤝 State of our v-MicroLM Companion Fleet (Skate, Manta &amp; Beluga)</h3>
           <p>The <strong>v-MicroLM Companion Fleet</strong> represents Nio's tiered, zero-cloud edge intelligence architecture. Pairing custom <code>v-MicroLM Vector</code> codebooks (<code>IQ3_XXS</code> / <code>IQ4_NL</code>) with dynamic layer streaming and lock-free AVX2 parallelism, each companion tier delivers uncompromising domain specialization strictly within ultralight memory envelopes:</p>
           <ul style="margin-bottom: 1rem; padding-left: 1.25rem;">
-            <li><strong>Tier 1: Skate (135M)</strong> — <strong>Ambient Desk Companion</strong>. Always-on background desk-mate running in <code>&lt; 50 MB</code> active peak RAM with strict zero-code deflection.</li>
+            <li><strong>Tier 1: Skate (135M)</strong> — <strong>Ambient Desk Companion</strong>. Ambient companion with an 8,192-token context; memory grows with the tokens processed.</li>
             <li><strong>Tier 2: Manta (494M)</strong> — <strong>Systems Guru &amp; DAG Architect</strong>. High-throughput architectural and RFC planner generating structured <code>&lt;manta_plan&gt;</code> execution DAGs in <code>&lt; 235 MB</code> peak RAM.</li>
             <li><strong>Tier 3: Beluga (1.54B)</strong> — <strong>Sovereign Lead Architect</strong>. Flagship cognitive companion delivering bit-exact <code>&lt;think&gt;</code> Chain-of-Thought reasoning proofs and system synthesis in <code>&lt; 295 MB</code> peak RAM.</li>
           </ul>
@@ -384,32 +384,36 @@ nioxs viper plugin list</code></pre>
             <tbody>
               <tr><td><strong>Model Parameters</strong></td><td><strong>135M</strong> (134.5M)</td><td><strong>494M</strong></td><td><strong>1.54B</strong> (28 Layers, 12 Heads)</td></tr>
               <tr><td><strong>Primary Specialization</strong></td><td>Ambient Desk Companion &amp; Edge Chat</td><td>Systems Guru &amp; DAG Task Planner</td><td>Sovereign Lead Architect &amp; CoT Prover</td></tr>
-              <tr><td><strong>Quantization &amp; Format</strong></td><td><code>IQ3_XXS</code> Vector / <code>IQ4_NL</code></td><td><code>IQ3_XXS</code> (imatrix conditioned)</td><td><code>IQ3_XXS</code> Layers + <code>IQ4_NL</code> Vocab</td></tr>
-              <tr><td><strong>On-Disk Binary Size</strong></td><td><strong>~75 – 83 MB</strong></td><td><strong>~254 – 318 MB</strong></td><td><strong>604 MB</strong></td></tr>
-              <tr><td><strong>Idle Model RAM (Heap)</strong></td><td><strong>&lt; 28 MB</strong> (reclaims to 27.6 MB)</td><td><strong>~75 MB</strong> (reclaims to 74.8 MB)</td><td><strong>~76 MB</strong></td></tr>
-              <tr><td><strong>Active Process Peak (VmHWM)</strong></td><td><strong>&lt; 50 MB</strong> (40.8 MB default)</td><td><strong>~195 – 234 MB</strong></td><td><strong>295.1 MB</strong> <em>(vs 1,312 MB stock)</em></td></tr>
-              <tr><td><strong>Inference Rate (Pure CPU)</strong></td><td><strong>35–42 tok/s</strong> (55+ w/s default)</td><td><strong>20–35 words/sec</strong> (~30–45 tok/s)</td><td><strong>21.58 tok/s</strong> (14.4 words/sec)</td></tr>
-              <tr><td><strong>Peak Throughput / Burst</strong></td><td><strong>115–120.8 tok/s</strong> (<code>--turbo</code>)</td><td><strong>~50 tok/s</strong> burst</td><td><strong>39.7 tok/s</strong> (27.4 w/s on spec hits)</td></tr>
+              <tr><td><strong>Quantization &amp; Format</strong></td><td><code>IQ3_XXS</code> Vector</td><td><code>IQ3_XXS</code> (imatrix conditioned)</td><td><code>IQ3_XXS</code> Layers + <code>IQ4_NL</code> Vocab</td></tr>
+              <tr><td><strong>On-Disk Binary Size</strong></td><td><strong>82.93 MiB</strong></td><td><strong>~254 – 318 MB</strong></td><td><strong>604 MB</strong></td></tr>
+              <tr><td><strong>Idle Model RAM (Heap)</strong></td><td>Depends on workload</td><td><strong>~75 MB</strong> (reclaims to 74.8 MB)</td><td><strong>~76 MB</strong></td></tr>
+              <tr><td><strong>Active Process Peak (VmHWM)</strong></td><td><strong>98.48–100.64 MiB*</strong></td><td><strong>~195 – 234 MB</strong></td><td><strong>295.1 MB</strong> <em>(vs 1,312 MB stock)</em></td></tr>
+              <tr><td><strong>Inference Rate (Pure CPU)</strong></td><td><strong>23–53 words/s*</strong></td><td><strong>20–35 words/sec</strong> (~30–45 tok/s)</td><td><strong>21.58 tok/s</strong> (14.4 words/sec)</td></tr>
+              <tr><td><strong>Peak Throughput / Burst</strong></td><td>Workload-dependent</td><td><strong>~50 tok/s</strong> burst</td><td><strong>39.7 tok/s</strong> (27.4 w/s on spec hits)</td></tr>
               <tr><td><strong>Cognitive Invariant</strong></td><td>Strict Zero-Code (deflects to Manta)</td><td>Strict Zero-Code Planner (<code>&lt;manta_plan&gt;</code>)</td><td>Bit-exact <code>&lt;think&gt;...&lt;/think&gt;</code> CoT</td></tr>
-              <tr><td><strong>Target Hardware SLA</strong></td><td>Always-on background daemon / 128MB RAM</td><td>512MB RAM edge nodes &amp; containers</td><td>512MB–1GB RAM systems (Zero GPU)</td></tr>
+              <tr><td><strong>Target Hardware SLA</strong></td><td>Memory grows with context</td><td>512MB RAM edge nodes &amp; containers</td><td>512MB–1GB RAM systems (Zero GPU)</td></tr>
               <tr><td><strong>CLI Direct Invocation</strong></td><td><code>nioxs skate "&lt;prompt&gt;"</code></td><td><code>nioxs manta "&lt;prompt&gt;"</code></td><td><code>nioxs beluga "&lt;prompt&gt;"</code></td></tr>
             </tbody>
           </table></div>
 
+          <h3 style="margin-top: 2rem; margin-bottom: 0.75rem;">Skate context and memory measurements (v0.5.1)</h3>
+          <p>Skate supports an <strong>8,192-token context</strong>, capped by the model's declared context. Its KV cache grows with tokens processed.</p>
+          <div class="table-container"><table>
+            <thead><tr><th>Test on Intel Core Ultra 5 135H</th><th>Peak anonymous RAM (RssAnon)</th><th>Peak resident RAM (VmHWM)</th><th>Elapsed</th></tr></thead>
+            <tbody>
+              <tr><td>Three short prompts, default CLI</td><td>33.86–39.25 MiB, sampled</td><td>98.48–100.64 MiB</td><td>0.64–1.39 s</td></tr>
+              <tr><td>8,180-token synthetic input, with room for output</td><td>418.62 MiB, sampled</td><td>465.41 MiB</td><td>15 min 52 s</td></tr>
+            </tbody>
+          </table></div>
+          <p><em>* Short prompts produced 23–53 words/s end-to-end, including startup. Anonymous RAM was sampled and can miss brief peaks; resident RAM includes file-backed model pages. The long test verifies capacity, not answer quality: its repetitive input produced incoherent text. Long-context latency and memory remain substantial.</em></p>
+          <p>A <a href="https://note.com/tane_log/n/n348b006eafdb">published SmolLM2-135M-Instruct Q8_0 llama-server example</a> reports about 204.1 MiB anonymous RAM after startup with an 8,192-token context. Hardware, runtime, quantization, allocation and workload differ, so this is not a matched inference benchmark.</p>
+
           <h3 style="margin-top: 2rem; margin-bottom: 0.75rem;">⚡ Stock Foundation Models vs. Our Companions Benchmark Suite</h3>
-          <p>Direct empirical comparison between unoptimized stock upstream foundation models deployed on standard inference runtimes (Ollama / llama.cpp using Q4_K_M) versus Nio's optimized companions on the native pure-Rust <code>AST-Micro</code> engine on pure CPU:</p>
+          <p>Historical companion benchmark figures for Manta and Beluga; measurements vary by hardware, runtime and workload.</p>
 
           <div class="table-container"><table>
             <thead><tr><th>Scale Tier</th><th>Upstream Stock Baseline<br><em>(Standard Ollama / llama.cpp Q4_K_M)</em></th><th>Our Companion<br><em>(Native AST-Micro Engine)</em></th><th>Disk Reduction</th><th>Peak Process RAM Reduction (<code>VmHWM</code>)</th><th>Inference Throughput</th></tr></thead>
             <tbody>
-              <tr>
-                <td><strong>Tier 1 (135M)</strong></td>
-                <td><strong>Stock SmolLM2 135M</strong><br>&bull; Disk: ~90 MB<br>&bull; Peak RAM: <strong>340 MB</strong></td>
-                <td><strong>Skate (135M)</strong><br>&bull; Disk: <strong>82.9 MB</strong><br>&bull; Peak RAM: <strong>40.8 MB</strong> (&lt; 50 MB)</td>
-                <td><strong>8% smaller</strong></td>
-                <td><strong>8.3&times; lower RAM</strong><br><em>(340 MB &rarr; 40.8 MB)</em></td>
-                <td><strong>55+ words/s</strong><br>(115–120.8 tok/s <code>--turbo</code>)</td>
-              </tr>
               <tr>
                 <td><strong>Tier 2 (500M)</strong></td>
                 <td><strong>Stock Qwen 2.5 0.5B</strong><br>&bull; Disk: ~398 MB<br>&bull; Peak RAM: <strong>620 MB</strong></td>

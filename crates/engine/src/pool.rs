@@ -7,6 +7,33 @@ use crate::quants::{self, BlockQ8_0, BlockQ8_K};
 
 pub const NUM_WORKERS: usize = 4;
 
+#[cfg(all(test, target_arch = "x86_64"))]
+mod tests {
+    use super::GemvTask;
+
+    #[test]
+    fn attention_handles_full_8192_token_context() {
+        if !std::is_x86_feature_detected!("avx2") || !std::is_x86_feature_detected!("fma") {
+            return;
+        }
+        for seq_len in [2049, 8192] {
+            let q = vec![0.0f32; 8];
+            let keys = vec![0.0f32; seq_len * 8];
+            let values = vec![2.0f32; seq_len * 8];
+            let mut output = vec![0.0f32; 8];
+            let task = GemvTask::Attention {
+                q_ptr: q.as_ptr() as usize,
+                k_cache_ptr: keys.as_ptr() as usize,
+                v_cache_ptr: values.as_ptr() as usize,
+                out_ptr: output.as_mut_ptr() as usize,
+                seq_len, n_head: 1, n_kv_head: 1, head_dim: 8,
+            };
+            unsafe { task.execute(0, 1) };
+            assert!(output.iter().all(|&x| (x - 2.0).abs() < 0.001));
+        }
+    }
+}
+
 #[inline(always)]
 fn worker_cpu_id(worker_id: usize) -> usize {
     worker_id * 2
@@ -1420,7 +1447,7 @@ impl GemvTask {
                 let v_cache = std::slice::from_raw_parts(v_cache_ptr as *const f32, seq_len * n_kv_head * head_dim);
                 let out = std::slice::from_raw_parts_mut(out_ptr as *mut f32, n_head * head_dim);
 
-                let mut scores = [0.0f32; 2048];
+                let mut scores = [0.0f32; 8192];
                 let scores_slice = &mut scores[..seq_len];
 
                 let kv_repeats = n_head / n_kv_head;

@@ -1232,6 +1232,10 @@ pub struct AstMicroEngine {
 }
 
 impl AstMicroEngine {
+    pub fn context_length(&self) -> usize {
+        self.cos_table.len() / (self.head_dim / 2)
+    }
+
     pub fn accepts_input_token(&self, token: u32) -> bool {
         self.gguf.tensors.get("token_embd.weight")
             .and_then(|tensor| tensor.shape.first())
@@ -1306,7 +1310,7 @@ impl AstMicroEngine {
         let head_count = md_get("attention.head_count")?.to_u32()? as usize;
         let head_count_kv = md_get("attention.head_count_kv")?.to_u32()? as usize;
         let embedding_length = md_get("embedding_length")?.to_u32()? as usize;
-        let context_length = (md_get("context_length")?.to_u32()? as usize).min(4096);
+        let context_length = (md_get("context_length")?.to_u32()? as usize).min(8192);
         let block_count = md_get("block_count")?.to_u32()? as usize;
         let rms_norm_eps = md_get("attention.layer_norm_rms_epsilon")?.to_f32()? as f64;
         let rope_freq_base = md_get("rope.freq_base")

@@ -882,6 +882,7 @@ impl AstEngine {
 
             if runner_available {
                 let model_path = self.model_path.clone();
+                let context_size = if self.is_skate { "8192" } else { "4096" };
                 let total_layers = if self.is_blue { 32 } else if self.is_beluga { 28 } else if self.is_manta { 24 } else { 30 };
                 let gpu_layers = active_dev.recommended_gpu_layers(total_layers);
                 let ngl_arg = gpu_layers.to_string();
@@ -895,7 +896,7 @@ impl AstEngine {
                         "-m", model_path.to_str().unwrap_or_default(),
                         "-p", &prompt,
                         "-n", &max_tokens.to_string(),
-                        "-c", "4096",
+                        "-c", context_size,
                         "-ngl", &ngl_arg,
                         "--temp", &temp_arg,
                         "--top-p", &top_p_arg,
@@ -1090,7 +1091,10 @@ impl AstEngine {
             }
 
             let mut gen_tokens = vec![next_token];
-            let max_gen = max_tokens.max(1);
+            // The prefill already produces the first output token. Do not
+            // forward beyond the final position when generation reaches the
+            // model's context boundary.
+            let max_gen = max_tokens.max(1).min(bundle.engine.context_length() - prompt_tokens.len() + 1);
             let mut current_confirmed = next_token;
             let mut stream_pos = prompt_tokens.len();
             let mut consecutive_misses = 0usize;
