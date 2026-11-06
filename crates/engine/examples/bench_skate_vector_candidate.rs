@@ -1,11 +1,11 @@
 use anyhow::Result;
-use nioxs_engine::{RayEngine, memory_mb, skate_system};
+use nioxs_engine::{AstEngine, memory_mb, skate_system};
 use std::{path::PathBuf, time::Instant};
 #[tokio::main]
 async fn main() -> Result<()> {
     let a: Vec<String> = std::env::args().collect();
     let system_prompt = skate_system()?;
-    let engine = RayEngine::from_paths(PathBuf::from(&a[1]), PathBuf::from(&a[2]));
+    let engine = AstEngine::from_paths(PathBuf::from(&a[1]), PathBuf::from(&a[2]));
     let fixture: serde_json::Value = serde_json::from_slice(&std::fs::read(&a[3])?)?;
     let questions = fixture["held_out"]
         .as_array()

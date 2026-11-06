@@ -80,6 +80,7 @@ fn main() -> Result<()> {
 
     let mut tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| anyhow!("{e}"))?;
     tokenizer.with_padding(None);
+    #[cfg(target_os = "linux")]
     unsafe {
         libc::malloc_trim(0);
     }

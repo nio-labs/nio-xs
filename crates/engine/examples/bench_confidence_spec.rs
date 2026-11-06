@@ -222,7 +222,7 @@ fn main() -> Result<()> {
     }
 
     let elapsed = t_start.elapsed();
-    let (rss_end, hwm) = memory_mb();
+    let (rss_end, _hwm) = memory_mb();
 
     let full_text = tokenizer.decode(&gen_tokens, true).unwrap_or_default();
     let words = full_text.split_whitespace().count();

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use nioxs_engine::{RayEngine, skate_system};
+use nioxs_engine::{AstEngine, skate_system};
 use serde_json::{Value, json};
 use std::{path::PathBuf, time::Instant};
 
@@ -7,7 +7,7 @@ use std::{path::PathBuf, time::Instant};
 async fn main() -> Result<()> {
     let a: Vec<_> = std::env::args().collect();
     let system_prompt = skate_system()?;
-    let engine = RayEngine::from_paths(PathBuf::from(&a[1]), PathBuf::from(&a[2]));
+    let engine = AstEngine::from_paths(PathBuf::from(&a[1]), PathBuf::from(&a[2]));
     let cases: Value = serde_json::from_slice(&std::fs::read(&a[3])?)?;
     let mut records = Vec::new();
     for case in cases

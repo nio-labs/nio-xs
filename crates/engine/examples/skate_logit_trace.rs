@@ -1,5 +1,5 @@
 use anyhow::Result;
-use nioxs_engine::{AstMicroEngine, RayEngine, skate_system};
+use nioxs_engine::{AstEngine, AstMicroEngine, skate_system};
 use serde_json::{Value, json};
 use std::path::Path;
 use tokenizers::Tokenizer;
@@ -7,7 +7,7 @@ fn main() -> Result<()> {
     let a: Vec<_> = std::env::args().collect();
     let tok = Tokenizer::from_file(&a[2]).map_err(|e| anyhow::anyhow!("{e}"))?;
     let mut engine = AstMicroEngine::new(Path::new(&a[1]))?;
-    RayEngine::validate_tokenizer(&tok, &engine.tokenizer_tokens()?)?;
+    AstEngine::validate_tokenizer(&tok, &engine.tokenizer_tokens()?)?;
     let suite: Value = serde_json::from_slice(&std::fs::read(&a[3])?)?;
     let index: usize = a[4].parse()?;
     let steps: usize = a[5].parse()?;

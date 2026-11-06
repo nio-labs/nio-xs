@@ -1,5 +1,5 @@
 use anyhow::{Result, ensure};
-use nioxs_engine::{AstMicroEngine, RayEngine};
+use nioxs_engine::{AstEngine, AstMicroEngine};
 use std::{path::PathBuf, time::Duration};
 
 #[tokio::main]
@@ -19,12 +19,12 @@ async fn main() -> Result<()> {
     );
     ensure!(ast.prefill(&[u32::MAX]).is_err(), "invalid token accepted");
     drop(ast);
-    let bad = RayEngine::from_paths(model.clone(), PathBuf::from(&args[3]));
+    let bad = AstEngine::from_paths(model.clone(), PathBuf::from(&args[3]));
     ensure!(
         bad.ensure_loaded().await.is_err(),
         "mismatched tokenizer accepted"
     );
-    let engine = RayEngine::from_paths(model, tokenizer);
+    let engine = AstEngine::from_paths(model, tokenizer);
     let rx = engine
         .generate_stream(prompt.clone(), 128, 0.65, 0.9)
         .await?;
