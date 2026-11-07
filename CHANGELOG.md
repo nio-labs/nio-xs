@@ -3,6 +3,11 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.5.3
+
+### Added
+- Blue (3.82B, v-µLM Reflex) model manifest now points at the published `nio-xs-models` v0.3.1 release asset (`blue.vmicrolm-reflex.gguf`) with verified SHA-256 and size, so `nioxs pull blue` works. Measured 192.3 MB peak RAM, ~4.4 tok/s on CPU.
+
 ## v0.5.2
 
 ### Added

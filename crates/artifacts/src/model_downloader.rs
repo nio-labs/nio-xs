@@ -69,9 +69,9 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             brand_name: "Blue (Sovereign Reflex Lead)".into(),
             base_model: "microsoft/Phi-3.5-mini-instruct (32L, vMicroLM Reflex)".into(),
             filename: "blue.vmicrolm-reflex.gguf".into(),
-            download_url: "".into(),
-            sha256: "".into(),
-            size_bytes: 1_499_444_224,
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.1/blue.vmicrolm-reflex.gguf".into(),
+            sha256: "6b673f5a2ed71eced7b6cc947beccf3cf3f669eb25d6e6233c48e47e11e9bb32".into(),
+            size_bytes: 1_499_437_216,
         },
     ]
 }
@@ -465,7 +465,12 @@ mod tests {
                 639_362_560,
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.0/beluga.vmicrolm-vector.gguf",
             ),
-            (MODEL_BLUE, "", 1_499_444_224, ""),
+            (
+                MODEL_BLUE,
+                "6b673f5a2ed71eced7b6cc947beccf3cf3f669eb25d6e6233c48e47e11e9bb32",
+                1_499_437_216,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.1/blue.vmicrolm-reflex.gguf",
+            ),
         ];
         let manifest = default_manifest();
         assert_eq!(manifest.len(), expected.len());
