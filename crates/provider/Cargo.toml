@@ -23,5 +23,6 @@ futures-util.workspace = true
 reqwest.workspace = true
 sha2.workspace = true
 anyhow = "1.0"
+roxmltree = "0.21"
 [dev-dependencies]
 tower.workspace = true

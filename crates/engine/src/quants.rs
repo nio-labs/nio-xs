@@ -264,136 +264,26 @@ pub fn dequantize_row_f32(raw_bytes: &[u8], out: &mut [f32]) {
     }
 }
 
-pub const SIGNS64_IQ2XS: [u64; 128] = [
-    0x0101010101010101,
-    0xff010101010101ff,
-    0xff0101010101ff01,
-    0x010101010101ffff,
-    0xff01010101ff0101,
-    0x0101010101ff01ff,
-    0x0101010101ffff01,
-    0xff01010101ffffff,
-    0xff010101ff010101,
-    0x01010101ff0101ff,
-    0x01010101ff01ff01,
-    0xff010101ff01ffff,
-    0x01010101ffff0101,
-    0xff010101ffff01ff,
-    0xff010101ffffff01,
-    0x01010101ffffffff,
-    0xff0101ff01010101,
-    0x010101ff010101ff,
-    0x010101ff0101ff01,
-    0xff0101ff0101ffff,
-    0x010101ff01ff0101,
-    0xff0101ff01ff01ff,
-    0xff0101ff01ffff01,
-    0x010101ff01ffffff,
-    0x010101ffff010101,
-    0xff0101ffff0101ff,
-    0xff0101ffff01ff01,
-    0x010101ffff01ffff,
-    0xff0101ffffff0101,
-    0x010101ffffff01ff,
-    0x010101ffffffff01,
-    0xff0101ffffffffff,
-    0xff01ff0101010101,
-    0x0101ff01010101ff,
-    0x0101ff010101ff01,
-    0xff01ff010101ffff,
-    0x0101ff0101ff0101,
-    0xff01ff0101ff01ff,
-    0xff01ff0101ffff01,
-    0x0101ff0101ffffff,
-    0x0101ff01ff010101,
-    0xff01ff01ff0101ff,
-    0xff01ff01ff01ff01,
-    0x0101ff01ff01ffff,
-    0xff01ff01ffff0101,
-    0x0101ff01ffff01ff,
-    0x0101ff01ffffff01,
-    0xff01ff01ffffffff,
-    0x0101ffff01010101,
-    0xff01ffff010101ff,
-    0xff01ffff0101ff01,
-    0x0101ffff0101ffff,
-    0xff01ffff01ff0101,
-    0x0101ffff01ff01ff,
-    0x0101ffff01ffff01,
-    0xff01ffff01ffffff,
-    0xff01ffffff010101,
-    0x0101ffffff0101ff,
-    0x0101ffffff01ff01,
-    0xff01ffffff01ffff,
-    0x0101ffffffff0101,
-    0xff01ffffffff01ff,
-    0xff01ffffffffff01,
-    0x0101ffffffffffff,
-    0xffff010101010101,
-    0x01ff0101010101ff,
-    0x01ff01010101ff01,
-    0xffff01010101ffff,
-    0x01ff010101ff0101,
-    0xffff010101ff01ff,
-    0xffff010101ffff01,
-    0x01ff010101ffffff,
-    0x01ff0101ff010101,
-    0xffff0101ff0101ff,
-    0xffff0101ff01ff01,
-    0x01ff0101ff01ffff,
-    0xffff0101ffff0101,
-    0x01ff0101ffff01ff,
-    0x01ff0101ffffff01,
-    0xffff0101ffffffff,
-    0x01ff01ff01010101,
-    0xffff01ff010101ff,
-    0xffff01ff0101ff01,
-    0x01ff01ff0101ffff,
-    0xffff01ff01ff0101,
-    0x01ff01ff01ff01ff,
-    0x01ff01ff01ffff01,
-    0xffff01ff01ffffff,
-    0xffff01ffff010101,
-    0x01ff01ffff0101ff,
-    0x01ff01ffff01ff01,
-    0xffff01ffff01ffff,
-    0x01ff01ffffff0101,
-    0xffff01ffffff01ff,
-    0xffff01ffffffff01,
-    0x01ff01ffffffffff,
-    0x01ffff0101010101,
-    0xffffff01010101ff,
-    0xffffff010101ff01,
-    0x01ffff010101ffff,
-    0xffffff0101ff0101,
-    0x01ffff0101ff01ff,
-    0x01ffff0101ffff01,
-    0xffffff0101ffffff,
-    0xffffff01ff010101,
-    0x01ffff01ff0101ff,
-    0x01ffff01ff01ff01,
-    0xffffff01ff01ffff,
-    0x01ffff01ffff0101,
-    0xffffff01ffff01ff,
-    0xffffff01ffffff01,
-    0x01ffff01ffffffff,
-    0xffffffff01010101,
-    0x01ffffff010101ff,
-    0x01ffffff0101ff01,
-    0xffffffff0101ffff,
-    0x01ffffff01ff0101,
-    0xffffffff01ff01ff,
-    0xffffffff01ffff01,
-    0x01ffffff01ffffff,
-    0x01ffffffff010101,
-    0xffffffffff0101ff,
-    0xffffffffff01ff01,
-    0x01ffffffff01ffff,
-    0xffffffffffff0101,
-    0x01ffffffffff01ff,
-    0xffffffffffff01,
-    0xffffffffffffffff,
-];
+// Expand the canonical sign masks at compile time. Every byte consumed by
+// _mm256_sign_epi8 must be +1 or -1; a zero byte silently drops that lane.
+pub const SIGNS64_IQ2XS: [u64; 128] = {
+    let mut signs = [0u64; 128];
+    let mut i = 0;
+    while i < signs.len() {
+        let mut lane = 0;
+        while lane < 8 {
+            let byte = if KSIGNS_IQ2XS[i] & (1 << lane) == 0 {
+                1u64
+            } else {
+                255u64
+            };
+            signs[i] |= byte << (lane * 8);
+            lane += 1;
+        }
+        i += 1;
+    }
+    signs
+};
 
 #[inline]
 #[cfg(target_arch = "x86_64")]
@@ -425,11 +315,13 @@ pub fn quantize_row_q8_0(x: &[f32], out: &mut [BlockQ8_0]) {
             }
         }
         let d = amax / 127.0;
-        let id = if d != 0.0 { 1.0 / d } else { 0.0 };
-        block.d = d;
+        let id = if amax != 0.0 { 127.0 / amax } else { 0.0 };
+        // Q8_0 uses an FP16 scale, even though our internal block stores it in
+        // f32 for SIMD access. Match the GGML CPU quantizer's rounding too.
+        block.d = half::f16::from_f32(d).to_f32();
         for j in 0..32 {
             let x0 = chunk[j] * id;
-            block.qs[j] = x0.round().clamp(-128.0, 127.0) as i8;
+            block.qs[j] = x0.round_ties_even().clamp(-128.0, 127.0) as i8;
         }
     }
 }
@@ -565,13 +457,7 @@ pub fn quantize_row_q8_k(x: &[f32], out: &mut [BlockQ8_K]) {
 
 #[inline(always)]
 pub fn fast_silu(x: f32) -> f32 {
-    if x >= 4.0 {
-        x
-    } else if x <= -8.0 {
-        0.0
-    } else {
-        x / (1.0 + (-x).exp())
-    }
+    x / (1.0 + (-x).exp())
 }
 
 #[inline]
@@ -2844,6 +2730,91 @@ pub fn gemv_q8_0(out: &mut [f32], weight_bytes: &[u8], x: &[f32], n_rows: usize,
 #[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn q8_activation_scale_and_halfway_values_match_ggml_cpu() {
+        let mut input = [0.0; 64];
+        input[..8].copy_from_slice(&[127.0, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 0.0]);
+        input[32] = 1.2345;
+        let mut blocks = [BlockQ8_0 {
+            d: 0.0,
+            qs: [0; 32],
+        }; 2];
+        quantize_row_q8_0(&input, &mut blocks);
+        assert_eq!(&blocks[0].qs[..8], &[127, 0, 0, 2, -2, 2, -2, 0]);
+        let scale = input[32] / 127.0;
+        assert_ne!(scale, half::f16::from_f32(scale).to_f32());
+        assert_eq!(blocks[1].d, half::f16::from_f32(scale).to_f32());
+    }
+
+    #[test]
+    fn iq3_all_sign_patterns_match_scalar_in_every_simd_kernel() {
+        if !is_x86_feature_detected!("avx2")
+            || !is_x86_feature_detected!("fma")
+            || !is_x86_feature_detected!("f16c")
+        {
+            return;
+        }
+        let mut activation = BlockQ8_K {
+            d: 1.0,
+            qs: [0; 256],
+            bsums: [0; 16],
+        };
+        for (i, q) in activation.qs.iter_mut().enumerate() {
+            *q = (i % 8 + 1) as i8;
+        }
+        for index in 0..128u32 {
+            let mut weight = [0u8; 98];
+            weight[..2].copy_from_slice(&half::f16::ONE.to_le_bytes());
+            let packed = index | (index << 7) | (index << 14) | (index << 21);
+            for group in weight[66..].chunks_exact_mut(4) {
+                group.copy_from_slice(&packed.to_le_bytes());
+            }
+            // IQ3 grid index 0 contains four 4s; scale index 0 and d=1 give
+            // weights of +/-1. The eighth sign enforces even parity.
+            let mask = index | ((index.count_ones() & 1) << 7);
+            let expected: f32 = (0..256)
+                .map(|i| {
+                    let x = activation.qs[i] as f32;
+                    if mask & (1 << (i % 8)) == 0 { x } else { -x }
+                })
+                .sum();
+            if index == 126 {
+                assert_eq!(expected, -576.0);
+            }
+            let w = weight.as_ptr();
+            let x = &activation as *const _;
+            let mut actual = Vec::new();
+            unsafe {
+                actual.push(vec_dot_iq3_xxs_q8_k_avx2(&weight, &[activation]));
+                let (a, b) = vec_dot_iq3_xxs_q8_k_2rows_avx2_ptr(w, w, x, 1);
+                actual.extend([a, b]);
+                let (a, b, c, d) = vec_dot_iq3_xxs_q8_k_4rows_avx2_ptr(w, w, w, w, x, 1);
+                actual.extend([a, b, c, d]);
+                let (a, b) = vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(w, x, x, 1);
+                actual.extend([a, b]);
+                let (a, b, c) = vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(w, x, x, x, 1);
+                actual.extend([a, b, c]);
+                let (a, b, c, d) = vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr(w, w, x, x, 1);
+                actual.extend([a, b, c, d]);
+                let (a, b, c, d, e, f) =
+                    vec_dot_iq3_xxs_q8_k_2rows_3tokens_avx2_ptr(w, w, x, x, x, 1);
+                actual.extend([a, b, c, d, e, f]);
+            }
+            assert!(
+                actual.iter().all(|v| *v == expected),
+                "sign pattern {index}: {actual:?}, expected {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn silu_preserves_the_sigmoid_at_former_cutoffs() {
+        for x in [-16.0f32, -8.0, -7.99, 0.0, 3.99, 4.0, 8.0, 16.0] {
+            let expected = (x as f64 / (1.0 + (-(x as f64)).exp())) as f32;
+            assert!((fast_silu(x) - expected).abs() < 1e-6);
+        }
+    }
 
     #[test]
     fn q8_matrix_vector_matches_dequantized_reference() {

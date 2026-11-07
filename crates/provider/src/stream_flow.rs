@@ -53,6 +53,7 @@ pub struct StreamFlow {
     has_emitted_first: bool,
     in_think: bool,
     think_completed: bool,
+    show_think_tags: bool,
     is_tty: bool,
 }
 
@@ -65,8 +66,13 @@ impl StreamFlow {
             has_emitted_first: false,
             in_think: false,
             think_completed: false,
+            show_think_tags: false,
             is_tty: std::io::stdout().is_terminal(),
         }
+    }
+
+    pub fn set_show_think_tags(&mut self, show: bool) {
+        self.show_think_tags = show;
     }
 
     pub fn push(&mut self, chunk: &str) {
@@ -99,6 +105,10 @@ impl StreamFlow {
                     let thought_text = &self.stream_buffer[..pos];
                     if !thought_text.is_empty() {
                         self.emit_raw(thought_text);
+                    }
+                    if self.show_think_tags {
+                        let close_tag = self.stream_buffer[pos..pos + tag_len].to_string();
+                        self.emit_raw(&close_tag);
                     }
                     if self.is_tty {
                         self.emit_raw("\x1b[0m\r\n\r\n");
@@ -137,6 +147,11 @@ impl StreamFlow {
 
                 if let Some(tag_len) = matched_open {
                     let tag_start = self.stream_buffer.find('<').unwrap_or(0);
+                    if self.show_think_tags {
+                        let open_tag =
+                            self.stream_buffer[tag_start..tag_start + tag_len].to_string();
+                        self.emit_raw(&open_tag);
+                    }
                     self.stream_buffer.drain(..tag_start + tag_len);
                     self.in_think = true;
                     if self.is_tty {

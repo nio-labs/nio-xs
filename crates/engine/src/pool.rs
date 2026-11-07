@@ -13,6 +13,87 @@ mod tests {
     use super::GemvTask;
 
     #[test]
+    fn vocabulary_kernels_use_one_repetition_penalty_without_frequency_subtraction() {
+        use crate::quants::BlockQ8_0;
+        if !is_x86_feature_detected!("avx2")
+            || !is_x86_feature_detected!("fma")
+            || !is_x86_feature_detected!("f16c")
+        {
+            return;
+        }
+        for columns in [64, 576, 896, 1536, 3072] {
+            for iq4 in [false, true] {
+                let blocks = columns / 32;
+                let block_bytes = if iq4 { 18 } else { 34 };
+                let row_bytes = blocks * block_bytes;
+                let mut weights = vec![0u8; row_bytes * 3];
+                for (row, score) in [10.0f32, 11.5, 1.0].iter().enumerate() {
+                    for block in weights[row * row_bytes..(row + 1) * row_bytes]
+                        .chunks_exact_mut(block_bytes)
+                    {
+                        block[..2].copy_from_slice(
+                            &half::f16::from_f32(score / columns as f32).to_le_bytes(),
+                        );
+                        block[2..].fill(if iq4 { 0x88 } else { 1 });
+                    }
+                }
+                let x = vec![
+                    BlockQ8_0 {
+                        d: 1.0,
+                        qs: [1; 32]
+                    };
+                    blocks
+                ];
+                let history = [1u32, 1, 1];
+                for penalty in [1.0, 1.1] {
+                    let mut token = 99u32;
+                    let mut score = f32::NEG_INFINITY;
+                    macro_rules! task {
+                        ($variant:ident) => {
+                            GemvTask::$variant {
+                                weight_ptr: weights.as_ptr() as usize,
+                                x_blocks_ptr: x.as_ptr() as usize,
+                                start_tok: 0,
+                                vocab_count: 3,
+                                bytes_per_token: row_bytes,
+                                suppress_eos: false,
+                                history_ptr: history.as_ptr() as usize,
+                                history_len: history.len(),
+                                suppressed_ptr: 0,
+                                suppressed_len: 0,
+                                repeat_penalty: penalty,
+                                top_tok_ptr: &mut token as *mut _ as usize,
+                                top_score_ptr: &mut score as *mut _ as usize,
+                            }
+                        };
+                    }
+                    let task = if iq4 {
+                        task!(VocabIq4Nl)
+                    } else {
+                        task!(VocabQ8_0)
+                    };
+                    unsafe {
+                        task.execute(0, 1);
+                    }
+                    assert_eq!(
+                        token, 1,
+                        "SIMD columns={columns}, iq4={iq4}, penalty={penalty}"
+                    );
+                    let native_score = score;
+                    unsafe {
+                        task.execute_scalar(0, 1);
+                    }
+                    assert_eq!(
+                        token, 1,
+                        "scalar columns={columns}, iq4={iq4}, penalty={penalty}"
+                    );
+                    assert!((score - native_score).abs() < 0.01);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn attention_handles_full_8192_token_context() {
         if !std::is_x86_feature_detected!("avx2") || !std::is_x86_feature_detected!("fma") {
             return;
@@ -859,19 +940,11 @@ impl GemvTask {
                     }
                 }
 
-                let recent_slice = if history_len > 96 {
-                    &history[history_len - 96..]
-                } else {
-                    history
-                };
+                let recent_slice = history;
 
                 let mut best_tok = worker_start as u32;
                 let mut best_score = f32::NEG_INFINITY;
-                let pen = if repeat_penalty > 1.0 {
-                    repeat_penalty
-                } else {
-                    1.25
-                };
+                let pen = repeat_penalty.max(1.0);
 
                 if is_manta {
                     let mut tok_id = worker_start as u32;
@@ -894,16 +967,8 @@ impl GemvTask {
 
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok0).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok0, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok0;
@@ -911,16 +976,8 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok1).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok1, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok1;
@@ -938,16 +995,12 @@ impl GemvTask {
                                 quants::vec_dot_q8_0_28blocks_avx2(r0_ptr, &x_qs_manta, &x_d_manta);
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count =
-                                    recent_slice.iter().filter(|&&id| id == tok0).count();
-                                if repeat_count > 0 {
-                                    score -= (repeat_count as f32) * 2.5;
-                                    if score > 0.0 {
-                                        score /= pen.powi(repeat_count as i32);
-                                    } else {
-                                        score *= pen.powi(repeat_count as i32);
-                                    }
-                                }
+                                score = crate::decoding::repetition_score(
+                                    score,
+                                    tok0,
+                                    recent_slice,
+                                    pen,
+                                );
                                 if score > best_score {
                                     best_score = score;
                                     best_tok = tok0;
@@ -976,16 +1029,8 @@ impl GemvTask {
 
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok0).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok0, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok0;
@@ -993,16 +1038,8 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok1).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok1, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok1;
@@ -1023,16 +1060,12 @@ impl GemvTask {
                             );
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count =
-                                    recent_slice.iter().filter(|&&id| id == tok0).count();
-                                if repeat_count > 0 {
-                                    score -= (repeat_count as f32) * 2.5;
-                                    if score > 0.0 {
-                                        score /= pen.powi(repeat_count as i32);
-                                    } else {
-                                        score *= pen.powi(repeat_count as i32);
-                                    }
-                                }
+                                score = crate::decoding::repetition_score(
+                                    score,
+                                    tok0,
+                                    recent_slice,
+                                    pen,
+                                );
                                 if score > best_score {
                                     best_score = score;
                                     best_tok = tok0;
@@ -1067,16 +1100,8 @@ impl GemvTask {
                         );
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok0).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok0, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok0;
@@ -1084,16 +1109,8 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok1).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok1, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok1;
@@ -1116,16 +1133,12 @@ impl GemvTask {
                                 quants::vec_dot_q8_0_96blocks_avx2(r0_ptr, &x_qs_blue, &x_d_blue);
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count =
-                                    recent_slice.iter().filter(|&&id| id == tok0).count();
-                                if repeat_count > 0 {
-                                    score -= (repeat_count as f32) * 2.5;
-                                    if score > 0.0 {
-                                        score /= pen.powi(repeat_count as i32);
-                                    } else {
-                                        score *= pen.powi(repeat_count as i32);
-                                    }
-                                }
+                                score = crate::decoding::repetition_score(
+                                    score,
+                                    tok0,
+                                    recent_slice,
+                                    pen,
+                                );
                                 if score > best_score {
                                     best_score = score;
                                     best_tok = tok0;
@@ -1148,16 +1161,8 @@ impl GemvTask {
                             quants::vec_dot_q8_0_18blocks_avx2(row_ptr, &x_qs_skate, &x_d_skate);
                         if val > best_score {
                             let mut score = val;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok_id).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok_id, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok_id;
@@ -1182,16 +1187,8 @@ impl GemvTask {
                         let val = quants::vec_dot_q8_0_q8_0_avx2(row_slice, x_blocks);
                         if val > best_score {
                             let mut score = val;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok_id).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok_id, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok_id;
@@ -1279,19 +1276,11 @@ impl GemvTask {
                     }
                 }
 
-                let recent_slice = if history_len > 96 {
-                    &history[history_len - 96..]
-                } else {
-                    history
-                };
+                let recent_slice = history;
 
                 let mut best_tok = worker_start as u32;
                 let mut best_score = f32::NEG_INFINITY;
-                let pen = if repeat_penalty > 1.0 {
-                    repeat_penalty
-                } else {
-                    1.25
-                };
+                let pen = repeat_penalty.max(1.0);
 
                 if is_manta {
                     let mut tok_id = worker_start as u32;
@@ -1314,16 +1303,8 @@ impl GemvTask {
 
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok0).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok0, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok0;
@@ -1331,16 +1312,8 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok1).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok1, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok1;
@@ -1361,16 +1334,12 @@ impl GemvTask {
                             );
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count =
-                                    recent_slice.iter().filter(|&&id| id == tok0).count();
-                                if repeat_count > 0 {
-                                    score -= (repeat_count as f32) * 2.5;
-                                    if score > 0.0 {
-                                        score /= pen.powi(repeat_count as i32);
-                                    } else {
-                                        score *= pen.powi(repeat_count as i32);
-                                    }
-                                }
+                                score = crate::decoding::repetition_score(
+                                    score,
+                                    tok0,
+                                    recent_slice,
+                                    pen,
+                                );
                                 if score > best_score {
                                     best_score = score;
                                     best_tok = tok0;
@@ -1399,16 +1368,8 @@ impl GemvTask {
 
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok0).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok0, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok0;
@@ -1416,16 +1377,8 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok1).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok1, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok1;
@@ -1446,16 +1399,12 @@ impl GemvTask {
                             );
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count =
-                                    recent_slice.iter().filter(|&&id| id == tok0).count();
-                                if repeat_count > 0 {
-                                    score -= (repeat_count as f32) * 2.5;
-                                    if score > 0.0 {
-                                        score /= pen.powi(repeat_count as i32);
-                                    } else {
-                                        score *= pen.powi(repeat_count as i32);
-                                    }
-                                }
+                                score = crate::decoding::repetition_score(
+                                    score,
+                                    tok0,
+                                    recent_slice,
+                                    pen,
+                                );
                                 if score > best_score {
                                     best_score = score;
                                     best_tok = tok0;
@@ -1502,18 +1451,8 @@ impl GemvTask {
 
                         if !skip0 && val0 > best_score {
                             let mut score = val0;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok0).count();
-                            if repeat_count > 0 {
-                                if repeat_count >= 2 {
-                                    score -= ((repeat_count - 1) as f32) * 1.5;
-                                }
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok0, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok0;
@@ -1521,18 +1460,8 @@ impl GemvTask {
                         }
                         if !skip1 && val1 > best_score {
                             let mut score = val1;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok1).count();
-                            if repeat_count > 0 {
-                                if repeat_count >= 2 {
-                                    score -= ((repeat_count - 1) as f32) * 1.5;
-                                }
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok1, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok1;
@@ -1562,18 +1491,12 @@ impl GemvTask {
                             );
                             if val0 > best_score {
                                 let mut score = val0;
-                                let repeat_count =
-                                    recent_slice.iter().filter(|&&id| id == tok0).count();
-                                if repeat_count > 0 {
-                                    if repeat_count >= 2 {
-                                        score -= ((repeat_count - 1) as f32) * 1.5;
-                                    }
-                                    if score > 0.0 {
-                                        score /= pen.powi(repeat_count as i32);
-                                    } else {
-                                        score *= pen.powi(repeat_count as i32);
-                                    }
-                                }
+                                score = crate::decoding::repetition_score(
+                                    score,
+                                    tok0,
+                                    recent_slice,
+                                    pen,
+                                );
                                 if score > best_score {
                                     best_score = score;
                                     best_tok = tok0;
@@ -1599,16 +1522,8 @@ impl GemvTask {
                         let val = quants::vec_dot_iq4_nl_q8_0_avx2(row_slice, x_blocks);
                         if val > best_score {
                             let mut score = val;
-                            let repeat_count =
-                                recent_slice.iter().filter(|&&id| id == tok_id).count();
-                            if repeat_count > 0 {
-                                score -= (repeat_count as f32) * 2.5;
-                                if score > 0.0 {
-                                    score /= pen.powi(repeat_count as i32);
-                                } else {
-                                    score *= pen.powi(repeat_count as i32);
-                                }
-                            }
+                            score =
+                                crate::decoding::repetition_score(score, tok_id, recent_slice, pen);
                             if score > best_score {
                                 best_score = score;
                                 best_tok = tok_id;

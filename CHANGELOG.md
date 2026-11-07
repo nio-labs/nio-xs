@@ -3,6 +3,23 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.5.2
+
+### Added
+- Manta plan mode buffers and validates one complete XML plan, including unique step IDs and valid, acyclic dependencies, before printing it.
+- WSL GPU detection identifies NVIDIA adapters through Windows and checks for Intel Arc by adapter name; GPU detection now explains when inference falls back to CPU because a GPU-enabled `llama-cli` is unavailable.
+- Shared companion decoding settings keep native and external-runner repetition behavior aligned, with model-specific penalties and token suppression.
+
+### Changed
+- Manta uses a longer repetition history and a concise default response budget to limit repeated, sprawling answers.
+- Beluga's CLI and API use the same system prompt, and the CLI displays think delimiters when the model emits them.
+- Release tokenizer validation reads GGUF token metadata without building a duplicate tokenizer vocabulary map or copying every token string.
+- Updated the Blue benchmark code and report to distinguish anonymous RAM from resident/high-water RSS and document that the recorded artifact is unavailable for reproduction.
+
+### Fixed
+- Model pulls fail clearly when an artifact has no published download URL or valid SHA-256 checksum.
+- Corrected shared quantized vocabulary-kernel repetition scoring and preserved tokenizer/model compatibility checks.
+
 ## v0.4.5
 
 ### Added

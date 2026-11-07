@@ -1,0 +1,656 @@
+{
+  "model_sha256": "fa981bab81c7cb32a7072dfd193f1e03f988eb800d7e6773a03b69c861d452a5",
+  "reference_revision": "6c01da6278ab6c69ed67d9124806b50d2b299ba7",
+  "native_base_revision": "790f9be (local uncommitted corrections)",
+  "method": "Same original reference continuation, first 32 tokens per case. No repetition penalty, suppressed tokens, speculation, or output filter. F32 KV caches and CPU execution.",
+  "reference_variants": {
+    "default": {
+      "microbatch": 512,
+      "weight_repacking": true
+    },
+    "microbatch1": {
+      "microbatch": 1,
+      "weight_repacking": true
+    },
+    "plain_microbatch1": {
+      "microbatch": 1,
+      "weight_repacking": false
+    }
+  },
+  "confirmed_bug": "IQ3 SIMD sign table index 126 had a zero most-significant byte instead of +1. PSIGNB therefore zeroed one lane in affected sign groups. Generate all SIMD signs from canonical masks at compile time.",
+  "q8_alignment": "Use FP16-rounded scales, direct 127/amax inverse scale, and ties-to-even rounding as in the GGML x86 CPU quantizer.",
+  "rope_alignment": "Use GGML f32 angle recurrence instead of independently evaluated powers.",
+  "kernel_oracle": {
+    "fixtures": 66,
+    "generic_dot_products": 264,
+    "before_max_absolute_error": 0.07662701606750488,
+    "after_max_absolute_error": 0.0,
+    "after_max_specialized_absolute_error": 3.814697265625e-06,
+    "all_pass": true,
+    "activation_byte_mismatches": 0,
+    "activation_scale_error": 0.0
+  },
+  "stages": [
+    {
+      "stage": "original",
+      "references": {
+        "default": {
+          "matches": 90,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 29,
+              "mismatch_steps": [
+                0,
+                9,
+                18
+              ],
+              "mean_common_top10_logit_absolute_error": 0.1557647257578267
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 29,
+              "mismatch_steps": [
+                3,
+                6,
+                29
+              ],
+              "mean_common_top10_logit_absolute_error": 0.1438957891465484
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.22262127661210898
+            }
+          ]
+        },
+        "microbatch1": {
+          "matches": 91,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 28,
+              "mismatch_steps": [
+                0,
+                9,
+                18,
+                21
+              ],
+              "mean_common_top10_logit_absolute_error": 0.1596683585513487
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                3
+              ],
+              "mean_common_top10_logit_absolute_error": 0.14335672933500213
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.2301424179212283
+            }
+          ]
+        },
+        "plain_microbatch1": {
+          "matches": 90,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 28,
+              "mismatch_steps": [
+                0,
+                9,
+                18,
+                21
+              ],
+              "mean_common_top10_logit_absolute_error": 0.155809649444699
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                3,
+                29
+              ],
+              "mean_common_top10_logit_absolute_error": 0.13782149067703844
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.21251291417712403
+            }
+          ]
+        }
+      }
+    },
+    {
+      "stage": "exact_silu",
+      "references": {
+        "default": {
+          "matches": 92,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                0,
+                21
+              ],
+              "mean_common_top10_logit_absolute_error": 0.16250342945516744
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                6,
+                18
+              ],
+              "mean_common_top10_logit_absolute_error": 0.14778737814750548
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.21976059718350127
+            }
+          ]
+        },
+        "microbatch1": {
+          "matches": 93,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                0
+              ],
+              "mean_common_top10_logit_absolute_error": 0.15782262730680652
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                18,
+                29
+              ],
+              "mean_common_top10_logit_absolute_error": 0.14566284674706556
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.22250780329028322
+            }
+          ]
+        },
+        "plain_microbatch1": {
+          "matches": 94,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                0
+              ],
+              "mean_common_top10_logit_absolute_error": 0.16169860172267234
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                18
+              ],
+              "mean_common_top10_logit_absolute_error": 0.14055880278805422
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.21397574647326292
+            }
+          ]
+        }
+      }
+    },
+    {
+      "stage": "fp16_scale_only",
+      "references": {
+        "default": {
+          "matches": 92,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                0,
+                21
+              ],
+              "mean_common_top10_logit_absolute_error": 0.14210460882615766
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                6,
+                7
+              ],
+              "mean_common_top10_logit_absolute_error": 0.13813504136813334
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.21019714604009582
+            }
+          ]
+        },
+        "microbatch1": {
+          "matches": 93,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                0
+              ],
+              "mean_common_top10_logit_absolute_error": 0.14169946460675
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                7,
+                29
+              ],
+              "mean_common_top10_logit_absolute_error": 0.14373528462649662
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.21209179126277666
+            }
+          ]
+        },
+        "plain_microbatch1": {
+          "matches": 94,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                0
+              ],
+              "mean_common_top10_logit_absolute_error": 0.15016583614457785
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                7
+              ],
+              "mean_common_top10_logit_absolute_error": 0.13384063290979842
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.20870432955639656
+            }
+          ]
+        }
+      }
+    },
+    {
+      "stage": "q8_aligned",
+      "references": {
+        "default": {
+          "matches": 91,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                0,
+                21
+              ],
+              "mean_common_top10_logit_absolute_error": 0.14671511247151692
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 29,
+              "mismatch_steps": [
+                6,
+                18,
+                29
+              ],
+              "mean_common_top10_logit_absolute_error": 0.1369573414075622
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.20562303046116628
+            }
+          ]
+        },
+        "microbatch1": {
+          "matches": 93,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                0
+              ],
+              "mean_common_top10_logit_absolute_error": 0.14818013897207905
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                18,
+                29
+              ],
+              "mean_common_top10_logit_absolute_error": 0.14015969997709693
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.19503826316424905
+            }
+          ]
+        },
+        "plain_microbatch1": {
+          "matches": 93,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                0
+              ],
+              "mean_common_top10_logit_absolute_error": 0.14391797190955966
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                18,
+                29
+              ],
+              "mean_common_top10_logit_absolute_error": 0.1450995032163134
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.20019906900122073
+            }
+          ]
+        }
+      }
+    },
+    {
+      "stage": "sign_fixed",
+      "references": {
+        "default": {
+          "matches": 92,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 29,
+              "mismatch_steps": [
+                0,
+                21,
+                31
+              ],
+              "mean_common_top10_logit_absolute_error": 0.11985897763833316
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                6
+              ],
+              "mean_common_top10_logit_absolute_error": 0.09171976460606958
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.1450455376420962
+            }
+          ]
+        },
+        "microbatch1": {
+          "matches": 93,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                0,
+                31
+              ],
+              "mean_common_top10_logit_absolute_error": 0.1007656430695179
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                29
+              ],
+              "mean_common_top10_logit_absolute_error": 0.09719326748633605
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.1371360500947055
+            }
+          ]
+        },
+        "plain_microbatch1": {
+          "matches": 94,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 30,
+              "mismatch_steps": [
+                0,
+                31
+              ],
+              "mean_common_top10_logit_absolute_error": 0.11746183173892154
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.10376863935622176
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.13114646102905272
+            }
+          ]
+        }
+      }
+    },
+    {
+      "stage": "rope_aligned",
+      "references": {
+        "default": {
+          "matches": 94,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                21
+              ],
+              "mean_common_top10_logit_absolute_error": 0.11696496268647424
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                6
+              ],
+              "mean_common_top10_logit_absolute_error": 0.10735828343573896
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.141991169594758
+            }
+          ]
+        },
+        "microbatch1": {
+          "matches": 95,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.09835808070429022
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 31,
+              "mismatch_steps": [
+                29
+              ],
+              "mean_common_top10_logit_absolute_error": 0.11167803326724159
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.14265794182584685
+            }
+          ]
+        },
+        "plain_microbatch1": {
+          "matches": 96,
+          "steps": 96,
+          "cases": [
+            {
+              "name": "rate_limiter",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.1046881878975316
+            },
+            {
+              "name": "queue_tradeoff",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.10904806000511912
+            },
+            {
+              "name": "deployment_plan",
+              "steps": 32,
+              "top1_matches": 32,
+              "mismatch_steps": [],
+              "mean_common_top10_logit_absolute_error": 0.13756632460221088
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "limits": "96/96 top-1 agreement under the plain reference configuration is sample-specific, not bitwise logit parity or proof of model factual correctness. Logit differences remain; reference batching/repacking also changes logits and some token choices. This does not validate GPU execution, full 8k context, production speculative decoding, or model quality.",
+  "verification": {
+    "engine_tests_passed": 32,
+    "engine_tests_failed": 0,
+    "format_check_passed": true,
+    "diff_check_passed": true,
+    "release_cli_rebuilt": true,
+    "cli_smoke": {
+      "prompt": "Explain a work queue in two sentences.",
+      "max_output_tokens": 128,
+      "device": "cpu",
+      "response": "A work queue is a system that manages the flow of tasks to be performed by an organization. It helps in organizing and prioritizing which tasks should be completed first, ensuring efficient use of resources such as time and personnel."
+    },
+    "reference_driver_free_generation_option_checked": true
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "experiment": "Only replace approximate SiLU with x/(1+exp(-x)); same reference continuations and all other native settings unchanged.",
+  "cases": [
+    {
+      "name": "rate_limiter",
+      "before": {
+        "steps": 32,
+        "top1_matches": 29,
+        "mean_common_top10_logit_error": 0.1557647257578267,
+        "mean_top10_overlap": 9.625,
+        "disagreements": [
+          {
+            "step": 0,
+            "native": 785,
+            "reference": 1249
+          },
+          {
+            "step": 9,
+            "native": 4303,
+            "reference": 11
+          },
+          {
+            "step": 18,
+            "native": 576,
+            "reference": 1205
+          }
+        ]
+      },
+      "exact_silu": {
+        "steps": 32,
+        "top1_matches": 30,
+        "mean_common_top10_logit_error": 0.16250342945516744,
+        "mean_top10_overlap": 9.5625,
+        "disagreements": [
+          {
+            "step": 0,
+            "native": 785,
+            "reference": 1249
+          },
+          {
+            "step": 21,
+            "native": 311,
+            "reference": 518
+          }
+        ]
+      }
+    },
+    {
+      "name": "queue_tradeoff",
+      "before": {
+        "steps": 32,
+        "top1_matches": 29,
+        "mean_common_top10_logit_error": 0.1438957891465484,
+        "mean_top10_overlap": 9.53125,
+        "disagreements": [
+          {
+            "step": 3,
+            "native": 448,
+            "reference": 374
+          },
+          {
+            "step": 6,
+            "native": 8692,
+            "reference": 11589
+          },
+          {
+            "step": 29,
+            "native": 2664,
+            "reference": 803
+          }
+        ]
+      },
+      "exact_silu": {
+        "steps": 32,
+        "top1_matches": 30,
+        "mean_common_top10_logit_error": 0.14778737814750548,
+        "mean_top10_overlap": 9.59375,
+        "disagreements": [
+          {
+            "step": 6,
+            "native": 8692,
+            "reference": 11589
+          },
+          {
+            "step": 18,
+            "native": 31074,
+            "reference": 22188
+          }
+        ]
+      }
+    },
+    {
+      "name": "deployment_plan",
+      "before": {
+        "steps": 32,
+        "top1_matches": 32,
+        "mean_common_top10_logit_error": 0.22262127661210898,
+        "mean_top10_overlap": 9.28125,
+        "disagreements": []
+      },
+      "exact_silu": {
+        "steps": 32,
+        "top1_matches": 32,
+        "mean_common_top10_logit_error": 0.21976059718350127,
+        "mean_top10_overlap": 9.40625,
+        "disagreements": []
+      }
+    }
+  ]
+}

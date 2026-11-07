@@ -1,0 +1,9 @@
+{
+  "setting": "default_cpu_layers_0_window_1",
+  "exit_code": 0,
+  "elapsed_seconds": 63.392799202003516,
+  "sampled_peak_rss_mib": 292.76171875,
+  "sampled_peak_anon_mib": 124.05078125,
+  "response": "* **Work Queue (e.g., Akka `Mailbox`):**\n\t* **Reliability:** Exactly-once ordered delivery.\n\t* **Idempotency:** No.\n\t* **Concurrency:** Multiple producers writing to one consumer.\n\t* **Edge Case:** Producer crash → lost work. Requires manual checkpointing.\n* **Pub/Sub (e.g., RabbitMQ `Publish/Subscribe`):**\n\t* **Reliability:** Exactly-once unordered delivery.\n\t* **Idempotency:** Yes, per message.\n\t* **Concurrency:** Multiple producers and consumers.\n\t* **Edge Case:** Consumer crash → lost messages. Requires acknowledgment.\n* **Comparison:**\n\tA work queue guarantees the order of every customer order (A→B) and the final state (C). Pub/Sub allows multiple orders (orders A, B, C) to be processed in parallel, but the state is unordered. If a consumer fails, only the last order (C) is lost; previous orders (A, B) may be retried.",
+  "stderr": ""
+}

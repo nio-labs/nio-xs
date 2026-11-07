@@ -1,0 +1,17 @@
+[
+  {
+    "name": "rate_limiter",
+    "prompt": "Design a rate limiter for an API running on three servers. The limit is 100 requests per minute per customer. In at most 150 words, explain shared state, atomic updates, and what happens if Redis is unavailable.",
+    "plan": false
+  },
+  {
+    "name": "queue_tradeoff",
+    "prompt": "We need to process customer orders reliably. Compare a work queue with pub-sub, recommend one, and explain retries and duplicate handling. Keep the answer under 150 words.",
+    "plan": false
+  },
+  {
+    "name": "deployment_plan",
+    "prompt": "Create a minimal two-step deployment plan for a stateless API: deploy to staging, then deploy to production after staging succeeds. Include step id, name, description, command, rollback, and an explicit dependency. Return only one complete manta_plan XML document.",
+    "plan": true
+  }
+]

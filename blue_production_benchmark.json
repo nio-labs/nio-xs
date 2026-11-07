@@ -57,5 +57,8 @@
       "vm_hwm_mb": 192.296875,
       "response": "<think>Verify term monotonicity, majority quorum intersection, and log-matching election safety invariants.</think>\nRaft offers better consistency under high network jitter due to its strong leader election mechanism. Multi-Paxos may struggle with synchronization issues in such environments."
     }
-  ]
+  ],
+  "historical_status": "Not reproducible from the current checkout: the Blue GGUF and tokenizer are absent, and no published, checksum-pinned Blue artifact is listed in the model manifest.",
+  "memory_metric_caveat": "The benchmark implementation that produced these values recorded RssAnon into fields named vm_rss_mb/vm_hwm_mb and used it for the <200 MB pass flag. These figures do not establish the process VmRSS/VmHWM SLA.",
+  "artifact_integrity": "No model SHA-256 was recorded; do not treat this as a benchmark of a currently published Blue release."
 }

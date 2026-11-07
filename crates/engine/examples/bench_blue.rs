@@ -19,6 +19,7 @@ struct BenchmarkResult {
     tokens_per_sec: f64,
     word_count: usize,
     words_per_sec: f64,
+    rss_anon_mb: f64,
     vm_rss_mb: f64,
     vm_hwm_mb: f64,
     response: String,
@@ -28,17 +29,21 @@ struct BenchmarkResult {
 struct BlueSummary {
     model: String,
     disk_size_mb: f64,
+    resident_layers: usize,
+    rolling_window: usize,
     num_queries: usize,
     avg_prefill_ms: f64,
     avg_prefill_tps: f64,
     avg_tokens_per_sec: f64,
     avg_words_per_sec: f64,
-    peak_ram_mb: f64,
-    sub_200mb_sla_passed: bool,
+    peak_rss_anon_mb: f64,
+    peak_vm_rss_mb: f64,
+    peak_vm_hwm_mb: f64,
+    sub_180mb_sla_passed: bool,
     results: Vec<BenchmarkResult>,
 }
 
-fn memory_mb() -> (f64, f64) {
+fn memory_mb() -> (f64, f64, f64) {
     let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
     let get_val = |key: &str| -> f64 {
         status
@@ -49,10 +54,7 @@ fn memory_mb() -> (f64, f64) {
             .unwrap_or(0.0)
             / 1024.0
     };
-    let rss_anon = get_val("RssAnon:");
-    let vm_rss = get_val("VmRSS:");
-    let effective_rss = if rss_anon > 0.0 { rss_anon } else { vm_rss };
-    (effective_rss, effective_rss)
+    (get_val("RssAnon:"), get_val("VmRSS:"), get_val("VmHWM:"))
 }
 
 fn get_file_size_mb(path: &Path) -> f64 {
@@ -62,8 +64,23 @@ fn get_file_size_mb(path: &Path) -> f64 {
 }
 
 fn main() -> Result<()> {
-    let model_path = PathBuf::from("/home/mn/.nioxs/models/blue.vmicrolm-reflex.gguf");
-    let tokenizer_path = PathBuf::from("/home/mn/nio-labs/nio-xs-models/blue-tokenizer.json");
+    let model_path = std::env::var_os("NIOXS_BLUE_MODEL")
+        .map(PathBuf::from)
+        .or_else(|| std::env::args_os().nth(1).map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("/home/mn/.nioxs/models/blue.vmicrolm-reflex.gguf"));
+    let tokenizer_path = std::env::var_os("NIOXS_TOKENIZER")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| model_path.with_file_name("blue-tokenizer.json"));
+    anyhow::ensure!(
+        model_path.is_file(),
+        "Blue GGUF not found at {}",
+        model_path.display()
+    );
+    anyhow::ensure!(
+        tokenizer_path.is_file(),
+        "Blue tokenizer not found at {}",
+        tokenizer_path.display()
+    );
 
     println!("\n========================================================");
     println!("  🐋 BENCHMARKING: BLUE (3.82B) v-MicroLM Reflex Companion");
@@ -72,7 +89,7 @@ fn main() -> Result<()> {
     println!("  Disk Size:      {:.2} MB", get_file_size_mb(&model_path));
     println!("========================================================");
 
-    let (start_rss, start_hwm) = memory_mb();
+    let (start_anon, start_rss, start_hwm) = memory_mb();
     println!(
         "Process Start RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB",
         start_rss, start_hwm
@@ -84,27 +101,20 @@ fn main() -> Result<()> {
     unsafe {
         libc::malloc_trim(0);
     }
-    let (tok_rss, tok_hwm) = memory_mb();
+    let (tok_anon, tok_rss, tok_hwm) = memory_mb();
     println!(
         "Post-tokenizer RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB",
         tok_rss, tok_hwm
     );
 
-    let low_ram = std::env::var("NIOXS_LOW_RAM")
-        .map(|v| v == "1")
-        .unwrap_or(false);
     let t0 = Instant::now();
     let mut engine = AstMicroEngine::new(&model_path)?;
-    if low_ram {
-        engine.set_resident_layers(2);
-        engine.set_rolling_window(2);
-    } else {
-        engine.set_resident_layers(32);
-        engine.set_rolling_window(32);
-    }
+    // Match the production CPU path in AstEngine::ensure_loaded.
+    engine.set_resident_layers(2);
+    engine.set_rolling_window(2);
 
     let load_time = t0.elapsed().as_secs_f64();
-    let (load_rss, load_hwm) = memory_mb();
+    let (load_anon, load_rss, load_hwm) = memory_mb();
     println!(
         "Engine loaded in {:.2}s | Post-load RAM: VmRSS = {:.2} MB | VmHWM = {:.2} MB\n",
         load_time, load_rss, load_hwm
@@ -142,7 +152,9 @@ fn main() -> Result<()> {
     let mut total_prefill_tps = 0.0;
     let mut total_tps = 0.0;
     let mut total_wps = 0.0;
-    let mut peak_process_hwm_observed: f64 = load_hwm;
+    let mut peak_rss_anon_observed = start_anon.max(tok_anon).max(load_anon);
+    let mut peak_vm_rss_observed = start_rss.max(tok_rss).max(load_rss);
+    let mut peak_process_hwm_observed: f64 = start_hwm.max(tok_hwm).max(load_hwm);
 
     for (idx, &(category, prompt)) in test_cases.iter().enumerate() {
         println!("--------------------------------------------------------");
@@ -325,7 +337,9 @@ fn main() -> Result<()> {
             0.0
         };
 
-        let (cur_rss, cur_hwm) = memory_mb();
+        let (cur_anon, cur_rss, cur_hwm) = memory_mb();
+        peak_rss_anon_observed = peak_rss_anon_observed.max(cur_anon);
+        peak_vm_rss_observed = peak_vm_rss_observed.max(cur_rss);
         if cur_hwm > peak_process_hwm_observed {
             peak_process_hwm_observed = cur_hwm;
         }
@@ -375,6 +389,7 @@ fn main() -> Result<()> {
             tokens_per_sec: tps,
             word_count: words,
             words_per_sec: wps,
+            rss_anon_mb: cur_anon,
             vm_rss_mb: cur_rss,
             vm_hwm_mb: cur_hwm,
             response: decoded_response,
@@ -386,7 +401,7 @@ fn main() -> Result<()> {
     let avg_prefill_tps = total_prefill_tps / n;
     let avg_tokens_per_sec = total_tps / n;
     let avg_words_per_sec = total_wps / n;
-    let sub_200mb_sla_passed = peak_process_hwm_observed < 200.0;
+    let sub_180mb_sla_passed = peak_process_hwm_observed < 180.0;
 
     println!("\n========================================================");
     println!("  🏁 BLUE (3.82B) PRODUCTION BENCHMARK SUMMARY");
@@ -402,8 +417,8 @@ fn main() -> Result<()> {
         peak_process_hwm_observed
     );
     println!(
-        "  < 200 MB SLA Status:    {}",
-        if sub_200mb_sla_passed {
+        "  < 180 MB VmHWM SLA:    {}",
+        if sub_180mb_sla_passed {
             "PASSED ✅"
         } else {
             "EXCEEDED ⚠️"
@@ -414,22 +429,26 @@ fn main() -> Result<()> {
     let summary = BlueSummary {
         model: "blue.vmicrolm-reflex.gguf".to_string(),
         disk_size_mb: get_file_size_mb(&model_path),
+        resident_layers: engine.resident_layers,
+        rolling_window: engine.rolling_window,
         num_queries: test_cases.len(),
         avg_prefill_ms,
         avg_prefill_tps,
         avg_tokens_per_sec,
         avg_words_per_sec,
-        peak_ram_mb: peak_process_hwm_observed,
-        sub_200mb_sla_passed,
+        peak_rss_anon_mb: peak_rss_anon_observed,
+        peak_vm_rss_mb: peak_vm_rss_observed,
+        peak_vm_hwm_mb: peak_process_hwm_observed,
+        sub_180mb_sla_passed,
         results,
     };
 
     let json_out = serde_json::to_string_pretty(&summary)?;
-    std::fs::write(
-        "/home/mn/nio-labs/nio-xs/blue_production_benchmark.json",
-        json_out,
-    )?;
-    println!("Saved benchmark report to /home/mn/nio-labs/nio-xs/blue_production_benchmark.json");
+    let report_path = std::env::var_os("NIOXS_BLUE_BENCH_OUTPUT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("blue_production_benchmark.json"));
+    std::fs::write(&report_path, json_out)?;
+    println!("Saved benchmark report to {}", report_path.display());
 
     Ok(())
 }

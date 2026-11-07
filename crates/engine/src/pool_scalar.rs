@@ -92,8 +92,7 @@ unsafe fn vocab(
     } else {
         slice::from_raw_parts(suppressed as *const u32, suppressed_len)
     };
-    let hist = &hist[hist.len().saturating_sub(96)..];
-    let pen = if pen > 1.0 { pen } else { 1.25 };
+    let pen = pen.max(1.0);
     let n = if iq4 { bytes / 18 } else { bytes / 34 };
     let xs = slice::from_raw_parts(x as *const BlockQ8_0, n);
     let mut best = f32::NEG_INFINITY;
@@ -112,12 +111,7 @@ unsafe fn vocab(
         } else {
             quants::scalar::vec_dot_q8_0_q8_0_avx2(w, xs)
         };
-        let repeats = hist.iter().filter(|&&v| v == t).count();
-        if repeats > 0 {
-            score -= repeats as f32 * 2.5;
-            let p = pen.powi(repeats as i32);
-            score = if score > 0.0 { score / p } else { score * p };
-        }
+        score = crate::decoding::repetition_score(score, t, hist, pen);
         if score > best {
             best = score;
             tok = t;

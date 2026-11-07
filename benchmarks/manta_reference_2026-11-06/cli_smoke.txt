@@ -1,0 +1,1 @@
+A work queue is a system that manages the flow of tasks to be performed by an organization. It helps in organizing and prioritizing which tasks should be completed first, ensuring efficient use of resources such as time and personnel.

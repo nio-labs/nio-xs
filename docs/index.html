@@ -21,7 +21,7 @@
     <a href="#overview" class="brand-title">
       <img class="brand-logo" src="logo.svg" alt="NioXS logo">
       <span class="brand-name">NioXS</span>
-      <span class="badge">v0.5.1</span>
+      <span class="badge">v0.5.2</span>
     </a>
     <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">
       <span class="theme-icon">
@@ -90,7 +90,7 @@
         <section id="overview" class="doc-section">
           <div class="hero-header">
             <div class="hero-badges">
-              <span class="badge badge-accent">Release v0.5.1</span>
+              <span class="badge badge-accent">Release v0.5.2</span>
               <span class="badge">AXIS = AI + XS</span>
               <span class="badge">Rust orchestration</span>
               <span class="badge">OpenAI-compatible API</span>
@@ -396,6 +396,9 @@ nioxs viper plugin list</code></pre>
             </tbody>
           </table></div>
 
+          <h3 style="margin-top: 2rem; margin-bottom: 0.75rem;">Companion context limits</h3>
+          <p>Skate, Manta, and Beluga use up to <strong>8,192 tokens</strong> on both the native CPU runtime and the GPU runner, capped by each model's declared context length. The context budget includes the prompt and tokens processed during generation. Memory and latency grow with context; the measurements below cover Skate only. Blue's context behavior has not been validated because its weights and tokenizer are not published in the artifact manifest.</p>
+          <p>CPU and GPU companion paths use greedy decoding with shared repetition settings and token suppressions. Manta uses a 128-token repetition history and defaults to 128 generated tokens for prose; explicit limits and the 4,096-token plan-mode budget are preserved. Actual results can differ across hardware kernels. Manta's explicit CLI <code>--plan</code> mode buffers output, validates complete XML and dependency structure, and rejects invalid plans with a nonzero exit status. This checks plan structure, not command correctness; short-task evaluations still show factual errors.</p>
           <h3 style="margin-top: 2rem; margin-bottom: 0.75rem;">Skate context and memory measurements (v0.5.1)</h3>
           <p>Skate supports an <strong>8,192-token context</strong>, capped by the model's declared context. Its KV cache grows with tokens processed.</p>
           <div class="table-container"><table>

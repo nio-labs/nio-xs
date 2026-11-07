@@ -290,6 +290,12 @@ pub fn ensure_model_ready(model_id: &str, custom_dir: Option<&Path>) -> Result<P
     }
     let entry =
         get_manifest_entry(model_id).ok_or_else(|| format!("unknown model id '{model_id}'"))?;
+    if entry.download_url.is_empty() || entry.sha256.len() != 64 {
+        return Err(format!(
+            "model '{}' has no published, verifiable artifact yet",
+            entry.model_id
+        ));
+    }
 
     let dir = match custom_dir {
         Some(d) => d.to_path_buf(),
@@ -347,6 +353,12 @@ pub fn prompt_and_pull_if_needed(model_id: &str, auto_yes: bool) -> Result<PathB
     }
     let entry =
         get_manifest_entry(model_id).ok_or_else(|| format!("unknown model id '{model_id}'"))?;
+    if entry.download_url.is_empty() || entry.sha256.len() != 64 {
+        return Err(format!(
+            "model '{}' has no published, verifiable artifact yet",
+            entry.model_id
+        ));
+    }
 
     let dir = resolve_models_dir();
     let final_path = dir.join(&entry.filename);

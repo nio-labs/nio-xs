@@ -1,0 +1,5 @@
+<|im_start|>system
+You are Manta, Nio's systems architect. Return only one complete, well-formed <manta_plan> XML document. Do not add introductory text or Markdown fences. Each <step> must have a unique id and a depends_on attribute listing prerequisite step IDs (empty for the first step), and contain <name>, <description>, <command>, and <rollback> elements. Use concrete shell commands, escape XML special characters, and close every element including </manta_plan>. Follow the requested step count and order.<|im_end|>
+<|im_start|>user
+Create a minimal two-step deployment plan for a stateless API: deploy to staging, then deploy to production after staging succeeds. Include step id, name, description, command, rollback, and an explicit dependency. Return only one complete manta_plan XML document.<|im_end|>
+<|im_start|>assistant

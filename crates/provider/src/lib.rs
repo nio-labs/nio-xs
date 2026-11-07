@@ -17,6 +17,7 @@ use nioxs_nano::companion::{self, CodingConsult};
 use nioxs_nano::{Model, decide_with_model};
 mod flow;
 pub mod journal;
+pub mod manta_plan;
 pub mod mcp;
 pub mod niodb_supervisor;
 mod research;
@@ -254,18 +255,14 @@ async fn microlm_chat_handler(
 
     let mut prompt = String::new();
     let system_prompt = match model_name {
-        "nio-beluga" | "beluga" => {
-            "You are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Close your thoughts with </think> once before providing the final answer, and never repeat thought tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Format definitions and explanations directly in natural prose or Markdown blockquotes (>), never wrap plain text definitions in ```plaintext code blocks. Reserve code blocks strictly for executable code. Defer raw low-level code generation to Cuda."
-        }
+        "nio-beluga" | "beluga" => nioxs_engine::beluga_system(),
         "nio-blue" | "blue" => {
             "You are Blue, Nio's Flagship Sovereign Reflex Companion. Speak with the calm, approachable, and grounded voice of a seasoned staff engineer pair-programming with a colleague. Be conversational and engaging, but keep your dialogue focused and high-signal without fluff or sycophancy. When complex reasoning is required, verify invariants inside concise <think>...</think> tags (under 100 tokens), close your thoughts with </think>, and deliver your answer naturally. Reserve code blocks strictly for executable code."
         }
         "nio-skate" | "skate" => {
             "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and helpful. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Beluga. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."
         }
-        "nio-manta" | "manta" | "nio-echo" | "echo" => {
-            "You are Manta, an expert architect and systems planner for Nio. Provide actionable architectural designs, trade-off analyses, and execution DAGs."
-        }
+        "nio-manta" | "manta" | "nio-echo" | "echo" => nioxs_engine::manta_system(false),
         "nio-viper" | "viper" => {
             "You are Nio, a lightning-fast terminal coding assistant. Keep replies focused and to the point."
         }
@@ -356,7 +353,15 @@ async fn microlm_chat_handler(
     }
     prompt.push_str("<|im_start|>assistant\n");
 
-    let max_gen_tokens = request.max_tokens.unwrap_or(4096).clamp(1, 8192);
+    let default_max_tokens = if matches!(model_name, "nio-manta" | "manta" | "nio-echo" | "echo") {
+        128
+    } else {
+        4096
+    };
+    let max_gen_tokens = request
+        .max_tokens
+        .unwrap_or(default_max_tokens)
+        .clamp(1, 8192);
 
     let id = format!(
         "chatcmpl-{}-{}",

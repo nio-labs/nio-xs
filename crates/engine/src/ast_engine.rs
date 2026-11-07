@@ -1243,16 +1243,16 @@ fn precompute_freqs_cis_flat(
     let half = head_dim / 2;
     let mut cos_table = Vec::with_capacity(context_length * half);
     let mut sin_table = Vec::with_capacity(context_length * half);
-    let theta: Vec<f32> = (0..head_dim)
-        .step_by(2)
-        .map(|i| 1f32 / freq_base.powf(i as f32 / head_dim as f32))
-        .collect();
+    let theta_scale = freq_base.powf(-2.0 / head_dim as f32);
 
     for pos in 0..context_length {
-        for i in 0..half {
-            let angle = pos as f32 * theta[i];
+        // Use the same f32 recurrence as GGML's RoPE cache. Independent powf
+        // calls produce slightly different phases that quantized layers amplify.
+        let mut angle = pos as f32;
+        for _ in 0..half {
             cos_table.push(angle.cos());
             sin_table.push(angle.sin());
+            angle *= theta_scale;
         }
     }
     (cos_table, sin_table)
@@ -1408,6 +1408,19 @@ impl AstMicroEngine {
             Some(gguf::GgufValue::Array(tokens)) => tokens.iter().map(|t| t.to_string()).collect(),
             _ => Err(anyhow!("model is missing tokenizer.ggml.tokens")),
         }
+    }
+
+    pub fn validate_tokenizer(&self, tokenizer: &tokenizers::Tokenizer) -> Result<()> {
+        let tokens = match self.gguf.metadata.get("tokenizer.ggml.tokens") {
+            Some(gguf::GgufValue::Array(tokens)) => tokens,
+            _ => return Err(anyhow!("model is missing tokenizer.ggml.tokens")),
+        };
+        crate::AstEngine::validate_tokenizer_entries(tokenizer, tokens.len(), |id| {
+            match tokens.get(id) {
+                Some(gguf::GgufValue::String(token)) => Some(token.as_str()),
+                _ => None,
+            }
+        })
     }
 
     pub fn new(model_path: &Path) -> Result<Self> {
@@ -1974,6 +1987,23 @@ impl AstMicroEngine {
         tokens: &[u32],
         index_pos: usize,
     ) -> Result<(Vec<Vec<f32>>, Vec<Vec<f32>>)> {
+        self.forward_batch_layer_outer_traced(tokens, index_pos, None)
+    }
+
+    /// Capture the last prompt token's intermediate tensors for reference checks.
+    pub fn diagnostic_prefill_layers(&mut self, tokens: &[u32]) -> Result<Vec<(String, Vec<f32>)>> {
+        self.reset_cache();
+        let mut trace = Vec::new();
+        self.forward_batch_layer_outer_traced(tokens, 0, Some(&mut trace))?;
+        Ok(trace)
+    }
+
+    fn forward_batch_layer_outer_traced(
+        &mut self,
+        tokens: &[u32],
+        index_pos: usize,
+        mut trace: Option<&mut Vec<(String, Vec<f32>)>>,
+    ) -> Result<(Vec<Vec<f32>>, Vec<Vec<f32>>)> {
         let n_tokens = tokens.len();
         if n_tokens == 0 {
             return Ok((Vec::new(), Vec::new()));
@@ -2132,6 +2162,30 @@ impl AstMicroEngine {
                 }
             }
 
+            if let Some(trace) = trace.as_mut() {
+                let scratch = if layer.wq.dtype == 18 && n_tokens % 3 == 0 {
+                    &self.scratch2
+                } else if layer.wq.dtype == 18 && n_tokens % 3 == 2 {
+                    &self.scratch1
+                } else {
+                    &self.scratch
+                };
+                for (name, values) in [
+                    ("attn_norm", &scratch.x_norm),
+                    ("Qcur", &scratch.q),
+                    ("Kcur", &scratch.k),
+                    ("Vcur", &scratch.v),
+                    ("kqv_out", &scratch.attn_out),
+                    ("attn_out", &scratch.wo_out),
+                    ("ffn_norm", &scratch.ffn_norm),
+                    ("ffn_swiglu", &scratch.inter),
+                    ("ffn_down", &scratch.mlp_out),
+                    ("l_out", &activations[n_tokens - 1]),
+                ] {
+                    trace.push((format!("{name}-{layer_idx}"), values.clone()));
+                }
+            }
+
             // Rolling window eviction: evict layer_idx - window once it leaves active window,
             // strictly preserving resident layers (layer < resident_layers).
             if layer_idx >= window {
@@ -2285,6 +2339,7 @@ impl AstMicroEngine {
         self.pool.unpark();
         quants::quantize_row_q8_0(x_norm, &mut self.scratch.x_q8_0);
         let repeat_penalty = self.repeat_penalty;
+        let history = &history[history.len().saturating_sub(self.repeat_last_n)..];
 
         if let Some(cands) = candidates {
             if cands.is_empty() {

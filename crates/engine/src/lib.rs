@@ -6,6 +6,7 @@ use tokenizers::Tokenizer;
 use tokio::sync::{Mutex, mpsc};
 
 pub mod ast_engine;
+mod decoding;
 pub mod gguf;
 pub mod hardware;
 pub mod pool;
@@ -13,12 +14,42 @@ pub mod quants;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 pub use hardware::{ActiveDevice, DevicePreference};
 
+fn output_budget(prompt_tokens: usize, context: usize, requested: usize) -> Result<usize> {
+    anyhow::ensure!(prompt_tokens > 0, "prompt must contain at least one token");
+    anyhow::ensure!(
+        prompt_tokens <= context,
+        "prompt has {prompt_tokens} tokens; model context limit is {context}"
+    );
+    // Prefill predicts the first output without adding it to the KV cache.
+    Ok(requested.max(1).min(context - prompt_tokens + 1))
+}
+
+fn layer_setting(name: &str, default: usize, layer_count: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(default)
+        .clamp(1, layer_count.max(1))
+}
+
 fn valid_draft_token(
     token: u32,
     stop_tokens: &[u32],
     accepts_input: impl FnOnce(u32) -> bool,
 ) -> bool {
     token != 0 && !stop_tokens.contains(&token) && accepts_input(token)
+}
+
+pub fn manta_system(plan: bool) -> &'static str {
+    if plan {
+        "You are Manta, Nio's systems architect. Return only one complete, well-formed <manta_plan> XML document. Do not add introductory text or Markdown fences. Each <step> must have a unique id and a depends_on attribute listing prerequisite step IDs (empty for the first step), and contain <name>, <description>, <command>, and <rollback> elements. Use concrete shell commands, escape XML special characters, and close every element including </manta_plan>. Follow the requested step count and order."
+    } else {
+        "You are Manta, Nio's systems architect. For ordinary questions, answer directly in 1–3 concise sentences and stay under 60 words unless the user asks for detail. Give each idea once; do not repeat or rephrase earlier points. Stop as soon as the question is answered. Explain concrete mechanisms, failure behavior, and trade-offs when relevant, and state uncertainty when necessary. Do not write code, pseudocode, Markdown code fences, or XML unless the user explicitly requests an XML plan. Delegate implementation to downstream coding models."
+    }
+}
+
+pub fn beluga_system() -> &'static str {
+    "You are Beluga, Nio's Sovereign Cognitive Companion. Think before answering using exactly one <think>...</think> block; include both tags, keep the thought concise, and close it before the final answer. Answer the question directly and accurately. Follow requested length and format: one sentence means one sentence; brief means at most three concise bullets. Do not call a premise flawed unless it is actually false. Prefer standard definitions over invented details; separate guarantees from implementation choices and state uncertainty when behavior depends on an unspecified system. For HTTP 429, say Too Many Requests and advise honoring Retry-After when present or backing off. For idempotency, repeated requests with the same key must return the original result without repeating side effects. For work queues, consumers compete for messages, acknowledge after successful processing, and may receive redeliveries; duplicate-safe handlers commonly use idempotency keys or deduplication. For pub-sub, each subscription receives its own event copy; ordering, durability, acknowledgement, and replay depend on the broker. Do not claim a queue inherently provides idempotency or exactly-once processing. Avoid unrelated products."
 }
 
 pub fn skate_system() -> Result<String> {
@@ -328,15 +359,7 @@ impl PhraseBuffer {
 }
 
 const STOP_PHRASES: &[&str] = &[
-    "<|im_end|>",
-    "<|im_start|>",
-    "<|endoftext|>",
-    "<|end",
     "<|",
-    "<invariant",
-    "<end",
-    "</thought",
-    "<thought_tag",
     "You are Skate",
     "You are a helpful AI assistant",
     "\nuser\n",
@@ -353,17 +376,33 @@ fn stop_position(text: &str) -> Option<usize> {
     {
         return Some(pos);
     }
-    // Also intercept any trailing hallucinated XML/tag close like <endof...>, <invariant...>, <tag...>
-    if let Some(open_idx) = text.rfind('<') {
-        let suffix = &text[open_idx..];
-        if suffix.contains('>')
-            && (suffix.contains("tag")
-                || suffix.contains("invariant")
-                || suffix.contains("verif")
-                || suffix.contains("end")
-                || suffix.contains("answer")
-                || suffix.starts_with("<|"))
-        {
+    // Inspect complete tag names only. Text following a tag can contain words
+    // such as "staging", "dependencies", or "backend" without ending a reply.
+    for (open_idx, _) in text.match_indices('<') {
+        let suffix = &text[open_idx + 1..];
+        let Some(close_idx) = suffix.find('>') else {
+            continue;
+        };
+        let name = suffix[..close_idx]
+            .trim_start_matches('/')
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim_end_matches('/');
+        if matches!(
+            name,
+            "end"
+                | "endoftext"
+                | "endofturn"
+                | "invariant"
+                | "invariant_proof"
+                | "thought"
+                | "thought_tag"
+                | "tag"
+                | "answer"
+                | "verification"
+                | "verify"
+        ) {
             return Some(open_idx);
         }
     }
@@ -384,6 +423,12 @@ fn push_safe_chunk(
     let mut check_start = already.saturating_sub(MAX_STOP_PHRASE_LEN);
     while !emitted.is_char_boundary(check_start) {
         check_start = check_start.saturating_sub(1);
+    }
+    // A tag with attributes may span more than the fixed stop-phrase window.
+    if let Some(open_idx) = emitted[..already].rfind('<') {
+        if !emitted[open_idx..already].contains('>') {
+            check_start = check_start.min(open_idx);
+        }
     }
 
     if let Some(rel_idx) = stop_position(&emitted[check_start..]) {
@@ -621,9 +666,15 @@ impl AstEngine {
             }
         }
 
-        Err(anyhow!(
-            "Model '{model_name}' or tokenizer not found. Run 'nioxs pull {model_name}' to install it into ~/.nioxs/models/"
-        ))
+        if matches!(normalized.as_str(), "blue" | "nio-blue") {
+            Err(anyhow!(
+                "Blue's model and tokenizer are not published in the configured artifact manifest yet"
+            ))
+        } else {
+            Err(anyhow!(
+                "Model '{model_name}' or tokenizer not found. Run 'nioxs pull {model_name}' to install it into ~/.nioxs/models/"
+            ))
+        }
     }
 
     fn tokenizer_for_model(model: &std::path::Path) -> PathBuf {
@@ -678,21 +729,31 @@ impl AstEngine {
     }
 
     pub fn validate_tokenizer(tokenizer: &Tokenizer, tokens: &[String]) -> Result<()> {
-        let vocab = tokenizer.get_vocab(true);
+        Self::validate_tokenizer_entries(tokenizer, tokens.len(), |id| {
+            tokens.get(id).map(String::as_str)
+        })
+    }
+
+    pub(crate) fn validate_tokenizer_entries<'a>(
+        tokenizer: &Tokenizer,
+        token_count: usize,
+        token_at: impl Fn(usize) -> Option<&'a str>,
+    ) -> Result<()> {
         // Qwen GGUFs define padded vocab sizes (e.g. 151936) while tokenizer.json has 151665
         let debug_mode = cfg!(debug_assertions) || std::env::var_os("NIOXS_DEBUG").is_some();
         if !debug_mode {
-            if vocab.len() > tokens.len() {
+            let vocab_size = tokenizer.get_vocab_size(true);
+            if vocab_size > token_count {
                 return Err(anyhow!(
                     "Tokenizer vocab size {} exceeds model vocab size {}",
-                    vocab.len(),
-                    tokens.len()
+                    vocab_size,
+                    token_count
                 ));
             }
             // Sentinel check: index 0 and a sample landmark token
-            if let Some(expected_token) = tokens.get(0) {
+            if let Some(expected_token) = token_at(0) {
                 if !expected_token.starts_with("[PAD")
-                    && vocab.get(expected_token).copied() != Some(0)
+                    && tokenizer.token_to_id(expected_token) != Some(0)
                 {
                     return Err(anyhow!(
                         "Tokenizer mismatch at token ID 0 ({expected_token})"
@@ -702,15 +763,18 @@ impl AstEngine {
             return Ok(());
         }
 
+        let vocab = tokenizer.get_vocab(true);
         for (token, id) in &vocab {
-            let expected = tokens.get(*id as usize).map(|s| s.as_str());
+            let expected = token_at(*id as usize);
             if expected != Some(token.as_str()) {
                 return Err(anyhow!(
                     "Tokenizer mismatch at token ID {id}: {token:?}. Use the tokenizer shipped for this model variant."
                 ));
             }
         }
-        for (id, token) in tokens.iter().enumerate() {
+        for id in 0..token_count {
+            let token = token_at(id)
+                .ok_or_else(|| anyhow!("model tokenizer metadata has no string at ID {id}"))?;
             // Full-vocabulary Qwen GGUFs contain unused padding entries.
             if !token.starts_with("[PAD") && vocab.get(token).copied() != Some(id as u32) {
                 return Err(anyhow!(
@@ -747,6 +811,7 @@ impl AstEngine {
         let is_manta = self.is_manta;
         let is_beluga = self.is_beluga;
         let is_blue = self.is_blue;
+        let policy = decoding::DecodingPolicy::for_model(is_skate, is_manta, is_beluga, is_blue);
 
         let active_dev = self.active_device();
 
@@ -759,21 +824,26 @@ impl AstEngine {
             let mut engine = AstMicroEngine::new(&model_path).map_err(|e| {
                 anyhow!("Failed loading AST-Micro engine for {:?}: {e}", model_path)
             })?;
-            Self::validate_tokenizer(&tokenizer, &engine.tokenizer_tokens()?)
+            engine
+                .validate_tokenizer(&tokenizer)
                 .map_err(|e| anyhow!("Tokenizer does not match model: {e}"))?;
 
-            if is_skate {
-                engine.set_suppressed_tokens([3725, 47182]);
-            } else if is_manta {
-                engine.set_suppressed_tokens([41233, 54275, 73594]);
-            } else if is_beluga {
+            engine.set_suppressed_tokens(policy.suppressed.iter().copied());
+            if is_beluga {
                 let gpu_layers = active_dev.recommended_gpu_layers(28);
                 if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
                     engine.set_resident_layers(gpu_layers);
                     engine.set_rolling_window(gpu_layers.max(4));
                 } else {
-                    engine.set_resident_layers(7);
-                    engine.set_rolling_window(4);
+                    let resident = std::env::var("NIOXS_BELUGA_RESIDENT_LAYERS")
+                        .ok()
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .unwrap_or(0)
+                        .min(engine.block_count);
+                    let window =
+                        layer_setting("NIOXS_BELUGA_ROLLING_WINDOW", 1, engine.block_count);
+                    engine.set_resident_layers(resident);
+                    engine.set_rolling_window(window);
                 }
             } else if is_blue {
                 let gpu_layers = active_dev.recommended_gpu_layers(32);
@@ -841,7 +911,8 @@ impl AstEngine {
             )
         } else if self.is_beluga {
             format!(
-                "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Defer raw low-level code generation to Cuda.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                beluga_system(),
                 raw_prompt.trim()
             )
         } else if self.is_blue {
@@ -857,7 +928,8 @@ impl AstEngine {
             )
         } else if self.is_manta {
             format!(
-                "<|im_start|>system\nYou are Manta, Nio's Conversational Guru and DAG Architect. You specialize in systems architecture, boundary analysis, trade-off evaluation, and operational planning. Decompose technical tasks into structured implementation roadmaps using <manta_plan>, <manta_step>, and <manta_risk> tags. You operate strictly as a systems architect; cleanly defer raw code implementation to Cuda or Fin.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                manta_system(false),
                 raw_prompt.trim()
             )
         } else {
@@ -897,13 +969,34 @@ impl AstEngine {
         &self,
         prompt: String,
         max_tokens: usize,
-        temperature: f64,
-        top_p: f64,
+        _temperature: f64,
+        _top_p: f64,
     ) -> Result<mpsc::Receiver<String>> {
         self.ensure_loaded().await?;
+        // Native vocabulary selection is greedy. Use that same policy for the
+        // external runner instead of silently switching to stochastic decoding.
+        let policy = decoding::DecodingPolicy::for_model(
+            self.is_skate,
+            self.is_manta,
+            self.is_beluga,
+            self.is_blue,
+        );
+        let prompt = self.format_prompt_for_engine(&prompt)?;
+        let (prompt_tokens, context_limit) = {
+            let guard = self.bundle.lock().await;
+            let bundle = guard
+                .as_ref()
+                .ok_or_else(|| anyhow!("Model bundle not loaded"))?;
+            let tokens = bundle
+                .tokenizer
+                .encode(prompt.as_str(), false)
+                .map_err(|e| anyhow!("Tokenizer error: {e}"))?
+                .get_ids()
+                .to_vec();
+            (tokens, bundle.engine.context_length())
+        };
+        let max_tokens = output_budget(prompt_tokens.len(), context_limit, max_tokens)?;
         let (tx, rx) = mpsc::channel(64);
-        let temperature = temperature.clamp(0.05, 2.0) as f32;
-        let top_p = top_p.clamp(0.05, 1.0) as f32;
 
         let active_dev = self.active_device();
         if active_dev.is_gpu() {
@@ -922,7 +1015,9 @@ impl AstEngine {
 
             if runner_available {
                 let model_path = self.model_path.clone();
-                let context_size = if self.is_skate { "8192" } else { "4096" };
+                // Match the native runtime's context limit, including the
+                // model's declared maximum, for every companion.
+                let context_size = context_limit.to_string();
                 let total_layers = if self.is_blue {
                     32
                 } else if self.is_beluga {
@@ -942,8 +1037,6 @@ impl AstEngine {
                 );
 
                 tokio::task::spawn_blocking(move || {
-                    let temp_arg = format!("{temperature:.2}");
-                    let top_p_arg = format!("{top_p:.2}");
                     let mut cmd = std::process::Command::new(&runner_bin);
                     cmd.args([
                         "-m",
@@ -953,22 +1046,13 @@ impl AstEngine {
                         "-n",
                         &max_tokens.to_string(),
                         "-c",
-                        context_size,
+                        &context_size,
                         "-ngl",
                         &ngl_arg,
-                        "--temp",
-                        &temp_arg,
-                        "--top-p",
-                        &top_p_arg,
-                        "--min-p",
-                        "0.05",
-                        "--repeat-penalty",
-                        "1.15",
-                        "--repeat-last-n",
-                        "64",
                         "--no-display-prompt",
                         "--simple-io",
                     ]);
+                    cmd.args(policy.runner_args());
                     if let Some(lib_dir) = runner_bin.parent().filter(|p| !p.as_os_str().is_empty())
                     {
                         let existing = std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default();
@@ -995,6 +1079,12 @@ impl AstEngine {
                     }
                 });
                 return Ok(rx);
+            } else {
+                eprintln!(
+                    "[nioxs] Detected {}, but GPU inference is unavailable because '{}' was not found; using the native CPU backend. Install a GPU-enabled llama-cli or set NIOXS_GPU_RUNNER to its path.",
+                    active_dev.name(),
+                    runner_bin.display()
+                );
             }
         }
 
@@ -1005,8 +1095,6 @@ impl AstEngine {
                     .map(PathBuf::from)
                     .unwrap_or_else(|| PathBuf::from("llama-cli"));
 
-                let temp_arg = format!("{temperature:.2}");
-                let top_p_arg = format!("{top_p:.2}");
                 let mut cmd = std::process::Command::new(&runner_bin);
                 cmd.args([
                     "-m",
@@ -1016,23 +1104,14 @@ impl AstEngine {
                     "-n",
                     &max_tokens.to_string(),
                     "-c",
-                    "512",
+                    &context_limit.to_string(),
                     "-t",
                     "2",
                     "-st",
-                    "--temp",
-                    &temp_arg,
-                    "--top-p",
-                    &top_p_arg,
-                    "--min-p",
-                    "0.05",
-                    "--repeat-penalty",
-                    "1.15",
-                    "--repeat-last-n",
-                    "64",
                     "--no-display-prompt",
                     "--simple-io",
                 ]);
+                cmd.args(policy.runner_args());
                 if let Some(lib_dir) = runner_bin.parent().filter(|p| !p.as_os_str().is_empty()) {
                     let existing = std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default();
                     let mut paths = vec![lib_dir.to_path_buf()];
@@ -1074,8 +1153,6 @@ impl AstEngine {
         }
 
         let bundle_arc = self.bundle.clone();
-        let formatted = self.format_prompt_for_engine(&prompt)?;
-        let is_beluga = self.is_beluga;
         let is_blue = self.is_blue;
         tokio::task::spawn_blocking(move || {
             let mut guard = bundle_arc.blocking_lock();
@@ -1087,29 +1164,11 @@ impl AstEngine {
                 return;
             };
 
-            let encoded = match bundle.tokenizer.encode(formatted.as_str(), false) {
-                Ok(t) => t,
-                Err(e) => {
-                    let _ = tx.blocking_send(format!("Tokenizer error: {e}"));
-                    return;
-                }
-            };
-
-            let prompt_tokens = encoded.get_ids().to_vec();
-            if prompt_tokens.is_empty() {
-                return;
-            }
-
-            let repeat_penalty = if is_blue {
-                1.05
-            } else if is_beluga {
-                1.02
-            } else {
-                1.10
-            };
             bundle
                 .engine
-                .set_sampling(temperature, top_p, repeat_penalty, 64);
+                .set_sampling(0.0, 1.0, policy.repeat_penalty, policy.history_window);
+            let mut sampling_history =
+                prompt_tokens[prompt_tokens.len().saturating_sub(policy.history_window)..].to_vec();
 
             if tx.is_closed() {
                 return;
@@ -1137,14 +1196,18 @@ impl AstEngine {
             .collect();
             let is_eos = |tok: u32| stop_tokens.contains(&tok);
 
-            let next_token = match bundle.engine.next_token_with_history(None, &[], false) {
-                Ok(t) => t,
-                Err(e) => {
-                    let _ = tx.blocking_send(format!("AST-Micro sampling error: {e}"));
-                    bundle.engine.park();
-                    return;
-                }
-            };
+            let next_token =
+                match bundle
+                    .engine
+                    .next_token_with_history(None, &sampling_history, false)
+                {
+                    Ok(t) => t,
+                    Err(e) => {
+                        let _ = tx.blocking_send(format!("AST-Micro sampling error: {e}"));
+                        bundle.engine.park();
+                        return;
+                    }
+                };
 
             if is_eos(next_token) {
                 bundle.engine.reset_cache();
@@ -1178,6 +1241,7 @@ impl AstEngine {
             }
 
             let mut gen_tokens = vec![next_token];
+            decoding::push_history_window(&mut sampling_history, next_token, policy.history_window);
             // The prefill already produces the first output token. Do not
             // forward beyond the final position when generation reaches the
             // model's context boundary.
@@ -1227,7 +1291,7 @@ impl AstEngine {
                         d1,
                         d2,
                         stream_pos,
-                        &gen_tokens,
+                        &sampling_history,
                         &stop_tokens,
                     ) {
                         Ok(outcome) => {
@@ -1249,6 +1313,11 @@ impl AstEngine {
                                         zw_cache.observe(prev_p2, last_tok, tok);
                                     }
                                     gen_tokens.push(tok);
+                                    decoding::push_history_window(
+                                        &mut sampling_history,
+                                        tok,
+                                        policy.history_window,
+                                    );
 
                                     if let Ok(Some(chunk)) = tos.next_token(tok) {
                                         if !push_safe_chunk(
@@ -1290,7 +1359,7 @@ impl AstEngine {
                         current_confirmed,
                         draft_tok,
                         stream_pos,
-                        &gen_tokens,
+                        &sampling_history,
                         &stop_tokens,
                         predict_next_medusa,
                     ) {
@@ -1313,6 +1382,11 @@ impl AstEngine {
                                         zw_cache.observe(prev_p2, last_tok, tok);
                                     }
                                     gen_tokens.push(tok);
+                                    decoding::push_history_window(
+                                        &mut sampling_history,
+                                        tok,
+                                        policy.history_window,
+                                    );
 
                                     if let Ok(Some(chunk)) = tos.next_token(tok) {
                                         if !push_safe_chunk(
@@ -1365,7 +1439,7 @@ impl AstEngine {
                     let next_tok =
                         match bundle
                             .engine
-                            .next_token_with_history(None, &gen_tokens, false)
+                            .next_token_with_history(None, &sampling_history, false)
                         {
                             Ok(t) => t,
                             Err(e) => {
@@ -1386,6 +1460,11 @@ impl AstEngine {
                     zw_cache.observe(prev_p2, current_confirmed, next_tok);
 
                     gen_tokens.push(next_tok);
+                    decoding::push_history_window(
+                        &mut sampling_history,
+                        next_tok,
+                        policy.history_window,
+                    );
                     current_confirmed = next_tok;
 
                     if let Ok(Some(chunk)) = tos.next_token(next_tok) {
@@ -1418,6 +1497,62 @@ impl AstEngine {
 mod tests {
     use super::*;
     use tokenizers::models::wordlevel::WordLevel;
+
+    #[test]
+    fn generation_budget_stops_at_the_last_predictable_context_position() {
+        assert_eq!(output_budget(8160, 8192, 4096).unwrap(), 33);
+        assert_eq!(output_budget(8192, 8192, 4096).unwrap(), 1);
+        assert_eq!(output_budget(10, 8192, 5).unwrap(), 5);
+        assert!(output_budget(8193, 8192, 1).is_err());
+        assert!(output_budget(0, 8192, 1).is_err());
+    }
+
+    fn filtered_stream(text: &str) -> String {
+        let text = text.to_owned();
+        let (tx, mut rx) = mpsc::channel(512);
+        std::thread::spawn(move || {
+            let mut emitted = String::new();
+            let mut buffer = PhraseBuffer::new();
+            for c in text.chars() {
+                if !push_safe_chunk(&c.to_string(), &mut emitted, &mut buffer, &tx) {
+                    break;
+                }
+            }
+            buffer.flush(&tx);
+        })
+        .join()
+        .unwrap();
+        let mut result = String::new();
+        while let Some(chunk) = rx.blocking_recv() {
+            result.push_str(&chunk);
+        }
+        result
+    }
+
+    #[test]
+    fn streaming_preserves_plan_tags_and_ordinary_text() {
+        let plan = "<manta_plan><step id=\"deploy-staging\" depends_on=\"\"><name>Deploy to staging</name><description>Verify backend dependencies and answer requests — café.</description><command>deploy --target staging</command><rollback>restore previous backend</rollback></step><endpoint>ready</endpoint><tagline>Ready</tagline></manta_plan>";
+        assert_eq!(stop_position(plan), None);
+        assert_eq!(filtered_stream(plan), plan);
+    }
+
+    #[test]
+    fn streaming_still_stops_control_tokens_and_reserved_tags() {
+        for marker in [
+            "<|im_end|>",
+            "<|im_start|>user",
+            "<endoftext>",
+            "</thought>",
+            "<invariant>",
+            "<thought_tag>",
+            "<answer extra=\"an attribute longer than the stop phrase window\">",
+        ] {
+            assert_eq!(
+                filtered_stream(&format!("Safe text. {marker}hidden")),
+                "Safe text. "
+            );
+        }
+    }
 
     #[test]
     fn speculative_drafts_must_fit_the_model_vocabulary() {

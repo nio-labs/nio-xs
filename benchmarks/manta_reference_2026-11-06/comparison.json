@@ -1,0 +1,120 @@
+{
+  "model_sha256": "fa981bab81c7cb32a7072dfd193f1e03f988eb800d7e6773a03b69c861d452a5",
+  "native_revision": "790f9becaa0577041a23586c713bb176ec36b8ca",
+  "reference_revision": "6c01da6278ab6c69ed67d9124806b50d2b299ba7",
+  "configuration": {
+    "device": "cpu",
+    "context": 8192,
+    "max_output_tokens": 128,
+    "greedy": true,
+    "repetition_penalty": 1.0,
+    "suppressed_tokens": [],
+    "speculative_decoding": false,
+    "output_filter": false,
+    "kv_cache": "f32",
+    "reference_flash_attention": false
+  },
+  "limitations": "Same quantized GGUF in both runtimes. Does not compare original full-precision weights, GPU behavior, 8k inputs, or the production speculative/filtered path. Small logit differences can change greedy output near ties.",
+  "cases": [
+    {
+      "name": "rate_limiter",
+      "prompt_token_count": 144,
+      "identical_prompt_tokens": true,
+      "native_output_tokens": 128,
+      "reference_output_tokens": 128,
+      "identical_greedy_tokens": false,
+      "first_different_output_token_index": 0,
+      "forced_steps": 32,
+      "forced_top1_agreements": 29,
+      "mean_forced_top10_overlap": 9.625,
+      "mean_common_top10_logit_absolute_difference": 0.1557647257578267,
+      "forced_disagreements": [
+        {
+          "step": 0,
+          "native_token": 785,
+          "reference_token": 1249,
+          "native_piece": "The",
+          "reference_piece": "To",
+          "reference_top2_margin": 0.1558932999999989
+        },
+        {
+          "step": 9,
+          "native_token": 4303,
+          "reference_token": 11,
+          "native_piece": " running",
+          "reference_piece": ",",
+          "reference_top2_margin": 0.42629619999999946
+        },
+        {
+          "step": 18,
+          "native_token": 576,
+          "reference_token": 1205,
+          "native_piece": " The",
+          "reference_piece": " We",
+          "reference_top2_margin": 0.5976295
+        }
+      ],
+      "native_response": "The rate limiter is designed to prevent overloading the API with too many requests, especially during peak times. It limits the number of requests a customer can make per minute to 100. This is achieved by storing the number of requests made by each customer in a Redis cache, which is updated in real-time. When a customer makes 100 requests in a 15-minute window, the cache is updated, and the rate limiter stops adding new requests.\n\nIf the cache is not available, the rate limiter will not add new requests. This is because the cache is a shared state, and if the cache",
+      "reference_response": "To design a rate limiter for an API, we start by defining the rate limit. We set it at 100 requests per minute per customer, which means each customer can make up to 100 requests per minute. This is a reasonable limit, but we need to ensure that the rate does not exceed the capacity of the servers.\n\nWe use a shared state approach to manage the rate. We maintain a counter for each customer, tracking the number of requests they have made. When a customer makes a request, we increment the counter. If the counter reaches 100, we decrement it by 100"
+    },
+    {
+      "name": "queue_tradeoff",
+      "prompt_token_count": 130,
+      "identical_prompt_tokens": true,
+      "native_output_tokens": 128,
+      "reference_output_tokens": 85,
+      "identical_greedy_tokens": false,
+      "first_different_output_token_index": 3,
+      "forced_steps": 32,
+      "forced_top1_agreements": 29,
+      "mean_forced_top10_overlap": 9.53125,
+      "mean_common_top10_logit_absolute_difference": 0.1438957891465484,
+      "forced_disagreements": [
+        {
+          "step": 3,
+          "native_token": 448,
+          "reference_token": 374,
+          "native_piece": " with",
+          "reference_piece": " is",
+          "reference_top2_margin": 0.2070502999999988
+        },
+        {
+          "step": 6,
+          "native_token": 8692,
+          "reference_token": 11589,
+          "native_piece": " processing",
+          "reference_piece": " handling",
+          "reference_top2_margin": 0.02391629999999978
+        },
+        {
+          "step": 29,
+          "native_token": 2664,
+          "reference_token": 803,
+          "native_piece": " better",
+          "reference_piece": " more",
+          "reference_top2_margin": 0.06451039999999963
+        }
+      ],
+      "native_response": "A work queue with pub-sub is ideal for processing customer orders reliably. It allows for efficient and consistent processing of orders, while also enabling easy monitoring and debugging. Pub-sub ensures that orders are processed in a timely and consistent manner, reducing the risk of delays and errors. However, it also introduces a layer of complexity and potential for errors, such as network issues or message loss. In terms of retries, pub-sub can handle errors and retries, but it may not be as robust as a single-queue approach. In terms of duplicate handling, pub-sub can handle duplicate orders, but it may not be as efficient as a single-queue",
+      "reference_response": "A work queue is ideal for handling customer orders because it allows for efficient processing of orders without blocking. Pub-sub, on the other hand, is more suitable for handling orders because it allows for real-time updates and updates. However, pub-sub can lead to duplicate orders if not properly implemented. To mitigate this, we recommend using a retry mechanism to handle duplicate orders. This will prevent the same order from being processed multiple times."
+    },
+    {
+      "name": "deployment_plan",
+      "prompt_token_count": 170,
+      "identical_prompt_tokens": true,
+      "native_output_tokens": 128,
+      "reference_output_tokens": 128,
+      "identical_greedy_tokens": false,
+      "first_different_output_token_index": 44,
+      "forced_steps": 32,
+      "forced_top1_agreements": 32,
+      "mean_forced_top10_overlap": 9.28125,
+      "mean_common_top10_logit_absolute_difference": 0.22262127661210898,
+      "forced_disagreements": [],
+      "native_response": "```manta_plan\n<manta_plan>\n  <step id=\"1\">\n    <name>Step 1: Deploy to Staging</name>\n    <description>Deploy the stateless API to the staging environment.</description>\n    <command>docker-compose -f /path/to/stg-compose.yml up -d</command>\n    <rollback>Step 2: Rollback to Production</rollback>\n  </step>\n  <step id=\"2\">\n    <name>Step 2: Deploy to Production</name>\n    <description>Deploy the stateless API to the production environment.</description>\n    <command>",
+      "reference_response": "```manta_plan\n<manta_plan>\n  <step id=\"1\">\n    <name>Step 1: Deploy to Staging</name>\n    <description>Deploy the stateless API to the staging environment for testing and development.</description>\n    <command>docker-compose -p staging up</command>\n    <rollback>if the deployment fails, rollback to the previous step</rollback>\n  </step>\n  <step id=\"2\">\n    <name>Step 2: Deploy to Production</name>\n    <description>Deploy the stateless API to the production environment for production use.</description>\n    <command"
+    }
+  ],
+  "native_math": "Original native SiLU approximation: x for x >= 4; zero for x <= -8.",
+  "assessment": "Prompt token IDs match in all cases. Identical-prefix argmax agrees at 90/96 positions; runtime math is not yet at reference parity. Reference outputs also contain technical errors. Token-capped rate-limiter and deployment responses are not evidence of spontaneous early stopping."
+}

@@ -46,6 +46,7 @@ Options:\n\
   --auto                             Shortcut to use automatic hardware detection\n\
   --flow, -f <token|burst|paragraph> Output streaming cadence (default: token; instant token stream)\n\
   --max-tokens, -n <count>           Max tokens to generate (default: 4096 / unconstrained until EOS)\n\
+  --plan                             Manta only: buffer and validate a complete XML DAG before printing\n\
 \n\
 Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_DB_URL, NIOXS_DB_TOKEN_FILE, NIOXS_DEPLOYMENT_ID."
         );
@@ -369,12 +370,14 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let engine = nioxs_engine::AstEngine::for_model_with_device("nio-beluga", device_pref)?;
         let max_tokens = custom_max_tokens.unwrap_or(4096);
         let formatted_prompt = format!(
-            "<|im_start|>system\nYou are Beluga, Nio's Flagship Sovereign Cognitive Companion. You think before speaking using <think>...</think> tags. Close your thoughts with </think> once before providing the final answer, and never repeat thought tags. Reason deeply, verify edge cases, and deliver clear, authoritative architectural solutions. Be concise, accurate, and direct. Format definitions and explanations directly in natural prose or Markdown blockquotes (>), never wrap plain text definitions in ```plaintext code blocks. Reserve code blocks strictly for executable code. Defer raw low-level code generation to downstream coding models.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+            nioxs_engine::beluga_system()
         );
         let mut rx = engine
             .generate_stream(formatted_prompt, max_tokens, 0.6, 0.9)
             .await?;
         let mut flow = StreamFlow::new(flow_mode);
+        flow.set_show_think_tags(true);
         while let Some(chunk) = rx.recv().await {
             flow.push(&chunk);
         }
@@ -487,18 +490,24 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         // Prefer native Rust AstEngine for nio-manta
         if let Ok(engine) = nioxs_engine::AstEngine::for_model_with_device("nio-manta", device_pref)
         {
-            let sys_msg = if is_plan {
-                "You are Manta, an expert architect and systems planner for Nio. Compile the user request into a machine-verifiable <manta_plan> XML DAG with step id, name, description, command, and rollback. Respond directly without reciting your preamble."
-            } else {
-                "You are Manta, an expert architect and systems planner for Nio. Provide concise, direct, and actionable architectural designs, trade-off analyses, and <manta_plan> XML DAGs. Answer directly without reciting your system preamble. Delegate all implementation to downstream coding models; never write raw code blocks directly."
-            };
+            let sys_msg = nioxs_engine::manta_system(is_plan);
             let formatted_prompt = format!(
                 "<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n"
             );
-            let max_tokens = custom_max_tokens.unwrap_or(4096);
+            let max_tokens = custom_max_tokens.unwrap_or(if is_plan { 4096 } else { 128 });
             let mut rx = engine
                 .generate_stream(formatted_prompt, max_tokens, 0.2, 0.9)
                 .await?;
+            if is_plan {
+                let mut output = String::new();
+                while let Some(chunk) = rx.recv().await {
+                    output.push_str(&chunk);
+                }
+                nioxs_provider::manta_plan::validate(&output)
+                    .map_err(|error| format!("Manta plan rejected: {error:#}"))?;
+                println!("{}", output.trim());
+                return Ok(());
+            }
             let mut flow = StreamFlow::new(flow_mode);
             while let Some(chunk) = rx.recv().await {
                 flow.push(&chunk);
@@ -568,9 +577,24 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 cmd.arg("-p").arg(prompt);
             }
 
-            let status = cmd.status()?;
-            if !status.success() {
-                std::process::exit(status.code().unwrap_or(1));
+            if is_plan {
+                let output = cmd.output()?;
+                if !output.status.success() {
+                    return Err(format!(
+                        "Manta fallback failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    )
+                    .into());
+                }
+                let output = String::from_utf8(output.stdout)?;
+                nioxs_provider::manta_plan::validate(&output)
+                    .map_err(|error| format!("Manta plan rejected: {error:#}"))?;
+                println!("{}", output.trim());
+            } else {
+                let status = cmd.status()?;
+                if !status.success() {
+                    std::process::exit(status.code().unwrap_or(1));
+                }
             }
             return Ok(());
         } else {

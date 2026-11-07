@@ -148,6 +148,22 @@ The following benchmarks cover Skate, Manta and Beluga; Gar is planned and is no
 | **Target Hardware SLA** | Memory grows with context | 512MB RAM edge nodes & containers | 512MB–1GB RAM systems (Zero GPU) |
 | **CLI Direct Invocation** | `nioxs skate "<prompt>"` | `nioxs manta "<prompt>"` | `nioxs beluga "<prompt>"` |
 
+### Companion context limits
+
+Skate, Manta, and Beluga use up to **8,192 tokens** on both the native CPU runtime and the GPU runner, capped by each model's declared context length. The context budget includes the prompt and tokens processed during generation. Memory and latency grow with context; the measurements below cover Skate only. Blue's context behavior has not been validated because its weights and tokenizer are not published in the artifact manifest.
+
+Manta's short-prompt checks still show factual errors, missed word limits, and incomplete XML plans. `nioxs manta --plan` now buffers and validates its output before printing it. Invalid plans produce an error and a nonzero exit status instead of partial XML. See the [release checks](benchmarks/manta_release_checks_2026-11-06/short_tasks.json) for the current responses and the [earlier regression results](benchmarks/manta_fixed_simulations_2026-11-06.json) for comparison.
+
+The native Manta capacity probe exercised the full 8,192-token cache and rejected overruns. An 8,160-token synthetic prompt took 604 seconds to prefill and reached 312.39 MiB sampled peak anonymous RAM (497.73 MiB resident); its marker-retrieval answer failed. A 512-token control retrieved the markers. These results verify capacity, not reliable 8k answer quality. See the [context measurements](benchmarks/manta_release_checks_2026-11-06/README.md).
+
+### Companion decoding and Manta plans
+
+Native companion decoding is greedy. The GPU runner now uses the same greedy policy, with a 64-token repetition history for Skate, Beluga, and Blue, and a 128-token history for Manta, covering prompt and output tokens. Frequency/presence penalties are zero, and per-model suppressed tokens are shared. Repetition penalties are 1.10 for Skate, 1.15 for Manta, 1.02 for Beluga, and 1.05 for Blue. Manta's ordinary CLI and API responses default to 128 generated tokens; explicit limits override this, while `--plan` keeps its 4,096-token default. Temperature/top-p parameters are retained for API compatibility; stochastic decoding is not implemented on this companion path. Matching configuration does not guarantee identical results across CPU/GPU kernels.
+
+Beluga's CPU runtime evicts each transformer layer after use to reduce mapped model residency. The defaults are 0 permanently resident layers and a 1-layer rolling window; `NIOXS_BELUGA_RESIDENT_LAYERS` and `NIOXS_BELUGA_ROLLING_WINDOW` tune that memory/performance trade-off. With the manifest-verified v0.3.0 weights, one 256-token CLI probe sampled 292.8 MiB peak RSS. This is a workload-specific 10 ms sample, not a guarantee for every prompt or host. GPU layer offload keeps its device-specific residency behavior.
+
+Manta plan mode requires one `<manta_plan>` root containing at least one `<step>`. Each step must have a unique `id`, a `depends_on` attribute (space-separated IDs, or an empty string), and nonempty `<name>`, `<description>`, `<command>`, and `<rollback>` text fields. Unknown dependencies, duplicate IDs, self-dependencies, and cycles are rejected. Validation checks structure and dependencies; it does not execute commands or verify deployment semantics. This validation gate applies to the CLI's explicit `--plan` mode, including its ONNX fallback.
+
 ### Skate context and memory measurements (v0.5.1)
 
 Skate supports an **8,192-token context**, capped by the model's declared context length. The KV cache grows as tokens are processed. A short prompt does not allocate the same cache as a filled context.

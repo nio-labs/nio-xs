@@ -1,0 +1,1463 @@
+{
+  "method": "Actual model rows, three deterministic activation vectors, GGML CPU quantizers and dot products. No model fine-tuning involved.",
+  "fixtures": 66,
+  "dot_products": 264,
+  "all_within_tolerance": true,
+  "max_dot_absolute_error": 0.0,
+  "activation_byte_mismatches": 0,
+  "max_activation_scale_error": 0.0,
+  "results": [
+    {
+      "tensor": "token_embd.weight",
+      "variant": 0,
+      "dtype": 8,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.142722949385643,
+        0.36405205726623535,
+        -0.2698414921760559,
+        0.023488521575927734
+      ],
+      "native": [
+        -0.142722949385643,
+        0.36405205726623535,
+        -0.2698414921760559,
+        0.023488521575927734
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 5.960464477539063e-08,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "token_embd.weight",
+      "variant": 1,
+      "dtype": 8,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        6.10173225402832,
+        -19.91388702392578,
+        -16.209705352783203,
+        -10.795597076416016
+      ],
+      "native": [
+        6.10173225402832,
+        -19.91388702392578,
+        -16.209705352783203,
+        -10.795597076416016
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 3.814697265625e-06,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "token_embd.weight",
+      "variant": 2,
+      "dtype": 8,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.00029090011958032846,
+        0.0003071670653298497,
+        -0.00010938192281173542,
+        -0.0002009602903854102
+      ],
+      "native": [
+        0.00029090011958032846,
+        0.0003071670653298497,
+        -0.00010938192281173542,
+        -0.0002009602903854102
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 2.9103830456733704e-11,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_q.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -1.1560790538787842,
+        -0.5999516248703003,
+        1.2382166385650635,
+        2.1448466777801514
+      ],
+      "native": [
+        -1.1560790538787842,
+        -0.5999516248703003,
+        1.2382166385650635,
+        2.1448466777801514
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_q.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        12.9197998046875,
+        31.335861206054688,
+        -50.79176712036133,
+        -69.36175537109375
+      ],
+      "native": [
+        12.9197998046875,
+        31.335861206054688,
+        -50.79176712036133,
+        -69.36175537109375
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_q.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.0002188937651226297,
+        0.00043741994886659086,
+        0.00022664625430479646,
+        0.00019202289695385844
+      ],
+      "native": [
+        0.0002188937651226297,
+        0.00043741994886659086,
+        0.00022664625430479646,
+        0.00019202289695385844
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_k.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.33919787406921387,
+        -0.2298460602760315,
+        -2.5240964889526367,
+        -0.8353251218795776
+      ],
+      "native": [
+        -0.33919787406921387,
+        -0.2298460602760315,
+        -2.5240964889526367,
+        -0.8353251218795776
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_k.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        73.10340118408203,
+        -2.4753217697143555,
+        -229.53805541992188,
+        -164.62222290039062
+      ],
+      "native": [
+        73.10340118408203,
+        -2.4753217697143555,
+        -229.53805541992188,
+        -164.62222290039062
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_k.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.00019942145445384085,
+        -0.00036823784466832876,
+        -0.0015926326159387827,
+        0.0013083640951663256
+      ],
+      "native": [
+        -0.00019942145445384085,
+        -0.00036823784466832876,
+        -0.0015926326159387827,
+        0.0013083640951663256
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_v.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.08926030248403549,
+        -0.13367868959903717,
+        -0.2836917042732239,
+        -0.09242841601371765
+      ],
+      "native": [
+        -0.08926030248403549,
+        -0.13367868959903717,
+        -0.2836917042732239,
+        -0.09242841601371765
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_v.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -4.410515785217285,
+        -12.571306228637695,
+        -6.862339973449707,
+        -4.863313674926758
+      ],
+      "native": [
+        -4.410515785217285,
+        -12.571306228637695,
+        -6.862339973449707,
+        -4.863313674926758
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_v.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -5.130370846018195e-05,
+        -3.1430769013240933e-05,
+        -0.00010515853500692174,
+        4.165534846833907e-06
+      ],
+      "native": [
+        -5.130370846018195e-05,
+        -3.1430769013240933e-05,
+        -0.00010515853500692174,
+        4.165534846833907e-06
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_output.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.8426494002342224,
+        0.4397996664047241,
+        0.23274628818035126,
+        0.416465163230896
+      ],
+      "native": [
+        -0.8426494002342224,
+        0.4397996664047241,
+        0.23274628818035126,
+        0.416465163230896
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_output.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -46.22595977783203,
+        11.647361755371094,
+        -5.173644065856934,
+        1.828877329826355
+      ],
+      "native": [
+        -46.22595977783203,
+        11.647361755371094,
+        -5.173644065856934,
+        1.828877329826355
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.attn_output.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -4.5491542550735176e-05,
+        -3.68888140656054e-05,
+        1.560836608405225e-05,
+        -4.480710413190536e-05
+      ],
+      "native": [
+        -4.5491542550735176e-05,
+        -3.68888140656054e-05,
+        1.560836608405225e-05,
+        -4.480710413190536e-05
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.ffn_gate.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.4424223005771637,
+        0.936543345451355,
+        -0.3240683376789093,
+        0.10669645667076111
+      ],
+      "native": [
+        -0.4424223005771637,
+        0.936543345451355,
+        -0.3240683376789093,
+        0.10669645667076111
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.ffn_gate.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -25.358131408691406,
+        23.735654830932617,
+        8.881229400634766,
+        24.68328857421875
+      ],
+      "native": [
+        -25.358131408691406,
+        23.735654830932617,
+        8.881229400634766,
+        24.68328857421875
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.ffn_gate.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.00019261083798483014,
+        -0.00010852119885385036,
+        -4.96836073580198e-05,
+        0.00015838317631278187
+      ],
+      "native": [
+        -0.00019261083798483014,
+        -0.00010852119885385036,
+        -4.96836073580198e-05,
+        0.00015838317631278187
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.ffn_up.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.44567275047302246,
+        0.7134114503860474,
+        -0.4295988082885742,
+        -0.543764591217041
+      ],
+      "native": [
+        0.44567275047302246,
+        0.7134114503860474,
+        -0.4295988082885742,
+        -0.543764591217041
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.ffn_up.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        9.820060729980469,
+        -17.563196182250977,
+        -20.94031524658203,
+        19.722475051879883
+      ],
+      "native": [
+        9.820060729980469,
+        -17.563196182250977,
+        -20.94031524658203,
+        19.722475051879883
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.ffn_up.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -1.433287252439186e-06,
+        -0.00023718824377283454,
+        -4.124013503314927e-05,
+        -8.802204683888704e-05
+      ],
+      "native": [
+        -1.433287252439186e-06,
+        -0.00023718824377283454,
+        -4.124013503314927e-05,
+        -8.802204683888704e-05
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.ffn_down.weight",
+      "variant": 0,
+      "dtype": 18,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.4719615876674652,
+        0.471774160861969,
+        2.8974215984344482,
+        0.3426364064216614
+      ],
+      "native": [
+        -0.4719615876674652,
+        0.471774160861969,
+        2.8974215984344482,
+        0.3426364064216614
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.ffn_down.weight",
+      "variant": 1,
+      "dtype": 18,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -55.52443313598633,
+        36.515960693359375,
+        -14.717259407043457,
+        77.24131774902344
+      ],
+      "native": [
+        -55.52443313598633,
+        36.515960693359375,
+        -14.717259407043457,
+        77.24131774902344
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.0.ffn_down.weight",
+      "variant": 2,
+      "dtype": 18,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.0001730351650621742,
+        -0.00011245404311921448,
+        -2.0363018848001957e-05,
+        8.394132601097226e-05
+      ],
+      "native": [
+        0.0001730351650621742,
+        -0.00011245404311921448,
+        -2.0363018848001957e-05,
+        8.394132601097226e-05
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_q.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        1.175563931465149,
+        -0.949984073638916,
+        0.14114946126937866,
+        0.4134378731250763
+      ],
+      "native": [
+        1.175563931465149,
+        -0.949984073638916,
+        0.14114946126937866,
+        0.4134378731250763
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_q.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -22.43651008605957,
+        46.13848114013672,
+        7.510682582855225,
+        -5.077610015869141
+      ],
+      "native": [
+        -22.43651008605957,
+        46.13848114013672,
+        7.510682582855225,
+        -5.077610015869141
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_q.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.00019638831145130098,
+        3.576476956368424e-05,
+        4.334584446041845e-05,
+        -0.00011651845125015825
+      ],
+      "native": [
+        -0.00019638831145130098,
+        3.576476956368424e-05,
+        4.334584446041845e-05,
+        -0.00011651845125015825
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_k.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.16726091504096985,
+        -0.0037260353565216064,
+        0.45430999994277954,
+        2.3710546493530273
+      ],
+      "native": [
+        -0.16726091504096985,
+        -0.0037260353565216064,
+        0.45430999994277954,
+        2.3710546493530273
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_k.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -1.915338158607483,
+        5.550826072692871,
+        4.050752639770508,
+        -11.425619125366211
+      ],
+      "native": [
+        -1.915338158607483,
+        5.550826072692871,
+        4.050752639770508,
+        -11.425619125366211
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_k.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.00011626173363765702,
+        -5.4182914027478546e-05,
+        0.00012712515308521688,
+        -0.0002741240314207971
+      ],
+      "native": [
+        -0.00011626173363765702,
+        -5.4182914027478546e-05,
+        0.00012712515308521688,
+        -0.0002741240314207971
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_v.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.8463708758354187,
+        -0.3867388069629669,
+        -0.35415685176849365,
+        -0.3036593496799469
+      ],
+      "native": [
+        -0.8463708758354187,
+        -0.3867388069629669,
+        -0.35415685176849365,
+        -0.3036593496799469
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_v.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        17.430435180664062,
+        -8.247319221496582,
+        -0.911135196685791,
+        -0.4789247512817383
+      ],
+      "native": [
+        17.430435180664062,
+        -8.247319221496582,
+        -0.911135196685791,
+        -0.4789247512817383
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_v.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        2.858036350517068e-05,
+        -5.96094032516703e-05,
+        0.00022001143952365965,
+        -7.65074510127306e-05
+      ],
+      "native": [
+        2.858036350517068e-05,
+        -5.96094032516703e-05,
+        0.00022001143952365965,
+        -7.65074510127306e-05
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_output.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.0027641281485557556,
+        -0.2636863589286804,
+        -0.051544174551963806,
+        -0.5428153872489929
+      ],
+      "native": [
+        0.0027641281485557556,
+        -0.2636863589286804,
+        -0.051544174551963806,
+        -0.5428153872489929
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_output.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -5.400009632110596,
+        10.633869171142578,
+        56.897159576416016,
+        -7.610523223876953
+      ],
+      "native": [
+        -5.400009632110596,
+        10.633869171142578,
+        56.897159576416016,
+        -7.610523223876953
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.attn_output.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        1.2434811651473865e-06,
+        4.878356048720889e-05,
+        -0.00014270322571974248,
+        2.4804583517834544e-05
+      ],
+      "native": [
+        1.2434811651473865e-06,
+        4.878356048720889e-05,
+        -0.00014270322571974248,
+        2.4804583517834544e-05
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.ffn_gate.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.4740508794784546,
+        0.005921177566051483,
+        0.17136475443840027,
+        0.1222696304321289
+      ],
+      "native": [
+        0.4740508794784546,
+        0.005921177566051483,
+        0.17136475443840027,
+        0.1222696304321289
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.ffn_gate.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        26.237529754638672,
+        22.847766876220703,
+        -48.07803726196289,
+        11.65234375
+      ],
+      "native": [
+        26.237529754638672,
+        22.847766876220703,
+        -48.07803726196289,
+        11.65234375
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.ffn_gate.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.00011356220056768507,
+        0.0001659768749959767,
+        -3.5502936952980235e-05,
+        -0.00010492585715837777
+      ],
+      "native": [
+        0.00011356220056768507,
+        0.0001659768749959767,
+        -3.5502936952980235e-05,
+        -0.00010492585715837777
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.ffn_up.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.330652117729187,
+        0.331543505191803,
+        0.5601984262466431,
+        0.02540557086467743
+      ],
+      "native": [
+        0.330652117729187,
+        0.331543505191803,
+        0.5601984262466431,
+        0.02540557086467743
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.ffn_up.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -21.662546157836914,
+        14.050043106079102,
+        -19.605562210083008,
+        55.57611083984375
+      ],
+      "native": [
+        -21.662546157836914,
+        14.050043106079102,
+        -19.605562210083008,
+        55.57611083984375
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.ffn_up.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -9.954718552762643e-05,
+        0.0001040687202475965,
+        6.685225343971979e-06,
+        -4.265073221176863e-05
+      ],
+      "native": [
+        -9.954718552762643e-05,
+        0.0001040687202475965,
+        6.685225343971979e-06,
+        -4.265073221176863e-05
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.ffn_down.weight",
+      "variant": 0,
+      "dtype": 18,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.19893738627433777,
+        -0.8401610851287842,
+        0.9113864302635193,
+        -3.6457278728485107
+      ],
+      "native": [
+        0.19893738627433777,
+        -0.8401610851287842,
+        0.9113864302635193,
+        -3.6457278728485107
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.ffn_down.weight",
+      "variant": 1,
+      "dtype": 18,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -3.477886438369751,
+        -30.174463272094727,
+        -73.50900268554688,
+        -74.14258575439453
+      ],
+      "native": [
+        -3.477886438369751,
+        -30.174463272094727,
+        -73.50900268554688,
+        -74.14258575439453
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.12.ffn_down.weight",
+      "variant": 2,
+      "dtype": 18,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.00012083737237844616,
+        0.00010055210441350937,
+        -7.88567413110286e-05,
+        -0.0004897445905953646
+      ],
+      "native": [
+        -0.00012083737237844616,
+        0.00010055210441350937,
+        -7.88567413110286e-05,
+        -0.0004897445905953646
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_q.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.09312967211008072,
+        0.0026328861713409424,
+        0.2538709044456482,
+        -0.14518071711063385
+      ],
+      "native": [
+        0.09312967211008072,
+        0.0026328861713409424,
+        0.2538709044456482,
+        -0.14518071711063385
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_q.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        4.637103080749512,
+        -9.487419128417969,
+        -25.649377822875977,
+        39.70954513549805
+      ],
+      "native": [
+        4.637103080749512,
+        -9.487419128417969,
+        -25.649377822875977,
+        39.70954513549805
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_q.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -1.2020980648230761e-05,
+        -8.168050044332631e-06,
+        -1.1775598977692425e-05,
+        6.371161725837737e-05
+      ],
+      "native": [
+        -1.2020980648230761e-05,
+        -8.168050044332631e-06,
+        -1.1775598977692425e-05,
+        6.371161725837737e-05
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_k.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.37435826659202576,
+        0.46936607360839844,
+        0.26443374156951904,
+        0.6086618900299072
+      ],
+      "native": [
+        -0.37435826659202576,
+        0.46936607360839844,
+        0.26443374156951904,
+        0.6086618900299072
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_k.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        16.555328369140625,
+        -25.41054344177246,
+        2.83856201171875,
+        -3.1369917392730713
+      ],
+      "native": [
+        16.555328369140625,
+        -25.41054344177246,
+        2.83856201171875,
+        -3.1369917392730713
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_k.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.000103652426332701,
+        6.497230060631409e-07,
+        3.034388464584481e-05,
+        3.0344112019520253e-05
+      ],
+      "native": [
+        -0.000103652426332701,
+        6.497230060631409e-07,
+        3.034388464584481e-05,
+        3.0344112019520253e-05
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_v.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.8910221457481384,
+        -1.2047593593597412,
+        0.30853983759880066,
+        -0.12752272188663483
+      ],
+      "native": [
+        -0.8910221457481384,
+        -1.2047593593597412,
+        0.30853983759880066,
+        -0.12752272188663483
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_v.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        23.3010311126709,
+        28.346582412719727,
+        19.435211181640625,
+        -26.498172760009766
+      ],
+      "native": [
+        23.3010311126709,
+        28.346582412719727,
+        19.435211181640625,
+        -26.498172760009766
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_v.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.0001095015395549126,
+        0.0001004637815640308,
+        6.907648639753461e-05,
+        0.0002299293118994683
+      ],
+      "native": [
+        0.0001095015395549126,
+        0.0001004637815640308,
+        6.907648639753461e-05,
+        0.0002299293118994683
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_output.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -1.118640422821045,
+        -0.43507224321365356,
+        -0.8674008846282959,
+        -0.08024899661540985
+      ],
+      "native": [
+        -1.118640422821045,
+        -0.43507224321365356,
+        -0.8674008846282959,
+        -0.08024899661540985
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_output.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        3.264616012573242,
+        8.434099197387695,
+        -1.7129089832305908,
+        -6.410277843475342
+      ],
+      "native": [
+        3.264616012573242,
+        8.434099197387695,
+        -1.7129089832305908,
+        -6.410277843475342
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.attn_output.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        2.22785456571728e-05,
+        0.0002010996686294675,
+        -0.00014932476915419102,
+        -0.00017269943782594055
+      ],
+      "native": [
+        2.22785456571728e-05,
+        0.0002010996686294675,
+        -0.00014932476915419102,
+        -0.00017269943782594055
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.ffn_gate.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.26229870319366455,
+        1.1567420959472656,
+        0.09489476680755615,
+        0.45431458950042725
+      ],
+      "native": [
+        0.26229870319366455,
+        1.1567420959472656,
+        0.09489476680755615,
+        0.45431458950042725
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.ffn_gate.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        33.72633743286133,
+        -5.063650131225586,
+        -36.74708938598633,
+        25.642107009887695
+      ],
+      "native": [
+        33.72633743286133,
+        -5.063650131225586,
+        -36.74708938598633,
+        25.642107009887695
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.ffn_gate.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        6.828302139183506e-05,
+        5.3885763918515295e-05,
+        0.0001378142333123833,
+        9.669421706348658e-05
+      ],
+      "native": [
+        6.828302139183506e-05,
+        5.3885763918515295e-05,
+        0.0001378142333123833,
+        9.669421706348658e-05
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.ffn_up.weight",
+      "variant": 0,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        0.6039948463439941,
+        -0.25906333327293396,
+        0.08157756924629211,
+        -0.2790314555168152
+      ],
+      "native": [
+        0.6039948463439941,
+        -0.25906333327293396,
+        0.08157756924629211,
+        -0.2790314555168152
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.ffn_up.weight",
+      "variant": 1,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -2.6490395069122314,
+        51.05514144897461,
+        3.039426326751709,
+        23.779499053955078
+      ],
+      "native": [
+        -2.6490395069122314,
+        51.05514144897461,
+        3.039426326751709,
+        23.779499053955078
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.ffn_up.weight",
+      "variant": 2,
+      "dtype": 20,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        6.398877303581685e-06,
+        -8.925730071496218e-05,
+        0.00013705607852898538,
+        0.00016477338795084506
+      ],
+      "native": [
+        6.398877303581685e-06,
+        -8.925730071496218e-05,
+        0.00013705607852898538,
+        0.00016477338795084506
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0.0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.ffn_down.weight",
+      "variant": 0,
+      "dtype": 18,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.04904615879058838,
+        0.4021958112716675,
+        1.1695125102996826,
+        -2.6263926029205322
+      ],
+      "native": [
+        -0.04904615879058838,
+        0.4021958112716675,
+        1.1695125102996826,
+        -2.6263926029205322
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.ffn_down.weight",
+      "variant": 1,
+      "dtype": 18,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        10.594518661499023,
+        46.937068939208984,
+        -22.952253341674805,
+        118.47417449951172
+      ],
+      "native": [
+        10.594518661499023,
+        46.937068939208984,
+        -22.952253341674805,
+        118.47417449951172
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0,
+      "within_tolerance": true
+    },
+    {
+      "tensor": "blk.23.ffn_down.weight",
+      "variant": 2,
+      "dtype": 18,
+      "activation_byte_mismatches": 0,
+      "max_activation_scale_error": 0.0,
+      "reference": [
+        -0.00022331484069582075,
+        -4.329300281824544e-06,
+        0.0003372118517290801,
+        0.00037689614691771567
+      ],
+      "native": [
+        -0.00022331484069582075,
+        -4.329300281824544e-06,
+        0.0003372118517290801,
+        0.00037689614691771567
+      ],
+      "max_dot_absolute_error": 0.0,
+      "max_dedicated_dot_absolute_error": 0,
+      "within_tolerance": true
+    }
+  ]
+}

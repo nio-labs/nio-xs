@@ -1,0 +1,9 @@
+{
+  "gpu_inference_verified": false,
+  "gpu_runner_available": false,
+  "observations": [
+    "/dev/dri nodes are present, but card0 is bound to faux_driver and exposes no PCI vendor/device IDs.",
+    "Windows GPU driver DLLs are visible under WSL; no usable Linux Vulkan/Level Zero runtime or GPU runner was found."
+  ],
+  "verified": "Shared runner policy arguments and native repetition behavior are covered by tests; no GPU throughput or GPU memory claims are made."
+}

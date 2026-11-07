@@ -1,0 +1,44 @@
+{
+  "model": "manta",
+  "device": "cpu",
+  "max_output_tokens": 512,
+  "revision": "790f9becaa0577041a23586c713bb176ec36b8ca",
+  "local_context_change": true,
+  "scope": "Three short-prompt CLI smoke tests; not an 8k-context or GPU benchmark.",
+  "cases": [
+    {
+      "name": "rate_limiter",
+      "prompt": "Design a rate limiter for an API running on three servers. The limit is 100 requests per minute per customer. In at most 150 words, explain shared state, atomic updates, and what happens if Redis is unavailable.",
+      "exit_code": 0,
+      "seconds": 8.052,
+      "response": "<manta_plan>\n  Step 1: Define the Request Limits\n    - Set a global limit of 100 requests per minute for each customer.\n  \nStep Two: Implement Atomic Updates (Shared State)\n- Use atomic operations to update request counts across all customers simultaneously.\n\nStep Three:\n- Ensure that when Redis is unavailable, fallbacks are handled gracefully.",
+      "stderr": "",
+      "runtime_error": false,
+      "quality_review": "Incomplete design: no concrete shared-state key or atomic-update mechanism; Redis failure behavior remains vague; manta_plan tag is not closed.",
+      "meets_prompt_requirements": false
+    },
+    {
+      "name": "queue_tradeoff",
+      "prompt": "We need to process customer orders reliably. Compare a work queue with pub-sub, recommend one, and explain retries and duplicate handling. Keep the answer under 150 words.",
+      "exit_code": 0,
+      "seconds": 18.256,
+      "response": "A work queue with pub-sub is ideal for processing customer orders reliably. It allows you to handle multiple consumers simultaneously without blocking, while a single consumer can process all the requests at once.\n\nOne recommendation is to use Redis as your message broker and store order IDs in it so that they are unique across different queues or services. This helps prevent duplicate handling by ensuring each request gets processed only once per ID.\n\nHere's an example of how this could look:\n\n```\nqueue1: [order 12345]\nqueue2: [order 67890]\n\nconsumerA (Redis): \nwhile queueSize < MAX_QUEUE_SIZE:\n    while not consumerB.isReady():\n        if len(queue) > maxQueueLength:\n            break\n        orderID = redisGet(\"orders\", \"getOrderByNumber\")\n        \n    # Process the current request and store it in Redis\n\nif errorCount >= ERROR_THRESHOLD or timeoutMS == -1, retry consumers until successful.\n```\n\nThis approach ensures that each customer gets a unique ID across all queues. If there are too many requests at once (maxQueueSize), duplicate orders will be processed multiple times.\n\nDuplicated messages can lead to performance issues if not handled correctly. To prevent this, you should implement proper message handling mechanisms like queue timeouts or dead-letter services for failed operations.\n\nIn terms of retries and duplicates:\n\n- Use Redis with atomic transactions to handle errors in the consumer code\n- Implement error logging and retry logic within your service layer\n\nThis approach ensures that customer order processing is reliable while minimizing false positives due to duplicated requests from different consumers.",
+      "stderr": "",
+      "runtime_error": false,
+      "quality_review": "Conflates work queues and pub-sub, exceeds requested length, emits pseudocode despite no-code persona, and gives inconsistent duplicate-handling advice.",
+      "meets_prompt_requirements": false
+    },
+    {
+      "name": "deployment_plan",
+      "prompt": "Create a minimal two-step deployment plan for a stateless API: deploy to staging, then deploy to production after staging succeeds. Include step id, name, description, command, rollback, and an explicit dependency. Return only one complete manta_plan XML document.",
+      "exit_code": 0,
+      "seconds": 5.566,
+      "response": "Here is the complete manta_plan XML DAG for your two-step deployment:\n\n```\n<manta_plan>\n  <step id=\"1\">\n    <name>Step 1: Deploy to St",
+      "stderr": "",
+      "runtime_error": false,
+      "complete_manta_plan_xml": false,
+      "quality_review": "Response ends mid-name, includes prose and a code fence, and does not form a complete XML plan. Shared stop_position checks tag/end substrings across the suffix after the latest opening angle bracket, which can also match ordinary text such as staging; this is a suspected truncation cause, not yet isolated.",
+      "meets_prompt_requirements": false
+    }
+  ]
+}

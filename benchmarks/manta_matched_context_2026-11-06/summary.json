@@ -1,0 +1,32 @@
+[
+  {
+    "prompt_tokens": 512,
+    "runtime": "llama.cpp",
+    "response": "The START marker is BRONZE, the MIDDLE marker is SILVER, and the END marker is GOLD.",
+    "contains_all_markers": true
+  },
+  {
+    "prompt_tokens": 1024,
+    "runtime": "llama.cpp",
+    "response": "The START marker is BRONZE, the MIDDLE marker is SILVER, and the END marker is GOLD.",
+    "contains_all_markers": true
+  },
+  {
+    "prompt_tokens": 2048,
+    "runtime": "llama.cpp",
+    "response": "The service is healthy.\nThe service is healthy.\nThe service is healthy.\nThe service is healthy.\nThe service is healthy.\nThe service is healthy.\nThe service",
+    "contains_all_markers": false
+  },
+  {
+    "prompt_tokens": 1024,
+    "runtime": "NioXS",
+    "response": "The START marker is BRONZE, the MIDDLE marker is SILVER, and the END marker is GOLD.",
+    "contains_all_markers": true
+  },
+  {
+    "prompt_tokens": 8160,
+    "runtime": "NioXS",
+    "response": "The service is healthy.\nThe service is healthy.\nThe service is healthy.\nThe service is healthy.\nThe service is healthy.\nThe service is healthy.\nThe service",
+    "contains_all_markers": false
+  }
+]

@@ -109,6 +109,17 @@ impl ActiveDevice {
                 let vram_mb = Self::query_nvidia_smi_vram();
                 return Some(Self::Cuda { vram_mb });
             }
+
+            // WSL exposes GPUs through /dev/dxg rather than /dev/nvidia*.
+            // Ask Windows which adapter is present so an Intel CPU or the
+            // generic libdxcore shim does not hide an NVIDIA GPU.
+            if Path::new("/dev/dxg").exists() {
+                if let Some(vram_mb) = Self::query_host_adapter_vram("nvidia") {
+                    return Some(Self::Cuda {
+                        vram_mb: Some(vram_mb),
+                    });
+                }
+            }
         }
 
         // Windows path: Check for nvcuda.dll or nvidia-smi
@@ -131,12 +142,10 @@ impl ActiveDevice {
         #[cfg(target_os = "linux")]
         {
             if Path::new("/dev/dxg").exists() {
-                let is_intel = std::fs::read_to_string("/proc/cpuinfo")
-                    .map(|c| c.contains("Intel"))
-                    .unwrap_or(false);
-                if is_intel || Path::new("/usr/lib/wsl/lib/libdxcore.so").exists() {
-                    let vram_mb = Self::query_linux_unified_vram_mb();
-                    return Some(Self::IntelArc { vram_mb });
+                if let Some(vram_mb) = Self::query_host_adapter_vram("arc") {
+                    return Some(Self::IntelArc {
+                        vram_mb: Some(vram_mb),
+                    });
                 }
             }
 
@@ -164,8 +173,8 @@ impl ActiveDevice {
             {
                 if output.status.success() {
                     let text = String::from_utf8_lossy(&output.stdout);
-                    if text.to_ascii_lowercase().contains("intel") {
-                        let vram_mb = Self::query_wsl_intel_vram();
+                    if text.to_ascii_lowercase().contains("arc") {
+                        let vram_mb = Self::query_host_adapter_vram("arc");
                         return Some(Self::IntelArc { vram_mb });
                     }
                 }
@@ -175,29 +184,38 @@ impl ActiveDevice {
         None
     }
 
+    #[cfg(target_os = "linux")]
     fn query_linux_unified_vram_mb() -> Option<u64> {
         let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
         let line = meminfo.lines().find(|l| l.starts_with("MemTotal:"))?;
         let kb = line.split_whitespace().nth(1)?.parse::<u64>().ok()?;
-        // Intel Arc iGPU shares up to 50% of unified system memory
         Some(kb / 2048)
     }
 
-    #[allow(dead_code)]
-    fn query_wsl_intel_vram() -> Option<u64> {
-        let output = std::process::Command::new("powershell.exe")
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    fn query_host_adapter_vram(adapter_name: &str) -> Option<u64> {
+        #[cfg(target_os = "linux")]
+        let shell = "powershell.exe";
+        #[cfg(target_os = "windows")]
+        let shell = "powershell";
+        let output = std::process::Command::new(shell)
             .args([
                 "-NoProfile",
                 "-Command",
-                "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty AdapterRAM",
+                "Get-CimInstance Win32_VideoController | ForEach-Object { \"{0}|{1}\" -f $_.Name,$_.AdapterRAM }",
             ])
             .output()
             .ok()?;
         if output.status.success() {
             let text = String::from_utf8_lossy(&output.stdout);
-            if let Some(line) = text.lines().find(|l| !l.trim().is_empty()) {
-                if let Ok(bytes) = line.trim().parse::<u64>() {
-                    return Some(bytes / (1024 * 1024));
+            for line in text.lines() {
+                let Some((name, memory)) = line.trim().rsplit_once('|') else {
+                    continue;
+                };
+                if name.to_ascii_lowercase().contains(adapter_name) {
+                    if let Ok(bytes) = memory.trim().parse::<u64>() {
+                        return Some(bytes / (1024 * 1024));
+                    }
                 }
             }
         }

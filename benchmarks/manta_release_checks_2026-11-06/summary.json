@@ -1,0 +1,13 @@
+{
+  "engine_tests_passed": 37,
+  "provider_tests_passed": 78,
+  "plan_validation": "Implemented for explicit CLI --plan, including ONNX fallback; valid/invalid structure and DAG tests pass. Both model plan attempts were withheld as invalid.",
+  "decoding": "Shared greedy configuration, prompt/output repetition history of 64, matching per-model repetition penalties and suppressions; actual GPU inference not verified.",
+  "context_capacity": "Full 8192 cache positions exercised, bounds checked, cache reset/recovery passed.",
+  "context_retrieval": "Control at 512 tokens passed; 8160-token synthetic greedy probe failed.",
+  "model_quality": "Basic HTTP 429 and idempotency answers remain inaccurate. Model not certified reliable by these runtime tests.",
+  "context_prefill_seconds": 604.394531669,
+  "context_sampled_peak_anon_mib": 312.39453125,
+  "context_sampled_peak_rss_mib": 497.73046875,
+  "all_changes_local_and_uncommitted": true
+}

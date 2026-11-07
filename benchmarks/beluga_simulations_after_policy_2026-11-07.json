@@ -1,0 +1,49 @@
+{
+  "model_path": "/tmp/nioxs-beluga-v030/beluga.vmicrolm-vector.gguf",
+  "model_sha256": "d2d4642d36b907c8658301208e8cd4ab3c6d72051a37a780ebc35a56ff83d5ba",
+  "runtime": "NioXS release CLI CPU with shared Beluga policy; max 256 tokens; end-to-end includes model load",
+  "cases": [
+    {
+      "name": "http_429",
+      "prompt": "In one sentence, what does HTTP status 429 mean?",
+      "exit_code": 0,
+      "elapsed_seconds": 16.094744437999907,
+      "response": "HTTP 429: *Too Many Requests.*",
+      "word_count": 5,
+      "response_tokens": 11,
+      "words_per_token": 0.45454545454545453,
+      "words_per_second_end_to_end": 0.3106604158432571,
+      "sampled_peak_rss_mib": 449.10546875,
+      "sampled_peak_anon_mib": 122.11328125,
+      "stderr": ""
+    },
+    {
+      "name": "idempotency",
+      "prompt": "In one sentence, explain idempotency for retrying an order creation request.",
+      "exit_code": 0,
+      "elapsed_seconds": 19.836827301012818,
+      "response": "If a payment gateway fails, a refund is idempotent; repeated requests with the same transaction ID will return the original state without side effect.",
+      "word_count": 24,
+      "response_tokens": 29,
+      "words_per_token": 0.8275862068965517,
+      "words_per_second_end_to_end": 1.2098708949678976,
+      "sampled_peak_rss_mib": 457.609375,
+      "sampled_peak_anon_mib": 124.22265625,
+      "stderr": ""
+    },
+    {
+      "name": "queue_vs_pubsub",
+      "prompt": "Briefly compare a work queue with pub-sub for reliable customer orders, including retries and duplicate handling.",
+      "exit_code": 0,
+      "elapsed_seconds": 57.62777536000067,
+      "response": "* **Work Queue (e.g., Akka `Mailbox`):**\n\t* **Reliability:** Exactly-once ordered delivery.\n\t* **Idempotency:** No.\n\t* **Concurrency:** Multiple producers writing to one consumer.\n\t* **Edge Case:** Producer crash → lost work. Requires manual checkpointing.\n* **Pub/Sub (e.g., RabbitMQ `Publish/Subscribe`):**\n\t* **Reliability:** Exactly-once unordered delivery.\n\t* **Idempotency:** Yes, per message.\n\t* **Concurrency:** Multiple producers and consumers.\n\t* **Edge Case:** Consumer crash → lost messages. Requires acknowledgment.\n* **Comparison:**\n\tA work queue guarantees the order of every customer order (A→B) and the final state (C). Pub/Sub allows multiple orders (orders A, B, C) to be processed in parallel, but the state is unordered. If a consumer fails, only the last order (C) is lost; previous orders (A, B) may be retried.",
+      "word_count": 118,
+      "response_tokens": 213,
+      "words_per_token": 0.5539906103286385,
+      "words_per_second_end_to_end": 2.0476237241999034,
+      "sampled_peak_rss_mib": 463.83203125,
+      "sampled_peak_anon_mib": 120.828125,
+      "stderr": ""
+    }
+  ]
+}

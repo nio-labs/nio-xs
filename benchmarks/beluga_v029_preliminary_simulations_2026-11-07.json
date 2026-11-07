@@ -1,0 +1,49 @@
+{
+  "model_path": "/home/mn/nio-labs/nio-xs-models/beluga.vmicrolm-vector.gguf",
+  "model_bytes": 922232320,
+  "runtime": "NioXS release CLI, CPU, defaults, max 128 tokens",
+  "cases": [
+    {
+      "name": "http_429",
+      "prompt": "In one sentence, what does HTTP status 429 mean?",
+      "exit_code": 0,
+      "elapsed_seconds": 19.701468054990983,
+      "response": "HTTP status 429 indicates that the request was processed, but the target server is temporarily unable to send data due to a known high volume of requests or resource saturation.",
+      "word_count": 30,
+      "response_tokens_ref_tokenizer": 35,
+      "words_per_token": 0.8571428571428571,
+      "words_per_second_end_to_end": 1.5227291649669774,
+      "sampled_peak_rss_mib": 627.19140625,
+      "sampled_peak_anon_mib": 123.30859375,
+      "stderr": ""
+    },
+    {
+      "name": "idempotency",
+      "prompt": "In one sentence, explain idempotency for retrying an order creation request.",
+      "exit_code": 0,
+      "elapsed_seconds": 17.78691964400059,
+      "response": "Idempotence guarantees that a given operation will succeed multiple times without incurring additional charges, ensuring reliability in asynchronous systems.",
+      "word_count": 19,
+      "response_tokens_ref_tokenizer": 24,
+      "words_per_token": 0.7916666666666666,
+      "words_per_second_end_to_end": 1.0682006991811297,
+      "sampled_peak_rss_mib": 625.9375,
+      "sampled_peak_anon_mib": 124.21484375,
+      "stderr": ""
+    },
+    {
+      "name": "queue_vs_pubsub",
+      "prompt": "Briefly compare a work queue with pub-sub for reliable customer orders, including retries and duplicate handling.",
+      "exit_code": 0,
+      "elapsed_seconds": 35.46503469199524,
+      "response": "In the context of a high-volume e-commerce platform, the choice between a work queue (e.g., AWS Batch, Azure Batch) and a publish-subscribe (PUB/SUB) infrastructure for handling customer orders involves nuanced architectural decisions around reliability, performance characteristics, and operational complexity.\n\n### 1. Work Queue (e.g., AWS Fargate, Azure Batch)\n*   **Reliability:** A work queue is designed to ensure that a specific task is completed before any other tasks are dispatched. It is **stateless** and does not require acknowledgment from the consumer. If a task fails, it is retried according to the",
+      "word_count": 90,
+      "response_tokens_ref_tokenizer": 128,
+      "words_per_token": 0.703125,
+      "words_per_second_end_to_end": 2.537710756005936,
+      "sampled_peak_rss_mib": 637.19921875,
+      "sampled_peak_anon_mib": 123.671875,
+      "stderr": ""
+    }
+  ]
+}

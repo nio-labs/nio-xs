@@ -1,0 +1,53 @@
+{
+  "model_path": "/tmp/nioxs-beluga-v030/beluga.vmicrolm-vector.gguf",
+  "model_bytes": 639362560,
+  "model_sha256": "d2d4642d36b907c8658301208e8cd4ab3c6d72051a37a780ebc35a56ff83d5ba",
+  "model_release": "nio-xs-models v0.3.0; manifest-verified",
+  "tokenizer_path": "/home/mn/nio-labs/nio-xs-models/beluga-tokenizer.json",
+  "tokenizer_sha256": "cf535eea1ed9374c2bc3436625216c18fc703fc37aae8e019b3e85cc658e0395",
+  "runtime": "NioXS release CLI, CPU, production prompt, default decoding, maximum 256 tokens; end-to-end timings include process/model load",
+  "cases": [
+    {
+      "name": "http_429",
+      "prompt": "In one sentence, what does HTTP status 429 mean, and what should the client do?",
+      "exit_code": 0,
+      "elapsed_seconds": 17.401259509992087,
+      "response": "The HTTP 429 (Too Many Requests) status code means the client has sent too many requests within a certain time period. The client should throttle itself, wait, and retry after a delay.",
+      "word_count": 32,
+      "response_tokens": 41,
+      "words_per_token": 0.7804878048780488,
+      "words_per_second_end_to_end": 1.8389473464047288,
+      "sampled_peak_rss_mib": 448.171875,
+      "sampled_peak_anon_mib": 124.21875,
+      "stderr": ""
+    },
+    {
+      "name": "idempotency",
+      "prompt": "In one sentence, explain idempotency for retrying an order creation request.",
+      "exit_code": 0,
+      "elapsed_seconds": 14.026310484987334,
+      "response": "The core principle: \"If the service fails, the user should not perceive a retry as a new failure, but a continuation of the existing transaction.\"",
+      "word_count": 25,
+      "response_tokens": 30,
+      "words_per_token": 0.8333333333333334,
+      "words_per_second_end_to_end": 1.7823646515424028,
+      "sampled_peak_rss_mib": 448.05859375,
+      "sampled_peak_anon_mib": 124.21484375,
+      "stderr": ""
+    },
+    {
+      "name": "queue_vs_pubsub",
+      "prompt": "Briefly compare a work queue with pub-sub for reliable customer orders, including retries and duplicate handling.",
+      "exit_code": 0,
+      "elapsed_seconds": 47.243185152008664,
+      "response": "The choice between a work queue and a pub/sub model for a \"reliable customer order\" scenario depends on the specific invariants you need to preserve.\n\n\n\n\n## 1. Customer Orders: The \"Atomic\" Requirement\n\n**Criteria:** The system must deliver *one* order to one consumer at a time.\n\n**Work Queue (Atomic):**\n*   **Guarantee:** Exactly one order processed per thread of execution.\n*   **Latency:** Low. No network latency is required.\n*   **Fault Tolerance:** High. If the producer fails, the consumer will not process any orders.\n*   **Example:** A bank's \"acknowledgment\" queue for payment transactions.\n\n**Why Choose?**\n*   **No Decoupling:** Orders are not dependent on each other.\n*   **No Reconciliation:** If the consumer fails, the producer knows exactly which order failed.\n\n## 2. Customer Orders: The \"Reliability\" Requirement\n\n**Criteria:** The system must deliver *one* order to one consumer at a time, *and* the order must be *reliable* (not lost) even if the producer fails.\n\n**Pub/Sub (Re-Transmit):**\n*   **Guarantee:**",
+      "word_count": 153,
+      "response_tokens": 250,
+      "words_per_token": 0.612,
+      "words_per_second_end_to_end": 3.2385623346036145,
+      "sampled_peak_rss_mib": 462.27734375,
+      "sampled_peak_anon_mib": 120.875,
+      "stderr": ""
+    }
+  ]
+}
