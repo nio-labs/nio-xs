@@ -11,6 +11,7 @@ pub mod gguf;
 pub mod hardware;
 pub mod pool;
 pub mod quants;
+mod speculation;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 pub use hardware::{ActiveDevice, DevicePreference};
 
@@ -49,7 +50,11 @@ pub fn manta_system(plan: bool) -> &'static str {
 }
 
 pub fn beluga_system() -> &'static str {
-    "You are Beluga, Nio's Sovereign Cognitive Companion. Think before answering using exactly one <think>...</think> block; include both tags, keep the thought concise, and close it before the final answer. Answer the question directly and accurately. Follow requested length and format: one sentence means one sentence; brief means at most three concise bullets. Do not call a premise flawed unless it is actually false. Prefer standard definitions over invented details; separate guarantees from implementation choices and state uncertainty when behavior depends on an unspecified system. For HTTP 429, say Too Many Requests and advise honoring Retry-After when present or backing off. For idempotency, repeated requests with the same key must return the original result without repeating side effects. For work queues, consumers compete for messages, acknowledge after successful processing, and may receive redeliveries; duplicate-safe handlers commonly use idempotency keys or deduplication. For pub-sub, each subscription receives its own event copy; ordering, durability, acknowledgement, and replay depend on the broker. Do not claim a queue inherently provides idempotency or exactly-once processing. Avoid unrelated products."
+    "You are Beluga, Nio's technical companion. Answer the user's actual question directly and accurately. Follow the requested format and length. Keep every sentence relevant; do not add unrelated systems concepts. Use standard terminology and never invent API names, annotations, configuration keys, or mechanisms. If uncertain or system behavior is unspecified, say so. For complex answers, include exactly one brief, relevant <think>...</think> block before the answer."
+}
+
+pub fn blue_system() -> &'static str {
+    "You are Blue, Nio's technical companion. Answer the user's actual question directly and accurately in the requested format. Be concise and relevant. Use standard terms; never invent API names or details. State uncertainty when needed."
 }
 
 pub fn skate_system() -> Result<String> {
@@ -454,6 +459,16 @@ pub struct ModelBundle {
     pub engine: AstMicroEngine,
     pub tokenizer: Tokenizer,
     pub device: Device,
+    pub cached_prefix: Vec<u32>,
+}
+
+#[derive(Default, serde::Serialize)]
+struct NativeGenerationStats {
+    trio_steps: usize,
+    pair_steps: usize,
+    autoregressive_steps: usize,
+    proposed_drafts: usize,
+    matched_drafts: usize,
 }
 
 #[derive(Clone)]
@@ -512,6 +527,21 @@ impl AstEngine {
 
     pub fn active_device(&self) -> ActiveDevice {
         ActiveDevice::detect(self.device_pref)
+    }
+
+    fn gpu_runner_path() -> Option<PathBuf> {
+        let runner = std::env::var_os("NIOXS_GPU_RUNNER")
+            .or_else(|| std::env::var_os("NIOXS_LLAMA_CLI"))
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("llama-cli"));
+        if runner.is_file() {
+            return Some(runner);
+        }
+        std::env::var_os("PATH").and_then(|path| {
+            std::env::split_paths(&path)
+                .map(|dir| dir.join(&runner))
+                .find(|path| path.is_file())
+        })
     }
 
     pub fn set_device_preference(&mut self, pref: DevicePreference) {
@@ -813,7 +843,13 @@ impl AstEngine {
         let is_blue = self.is_blue;
         let policy = decoding::DecodingPolicy::for_model(is_skate, is_manta, is_beluga, is_blue);
 
-        let active_dev = self.active_device();
+        // The native fallback must use CPU residency settings. Hardware probing
+        // cannot enable GPU execution when the external runner is unavailable.
+        let active_dev = if Self::gpu_runner_path().is_some() {
+            self.active_device()
+        } else {
+            ActiveDevice::Cpu
+        };
 
         let bundle = tokio::task::spawn_blocking(move || -> Result<ModelBundle> {
             let device = Device::Cpu;
@@ -851,8 +887,18 @@ impl AstEngine {
                     engine.set_resident_layers(gpu_layers);
                     engine.set_rolling_window(gpu_layers.max(4));
                 } else {
-                    engine.set_resident_layers(2);
-                    engine.set_rolling_window(2);
+                    let resident = std::env::var("NIOXS_BLUE_RESIDENT_LAYERS")
+                        .ok()
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(2)
+                        .min(engine.block_count);
+                    let window = if resident >= engine.block_count {
+                        engine.block_count
+                    } else {
+                        layer_setting("NIOXS_BLUE_ROLLING_WINDOW", 2, engine.block_count)
+                    };
+                    engine.set_resident_layers(resident);
+                    engine.set_rolling_window(window);
                 }
             }
 
@@ -863,6 +909,7 @@ impl AstEngine {
                 engine,
                 tokenizer,
                 device,
+                cached_prefix: Vec::new(),
             })
         })
         .await
@@ -917,7 +964,8 @@ impl AstEngine {
             )
         } else if self.is_blue {
             format!(
-                "<|im_start|>system\nYou are Blue, Nio's Flagship Sovereign Reflex Companion. Speak with the calm, approachable, and grounded voice of a seasoned staff engineer pair-programming with a colleague. Be conversational and engaging, but keep your dialogue focused and high-signal without fluff or sycophancy. When complex reasoning is required, verify invariants inside concise <think>...</think> tags (under 100 tokens), close your thoughts with </think>, and deliver your answer naturally. Reserve code blocks strictly for executable code.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                blue_system(),
                 raw_prompt.trim()
             )
         } else if self.is_skate {
@@ -972,6 +1020,20 @@ impl AstEngine {
         _temperature: f64,
         _top_p: f64,
     ) -> Result<mpsc::Receiver<String>> {
+        let speculation_mode = if self.is_blue {
+            match std::env::var("NIOXS_BLUE_SPECULATION").as_deref() {
+                Ok("off") => speculation::Mode::Off,
+                Ok("adaptive") => speculation::Mode::Adaptive,
+                Ok("on") | Err(_) => speculation::Mode::On,
+                Ok(value) => {
+                    return Err(anyhow!(
+                        "Invalid NIOXS_BLUE_SPECULATION={value:?}; use on, off, or adaptive"
+                    ));
+                }
+            }
+        } else {
+            speculation::Mode::On
+        };
         self.ensure_loaded().await?;
         // Native vocabulary selection is greedy. Use that same policy for the
         // external runner instead of silently switching to stochastic decoding.
@@ -998,22 +1060,9 @@ impl AstEngine {
         let max_tokens = output_budget(prompt_tokens.len(), context_limit, max_tokens)?;
         let (tx, rx) = mpsc::channel(64);
 
-        let active_dev = self.active_device();
-        if active_dev.is_gpu() {
-            let runner_bin = std::env::var_os("NIOXS_GPU_RUNNER")
-                .or_else(|| std::env::var_os("NIOXS_LLAMA_CLI"))
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("llama-cli"));
-
-            let runner_available = if runner_bin.is_file() {
-                true
-            } else if let Ok(path_var) = std::env::var("PATH") {
-                std::env::split_paths(&path_var).any(|d| d.join(&runner_bin).is_file())
-            } else {
-                false
-            };
-
-            if runner_available {
+        if let Some(runner_bin) = Self::gpu_runner_path() {
+            let active_dev = self.active_device();
+            if active_dev.is_gpu() {
                 let model_path = self.model_path.clone();
                 // Match the native runtime's context limit, including the
                 // model's declared maximum, for every companion.
@@ -1079,12 +1128,6 @@ impl AstEngine {
                     }
                 });
                 return Ok(rx);
-            } else {
-                eprintln!(
-                    "[nioxs] Detected {}, but GPU inference is unavailable because '{}' was not found; using the native CPU backend. Install a GPU-enabled llama-cli or set NIOXS_GPU_RUNNER to its path.",
-                    active_dev.name(),
-                    runner_bin.display()
-                );
             }
         }
 
@@ -1154,6 +1197,19 @@ impl AstEngine {
 
         let bundle_arc = self.bundle.clone();
         let is_blue = self.is_blue;
+        let report_stats =
+            std::env::var_os("NIOXS_INFERENCE_STATS").as_deref() == Some(std::ffi::OsStr::new("1"));
+        let stats_model = if self.is_blue {
+            "blue"
+        } else if self.is_beluga {
+            "beluga"
+        } else if self.is_manta {
+            "manta"
+        } else if self.is_skate {
+            "skate"
+        } else {
+            "other"
+        };
         tokio::task::spawn_blocking(move || {
             let mut guard = bundle_arc.blocking_lock();
             if tx.is_closed() {
@@ -1176,14 +1232,45 @@ impl AstEngine {
 
             bundle.engine.unpark();
 
-            let _hidden = match bundle.engine.prefill(&prompt_tokens) {
-                Ok(h) => h,
-                Err(e) => {
+            let prefill_started = std::time::Instant::now();
+            let disable_prefix_cache =
+                std::env::var_os("NIOXS_DISABLE_PREFIX_CACHE").is_some();
+            let mut common_len = if disable_prefix_cache {
+                0
+            } else {
+                bundle
+                    .cached_prefix
+                    .iter()
+                    .zip(&prompt_tokens)
+                    .take_while(|(a, b)| a == b)
+                    .count()
+            };
+
+            // If prompt is identical to what was cached, recompute at least the last token
+            // so engine.scratch.x_norm is refreshed for next_token_with_history.
+            if common_len > 0 && common_len == prompt_tokens.len() {
+                common_len -= 1;
+            }
+
+            if common_len < bundle.cached_prefix.len() {
+                bundle.engine.truncate_cache(common_len);
+                bundle.cached_prefix.truncate(common_len);
+            }
+
+            if common_len < prompt_tokens.len() {
+                let suffix = &prompt_tokens[common_len..];
+                if let Err(e) = bundle.engine.forward_stream(suffix, common_len) {
                     let _ = tx.blocking_send(format!("AST-Micro prefill error: {e}"));
+                    bundle.cached_prefix.clear();
+                    bundle.engine.reset_cache();
                     bundle.engine.park();
                     return;
                 }
-            };
+                bundle.cached_prefix = prompt_tokens.clone();
+            }
+            let prefill_seconds = prefill_started.elapsed().as_secs_f64();
+            let decode_started = std::time::Instant::now();
+            let mut stats = NativeGenerationStats::default();
 
             let stop_tokens: Vec<u32> = [
                 bundle.engine.eos_token_id(),
@@ -1204,13 +1291,18 @@ impl AstEngine {
                     Ok(t) => t,
                     Err(e) => {
                         let _ = tx.blocking_send(format!("AST-Micro sampling error: {e}"));
+                        bundle.cached_prefix.clear();
+                        bundle.engine.reset_cache();
                         bundle.engine.park();
                         return;
                     }
                 };
 
             if is_eos(next_token) {
-                bundle.engine.reset_cache();
+                bundle.engine.truncate_cache(bundle.cached_prefix.len());
+                if bundle.engine.resident_layers < bundle.engine.block_count {
+                    bundle.engine.evict_all();
+                }
                 bundle.engine.park();
                 return;
             }
@@ -1222,7 +1314,10 @@ impl AstEngine {
             if let Ok(Some(chunk)) = tos.next_token(next_token) {
                 if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
                     phrase_buffer.flush(&tx);
-                    bundle.engine.reset_cache();
+                    bundle.engine.truncate_cache(bundle.cached_prefix.len());
+                    if bundle.engine.resident_layers < bundle.engine.block_count {
+                        bundle.engine.evict_all();
+                    }
                     bundle.engine.park();
                     return;
                 }
@@ -1250,7 +1345,7 @@ impl AstEngine {
                 .min(bundle.engine.context_length() - prompt_tokens.len() + 1);
             let mut current_confirmed = next_token;
             let mut stream_pos = prompt_tokens.len();
-            let mut consecutive_misses = 0usize;
+            let mut draft_schedule = speculation::Schedule::new(speculation_mode);
 
             while gen_tokens.len() < max_gen {
                 if tx.is_closed() {
@@ -1265,7 +1360,9 @@ impl AstEngine {
                 };
 
                 // Predict draft candidates: strictly high-confidence context and subword drafter
-                let (d1_opt, d2_opt) = if remaining >= 3 {
+                let (d1_opt, d2_opt) = if !draft_schedule.should_draft() {
+                    (None, None)
+                } else if remaining >= 3 {
                     zw_cache.predict_pair(prev2, current_confirmed, &gen_tokens)
                 } else if remaining >= 2 {
                     (
@@ -1285,6 +1382,8 @@ impl AstEngine {
                 let d2_valid = d2_opt.filter(valid_draft);
 
                 if let (Some(d1), Some(d2)) = (d1_valid, d2_valid) {
+                    stats.trio_steps += 1;
+                    stats.proposed_drafts += 2;
                     // V5 Architecture: 3-Token Speculative Step (reads weights ONCE for 3 tokens)
                     match bundle.engine.speculative_trio_step(
                         current_confirmed,
@@ -1295,11 +1394,8 @@ impl AstEngine {
                         &stop_tokens,
                     ) {
                         Ok(outcome) => {
-                            if outcome.matched_count > 0 {
-                                consecutive_misses = 0;
-                            } else {
-                                consecutive_misses += 1;
-                            }
+                            stats.matched_drafts += outcome.matched_count;
+                            draft_schedule.observe(outcome.matched_count);
 
                             let mut stopped = false;
                             for &tok in &outcome.accepted_tokens {
@@ -1353,6 +1449,8 @@ impl AstEngine {
                         }
                     }
                 } else if let Some(draft_tok) = d1_valid {
+                    stats.pair_steps += 1;
+                    stats.proposed_drafts += 1;
                     // V5 Architecture: 2-Token Speculative Step fallback
                     let predict_next_medusa = false;
                     match bundle.engine.speculative_pair_step(
@@ -1364,11 +1462,8 @@ impl AstEngine {
                         predict_next_medusa,
                     ) {
                         Ok(outcome) => {
-                            if outcome.draft_matched {
-                                consecutive_misses = 0;
-                            } else {
-                                consecutive_misses += 1;
-                            }
+                            stats.matched_drafts += usize::from(outcome.draft_matched);
+                            draft_schedule.observe(usize::from(outcome.draft_matched));
 
                             let mut stopped = false;
                             for &tok in &outcome.accepted_tokens {
@@ -1422,11 +1517,8 @@ impl AstEngine {
                         }
                     }
                 } else {
+                    stats.autoregressive_steps += 1;
                     // Pure Autoregressive 1-token step
-                    if consecutive_misses > 0 {
-                        consecutive_misses -= 1;
-                    }
-
                     if let Err(e) = bundle
                         .engine
                         .forward_stream(&[current_confirmed], stream_pos)
@@ -1485,8 +1577,30 @@ impl AstEngine {
 
             phrase_buffer.flush(&tx);
 
-            bundle.engine.reset_cache();
+            if report_stats {
+                let decode_seconds = decode_started.elapsed().as_secs_f64();
+                eprintln!(
+                    "NIOXS_INFERENCE_STATS {}",
+                    serde_json::json!({
+                        "backend": "native_cpu", "model": stats_model,
+                        "speculation_mode": speculation_mode.name(),
+                        "prompt_tokens": prompt_tokens.len(), "generated_tokens": gen_tokens.len(),
+                        "prefill_seconds": prefill_seconds, "decode_seconds": decode_seconds,
+                        "decode_tokens_per_second": gen_tokens.len() as f64 / decode_seconds,
+                        "steps": stats, "generated_token_ids": gen_tokens,
+                    })
+                );
+            }
+
+            bundle.engine.truncate_cache(bundle.cached_prefix.len());
+            if bundle.engine.resident_layers < bundle.engine.block_count {
+                bundle.engine.evict_all();
+            }
             bundle.engine.park();
+            #[cfg(target_os = "linux")]
+            unsafe {
+                libc::malloc_trim(0);
+            }
         });
 
         Ok(rx)
@@ -1497,6 +1611,31 @@ impl AstEngine {
 mod tests {
     use super::*;
     use tokenizers::models::wordlevel::WordLevel;
+
+    #[test]
+    fn companion_prompts_prioritize_relevance_and_uncertainty() {
+        let blue = blue_system();
+        assert!(blue.contains("Answer the user's actual question directly"));
+        assert!(blue.contains("never invent API names"));
+        assert!(!blue.contains("staff engineer"));
+
+        let beluga = beluga_system();
+        assert!(beluga.contains("exactly one brief, relevant <think>...</think> block"));
+        assert!(beluga.contains("never invent API names"));
+    }
+
+    #[test]
+    fn blue_engine_prompt_uses_the_shared_blue_policy() {
+        let engine = AstEngine::from_paths(
+            PathBuf::from("blue.vmicrolm-reflex.gguf"),
+            PathBuf::from("blue-tokenizer.json"),
+        );
+        let prompt = engine
+            .format_prompt_for_engine("answer briefly")
+            .expect("Blue prompt should format");
+        assert!(prompt.contains(blue_system()));
+        assert!(prompt.contains("answer briefly"));
+    }
 
     #[test]
     fn generation_budget_stops_at_the_last_predictable_context_position() {

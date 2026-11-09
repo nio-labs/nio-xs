@@ -24,6 +24,16 @@ pub struct ModelArtifactEntry {
     pub download_url: String,
     pub sha256: String,
     pub size_bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokenizer: Option<ModelTokenizerArtifact>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ModelTokenizerArtifact {
+    pub filename: String,
+    pub download_url: String,
+    pub sha256: String,
+    pub size_bytes: u64,
 }
 
 pub fn default_manifest() -> Vec<ModelArtifactEntry> {
@@ -36,6 +46,7 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.1.0/viper.Q4_0.gguf".into(),
             sha256: "58633aa691b80840dc85586cf2cb8616deff480c64ddf406bf848db749ecc3d4".into(),
             size_bytes: 64_686_080,
+            tokenizer: None,
         },
         ModelArtifactEntry {
             model_id: MODEL_SKATE.into(),
@@ -45,6 +56,12 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.6/skate.vmicrolm-vector.gguf".into(),
             sha256: "a00921dca072e640bb1f9730a95e3d88ed843cba3dd0a5648a6fd5e3e9e3d86b".into(),
             size_bytes: 86_958_464,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "skate-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.6/skate-tokenizer.json".into(),
+                sha256: "9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c".into(),
+                size_bytes: 2_104_556,
+            }),
         },
         ModelArtifactEntry {
             model_id: MODEL_MANTA.into(),
@@ -54,6 +71,7 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.7/manta.vmicrolm-vector.gguf".into(),
             sha256: "fa981bab81c7cb32a7072dfd193f1e03f988eb800d7e6773a03b69c861d452a5".into(),
             size_bytes: 333_363_520,
+            tokenizer: None,
         },
         ModelArtifactEntry {
             model_id: MODEL_BELUGA.into(),
@@ -63,6 +81,7 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.0/beluga.vmicrolm-vector.gguf".into(),
             sha256: "d2d4642d36b907c8658301208e8cd4ab3c6d72051a37a780ebc35a56ff83d5ba".into(),
             size_bytes: 639_362_560,
+            tokenizer: None,
         },
         ModelArtifactEntry {
             model_id: MODEL_BLUE.into(),
@@ -72,6 +91,12 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.1/blue.vmicrolm-reflex.gguf".into(),
             sha256: "6b673f5a2ed71eced7b6cc947beccf3cf3f669eb25d6e6233c48e47e11e9bb32".into(),
             size_bytes: 1_499_437_216,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "blue-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.1/blue-tokenizer.json".into(),
+                sha256: "8fcc6f6a32f0bd5ccdac48a0522dcd1cc575e5daf591f09d489e07f0d9035b2e".into(),
+                size_bytes: 3_911_372,
+            }),
         },
     ]
 }
@@ -177,7 +202,93 @@ pub fn is_model_ready(model_id: &str, custom_dir: Option<&Path>) -> bool {
         None => resolve_models_dir(),
     };
     let target = dir.join(&entry.filename);
-    target.exists() && target.metadata().map(|m| m.len() > 0).unwrap_or(false)
+    let model_ready = target.exists()
+        && target.metadata().map(|m| m.len() > 0).unwrap_or(false)
+        && verify_file_sha256(&target, &entry.sha256).unwrap_or(false);
+    let tokenizer_ready = entry.tokenizer.as_ref().is_none_or(|tokenizer| {
+        let tokenizer_path = dir.join(&tokenizer.filename);
+        tokenizer_path.exists()
+            && verify_file_sha256(&tokenizer_path, &tokenizer.sha256).unwrap_or(false)
+    });
+    model_ready && tokenizer_ready
+}
+
+async fn ensure_tokenizer_asset(
+    client: &reqwest::Client,
+    tokenizer: &ModelTokenizerArtifact,
+    target_dir: &Path,
+) -> Result<(), String> {
+    fs::create_dir_all(target_dir)
+        .map_err(|e| format!("failed to create models dir {}: {e}", target_dir.display()))?;
+    let final_path = target_dir.join(&tokenizer.filename);
+    if verify_file_sha256(&final_path, &tokenizer.sha256).unwrap_or(false) {
+        return Ok(());
+    }
+
+    let response = client
+        .get(&tokenizer.download_url)
+        .send()
+        .await
+        .map_err(|e| format!("failed to fetch tokenizer {}: {e}", tokenizer.filename))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "tokenizer download failed with HTTP status {} for {}",
+            response.status(),
+            tokenizer.filename
+        ));
+    }
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("failed reading tokenizer {}: {e}", tokenizer.filename))?;
+    if bytes.len() as u64 != tokenizer.size_bytes {
+        return Err(format!(
+            "size mismatch for {}: expected {} bytes, received {}",
+            tokenizer.filename,
+            tokenizer.size_bytes,
+            bytes.len()
+        ));
+    }
+    let computed_sha256 = format!("{:x}", Sha256::digest(&bytes));
+    if !computed_sha256.eq_ignore_ascii_case(&tokenizer.sha256) {
+        return Err(format!(
+            "SHA-256 checksum mismatch for {}: expected {}, computed {}",
+            tokenizer.filename, tokenizer.sha256, computed_sha256
+        ));
+    }
+
+    let tmp_path = target_dir.join(format!("{}.download.tmp", tokenizer.filename));
+    fs::write(&tmp_path, &bytes)
+        .map_err(|e| format!("failed writing tokenizer {}: {e}", tmp_path.display()))?;
+    if final_path.exists() {
+        fs::remove_file(&final_path)
+            .map_err(|e| format!("failed replacing tokenizer {}: {e}", final_path.display()))?;
+    }
+    fs::rename(&tmp_path, &final_path)
+        .map_err(|e| format!("failed moving tokenizer into place: {e}"))?;
+    Ok(())
+}
+
+fn ensure_tokenizer_asset_sync(
+    entry: &ModelArtifactEntry,
+    target_dir: &Path,
+) -> Result<(), String> {
+    let Some(tokenizer) = entry.tokenizer.as_ref() else {
+        return Ok(());
+    };
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(600))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        tokio::task::block_in_place(|| {
+            handle.block_on(ensure_tokenizer_asset(&client, tokenizer, target_dir))
+        })
+    } else {
+        tokio::runtime::Runtime::new()
+            .map_err(|e| format!("failed to create runtime: {e}"))?
+            .block_on(ensure_tokenizer_asset(&client, tokenizer, target_dir))
+    }
 }
 
 /// Downloads model weights from URL with streaming progress, computes SHA-256,
@@ -194,6 +305,9 @@ pub async fn download_and_verify_model<P: ProgressListener>(
     let final_path = target_dir.join(&entry.filename);
     if final_path.exists() {
         if verify_file_sha256(&final_path, &entry.sha256).unwrap_or(false) {
+            if let Some(tokenizer) = entry.tokenizer.as_ref() {
+                ensure_tokenizer_asset(client, tokenizer, target_dir).await?;
+            }
             listener.on_complete(&final_path);
             return Ok(final_path);
         } else {
@@ -264,16 +378,23 @@ pub async fn download_and_verify_model<P: ProgressListener>(
         )
     })?;
 
-    // Companion tokenizer sync (e.g. nio-viper-tokenizer.json)
+    if let Some(tokenizer) = entry.tokenizer.as_ref() {
+        ensure_tokenizer_asset(client, tokenizer, target_dir).await?;
+    }
+
+    // Preserve legacy Viper sidecar synchronization until its checksum is added
+    // to the manifest alongside the other companion tokenizer assets.
     if entry.filename.contains("viper") {
         let tok_path = target_dir.join("nio-viper-tokenizer.json");
         let tok_url = entry
             .download_url
             .replace("nio-viper.Q4_0.gguf", "nio-viper-tokenizer.json");
-        if let Ok(resp) = client.get(&tok_url).send().await {
-            if resp.status().is_success() {
-                if let Ok(bytes) = resp.bytes().await {
-                    let _ = fs::write(&tok_path, bytes);
+        if !tok_path.is_file() {
+            if let Ok(resp) = client.get(&tok_url).send().await {
+                if resp.status().is_success() {
+                    if let Ok(bytes) = resp.bytes().await {
+                        let _ = fs::write(&tok_path, bytes);
+                    }
                 }
             }
         }
@@ -304,6 +425,7 @@ pub fn ensure_model_ready(model_id: &str, custom_dir: Option<&Path>) -> Result<P
 
     let final_path = dir.join(&entry.filename);
     if final_path.exists() && verify_file_sha256(&final_path, &entry.sha256).unwrap_or(false) {
+        ensure_tokenizer_asset_sync(&entry, &dir)?;
         return Ok(final_path);
     }
 
@@ -311,6 +433,9 @@ pub fn ensure_model_ready(model_id: &str, custom_dir: Option<&Path>) -> Result<P
     if let Ok(dir_env) = env::var("NIOXS_MODELS_DIR") {
         let p = PathBuf::from(dir_env).join(&entry.filename);
         if p.exists() && verify_file_sha256(&p, &entry.sha256).unwrap_or(false) {
+            if let Some(parent) = p.parent() {
+                ensure_tokenizer_asset_sync(&entry, parent)?;
+            }
             return Ok(p);
         }
     }
@@ -320,7 +445,7 @@ pub fn ensure_model_ready(model_id: &str, custom_dir: Option<&Path>) -> Result<P
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))?;
 
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+    let download_res = if let Ok(handle) = tokio::runtime::Handle::try_current() {
         tokio::task::block_in_place(|| {
             handle.block_on(download_and_verify_model(
                 &client,
@@ -338,7 +463,9 @@ pub fn ensure_model_ready(model_id: &str, custom_dir: Option<&Path>) -> Result<P
             &dir,
             &ConsoleProgress,
         ))
-    }
+    };
+
+    download_res
 }
 
 /// Interactive or automated model probe and download.
@@ -363,6 +490,7 @@ pub fn prompt_and_pull_if_needed(model_id: &str, auto_yes: bool) -> Result<PathB
     let dir = resolve_models_dir();
     let final_path = dir.join(&entry.filename);
     if final_path.exists() && verify_file_sha256(&final_path, &entry.sha256).unwrap_or(false) {
+        ensure_tokenizer_asset_sync(&entry, &dir)?;
         return Ok(final_path);
     }
 
@@ -370,6 +498,9 @@ pub fn prompt_and_pull_if_needed(model_id: &str, auto_yes: bool) -> Result<PathB
     if let Ok(dir_env) = env::var("NIOXS_MODELS_DIR") {
         let p = PathBuf::from(dir_env).join(&entry.filename);
         if p.exists() && verify_file_sha256(&p, &entry.sha256).unwrap_or(false) {
+            if let Some(parent) = p.parent() {
+                ensure_tokenizer_asset_sync(&entry, parent)?;
+            }
             return Ok(p);
         }
     }
@@ -481,6 +612,16 @@ mod tests {
             assert_eq!(entry.size_bytes, size_bytes, "size for {id}");
             assert_eq!(entry.download_url, url, "download_url for {id}");
         }
+        let blue = get_manifest_entry(MODEL_BLUE).unwrap();
+        assert_eq!(
+            blue.tokenizer,
+            Some(ModelTokenizerArtifact {
+                filename: "blue-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.1/blue-tokenizer.json".into(),
+                sha256: "8fcc6f6a32f0bd5ccdac48a0522dcd1cc575e5daf591f09d489e07f0d9035b2e".into(),
+                size_bytes: 3_911_372,
+            })
+        );
     }
 
     #[test]
@@ -564,6 +705,7 @@ mod tests {
             download_url: format!("http://{addr}/model.gguf"),
             sha256: expected_sha256.clone(),
             size_bytes: payload.len() as u64,
+            tokenizer: None,
         };
 
         let client = reqwest::Client::new();
@@ -648,6 +790,7 @@ mod tests {
             download_url: format!("http://{addr}/model.gguf"),
             sha256: expected_sha256,
             size_bytes: payload.len() as u64,
+            tokenizer: None,
         };
 
         let client = reqwest::Client::new();
@@ -713,6 +856,7 @@ mod tests {
             download_url: format!("http://{addr}/model.gguf"),
             sha256: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".into(),
             size_bytes: payload.len() as u64,
+            tokenizer: None,
         };
 
         let client = reqwest::Client::new();

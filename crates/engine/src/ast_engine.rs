@@ -1214,6 +1214,22 @@ impl LayerDesc {
         }
     }
 
+    #[inline(always)]
+    pub fn prefetch_layer(&self, mmap: &[u8]) {
+        let page_size = 4096;
+        let aligned_start = (self.min_offset / page_size) * page_size;
+        let aligned_len =
+            ((self.max_offset - aligned_start + page_size - 1) / page_size) * page_size;
+        #[cfg(unix)]
+        unsafe {
+            libc::madvise(
+                mmap.as_ptr().add(aligned_start) as *mut libc::c_void,
+                aligned_len,
+                libc::MADV_WILLNEED,
+            );
+        }
+    }
+
     pub fn forward(
         &self,
         mmap: &[u8],
@@ -1812,6 +1828,12 @@ impl AstMicroEngine {
         Ok(engine)
     }
 
+    pub fn new_single_threaded(model_path: &Path) -> Result<Self> {
+        let mut engine = Self::new(model_path)?;
+        engine.pool = SpinThreadPool::new_single_threaded();
+        Ok(engine)
+    }
+
     #[inline(always)]
     pub fn set_resident_layers(&mut self, n: usize) {
         self.resident_layers = n;
@@ -2058,6 +2080,10 @@ impl AstMicroEngine {
         let window = self.rolling_window.max(1);
 
         for layer_idx in 0..self.block_count {
+            // Asynchronously prefetch next layer into page cache while CPU computes current layer
+            if layer_idx + 1 < self.block_count && (layer_idx + 1) >= self.resident_layers {
+                self.layers[layer_idx + 1].prefetch_layer(&self.mmap);
+            }
             let layer = &self.layers[layer_idx];
             let mut step = 0;
 

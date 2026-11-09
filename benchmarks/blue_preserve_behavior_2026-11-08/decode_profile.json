@@ -1,0 +1,68 @@
+{
+  "method": "User cpu-clock sampling after first visible output; file-offset sample addresses converted using ELF PT_LOAD segments, then resolved against the matching ELF symbol table because perf lacks libelf. CPU samples include worker spinning and do not equal wall-time attribution.",
+  "samples": 8187,
+  "resolved_samples": 8136,
+  "functions": [
+    {
+      "function": "_RNvNtCslSb6BRmi5LB_12nioxs_engine6quants35vec_dot_iq3_xxs_q8_k_2rows_avx2_ptr",
+      "samples": 4902,
+      "percent": 59.87541223891535
+    },
+    {
+      "function": "_RNCNvMs0_NtCslSb6BRmi5LB_12nioxs_engine4poolNtB7_14SpinThreadPool3new0B9_",
+      "samples": 1555,
+      "percent": 18.993526322218152
+    },
+    {
+      "function": "_RNvNtCslSb6BRmi5LB_12nioxs_engine6quants37vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr",
+      "samples": 1059,
+      "percent": 12.935141077317699
+    },
+    {
+      "function": "_RNvMs3_NtCslSb6BRmi5LB_12nioxs_engine10ast_engineNtB5_14AstMicroEngine32forward_batch_layer_outer_traced",
+      "samples": 297,
+      "percent": 3.6277024551117627
+    },
+    {
+      "function": "_RNvNtCslSb6BRmi5LB_12nioxs_engine6quants43vec_dot_iq3_xxs_q8_k_2rows_2tokens_avx2_ptr",
+      "samples": 202,
+      "percent": 2.4673262489312324
+    },
+    {
+      "function": "_RNvMs1_NtCslSb6BRmi5LB_12nioxs_engine10ast_engineNtB5_9LayerDesc15forward_3tokens",
+      "samples": 54,
+      "percent": 0.659582264565775
+    },
+    {
+      "function": "unresolved",
+      "samples": 51,
+      "percent": 0.622938805423232
+    },
+    {
+      "function": "_RNvMs3_NtCslSb6BRmi5LB_12nioxs_engine10ast_engineNtB5_14AstMicroEngine24sample_token_from_x_norm",
+      "samples": 42,
+      "percent": 0.5130084279956028
+    },
+    {
+      "function": "_RNvMs1_NtCslSb6BRmi5LB_12nioxs_engine10ast_engineNtB5_9LayerDesc15forward_2tokens",
+      "samples": 12,
+      "percent": 0.14657383657017223
+    },
+    {
+      "function": "_RNvNtCslSb6BRmi5LB_12nioxs_engine6quants22quantize_row_q8_k_avx2",
+      "samples": 7,
+      "percent": 0.0855014046659338
+    },
+    {
+      "function": "_RNvNtCslSb6BRmi5LB_12nioxs_engine6quants21gemv_iq3_xxs_prequant",
+      "samples": 5,
+      "percent": 0.061072431904238424
+    },
+    {
+      "function": "_RNvNtCslSb6BRmi5LB_12nioxs_engine6quants21dequantize_row_iq4_nl",
+      "samples": 1,
+      "percent": 0.012214486380847685
+    }
+  ],
+  "binary_sha256": "39fb879a5442eac120f76b0566fd38722b8f4b8e1038691f88d9ab15eefa0b91"
+}

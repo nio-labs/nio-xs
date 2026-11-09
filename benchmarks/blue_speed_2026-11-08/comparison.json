@@ -1,0 +1,140 @@
+{
+  "baseline_original": {
+    "binary_sha256": "5a8f634ae7eb52c6fccbc2e249203812e2b012e07475a44eafbd3ad81d4d5b3a",
+    "exit_code": 0,
+    "peak_rss_mib": 474.375,
+    "peak_anon_mib": 193.26953125,
+    "runs": [
+      {
+        "cold_words_per_second": 1.0675165210979707,
+        "device": "cpu",
+        "first_chunk_seconds_including_prefill": 18.090874341,
+        "first_chunk_words": 4,
+        "load_seconds": 0.596239465,
+        "max_tokens": 256,
+        "method": "Same loaded AstEngine; production decoding. Streaming rate divides words after the first chunk by time from first to last nonempty chunk; loading, prefill, first-chunk words and shutdown are excluded. Chunk buffering makes this approximate, not exact model-token decode speed. Displayed thought text counts as words.",
+        "model": "blue",
+        "prompt": "Explain how a refrigerator moves heat in about 120 words.",
+        "request": 1,
+        "request_seconds_including_prefill": 30.31663106,
+        "response": "Refrigerators use the vaporization of a refrigerant like Freon to absorb heat from inside the fridge, then condense it back into liquid form outside the fridge, effectively removing heat and keeping things cool.",
+        "streaming_seconds_first_to_last_chunk": 12.215410867,
+        "streaming_words_per_second": 2.374050313636495,
+        "visible_words": 33,
+        "words_after_first_chunk": 29,
+        "words_per_second_including_prefill": 1.0885114488707308
+      },
+      {
+        "cold_words_per_second": null,
+        "device": "cpu",
+        "first_chunk_seconds_including_prefill": 14.038155448,
+        "first_chunk_words": 4,
+        "load_seconds": 0.596239465,
+        "max_tokens": 256,
+        "method": "Same loaded AstEngine; production decoding. Streaming rate divides words after the first chunk by time from first to last nonempty chunk; loading, prefill, first-chunk words and shutdown are excluded. Chunk buffering makes this approximate, not exact model-token decode speed. Displayed thought text counts as words.",
+        "model": "blue",
+        "prompt": "Explain how a refrigerator moves heat in about 120 words.",
+        "request": 2,
+        "request_seconds_including_prefill": 26.731354758,
+        "response": "Refrigerators use the vaporization of a refrigerant like Freon to absorb heat from inside the fridge, then condense it back into liquid form outside the fridge, effectively removing heat and keeping things cool.",
+        "streaming_seconds_first_to_last_chunk": 12.684161927,
+        "streaming_words_per_second": 2.286315813918259,
+        "visible_words": 33,
+        "words_after_first_chunk": 29,
+        "words_per_second_including_prefill": 1.2345053327356692
+      }
+    ]
+  },
+  "baseline_short_prompt": {
+    "binary_sha256": "5a8f634ae7eb52c6fccbc2e249203812e2b012e07475a44eafbd3ad81d4d5b3a",
+    "exit_code": 0,
+    "peak_rss_mib": 464.7421875,
+    "peak_anon_mib": 184.13671875,
+    "runs": [
+      {
+        "cold_words_per_second": 1.8486942336549035,
+        "device": "cpu",
+        "first_chunk_seconds_including_prefill": 10.156999866,
+        "first_chunk_words": 4,
+        "load_seconds": 0.189193064,
+        "max_tokens": 256,
+        "method": "Same loaded AstEngine; production decoding. Streaming rate divides words after the first chunk by time from first to last nonempty chunk; loading, prefill, first-chunk words and shutdown are excluded. Chunk buffering makes this approximate, not exact model-token decode speed. Displayed thought text counts as words.",
+        "model": "blue",
+        "prompt": "<|im_start|>system\nYou are Blue, Nio's technical companion. Answer the user's actual question directly and accurately in the requested format. Be concise and relevant. Use standard terms; never invent API names or details. State uncertainty when needed.<|im_end|>\n<|im_start|>user\nExplain how a refrigerator moves heat in about 120 words.<|im_end|>\n<|im_start|>assistant\n",
+        "request": 1,
+        "request_seconds_including_prefill": 28.479690646,
+        "response": "A refrigerator removes heat from inside the compartment, where it's warmer than outside air. The coolant absorbs this excess heat and releases it to the external environment through the condenser coils on the back of the unit. This process helps maintain a lower temperature inside the fridge compared to the ambient room temperature.",
+        "streaming_seconds_first_to_last_chunk": 18.313690295,
+        "streaming_words_per_second": 2.6755940070351616,
+        "visible_words": 53,
+        "words_after_first_chunk": 49,
+        "words_per_second_including_prefill": 1.8609752703702171
+      },
+      {
+        "cold_words_per_second": null,
+        "device": "cpu",
+        "first_chunk_seconds_including_prefill": 10.762070451,
+        "first_chunk_words": 4,
+        "load_seconds": 0.189193064,
+        "max_tokens": 256,
+        "method": "Same loaded AstEngine; production decoding. Streaming rate divides words after the first chunk by time from first to last nonempty chunk; loading, prefill, first-chunk words and shutdown are excluded. Chunk buffering makes this approximate, not exact model-token decode speed. Displayed thought text counts as words.",
+        "model": "blue",
+        "prompt": "<|im_start|>system\nYou are Blue, Nio's technical companion. Answer the user's actual question directly and accurately in the requested format. Be concise and relevant. Use standard terms; never invent API names or details. State uncertainty when needed.<|im_end|>\n<|im_start|>user\nExplain how a refrigerator moves heat in about 120 words.<|im_end|>\n<|im_start|>assistant\n",
+        "request": 2,
+        "request_seconds_including_prefill": 30.670830242,
+        "response": "A refrigerator removes heat from inside the compartment, where it's warmer than outside air. The coolant absorbs this excess heat and releases it to the external environment through the condenser coils on the back of the unit. This process helps maintain a lower temperature inside the fridge compared to the ambient room temperature.",
+        "streaming_seconds_first_to_last_chunk": 19.895839003,
+        "streaming_words_per_second": 2.462826523305276,
+        "visible_words": 53,
+        "words_after_first_chunk": 49,
+        "words_per_second_including_prefill": 1.7280262575814753
+      }
+    ]
+  },
+  "candidate_short_prompt": {
+    "binary_sha256": "7905309ad2ef560c3f7436f25d0075de7641c9b2b1ba133df5d3a5c11436a9a8",
+    "exit_code": 0,
+    "peak_rss_mib": 466.28515625,
+    "peak_anon_mib": 184.14453125,
+    "runs": [
+      {
+        "cold_words_per_second": 1.7597620868436579,
+        "device": "cpu",
+        "first_chunk_seconds_including_prefill": 10.391924434,
+        "first_chunk_words": 4,
+        "load_seconds": 0.174221802,
+        "max_tokens": 256,
+        "method": "Same loaded AstEngine; production decoding. Streaming rate divides words after the first chunk by time from first to last nonempty chunk; loading, prefill, first-chunk words and shutdown are excluded. Chunk buffering makes this approximate, not exact model-token decode speed. Displayed thought text counts as words.",
+        "model": "blue",
+        "prompt": "Explain how a refrigerator moves heat in about 120 words.",
+        "request": 1,
+        "request_seconds_including_prefill": 29.943485811,
+        "response": "A refrigerator removes heat from inside the compartment, where it's warmer than outside air. The coolant absorbs this excess heat and releases it to the external environment through the condenser coils on the back of the unit. This process helps maintain a lower temperature inside the fridge compared to the ambient room temperature.",
+        "streaming_seconds_first_to_last_chunk": 19.543449371,
+        "streaming_words_per_second": 2.507233962122868,
+        "visible_words": 53,
+        "words_after_first_chunk": 49,
+        "words_per_second_including_prefill": 1.7700010057122337
+      },
+      {
+        "cold_words_per_second": null,
+        "device": "cpu",
+        "first_chunk_seconds_including_prefill": 10.365171796,
+        "first_chunk_words": 4,
+        "load_seconds": 0.174221802,
+        "max_tokens": 256,
+        "method": "Same loaded AstEngine; production decoding. Streaming rate divides words after the first chunk by time from first to last nonempty chunk; loading, prefill, first-chunk words and shutdown are excluded. Chunk buffering makes this approximate, not exact model-token decode speed. Displayed thought text counts as words.",
+        "model": "blue",
+        "prompt": "Explain how a refrigerator moves heat in about 120 words.",
+        "request": 2,
+        "request_seconds_including_prefill": 30.327063656,
+        "response": "A refrigerator removes heat from inside the compartment, where it's warmer than outside air. The coolant absorbs this excess heat and releases it to the external environment through the condenser coils on the back of the unit. This process helps maintain a lower temperature inside the fridge compared to the ambient room temperature.",
+        "streaming_seconds_first_to_last_chunk": 19.953121482999997,
+        "streaming_words_per_second": 2.455756110228059,
+        "visible_words": 53,
+        "words_after_first_chunk": 49,
+        "words_per_second_including_prefill": 1.7476139662309285
+      }
+    ]
+  }
+}

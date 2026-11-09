@@ -1,0 +1,16 @@
+[
+  {
+    "build": "before",
+    "exit_code": 0,
+    "adapter_probe_calls": 2,
+    "response": "Hello! I'm [Your Name] and I'll be your friend on this\n",
+    "stderr": ""
+  },
+  {
+    "build": "after",
+    "exit_code": 0,
+    "adapter_probe_calls": 0,
+    "response": "Hello! I'm [Your Name] and I'll be your friend on this\n",
+    "stderr": ""
+  }
+]

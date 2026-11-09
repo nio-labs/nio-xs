@@ -1,0 +1,1 @@
+NIOXS_INFERENCE_STATS {"backend":"native_cpu","decode_seconds":0.925208438,"decode_tokens_per_second":2.1616750538109555,"generated_token_ids":[29946,29906],"generated_tokens":2,"model":"blue","prefill_seconds":14.522901479,"prompt_tokens":80,"speculation_mode":"on","steps":{"autoregressive_steps":1,"matched_drafts":0,"pair_steps":0,"proposed_drafts":2,"trio_steps":1}}

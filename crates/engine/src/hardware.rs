@@ -6,6 +6,85 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn adapter_inventory_handles_multiple_devices_and_bad_rows() {
+        let devices = parse_host_adapters(
+            "Intel Arc|2147483648\r\nNVIDIA GPU|4294967296\nmissing separator\nBad|unknown\n",
+        );
+        assert_eq!(
+            devices,
+            vec![("Intel Arc".into(), 2048), ("NVIDIA GPU".into(), 4096)]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_collects_completed_output() {
+        let result = probe_output(
+            Command::new("sh").args(["-c", "printf ready"]),
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        assert!(result.status.success());
+        assert_eq!(result.stdout, b"ready");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stalled_probe_is_killed_and_reaped() {
+        let started = Instant::now();
+        assert!(
+            probe_output(
+                Command::new("sh").args(["-c", "exec sleep 5"]),
+                Duration::from_millis(50)
+            )
+            .is_none()
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+}
+
+/// Bound tool discovery so a hung driver probe cannot block startup indefinitely.
+fn probe_output(command: &mut Command, timeout: Duration) -> Option<Output> {
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return child.wait_with_output().ok(),
+            Ok(None) if started.elapsed() < timeout => {
+                std::thread::sleep(Duration::from_millis(10))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn parse_host_adapters(text: &str) -> Vec<(String, u64)> {
+    text.lines()
+        .filter_map(|line| {
+            let (name, memory) = line.trim().rsplit_once('|')?;
+            let bytes = memory.trim().parse::<u64>().ok()?;
+            Some((name.trim().to_owned(), bytes / (1024 * 1024)))
+        })
+        .collect()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DevicePreference {
@@ -163,21 +242,10 @@ impl ActiveDevice {
         // Windows native path
         #[cfg(target_os = "windows")]
         {
-            if let Ok(output) = std::process::Command::new("powershell")
-                .args([
-                    "-NoProfile",
-                    "-Command",
-                    "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name",
-                ])
-                .output()
-            {
-                if output.status.success() {
-                    let text = String::from_utf8_lossy(&output.stdout);
-                    if text.to_ascii_lowercase().contains("arc") {
-                        let vram_mb = Self::query_host_adapter_vram("arc");
-                        return Some(Self::IntelArc { vram_mb });
-                    }
-                }
+            if let Some(vram_mb) = Self::query_host_adapter_vram("arc") {
+                return Some(Self::IntelArc {
+                    vram_mb: Some(vram_mb),
+                });
             }
         }
 
@@ -194,39 +262,32 @@ impl ActiveDevice {
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     fn query_host_adapter_vram(adapter_name: &str) -> Option<u64> {
-        #[cfg(target_os = "linux")]
-        let shell = "powershell.exe";
-        #[cfg(target_os = "windows")]
-        let shell = "powershell";
-        let output = std::process::Command::new(shell)
-            .args([
-                "-NoProfile",
-                "-Command",
+        static ADAPTERS: std::sync::OnceLock<Vec<(String, u64)>> = std::sync::OnceLock::new();
+        let adapters = ADAPTERS.get_or_init(|| {
+            #[cfg(target_os = "linux")]
+            let shell = "powershell.exe";
+            #[cfg(target_os = "windows")]
+            let shell = "powershell";
+            probe_output(Command::new(shell).args([
+                "-NoProfile", "-NonInteractive", "-Command",
                 "Get-CimInstance Win32_VideoController | ForEach-Object { \"{0}|{1}\" -f $_.Name,$_.AdapterRAM }",
-            ])
-            .output()
-            .ok()?;
-        if output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout);
-            for line in text.lines() {
-                let Some((name, memory)) = line.trim().rsplit_once('|') else {
-                    continue;
-                };
-                if name.to_ascii_lowercase().contains(adapter_name) {
-                    if let Ok(bytes) = memory.trim().parse::<u64>() {
-                        return Some(bytes / (1024 * 1024));
-                    }
-                }
-            }
-        }
-        None
+            ]), Duration::from_secs(3))
+                .filter(|output| output.status.success())
+                .map(|output| parse_host_adapters(&String::from_utf8_lossy(&output.stdout)))
+                .unwrap_or_default()
+        });
+        adapters
+            .iter()
+            .find(|(name, _)| name.to_ascii_lowercase().contains(adapter_name))
+            .map(|(_, memory)| *memory)
     }
 
     fn query_nvidia_smi_vram() -> Option<u64> {
-        let output = std::process::Command::new("nvidia-smi")
-            .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
-            .output()
-            .ok()?;
+        let output = probe_output(
+            Command::new("nvidia-smi")
+                .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"]),
+            Duration::from_secs(2),
+        )?;
         if output.status.success() {
             let text = String::from_utf8_lossy(&output.stdout);
             if let Some(first_line) = text.lines().next() {
@@ -240,11 +301,10 @@ impl ActiveDevice {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
             // Apple Silicon unified memory
-            let output = std::process::Command::new("sysctl")
-                .arg("-n")
-                .arg("hw.memsize")
-                .output()
-                .ok()?;
+            let output = probe_output(
+                Command::new("sysctl").arg("-n").arg("hw.memsize"),
+                Duration::from_secs(2),
+            )?;
             if output.status.success() {
                 let text = String::from_utf8_lossy(&output.stdout);
                 if let Ok(bytes) = text.trim().parse::<u64>() {
@@ -270,10 +330,10 @@ impl ActiveDevice {
                 || Path::new("/etc/vulkan/icd.d").exists()
             {
                 // Verify vulkaninfo runs successfully
-                if let Ok(output) = std::process::Command::new("vulkaninfo")
-                    .arg("--summary")
-                    .output()
-                {
+                if let Some(output) = probe_output(
+                    Command::new("vulkaninfo").arg("--summary"),
+                    Duration::from_secs(2),
+                ) {
                     if output.status.success() {
                         return Some(Self::Vulkan);
                     }

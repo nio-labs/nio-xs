@@ -1,0 +1,2 @@
+Loaded native CPU model; prefill starts: 1024/8192 tokens
+Prefill finished after 22.20s; decoding retrieval answer

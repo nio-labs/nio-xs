@@ -1,0 +1,9 @@
+model,device,status,model_load_seconds,first_response_seconds_including_load_and_prefill,streaming_words_s_min,streaming_words_s_max,reason
+Skate,CPU,measured,0.165116589,0.8468771310000001,78.97082093646371,90.60205051240236,
+Skate,GPU,unavailable,,,,,No llama-cli on PATH and neither NIOXS_GPU_RUNNER nor NIOXS_LLAMA_CLI is configured. GPU device nodes are visible but no GPU execution was measured.
+Manta,CPU,measured,0.799147591,3.0755423040000003,24.095825279897714,24.269121826557004,
+Manta,GPU,unavailable,,,,,No llama-cli on PATH and neither NIOXS_GPU_RUNNER nor NIOXS_LLAMA_CLI is configured. GPU device nodes are visible but no GPU execution was measured.
+Beluga,CPU,measured,0.707038718,6.994358356999999,6.1162118493093365,6.236449848932142,
+Beluga,GPU,unavailable,,,,,No llama-cli on PATH and neither NIOXS_GPU_RUNNER nor NIOXS_LLAMA_CLI is configured. GPU device nodes are visible but no GPU execution was measured.
+Blue,CPU,measured,0.884191219,21.493685176000003,2.155067147827795,2.2715134071157115,
+Blue,GPU,unavailable,,,,,No llama-cli on PATH and neither NIOXS_GPU_RUNNER nor NIOXS_LLAMA_CLI is configured. GPU device nodes are visible but no GPU execution was measured.

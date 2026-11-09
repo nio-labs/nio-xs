@@ -2012,8 +2012,31 @@ impl SpinThreadPool {
         }
     }
 
+    pub fn new_single_threaded() -> Self {
+        let shared = Arc::new(SharedState {
+            task: std::cell::UnsafeCell::new(None),
+            generation: AtomicU32::new(0),
+            done_count: AtomicU32::new(0),
+            running: AtomicBool::new(false),
+            spinning: AtomicBool::new(false),
+            mutex: Mutex::new(()),
+            condvar: Condvar::new(),
+        });
+        Self {
+            shared,
+            _threads: Vec::new(),
+        }
+    }
+
     #[inline(always)]
     pub fn run_task(&self, task: GemvTask) {
+        if self._threads.is_empty() {
+            unsafe {
+                task.execute(0, 1);
+            }
+            return;
+        }
+
         unsafe {
             *self.shared.task.get() = Some(task);
         }
@@ -2032,7 +2055,7 @@ impl SpinThreadPool {
     }
 
     pub fn park(&self) {
-        if !self.shared.spinning.load(Ordering::Acquire) {
+        if self._threads.is_empty() || !self.shared.spinning.load(Ordering::Acquire) {
             return;
         }
         let _guard = self.shared.mutex.lock().unwrap();
@@ -2041,7 +2064,7 @@ impl SpinThreadPool {
     }
 
     pub fn unpark(&self) {
-        if self.shared.spinning.load(Ordering::Acquire) {
+        if self._threads.is_empty() || self.shared.spinning.load(Ordering::Acquire) {
             return;
         }
         unsafe {

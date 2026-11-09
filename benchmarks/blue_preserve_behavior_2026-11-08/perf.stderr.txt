@@ -1,0 +1,2 @@
+[ perf record: Woken up 1170 times to write data ]
+[ perf record: Captured and wrote 0.319 MB /tmp/blue-decode-symbols.data (8187 samples) ]

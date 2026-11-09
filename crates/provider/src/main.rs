@@ -72,6 +72,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             "manta" | "nio-manta" => "nio-manta",
             "beluga" | "nio-beluga" => "nio-beluga",
             "cuda" | "nio-cuda" => "nio-cuda",
+            "blue" | "nio-blue" => "blue",
             other => other,
         };
         let path = nioxs_artifacts::prompt_and_pull_if_needed(normalized, auto_yes)
@@ -432,7 +433,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let engine = nioxs_engine::AstEngine::for_model_with_device("blue", device_pref)?;
         let max_tokens = custom_max_tokens.unwrap_or(4096);
         let formatted_prompt = format!(
-            "<|im_start|>system\nYou are Blue, Nio's Flagship Sovereign Reflex Companion. Speak with the calm, approachable, and grounded voice of a seasoned staff engineer pair-programming with a colleague. Be conversational and engaging, but keep your dialogue focused and high-signal without fluff or sycophancy. When complex reasoning is required, verify invariants inside concise <think>...</think> tags (under 100 tokens), close your thoughts with </think>, and deliver your answer naturally. Reserve code blocks strictly for executable code.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+            nioxs_engine::blue_system()
         );
         let mut rx = engine
             .generate_stream(formatted_prompt, max_tokens, 0.35, 0.88)

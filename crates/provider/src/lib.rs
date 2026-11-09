@@ -256,9 +256,7 @@ async fn microlm_chat_handler(
     let mut prompt = String::new();
     let system_prompt = match model_name {
         "nio-beluga" | "beluga" => nioxs_engine::beluga_system(),
-        "nio-blue" | "blue" => {
-            "You are Blue, Nio's Flagship Sovereign Reflex Companion. Speak with the calm, approachable, and grounded voice of a seasoned staff engineer pair-programming with a colleague. Be conversational and engaging, but keep your dialogue focused and high-signal without fluff or sycophancy. When complex reasoning is required, verify invariants inside concise <think>...</think> tags (under 100 tokens), close your thoughts with </think>, and deliver your answer naturally. Reserve code blocks strictly for executable code."
-        }
+        "nio-blue" | "blue" => nioxs_engine::blue_system(),
         "nio-skate" | "skate" => {
             "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and helpful. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Beluga. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."
         }
@@ -298,10 +296,7 @@ async fn microlm_chat_handler(
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    let is_companion = matches!(
-        model_name,
-        "beluga" | "nio-beluga" | "manta" | "nio-manta" | "skate" | "nio-skate"
-    );
+    let is_companion = is_companion_model(model_name);
     let full_system = if is_companion {
         if client_system.is_empty() {
             format!("{system_prompt}{tools_xml}")
@@ -529,6 +524,20 @@ async fn microlm_chat_handler(
             ),
         }
     }
+}
+
+fn is_companion_model(model_name: &str) -> bool {
+    matches!(
+        model_name,
+        "beluga"
+            | "nio-beluga"
+            | "blue"
+            | "nio-blue"
+            | "manta"
+            | "nio-manta"
+            | "skate"
+            | "nio-skate"
+    )
 }
 
 async fn chat(
@@ -2379,6 +2388,12 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use tower::ServiceExt;
+
+    #[test]
+    fn blue_aliases_keep_companion_policy_when_client_system_prompt_is_present() {
+        assert!(is_companion_model("blue"));
+        assert!(is_companion_model("nio-blue"));
+    }
 
     #[test]
     fn caller_absolute_root_and_children_are_relayed_as_relative_paths() {

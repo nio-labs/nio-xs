@@ -109,9 +109,16 @@ fn main() -> Result<()> {
 
     let t0 = Instant::now();
     let mut engine = AstMicroEngine::new(&model_path)?;
-    // Match the production CPU path in AstEngine::ensure_loaded.
-    engine.set_resident_layers(2);
-    engine.set_rolling_window(2);
+    let resident_env = std::env::var("NIOXS_BLUE_RESIDENT_LAYERS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(2);
+    let window_env = std::env::var("NIOXS_BLUE_ROLLING_WINDOW")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(2);
+    engine.set_resident_layers(resident_env);
+    engine.set_rolling_window(window_env);
 
     let load_time = t0.elapsed().as_secs_f64();
     let (load_anon, load_rss, load_hwm) = memory_mb();
@@ -170,7 +177,8 @@ fn main() -> Result<()> {
         engine.set_sampling(0.35, 0.88, 1.05, 64);
 
         let formatted = format!(
-            "<|im_start|>system\nYou are Blue, Nio's Flagship Sovereign Reflex Companion. Speak with the calm, approachable, and grounded voice of a seasoned staff engineer pair-programming with a colleague. Be conversational and engaging, but keep your dialogue focused and high-signal without fluff or sycophancy. When complex reasoning is required, verify invariants inside concise <think>...</think> tags (under 100 tokens), close your thoughts with </think>, and deliver your answer naturally. Reserve code blocks strictly for executable code.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+            nioxs_engine::blue_system()
         );
         let encoded = tokenizer
             .encode(formatted.as_str(), false)
