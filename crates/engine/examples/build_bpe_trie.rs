@@ -28,7 +28,9 @@ fn collect_files(dir: &Path, files: &mut Vec<PathBuf>, depth: usize) {
 }
 
 fn main() -> Result<()> {
-    let tokenizer_path = PathBuf::from("/home/mn/nio-labs/nio-xs-models/blue-tokenizer.json");
+    let tokenizer_path = std::env::var("NIOXS_TOKENIZER")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/root/nio-labs/models/blue-tokenizer.json"));
     let tokenizer = Tokenizer::from_file(&tokenizer_path).unwrap();
 
     let mut bigrams: HashMap<u32, HashMap<u32, usize>> = HashMap::new();
@@ -36,9 +38,8 @@ fn main() -> Result<()> {
     let mut total_tokens = 0usize;
 
     // 1. Mine Blue's exact training dataset (weighted 5x so Blue's native phrasing dominates)
-    if let Ok(gold) =
-        std::fs::read_to_string("/home/mn/nio-labs/nio-ideas/dataset/nio_blue_gold_dataset.jsonl")
-    {
+    let gold_path = PathBuf::from("/root/nio-labs/nio-ideas/dataset/nio_blue_gold_dataset.jsonl");
+    if let Ok(gold) = std::fs::read_to_string(&gold_path) {
         for line in gold.lines() {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
                 let prompt = val.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
@@ -65,7 +66,7 @@ fn main() -> Result<()> {
 
     // 2. Also scan workspace docs/code
     let mut files = Vec::new();
-    collect_files(Path::new("/home/mn/nio-labs"), &mut files, 0);
+    collect_files(Path::new("/root/nio-labs"), &mut files, 0);
 
     for f in &files {
         if let Ok(content) = std::fs::read_to_string(f) {
@@ -94,13 +95,13 @@ fn main() -> Result<()> {
             continue;
         }
         let total: usize = nexts.values().sum();
-        if total >= 8 {
+        if total >= 4 {
             if let Some((&t2, &cnt)) = nexts.iter().max_by_key(|&(_, c)| *c) {
                 if is_special(t2) {
                     continue;
                 }
                 let ratio = cnt as f64 / total as f64;
-                if ratio >= 0.65 {
+                if ratio >= 0.65 && cnt >= 3 {
                     out_bigrams.insert(t1, t2);
                 }
             }
@@ -113,13 +114,13 @@ fn main() -> Result<()> {
             continue;
         }
         let total: usize = nexts.values().sum();
-        if total >= 10 {
+        if total >= 4 {
             if let Some((&t3, &cnt)) = nexts.iter().max_by_key(|&(_, c)| *c) {
                 if is_special(t3) {
                     continue;
                 }
                 let ratio = cnt as f64 / total as f64;
-                if ratio >= 0.75 && cnt >= 8 {
+                if ratio >= 0.70 && cnt >= 4 {
                     let key = ((t1 as u64) << 32) | (t2 as u64);
                     out_trigrams.insert(key, t3);
                 }
@@ -133,13 +134,13 @@ fn main() -> Result<()> {
 
     let bi_bytes = serde_json::to_vec(&out_bigrams)?;
     std::fs::write(
-        "/home/mn/nio-labs/nio-xs/crates/engine/src/blue_subwords.json",
+        "/root/nio-labs/nio-xs/crates/engine/src/blue_subwords.json",
         &bi_bytes,
     )?;
 
     let tri_bytes = serde_json::to_vec(&out_trigrams)?;
     std::fs::write(
-        "/home/mn/nio-labs/nio-xs/crates/engine/src/blue_trigrams.json",
+        "/root/nio-labs/nio-xs/crates/engine/src/blue_trigrams.json",
         &tri_bytes,
     )?;
     println!(

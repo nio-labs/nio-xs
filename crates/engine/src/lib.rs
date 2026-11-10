@@ -153,6 +153,7 @@ impl TokenOutputStream {
 
 const UNIVERSAL_SUBWORDS_JSON: &[u8] = include_bytes!("universal_subwords.json");
 const BLUE_SUBWORDS_JSON: &[u8] = include_bytes!("blue_subwords.json");
+const BLUE_TRIGRAMS_JSON: &[u8] = include_bytes!("blue_trigrams.json");
 
 fn static_subwords(is_blue: bool) -> &'static std::collections::HashMap<u32, u32> {
     static BLUE_SUB: std::sync::OnceLock<std::collections::HashMap<u32, u32>> =
@@ -163,6 +164,18 @@ fn static_subwords(is_blue: bool) -> &'static std::collections::HashMap<u32, u32
         BLUE_SUB.get_or_init(|| serde_json::from_slice(BLUE_SUBWORDS_JSON).unwrap_or_default())
     } else {
         UNIV_SUB.get_or_init(|| serde_json::from_slice(UNIVERSAL_SUBWORDS_JSON).unwrap_or_default())
+    }
+}
+
+fn static_trigrams(is_blue: bool) -> &'static std::collections::HashMap<u64, u32> {
+    static BLUE_TRI: std::sync::OnceLock<std::collections::HashMap<u64, u32>> =
+        std::sync::OnceLock::new();
+    static EMPTY_TRI: std::sync::OnceLock<std::collections::HashMap<u64, u32>> =
+        std::sync::OnceLock::new();
+    if is_blue {
+        BLUE_TRI.get_or_init(|| serde_json::from_slice(BLUE_TRIGRAMS_JSON).unwrap_or_default())
+    } else {
+        EMPTY_TRI.get_or_init(std::collections::HashMap::new)
     }
 }
 
@@ -181,6 +194,7 @@ impl ZwCache {
 
     pub fn new_for_model(is_blue: bool) -> Self {
         let _ = static_subwords(is_blue);
+        let _ = static_trigrams(is_blue);
         Self {
             trigrams: std::collections::HashMap::new(),
             bigrams: std::collections::HashMap::new(),
@@ -225,10 +239,23 @@ impl ZwCache {
         }
 
         if let Some(p2) = prev2 {
+            let key = ((p2 as u64) << 32) | (prev1 as u64);
+            if let Some(&next) = static_trigrams(self.is_blue).get(&key) {
+                return Some(next);
+            }
+
             if gen_tokens.len() >= 4 {
                 for i in (1..gen_tokens.len() - 1).rev() {
                     if gen_tokens[i - 1] == p2 && gen_tokens[i] == prev1 {
                         return Some(gen_tokens[i + 1]);
+                    }
+                }
+            }
+
+            if self.prompt_tokens.len() >= 3 {
+                for i in (1..self.prompt_tokens.len() - 1).rev() {
+                    if self.prompt_tokens[i - 1] == p2 && self.prompt_tokens[i] == prev1 {
+                        return Some(self.prompt_tokens[i + 1]);
                     }
                 }
             }
@@ -279,6 +306,10 @@ impl ZwCache {
             let d2 = static_subwords(self.is_blue)
                 .get(&d1)
                 .copied()
+                .or_else(|| {
+                    let key2 = ((prev1 as u64) << 32) | (d1 as u64);
+                    static_trigrams(self.is_blue).get(&key2).copied()
+                })
                 .or_else(|| self.predict(Some(prev1), d1, gen_tokens));
             (Some(d1), d2)
         } else {

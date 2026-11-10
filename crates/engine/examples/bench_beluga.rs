@@ -62,9 +62,11 @@ fn main() -> Result<()> {
         .nth(1)
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga.vmicrolm-vector.gguf")
+            PathBuf::from("/root/.nioxs/models/beluga.vmicrolm-vector.gguf")
         });
-    let tokenizer_path = PathBuf::from("/home/mn/nio-labs/nio-xs-models/beluga-tokenizer.json");
+    let tokenizer_path = std::env::var_os("NIOXS_BELUGA_TOKENIZER")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| model_path.with_file_name("beluga-tokenizer.json"));
 
     if !model_path.exists() {
         return Err(anyhow!("Beluga model missing at {:?}", model_path));

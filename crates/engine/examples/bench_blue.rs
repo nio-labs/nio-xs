@@ -67,7 +67,7 @@ fn main() -> Result<()> {
     let model_path = std::env::var_os("NIOXS_BLUE_MODEL")
         .map(PathBuf::from)
         .or_else(|| std::env::args_os().nth(1).map(PathBuf::from))
-        .unwrap_or_else(|| PathBuf::from("/home/mn/.nioxs/models/blue.vmicrolm-reflex.gguf"));
+        .unwrap_or_else(|| PathBuf::from("/root/nio-labs/models/blue.vmicrolm-reflex.gguf"));
     let tokenizer_path = std::env::var_os("NIOXS_TOKENIZER")
         .map(PathBuf::from)
         .unwrap_or_else(|| model_path.with_file_name("blue-tokenizer.json"));
@@ -213,6 +213,8 @@ fn main() -> Result<()> {
 
         let mut current_confirmed = first_tok;
         let mut stream_pos = prompt_tokens.len();
+        let mut drafts_proposed = 0usize;
+        let mut drafts_accepted = 0usize;
 
         while gen_tokens.len() < max_gen_tokens && !is_eos(current_confirmed) {
             let remaining = max_gen_tokens.saturating_sub(gen_tokens.len());
@@ -237,6 +239,7 @@ fn main() -> Result<()> {
             let d2_valid = d2_opt.filter(|&d| !is_eos(d));
 
             if let (Some(d1), Some(d2)) = (d1_valid, d2_valid) {
+                drafts_proposed += 2;
                 let outcome = engine.speculative_trio_step(
                     current_confirmed,
                     d1,
@@ -245,6 +248,9 @@ fn main() -> Result<()> {
                     &gen_tokens,
                     &stop_tokens,
                 )?;
+                if outcome.accepted_tokens.len() > 1 {
+                    drafts_accepted += outcome.accepted_tokens.len() - 1;
+                }
                 let mut stopped = false;
                 for &tok in &outcome.accepted_tokens {
                     if !is_eos(tok) {
@@ -272,6 +278,7 @@ fn main() -> Result<()> {
                     break;
                 }
             } else if let Some(draft_tok) = d1_valid {
+                drafts_proposed += 1;
                 let outcome = engine.speculative_pair_step(
                     current_confirmed,
                     draft_tok,
@@ -280,6 +287,9 @@ fn main() -> Result<()> {
                     &stop_tokens,
                     false,
                 )?;
+                if outcome.accepted_tokens.len() > 1 {
+                    drafts_accepted += outcome.accepted_tokens.len() - 1;
+                }
                 let mut stopped = false;
                 for &tok in &outcome.accepted_tokens {
                     if !is_eos(tok) {
@@ -366,6 +376,15 @@ fn main() -> Result<()> {
         println!(
             "  Throughput:     {:.2} tokens/sec | {:.2} words/sec",
             tps, wps
+        );
+        let acc_pct = if drafts_proposed > 0 {
+            drafts_accepted as f64 / drafts_proposed as f64 * 100.0
+        } else {
+            0.0
+        };
+        println!(
+            "  Speculative:    Drafts Proposed = {} | Accepted = {} ({:.1}%)",
+            drafts_proposed, drafts_accepted, acc_pct
         );
         println!(
             "  Current RAM:    VmRSS = {:.2} MB | VmHWM = {:.2} MB",

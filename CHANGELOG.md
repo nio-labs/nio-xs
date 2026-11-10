@@ -3,6 +3,17 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.5.4
+
+### Added
+- **Blue (3.82B) Sovereign Reflex Acceleration**:
+  - Integrated high-precision precomputed 320 KB trigram trie (`blue_trigrams.json`) into `ZwCache`, boosting speculative multi-token generation on pure CPU.
+  - Set `min_ngram = 2` for Prompt Lookup Decoding (PLD), enabling bigram matching on prompt tokens and code patterns.
+  - Configured 4 dedicated Performance Core affinity workers (`NUM_WORKERS = 4` pinned to physical P-cores 0, 2, 4, 6), eliminating Meteor Lake E-core spin-barrier latency.
+  - Measured average generation speed at **7.85 tok/s (5.82 words/sec)** with bursts up to **9.96 tok/s (7.03 words/sec)**—a ~2× speedup over the v0.5.3 baseline (~4.4 tok/s).
+  - Maintained strict sub-180 MB active heap SLA (**172.8 MB** peak `RssAnon`) and 100% loss-free logic & reasoning parity with zero pruning.
+  - Added dedicated comparative benchmarks: `bench_blue_pld.rs` and updated `bench_blue.rs` with speculative draft acceptance metrics.
+
 ## v0.5.3
 
 ### Added

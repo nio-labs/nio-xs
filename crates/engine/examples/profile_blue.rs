@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 fn main() -> Result<()> {
-    let model_path = PathBuf::from("/home/mn/.nioxs/models/blue.vmicrolm-reflex.gguf");
+    let model_path = std::env::var_os("NIOXS_BLUE_MODEL")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/root/.nioxs/models/blue.vmicrolm-reflex.gguf"));
     let mut engine = AstMicroEngine::new(&model_path)?;
     engine.set_resident_layers(32);
     engine.set_rolling_window(32);

@@ -2503,9 +2503,31 @@ impl AstMicroEngine {
         max_draft: usize,
         eos_tokens: &[u32],
     ) -> Result<SpeculativeStepResult> {
+        self.speculative_pld_step_with_min(
+            all_tokens,
+            current_confirmed,
+            current_pos,
+            gen_history,
+            max_draft,
+            2,
+            eos_tokens,
+        )
+    }
+
+    /// Perform one speculative decoding step with Prompt Lookup Decoding (PLD) and custom min_ngram.
+    pub fn speculative_pld_step_with_min(
+        &mut self,
+        all_tokens: &[u32],
+        current_confirmed: u32,
+        current_pos: usize,
+        gen_history: &[u32],
+        max_draft: usize,
+        min_ngram: usize,
+        eos_tokens: &[u32],
+    ) -> Result<SpeculativeStepResult> {
         let is_eos = |t: u32| eos_tokens.contains(&t);
         let drafts = if max_draft > 0 {
-            find_candidate_draft_tokens(all_tokens, max_draft, eos_tokens)
+            find_candidate_draft_tokens_with_min(all_tokens, max_draft, min_ngram, eos_tokens)
         } else {
             Vec::new()
         };
@@ -2764,7 +2786,7 @@ pub fn find_candidate_draft_tokens(
     max_draft: usize,
     eos_tokens: &[u32],
 ) -> Vec<u32> {
-    find_candidate_draft_tokens_with_min(context, max_draft, 3, eos_tokens)
+    find_candidate_draft_tokens_with_min(context, max_draft, 2, eos_tokens)
 }
 
 pub fn find_candidate_draft_tokens_with_min(

@@ -1951,6 +1951,9 @@ pub struct SpinThreadPool {
 
 impl SpinThreadPool {
     pub fn new() -> Self {
+        unsafe {
+            pin_thread_to_cpu(0);
+        }
         let shared = Arc::new(SharedState {
             task: std::cell::UnsafeCell::new(None),
             generation: AtomicU32::new(0),
