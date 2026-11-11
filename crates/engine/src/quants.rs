@@ -1,6 +1,9 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 // Quantization kernels for AST Micro Engine: IQ3_XXS, IQ4_NL, Q8_0, Q4_0, and F32.
 
+use crate::iq2s_grid::IQ2S_GRID;
+use crate::iq3s_grid::IQ3S_GRID;
+
 pub const KMASK_IQ2XS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
 
 pub const KSIGNS_IQ2XS: [u8; 128] = [
@@ -264,6 +267,191 @@ pub fn dequantize_row_f32(raw_bytes: &[u8], out: &mut [f32]) {
     }
 }
 
+/// Dequantizes IQ3_S (dtype 21): 256 weights per 110-byte block.
+pub fn dequantize_row_iq3_s(raw_bytes: &[u8], out: &mut [f32]) {
+    assert_eq!(out.len() % 256, 0);
+    let nb = out.len() / 256;
+    assert_eq!(raw_bytes.len(), nb * 110);
+
+    for i in 0..nb {
+        let block = &raw_bytes[i * 110..(i + 1) * 110];
+        let d = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+        let qs = &block[2..66];
+        let qh = &block[66..74];
+        let signs = &block[74..106];
+        let scales = &block[106..110];
+
+        let mut qs_idx = 0usize;
+        let mut qh_idx = 0usize;
+        let mut signs_idx = 0usize;
+        let mut y_idx = i * 256;
+
+        for ib32 in (0..8).step_by(2) {
+            let scale_byte = scales[ib32 / 2];
+            let db1 = d * (1.0 + 2.0 * ((scale_byte & 0x0f) as f32));
+            let db2 = d * (1.0 + 2.0 * ((scale_byte >> 4) as f32));
+
+            for l in 0..4 {
+                let qh_val = qh[qh_idx] as usize;
+                let grid1_idx = (qs[qs_idx + 2 * l] as usize) | ((qh_val << (8 - 2 * l)) & 256);
+                let grid2_idx = (qs[qs_idx + 2 * l + 1] as usize) | ((qh_val << (7 - 2 * l)) & 256);
+                let g1_bytes = IQ3S_GRID[grid1_idx].to_le_bytes();
+                let g2_bytes = IQ3S_GRID[grid2_idx].to_le_bytes();
+                let signs_val = signs[signs_idx + l];
+
+                for j in 0..4 {
+                    let s1 = if (signs_val & KMASK_IQ2XS[j]) != 0 { -1.0 } else { 1.0 };
+                    let s2 = if (signs_val & KMASK_IQ2XS[j + 4]) != 0 { -1.0 } else { 1.0 };
+                    out[y_idx + j] = db1 * (g1_bytes[j] as f32) * s1;
+                    out[y_idx + j + 4] = db1 * (g2_bytes[j] as f32) * s2;
+                }
+                y_idx += 8;
+            }
+            qs_idx += 8;
+            signs_idx += 4;
+
+            for l in 0..4 {
+                let qh_val = qh[qh_idx + 1] as usize;
+                let grid1_idx = (qs[qs_idx + 2 * l] as usize) | ((qh_val << (8 - 2 * l)) & 256);
+                let grid2_idx = (qs[qs_idx + 2 * l + 1] as usize) | ((qh_val << (7 - 2 * l)) & 256);
+                let g1_bytes = IQ3S_GRID[grid1_idx].to_le_bytes();
+                let g2_bytes = IQ3S_GRID[grid2_idx].to_le_bytes();
+                let signs_val = signs[signs_idx + l];
+
+                for j in 0..4 {
+                    let s1 = if (signs_val & KMASK_IQ2XS[j]) != 0 { -1.0 } else { 1.0 };
+                    let s2 = if (signs_val & KMASK_IQ2XS[j + 4]) != 0 { -1.0 } else { 1.0 };
+                    out[y_idx + j] = db2 * (g1_bytes[j] as f32) * s1;
+                    out[y_idx + j + 4] = db2 * (g2_bytes[j] as f32) * s2;
+                }
+                y_idx += 8;
+            }
+            qh_idx += 2;
+            qs_idx += 8;
+            signs_idx += 4;
+        }
+    }
+}
+
+/// Dequantizes IQ2_S (dtype 22): 256 weights per 82-byte block.
+pub fn dequantize_row_iq2_s(raw_bytes: &[u8], out: &mut [f32]) {
+    assert_eq!(out.len() % 256, 0);
+    let nb = out.len() / 256;
+    assert_eq!(raw_bytes.len(), nb * 82);
+
+    for i in 0..nb {
+        let block = &raw_bytes[i * 82..(i + 1) * 82];
+        let d = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+        let qs = &block[2..34];
+        let signs = &block[34..66];
+        let qh = &block[66..74];
+        let scales = &block[74..82];
+
+        let mut qs_idx = 0usize;
+        let mut signs_idx = 0usize;
+        let mut y_idx = i * 256;
+
+        for ib32 in 0..8 {
+            let scale_byte = scales[ib32];
+            let db0 = d * (0.5 + ((scale_byte & 0x0f) as f32)) * 0.25;
+            let db1 = d * (0.5 + ((scale_byte >> 4) as f32)) * 0.25;
+            let db = [db0, db1];
+
+            for l in 0..4 {
+                let dl = db[l / 2];
+                let shift = 8 - 2 * l;
+                let grid_idx = (qs[qs_idx + l] as usize) | (((qh[ib32] as usize) << shift) & 0x300);
+                let grid_u64 = IQ2S_GRID[grid_idx];
+                let grid_bytes = grid_u64.to_le_bytes();
+                let signs_val = signs[signs_idx + l];
+
+                for j in 0..8 {
+                    let s = if (signs_val & KMASK_IQ2XS[j]) != 0 { -1.0 } else { 1.0 };
+                    out[y_idx + j] = dl * (grid_bytes[j] as f32) * s;
+                }
+                y_idx += 8;
+            }
+            qs_idx += 4;
+            signs_idx += 4;
+        }
+    }
+}
+
+/// Dequantizes Q4_K (dtype 12): 256 weights per 144-byte block.
+pub fn dequantize_row_q4_k(raw_bytes: &[u8], out: &mut [f32]) {
+    assert_eq!(out.len() % 256, 0);
+    let nb = out.len() / 256;
+    assert_eq!(raw_bytes.len(), nb * 144);
+    let blocks = unsafe {
+        std::slice::from_raw_parts(
+            raw_bytes.as_ptr() as *const candle_core::quantized::k_quants::BlockQ4K,
+            nb,
+        )
+    };
+    use candle_core::quantized::k_quants::GgmlType;
+    candle_core::quantized::k_quants::BlockQ4K::to_float(blocks, out).expect("to_float failed");
+}
+
+/// Dequantizes Q5_K (dtype 13): 256 weights per 176-byte block.
+pub fn dequantize_row_q5_k(raw_bytes: &[u8], out: &mut [f32]) {
+    assert_eq!(out.len() % 256, 0);
+    let nb = out.len() / 256;
+    assert_eq!(raw_bytes.len(), nb * 176);
+    let blocks = unsafe {
+        std::slice::from_raw_parts(
+            raw_bytes.as_ptr() as *const candle_core::quantized::k_quants::BlockQ5K,
+            nb,
+        )
+    };
+    use candle_core::quantized::k_quants::GgmlType;
+    candle_core::quantized::k_quants::BlockQ5K::to_float(blocks, out).expect("to_float failed");
+}
+
+#[inline]
+pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        dot_f32_avx2(a, b)
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn dot_f32_avx2(a: &[f32], b: &[f32]) -> f32 {
+    use core::arch::x86_64::*;
+    let n = a.len().min(b.len());
+    let mut sum0 = _mm256_setzero_ps();
+    let mut sum1 = _mm256_setzero_ps();
+    let mut i = 0;
+    while i + 16 <= n {
+        let va0 = _mm256_loadu_ps(a.as_ptr().add(i));
+        let vb0 = _mm256_loadu_ps(b.as_ptr().add(i));
+        sum0 = _mm256_fmadd_ps(va0, vb0, sum0);
+
+        let va1 = _mm256_loadu_ps(a.as_ptr().add(i + 8));
+        let vb1 = _mm256_loadu_ps(b.as_ptr().add(i + 8));
+        sum1 = _mm256_fmadd_ps(va1, vb1, sum1);
+        i += 16;
+    }
+    while i + 8 <= n {
+        let va = _mm256_loadu_ps(a.as_ptr().add(i));
+        let vb = _mm256_loadu_ps(b.as_ptr().add(i));
+        sum0 = _mm256_fmadd_ps(va, vb, sum0);
+        i += 8;
+    }
+    let acc = _mm256_add_ps(sum0, sum1);
+    let mut total = hsum_float_8(acc);
+    while i < n {
+        total += a[i] * b[i];
+        i += 1;
+    }
+    total
+}
+
 // Expand the canonical sign masks at compile time. Every byte consumed by
 // _mm256_sign_epi8 must be +1 or -1; a zero byte silently drops that lane.
 pub const SIGNS64_IQ2XS: [u64; 128] = {
@@ -375,6 +563,7 @@ pub unsafe fn quantize_row_q8_k_avx2(x: &[f32], out: &mut [BlockQ8_K]) {
             if max == 0.0 {
                 block.d = 0.0;
                 block.qs.fill(0);
+                block.bsums.fill(0);
                 continue;
             }
 
@@ -407,6 +596,14 @@ pub unsafe fn quantize_row_q8_k_avx2(x: &[f32], out: &mut [BlockQ8_K]) {
                     block.qs.as_mut_ptr().add(offset) as *mut __m256i,
                     packed8_perm,
                 );
+            }
+
+            for j in 0..16 {
+                let mut sum = 0i16;
+                for ii in 0..16 {
+                    sum += block.qs[j * 16 + ii] as i16;
+                }
+                block.bsums[j] = sum;
             }
         }
     }

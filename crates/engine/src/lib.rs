@@ -9,6 +9,8 @@ pub mod ast_engine;
 mod decoding;
 pub mod gguf;
 pub mod hardware;
+pub mod iq2s_grid;
+pub mod iq3s_grid;
 pub mod pool;
 pub mod quants;
 mod speculation;

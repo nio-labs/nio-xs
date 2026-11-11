@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 
-pub const NUM_WORKERS: usize = 4;
+pub const NUM_WORKERS: usize = 14;
 
 #[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
@@ -121,7 +121,7 @@ mod tests {
 
 #[inline(always)]
 fn worker_cpu_id(worker_id: usize) -> usize {
-    worker_id * 2
+    worker_id % 18
 }
 
 #[inline(always)]
@@ -348,6 +348,58 @@ pub enum GemvTask {
         n_head: usize,
         n_kv_head: usize,
         head_dim: usize,
+    },
+    GenericLinear {
+        out_ptr: usize,
+        weight_ptr: usize,
+        x_f32_ptr: usize,
+        x_q8_k_ptr: usize,
+        n_rows: usize,
+        n_cols: usize,
+        dtype: u32,
+    },
+    GenericLinear2Tokens {
+        out0_ptr: usize,
+        out1_ptr: usize,
+        weight_ptr: usize,
+        x0_f32_ptr: usize,
+        x1_f32_ptr: usize,
+        x0_q8_k_ptr: usize,
+        x1_q8_k_ptr: usize,
+        n_rows: usize,
+        n_cols: usize,
+        dtype: u32,
+    },
+    GenericLinear3Tokens {
+        out0_ptr: usize,
+        out1_ptr: usize,
+        out2_ptr: usize,
+        weight_ptr: usize,
+        x0_f32_ptr: usize,
+        x1_f32_ptr: usize,
+        x2_f32_ptr: usize,
+        x0_q8_k_ptr: usize,
+        x1_q8_k_ptr: usize,
+        x2_q8_k_ptr: usize,
+        n_rows: usize,
+        n_cols: usize,
+        dtype: u32,
+    },
+    VocabQ5K {
+        weight_ptr: usize,
+        x_q8_k_ptr: usize,
+        n_cols: usize,
+        start_tok: usize,
+        vocab_count: usize,
+        bytes_per_token: usize,
+        suppress_eos: bool,
+        history_ptr: usize,
+        history_len: usize,
+        suppressed_ptr: usize,
+        suppressed_len: usize,
+        repeat_penalty: f32,
+        top_tok_ptr: usize,
+        top_score_ptr: usize,
     },
 }
 
@@ -1913,6 +1965,409 @@ impl GemvTask {
                         }
                     }
                 }
+            }
+            GemvTask::GenericLinear {
+                out_ptr,
+                weight_ptr,
+                x_f32_ptr,
+                x_q8_k_ptr,
+                n_rows,
+                n_cols,
+                dtype,
+            } => {
+                let chunk = (n_rows + num_workers - 1) / num_workers;
+                let start_r = (worker_id * chunk).min(n_rows);
+                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                if start_r >= end_r {
+                    return;
+                }
+                let (block_size, type_size) = match dtype {
+                    0 => (1, 4),
+                    8 => (32, 34),
+                    12 => (256, 144),
+                    13 => (256, 176),
+                    18 => (256, 98),
+                    20 => (32, 18),
+                    21 => (256, 110),
+                    22 => (256, 82),
+                    other => panic!("unsupported dtype {other}"),
+                };
+                let row_bytes = (n_cols / block_size) * type_size;
+                let x_f32 = std::slice::from_raw_parts(x_f32_ptr as *const f32, n_cols);
+                let out = std::slice::from_raw_parts_mut(out_ptr as *mut f32, n_rows);
+
+                match dtype {
+                    12 => {
+                        use candle_core::quantized::k_quants::{BlockQ4K, BlockQ8K, GgmlType};
+                        let ys = std::slice::from_raw_parts(
+                            x_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let xs = std::slice::from_raw_parts(
+                                r_ptr as *const BlockQ4K,
+                                n_cols / 256,
+                            );
+                            out[r] = BlockQ4K::vec_dot(n_cols, xs, ys).unwrap_or(0.0);
+                        }
+                    }
+                    13 => {
+                        use candle_core::quantized::k_quants::{BlockQ5K, BlockQ8K, GgmlType};
+                        let ys = std::slice::from_raw_parts(
+                            x_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let xs = std::slice::from_raw_parts(
+                                r_ptr as *const BlockQ5K,
+                                n_cols / 256,
+                            );
+                            out[r] = BlockQ5K::vec_dot(n_cols, xs, ys).unwrap_or(0.0);
+                        }
+                    }
+                    21 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_iq3_s(row_slice, &mut dequant_buf);
+                            out[r] = quants::dot_f32(&dequant_buf, x_f32);
+                        }
+                    }
+                    22 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_iq2_s(row_slice, &mut dequant_buf);
+                            out[r] = quants::dot_f32(&dequant_buf, x_f32);
+                        }
+                    }
+                    18 => {
+                        let x_q8_k = std::slice::from_raw_parts(
+                            x_q8_k_ptr as *const quants::BlockQ8_K,
+                            n_cols / 256,
+                        );
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            out[r] = quants::vec_dot_iq3_xxs_q8_k_avx2(row_slice, x_q8_k);
+                        }
+                    }
+                    _ => panic!("unhandled generic linear dtype {dtype}"),
+                }
+            }
+            GemvTask::GenericLinear2Tokens {
+                out0_ptr,
+                out1_ptr,
+                weight_ptr,
+                x0_f32_ptr,
+                x1_f32_ptr,
+                x0_q8_k_ptr,
+                x1_q8_k_ptr,
+                n_rows,
+                n_cols,
+                dtype,
+            } => {
+                let chunk = (n_rows + num_workers - 1) / num_workers;
+                let start_r = (worker_id * chunk).min(n_rows);
+                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                if start_r >= end_r {
+                    return;
+                }
+                let (block_size, type_size) = match dtype {
+                    0 => (1, 4),
+                    8 => (32, 34),
+                    12 => (256, 144),
+                    13 => (256, 176),
+                    18 => (256, 98),
+                    20 => (32, 18),
+                    21 => (256, 110),
+                    22 => (256, 82),
+                    other => panic!("unsupported dtype {other}"),
+                };
+                let row_bytes = (n_cols / block_size) * type_size;
+                let x0_f32 = std::slice::from_raw_parts(x0_f32_ptr as *const f32, n_cols);
+                let x1_f32 = std::slice::from_raw_parts(x1_f32_ptr as *const f32, n_cols);
+                let out0 = std::slice::from_raw_parts_mut(out0_ptr as *mut f32, n_rows);
+                let out1 = std::slice::from_raw_parts_mut(out1_ptr as *mut f32, n_rows);
+
+                match dtype {
+                    12 => {
+                        use candle_core::quantized::k_quants::{BlockQ4K, BlockQ8K, GgmlType};
+                        let ys0 = std::slice::from_raw_parts(
+                            x0_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        let ys1 = std::slice::from_raw_parts(
+                            x1_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let xs = std::slice::from_raw_parts(
+                                r_ptr as *const BlockQ4K,
+                                n_cols / 256,
+                            );
+                            out0[r] = BlockQ4K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
+                            out1[r] = BlockQ4K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
+                        }
+                    }
+                    13 => {
+                        use candle_core::quantized::k_quants::{BlockQ5K, BlockQ8K, GgmlType};
+                        let ys0 = std::slice::from_raw_parts(
+                            x0_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        let ys1 = std::slice::from_raw_parts(
+                            x1_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let xs = std::slice::from_raw_parts(
+                                r_ptr as *const BlockQ5K,
+                                n_cols / 256,
+                            );
+                            out0[r] = BlockQ5K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
+                            out1[r] = BlockQ5K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
+                        }
+                    }
+                    21 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_iq3_s(row_slice, &mut dequant_buf);
+                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                        }
+                    }
+                    22 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_iq2_s(row_slice, &mut dequant_buf);
+                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                        }
+                    }
+                    18 => {
+                        let nb = n_cols / 256;
+                        let x0_q8_k = x0_q8_k_ptr as *const quants::BlockQ8_K;
+                        let x1_q8_k = x1_q8_k_ptr as *const quants::BlockQ8_K;
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let (v0, v1) = quants::vec_dot_iq3_xxs_q8_k_2tokens_avx2_ptr(
+                                r_ptr, x0_q8_k, x1_q8_k, nb,
+                            );
+                            out0[r] = v0;
+                            out1[r] = v1;
+                        }
+                    }
+                    _ => panic!("unhandled generic linear 2tokens dtype {dtype}"),
+                }
+            }
+            GemvTask::GenericLinear3Tokens {
+                out0_ptr,
+                out1_ptr,
+                out2_ptr,
+                weight_ptr,
+                x0_f32_ptr,
+                x1_f32_ptr,
+                x2_f32_ptr,
+                x0_q8_k_ptr,
+                x1_q8_k_ptr,
+                x2_q8_k_ptr,
+                n_rows,
+                n_cols,
+                dtype,
+            } => {
+                let chunk = (n_rows + num_workers - 1) / num_workers;
+                let start_r = (worker_id * chunk).min(n_rows);
+                let end_r = ((worker_id + 1) * chunk).min(n_rows);
+                if start_r >= end_r {
+                    return;
+                }
+                let (block_size, type_size) = match dtype {
+                    0 => (1, 4),
+                    8 => (32, 34),
+                    12 => (256, 144),
+                    13 => (256, 176),
+                    18 => (256, 98),
+                    20 => (32, 18),
+                    21 => (256, 110),
+                    22 => (256, 82),
+                    other => panic!("unsupported dtype {other}"),
+                };
+                let row_bytes = (n_cols / block_size) * type_size;
+                let x0_f32 = std::slice::from_raw_parts(x0_f32_ptr as *const f32, n_cols);
+                let x1_f32 = std::slice::from_raw_parts(x1_f32_ptr as *const f32, n_cols);
+                let x2_f32 = std::slice::from_raw_parts(x2_f32_ptr as *const f32, n_cols);
+                let out0 = std::slice::from_raw_parts_mut(out0_ptr as *mut f32, n_rows);
+                let out1 = std::slice::from_raw_parts_mut(out1_ptr as *mut f32, n_rows);
+                let out2 = std::slice::from_raw_parts_mut(out2_ptr as *mut f32, n_rows);
+
+                match dtype {
+                    12 => {
+                        use candle_core::quantized::k_quants::{BlockQ4K, BlockQ8K, GgmlType};
+                        let ys0 = std::slice::from_raw_parts(
+                            x0_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        let ys1 = std::slice::from_raw_parts(
+                            x1_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        let ys2 = std::slice::from_raw_parts(
+                            x2_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let xs = std::slice::from_raw_parts(
+                                r_ptr as *const BlockQ4K,
+                                n_cols / 256,
+                            );
+                            out0[r] = BlockQ4K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
+                            out1[r] = BlockQ4K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
+                            out2[r] = BlockQ4K::vec_dot(n_cols, xs, ys2).unwrap_or(0.0);
+                        }
+                    }
+                    13 => {
+                        use candle_core::quantized::k_quants::{BlockQ5K, BlockQ8K, GgmlType};
+                        let ys0 = std::slice::from_raw_parts(
+                            x0_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        let ys1 = std::slice::from_raw_parts(
+                            x1_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        let ys2 = std::slice::from_raw_parts(
+                            x2_q8_k_ptr as *const BlockQ8K,
+                            n_cols / 256,
+                        );
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let xs = std::slice::from_raw_parts(
+                                r_ptr as *const BlockQ5K,
+                                n_cols / 256,
+                            );
+                            out0[r] = BlockQ5K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
+                            out1[r] = BlockQ5K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
+                            out2[r] = BlockQ5K::vec_dot(n_cols, xs, ys2).unwrap_or(0.0);
+                        }
+                    }
+                    21 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_iq3_s(row_slice, &mut dequant_buf);
+                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                            out2[r] = quants::dot_f32(&dequant_buf, x2_f32);
+                        }
+                    }
+                    22 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_iq2_s(row_slice, &mut dequant_buf);
+                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                            out2[r] = quants::dot_f32(&dequant_buf, x2_f32);
+                        }
+                    }
+                    18 => {
+                        let nb = n_cols / 256;
+                        let x0_q8_k = x0_q8_k_ptr as *const quants::BlockQ8_K;
+                        let x1_q8_k = x1_q8_k_ptr as *const quants::BlockQ8_K;
+                        let x2_q8_k = x2_q8_k_ptr as *const quants::BlockQ8_K;
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let (v0, v1, v2) = quants::vec_dot_iq3_xxs_q8_k_3tokens_avx2_ptr(
+                                r_ptr, x0_q8_k, x1_q8_k, x2_q8_k, nb,
+                            );
+                            out0[r] = v0;
+                            out1[r] = v1;
+                            out2[r] = v2;
+                        }
+                    }
+                    _ => panic!("unhandled generic linear 3tokens dtype {dtype}"),
+                }
+            }
+            GemvTask::VocabQ5K {
+                weight_ptr,
+                x_q8_k_ptr,
+                n_cols,
+                start_tok,
+                vocab_count,
+                bytes_per_token,
+                suppress_eos,
+                history_ptr,
+                history_len,
+                suppressed_ptr,
+                suppressed_len,
+                repeat_penalty,
+                top_tok_ptr,
+                top_score_ptr,
+            } => {
+                let chunk = (vocab_count + num_workers - 1) / num_workers;
+                let worker_start = (start_tok + worker_id * chunk).min(start_tok + vocab_count);
+                let worker_end =
+                    (start_tok + (worker_id + 1) * chunk).min(start_tok + vocab_count);
+                if worker_start >= worker_end {
+                    return;
+                }
+                use candle_core::quantized::k_quants::{BlockQ5K, BlockQ8K, GgmlType};
+                let nb = n_cols / 256;
+                let ys = std::slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, nb);
+                let recent_slice =
+                    std::slice::from_raw_parts(history_ptr as *const u32, history_len);
+                let suppressed =
+                    std::slice::from_raw_parts(suppressed_ptr as *const u32, suppressed_len);
+                let pen = repeat_penalty;
+
+                let mut best_score = f32::NEG_INFINITY;
+                let mut best_tok = worker_start as u32;
+
+                for tok_id in (worker_start as u32)..(worker_end as u32) {
+                    if (suppress_eos
+                        && (tok_id == 0
+                            || tok_id == 1
+                            || tok_id == 2
+                            || tok_id == 151645
+                            || tok_id == 151643))
+                        || (!suppressed.is_empty() && suppressed.contains(&tok_id))
+                    {
+                        continue;
+                    }
+                    let row_offset = (tok_id as usize) * bytes_per_token;
+                    let row_ptr = (weight_ptr as *const u8).add(row_offset);
+                    let xs = std::slice::from_raw_parts(row_ptr as *const BlockQ5K, nb);
+                    let val = BlockQ5K::vec_dot(n_cols, xs, ys).unwrap_or(f32::NEG_INFINITY);
+                    if val > best_score {
+                        let mut score = val;
+                        score =
+                            crate::decoding::repetition_score(score, tok_id, recent_slice, pen);
+                        if score > best_score {
+                            best_score = score;
+                            best_tok = tok_id;
+                        }
+                    }
+                }
+                let top_toks =
+                    std::slice::from_raw_parts_mut(top_tok_ptr as *mut u32, num_workers);
+                let top_scores =
+                    std::slice::from_raw_parts_mut(top_score_ptr as *mut f32, num_workers);
+                top_toks[worker_id] = best_tok;
+                top_scores[worker_id] = best_score;
             }
         }
     }

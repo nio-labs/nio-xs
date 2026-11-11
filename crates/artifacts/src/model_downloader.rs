@@ -292,7 +292,8 @@ fn ensure_tokenizer_asset_sync(
         return Ok(());
     };
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(600))
+        .connect_timeout(Duration::from_secs(30))
+        .tcp_keepalive(Duration::from_secs(15))
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))?;
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
@@ -348,39 +349,177 @@ pub async fn download_and_verify_model<P: ProgressListener>(
             vec![entry.download_url.clone()]
         };
 
-    let mut file = File::create(&tmp_path)
-        .map_err(|e| format!("failed to create temp file {}: {e}", tmp_path.display()))?;
-
     let mut downloaded: u64 = 0;
     let mut hasher = Sha256::new();
 
-    for part_url in &part_urls {
-        let response = client.get(part_url).send().await.map_err(|e| {
-            format!("failed to connect to download URL {part_url}: {e}")
-        })?;
-
-        if !response.status().is_success() {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(format!(
-                "download failed with HTTP status {}",
-                response.status()
-            ));
-        }
-
-        let total_size = if part_urls.len() == 1 {
-            response.content_length().unwrap_or(entry.size_bytes)
+    let mut file = if tmp_path.exists() {
+        let meta = fs::metadata(&tmp_path)
+            .map_err(|e| format!("failed reading tmp file metadata: {e}"))?;
+        let existing_len = meta.len();
+        if existing_len > 0 && existing_len < entry.size_bytes {
+            // Read existing bytes to resume SHA-256 state and append
+            let mut existing_file = File::open(&tmp_path)
+                .map_err(|e| format!("failed reading tmp file {}: {e}", tmp_path.display()))?;
+            let mut buf = vec![0u8; 1024 * 1024];
+            let mut read_total: u64 = 0;
+            while read_total < existing_len {
+                let to_read = ((existing_len - read_total) as usize).min(buf.len());
+                let n = existing_file
+                    .read(&mut buf[..to_read])
+                    .map_err(|e| format!("failed reading tmp file chunk: {e}"))?;
+                if n == 0 {
+                    break;
+                }
+                hasher.update(&buf[..n]);
+                read_total += n as u64;
+            }
+            downloaded = read_total;
+            listener.on_chunk(downloaded, entry.size_bytes);
+            fs::OpenOptions::new()
+                .write(true)
+                .append(true)
+                .open(&tmp_path)
+                .map_err(|e| format!("failed to open tmp file for append: {e}"))?
         } else {
-            entry.size_bytes
+            let _ = fs::remove_file(&tmp_path);
+            File::create(&tmp_path)
+                .map_err(|e| format!("failed to create temp file {}: {e}", tmp_path.display()))?
+        }
+    } else {
+        File::create(&tmp_path)
+            .map_err(|e| format!("failed to create temp file {}: {e}", tmp_path.display()))?
+    };
+
+    for (part_idx, part_url) in part_urls.iter().enumerate() {
+        let part_offset_start: u64 = if part_urls.len() == 1 {
+            0
+        } else {
+            part_idx as u64 * GITHUB_PART_BYTES
         };
 
-        let mut stream = response.bytes_stream();
-        while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.map_err(|e| format!("stream read error: {e}"))?;
-            file.write_all(&chunk)
-                .map_err(|e| format!("failed to write chunk: {e}"))?;
-            hasher.update(&chunk);
-            downloaded += chunk.len() as u64;
-            listener.on_chunk(downloaded, total_size);
+        let part_expected_len: u64 = if part_urls.len() == 1 {
+            entry.size_bytes
+        } else if part_idx + 1 == part_urls.len() {
+            entry.size_bytes.saturating_sub(part_offset_start)
+        } else {
+            GITHUB_PART_BYTES
+        };
+
+        let part_offset_end = part_offset_start + part_expected_len;
+
+        // Skip parts already present in resumed temp file
+        if downloaded >= part_offset_end {
+            continue;
+        }
+
+        let mut part_downloaded = if downloaded > part_offset_start {
+            downloaded - part_offset_start
+        } else {
+            0
+        };
+
+        let mut retries = 0;
+        const MAX_RETRIES: usize = 15;
+
+        while part_downloaded < part_expected_len {
+            let req = if part_downloaded > 0 {
+                client
+                    .get(part_url)
+                    .header("Range", format!("bytes={part_downloaded}-"))
+            } else {
+                client.get(part_url)
+            };
+
+            let response = match req.send().await {
+                Ok(resp)
+                    if resp.status().is_success()
+                        || resp.status() == reqwest::StatusCode::PARTIAL_CONTENT =>
+                {
+                    resp
+                }
+                Ok(resp) => {
+                    retries += 1;
+                    if retries > MAX_RETRIES {
+                        let _ = fs::remove_file(&tmp_path);
+                        return Err(format!(
+                            "download failed with HTTP status {} on part {part_idx}",
+                            resp.status()
+                        ));
+                    }
+                    tokio::time::sleep(Duration::from_millis(1000 * (1 << retries.min(4)))).await;
+                    continue;
+                }
+                Err(e) => {
+                    retries += 1;
+                    if retries > MAX_RETRIES {
+                        let _ = fs::remove_file(&tmp_path);
+                        return Err(format!("failed connecting to {part_url}: {e}"));
+                    }
+                    tokio::time::sleep(Duration::from_millis(1000 * (1 << retries.min(4)))).await;
+                    continue;
+                }
+            };
+
+            let is_full_response_to_range =
+                response.status() == reqwest::StatusCode::OK && part_downloaded > 0;
+            if is_full_response_to_range {
+                // Server ignored Range header, rewind part and file
+                downloaded -= part_downloaded;
+                part_downloaded = 0;
+                let _ = file.set_len(downloaded);
+                hasher = Sha256::new();
+                if let Ok(mut rf) = File::open(&tmp_path) {
+                    let mut b = vec![0u8; 1024 * 1024];
+                    let mut cur = 0;
+                    while cur < downloaded {
+                        let to_r = ((downloaded - cur) as usize).min(b.len());
+                        if let Ok(n) = rf.read(&mut b[..to_r]) {
+                            if n == 0 {
+                                break;
+                            }
+                            hasher.update(&b[..n]);
+                            cur += n as u64;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let mut stream = response.bytes_stream();
+            let mut stream_interrupted = false;
+
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(chunk) => {
+                        if let Err(e) = file.write_all(&chunk) {
+                            let _ = fs::remove_file(&tmp_path);
+                            return Err(format!("failed to write chunk: {e}"));
+                        }
+                        hasher.update(&chunk);
+                        let chunk_len = chunk.len() as u64;
+                        part_downloaded += chunk_len;
+                        downloaded += chunk_len;
+                        listener.on_chunk(downloaded, entry.size_bytes);
+                    }
+                    Err(_) => {
+                        stream_interrupted = true;
+                        break;
+                    }
+                }
+            }
+
+            if stream_interrupted {
+                retries += 1;
+                if retries > MAX_RETRIES {
+                    let _ = fs::remove_file(&tmp_path);
+                    return Err(format!(
+                        "stream interrupted and exceeded {MAX_RETRIES} retries on part {part_idx}"
+                    ));
+                }
+                let _ = file.flush();
+                tokio::time::sleep(Duration::from_millis(1000 * (1 << retries.min(4)))).await;
+            }
         }
     }
 
@@ -474,7 +613,8 @@ pub fn ensure_model_ready(model_id: &str, custom_dir: Option<&Path>) -> Result<P
     }
 
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(600))
+        .connect_timeout(Duration::from_secs(30))
+        .tcp_keepalive(Duration::from_secs(15))
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))?;
 
