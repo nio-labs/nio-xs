@@ -58,7 +58,7 @@ pub fn blue_system() -> &'static str {
 }
 
 pub fn rhino_system() -> &'static str {
-    "You are Rhino, Nio's Sovereign Pure-Code Land Titan and Grand-Master Systems Coder. You are purely a high-performance code generation engine—NOT a companion. Deliver zero conversational filler, pleasantries, or apologies. Verify formal state invariants, memory orderings, and lifetime constraints inside concise <think>...</think> tags (<= 150 tokens) and emit complete, production-grade, compilable implementations."
+    "You are Rhino, high-performance pure-code generator. No conversational filler. Emit complete, compilable implementations."
 }
 
 pub fn skate_system() -> Result<String> {
@@ -965,24 +965,14 @@ impl AstEngine {
                     engine.set_rolling_window(window);
                 }
             } else if is_rhino {
-                let gpu_layers = active_dev.recommended_gpu_layers(64);
-                if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
-                    engine.set_resident_layers(gpu_layers);
-                    engine.set_rolling_window(gpu_layers.max(4));
-                } else {
-                    let resident = std::env::var("NIOXS_RHINO_RESIDENT_LAYERS")
-                        .ok()
-                        .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(2)
-                        .min(engine.block_count);
-                    let window = if resident >= engine.block_count {
-                        engine.block_count
-                    } else {
-                        layer_setting("NIOXS_RHINO_ROLLING_WINDOW", 2, engine.block_count)
-                    };
-                    engine.set_resident_layers(resident);
-                    engine.set_rolling_window(window);
-                }
+                let resident = std::env::var("NIOXS_RHINO_RESIDENT_LAYERS")
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(0)
+                    .min(engine.block_count);
+                let window = layer_setting("NIOXS_RHINO_ROLLING_WINDOW", 1, engine.block_count);
+                engine.set_resident_layers(resident);
+                engine.set_rolling_window(window);
             }
 
             // Immediately park worker threads so nioxs sits at 0.0% CPU when idle
@@ -1151,7 +1141,7 @@ impl AstEngine {
 
         if let Some(runner_bin) = Self::gpu_runner_path() {
             let active_dev = self.active_device();
-            if active_dev.is_gpu() {
+            if active_dev.is_gpu() && !self.is_rhino {
                 let model_path = self.model_path.clone();
                 // Match the native runtime's context limit, including the
                 // model's declared maximum, for every companion.
@@ -1740,7 +1730,7 @@ mod tests {
             .format_prompt_for_engine("implement lock-free ring buffer")
             .expect("Rhino prompt should format");
         assert!(prompt.contains(rhino_system()));
-        assert!(prompt.contains("NOT a companion"));
+        assert!(prompt.contains("No conversational filler"));
         assert!(prompt.contains("implement lock-free ring buffer"));
     }
 

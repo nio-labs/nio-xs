@@ -264,6 +264,168 @@ pub fn dequantize_row_f32(raw_bytes: &[u8], out: &mut [f32]) {
     }
 }
 
+/// Dequantizes Q4_K (dtype 12): 256 weights per 144-byte super-block.
+/// Layout: f16 d (2B) + f16 dmin (2B) + scales[12] + qs[128].
+pub fn dequantize_row_q4_k(raw_bytes: &[u8], out: &mut [f32]) {
+    assert_eq!(out.len() % 256, 0);
+    let nb = out.len() / 256;
+    assert_eq!(raw_bytes.len(), nb * 144);
+
+    for i in 0..nb {
+        let block = &raw_bytes[i * 144..(i + 1) * 144];
+        let d = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+        let dmin = half::f16::from_le_bytes([block[2], block[3]]).to_f32();
+        let scales = &block[4..16];
+        let qs = &block[16..144];
+
+        let mut is = 0usize;
+        let mut y_idx = i * 256;
+        for j in (0..256).step_by(64) {
+            let q = &qs[j / 2..j / 2 + 32];
+            let (sc1, m1) = get_scale_min_k4(is, scales);
+            let d1 = d * sc1 as f32;
+            let m1f = dmin * m1 as f32;
+            let (sc2, m2) = get_scale_min_k4(is + 1, scales);
+            let d2 = d * sc2 as f32;
+            let m2f = dmin * m2 as f32;
+            for l in 0..32 {
+                out[y_idx + l] = d1 * (q[l] & 0xF) as f32 - m1f;
+            }
+            for l in 0..32 {
+                out[y_idx + 32 + l] = d2 * (q[l] >> 4) as f32 - m2f;
+            }
+            y_idx += 64;
+            is += 2;
+        }
+    }
+}
+
+/// Helper to unpack 6-bit scale and min from the 12-byte packed scales array in Q4_K/Q5_K.
+#[inline]
+fn get_scale_min_k4(j: usize, q: &[u8]) -> (u8, u8) {
+    if j < 4 {
+        (q[j] & 63, q[j + 4] & 63)
+    } else {
+        let d = (q[j + 4] & 0xF) | ((q[j - 4] >> 6) << 4);
+        let m = (q[j + 4] >> 4) | ((q[j] >> 6) << 4);
+        (d, m)
+    }
+}
+
+/// Dequantizes Q6_K (dtype 14): 256 weights per 210-byte super-block.
+/// Layout: ql[128] + qh[64] + scales[16] (i8) + f16 d (2B).
+pub fn dequantize_row_q6_k(raw_bytes: &[u8], out: &mut [f32]) {
+    assert_eq!(out.len() % 256, 0);
+    let nb = out.len() / 256;
+    assert_eq!(raw_bytes.len(), nb * 210);
+
+    for i in 0..nb {
+        let block = &raw_bytes[i * 210..(i + 1) * 210];
+        let ql = &block[0..128];
+        let qh = &block[128..192];
+        let sc = &block[192..208];
+        let d = half::f16::from_le_bytes([block[208], block[209]]).to_f32();
+
+        let y = &mut out[i * 256..(i + 1) * 256];
+        for n_128 in (0..256).step_by(128) {
+            let idx = n_128 / 128;
+            let ql_off = 64 * idx;
+            let qh_off = 32 * idx;
+            let sc_off = 8 * idx;
+            for l in 0..32 {
+                let is = l / 16;
+                let q1 = ((ql[ql_off + l] & 0xF) | ((qh[qh_off + l] & 3) << 4)) as i8 - 32;
+                let q2 = ((ql[ql_off + l + 32] & 0xF) | (((qh[qh_off + l] >> 2) & 3) << 4)) as i8 - 32;
+                let q3 = ((ql[ql_off + l] >> 4) | (((qh[qh_off + l] >> 4) & 3) << 4)) as i8 - 32;
+                let q4 = ((ql[ql_off + l + 32] >> 4) | (((qh[qh_off + l] >> 6) & 3) << 4)) as i8 - 32;
+                y[n_128 + l] = d * sc[sc_off + is] as i8 as f32 * q1 as f32;
+                y[n_128 + l + 32] = d * sc[sc_off + is + 2] as i8 as f32 * q2 as f32;
+                y[n_128 + l + 64] = d * sc[sc_off + is + 4] as i8 as f32 * q3 as f32;
+                y[n_128 + l + 96] = d * sc[sc_off + is + 6] as i8 as f32 * q4 as f32;
+            }
+        }
+    }
+}
+#[inline]
+pub fn vec_dot_q4_k_f32(raw_bytes: &[u8], x: &[f32]) -> f32 {
+    let nb = x.len() / 256;
+    let mut sum = 0.0f32;
+
+    for i in 0..nb {
+        let block = &raw_bytes[i * 144..(i + 1) * 144];
+        let d = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+        let dmin = half::f16::from_le_bytes([block[2], block[3]]).to_f32();
+        let scales = &block[4..16];
+        let qs = &block[16..144];
+
+        let mut is = 0usize;
+        let mut y_idx = i * 256;
+        for j in (0..256).step_by(64) {
+            let q = &qs[j / 2..j / 2 + 32];
+            let (sc1, m1) = get_scale_min_k4(is, scales);
+            let d1 = d * sc1 as f32;
+            let m1f = dmin * m1 as f32;
+            let (sc2, m2) = get_scale_min_k4(is + 1, scales);
+            let d2 = d * sc2 as f32;
+            let m2f = dmin * m2 as f32;
+
+            let x1 = &x[y_idx..y_idx + 32];
+            for l in 0..32 {
+                let w = d1 * (q[l] & 0xF) as f32 - m1f;
+                sum += w * x1[l];
+            }
+            let x2 = &x[y_idx + 32..y_idx + 64];
+            for l in 0..32 {
+                let w = d2 * (q[l] >> 4) as f32 - m2f;
+                sum += w * x2[l];
+            }
+            y_idx += 64;
+            is += 2;
+        }
+    }
+    sum
+}
+
+/// Directly computes dot product between a Q6_K row and an f32 vector without intermediate allocation.
+#[inline]
+pub fn vec_dot_q6_k_f32(raw_bytes: &[u8], x: &[f32]) -> f32 {
+    let nb = x.len() / 256;
+    let mut sum = 0.0f32;
+
+    for i in 0..nb {
+        let block = &raw_bytes[i * 210..(i + 1) * 210];
+        let ql = &block[0..128];
+        let qh = &block[128..192];
+        let sc = &block[192..208];
+        let d = half::f16::from_le_bytes([block[208], block[209]]).to_f32();
+
+        let base_idx = i * 256;
+        for n_128 in (0..256).step_by(128) {
+            let idx = n_128 / 128;
+            let ql_off = 64 * idx;
+            let qh_off = 32 * idx;
+            let sc_off = 8 * idx;
+            let y_off = base_idx + n_128;
+            for l in 0..32 {
+                let is = l / 16;
+                let q1 = ((ql[ql_off + l] & 0xF) | ((qh[qh_off + l] & 3) << 4)) as i8 - 32;
+                let q2 = ((ql[ql_off + l + 32] & 0xF) | (((qh[qh_off + l] >> 2) & 3) << 4)) as i8 - 32;
+                let q3 = ((ql[ql_off + l] >> 4) | (((qh[qh_off + l] >> 4) & 3) << 4)) as i8 - 32;
+                let q4 = ((ql[ql_off + l + 32] >> 4) | (((qh[qh_off + l] >> 6) & 3) << 4)) as i8 - 32;
+                let w1 = d * sc[sc_off + is] as i8 as f32 * q1 as f32;
+                let w2 = d * sc[sc_off + is + 2] as i8 as f32 * q2 as f32;
+                let w3 = d * sc[sc_off + is + 4] as i8 as f32 * q3 as f32;
+                let w4 = d * sc[sc_off + is + 6] as i8 as f32 * q4 as f32;
+                sum += w1 * x[y_off + l]
+                    + w2 * x[y_off + l + 32]
+                    + w3 * x[y_off + l + 64]
+                    + w4 * x[y_off + l + 96];
+            }
+        }
+    }
+    sum
+}
+
 // Expand the canonical sign masks at compile time. Every byte consumed by
 // _mm256_sign_epi8 must be +1 or -1; a zero byte silently drops that lane.
 pub const SIGNS64_IQ2XS: [u64; 128] = {

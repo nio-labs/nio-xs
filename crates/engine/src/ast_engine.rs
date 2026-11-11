@@ -407,6 +407,8 @@ impl LinearSlice {
             0 => (1, 4),
             2 => (32, 18),
             8 => (32, 34),
+            12 => (256, 144),
+            14 => (256, 210),
             18 => (256, 98),
             20 => (32, 18),
             other => panic!("unsupported dtype {other}"),
@@ -424,6 +426,19 @@ impl LinearSlice {
     }
 }
 
+pub struct MoeLayerDesc {
+    pub router_weight: Vec<f32>, // shape [n_experts, embedding_length]
+    pub n_experts: usize,        // 128
+    pub n_experts_used: usize,   // 8
+    pub expert_dim: usize,       // 768
+    pub gate_offset: usize,      // offset in mmap
+    pub gate_dtype: u32,         // 12
+    pub up_offset: usize,        // offset in mmap
+    pub up_dtype: u32,           // 12
+    pub down_offset: usize,      // offset in mmap
+    pub down_dtype: u32,         // 14
+}
+
 pub struct LayerDesc {
     pub idx: usize,
     pub wq: LinearSlice,
@@ -433,6 +448,7 @@ pub struct LayerDesc {
     pub w1: LinearSlice,
     pub w2: LinearSlice,
     pub w3: LinearSlice,
+    pub moe: Option<MoeLayerDesc>,
     pub q_bias: Vec<f32>,
     pub k_bias: Vec<f32>,
     pub v_bias: Vec<f32>,
@@ -508,6 +524,35 @@ impl LayerDesc {
                 x_norm_ptr: scratch.x_norm.as_ptr() as usize,
                 n_rows: self.wv.n_rows,
                 n_cols: self.wv.n_cols,
+            });
+        } else if self.wq.dtype == 12 {
+            // Q4_K query & key, Q4_K or Q6_K value
+            use rayon::prelude::*;
+            let x_in = &scratch.x_norm;
+            let n_cols = self.wq.n_cols;
+            let q_row_bytes = (n_cols / 256) * 144;
+            scratch.q.par_iter_mut().enumerate().for_each(|(r, out)| {
+                let row_raw = &wq_slice[r * q_row_bytes..(r + 1) * q_row_bytes];
+                *out = quants::vec_dot_q4_k_f32(row_raw, x_in);
+            });
+            let k_row_bytes = (self.wk.n_cols / 256) * 144;
+            scratch.k.par_iter_mut().enumerate().for_each(|(r, out)| {
+                let row_raw = &wk_slice[r * k_row_bytes..(r + 1) * k_row_bytes];
+                *out = quants::vec_dot_q4_k_f32(row_raw, x_in);
+            });
+            let is_v_q6 = self.wv.dtype == 14;
+            let v_row_bytes = if is_v_q6 {
+                (self.wv.n_cols / 256) * 210
+            } else {
+                (self.wv.n_cols / 256) * 144
+            };
+            scratch.v.par_iter_mut().enumerate().for_each(|(r, out)| {
+                let row_raw = &wv_slice[r * v_row_bytes..(r + 1) * v_row_bytes];
+                *out = if is_v_q6 {
+                    quants::vec_dot_q6_k_f32(row_raw, x_in)
+                } else {
+                    quants::vec_dot_q4_k_f32(row_raw, x_in)
+                };
             });
         } else {
             pool.run_task(GemvTask::QkvIq4Nl {
@@ -598,6 +643,15 @@ impl LayerDesc {
                 n_rows: self.wo.n_rows,
                 n_cols: self.wo.n_cols,
             });
+        } else if self.wo.dtype == 12 {
+            use rayon::prelude::*;
+            let n_cols = self.wo.n_cols;
+            let row_bytes = (n_cols / 256) * 144;
+            let x_in = &scratch.attn_out;
+            scratch.wo_out.par_iter_mut().enumerate().for_each(|(r, out)| {
+                let row_raw = &wo_slice[r * row_bytes..(r + 1) * row_bytes];
+                *out = quants::vec_dot_q4_k_f32(row_raw, x_in);
+            });
         } else {
             quants::quantize_row_q8_0(&scratch.attn_out, &mut scratch.attn_q8_0);
             pool.run_task(GemvTask::Iq4Nl {
@@ -621,76 +675,177 @@ impl LayerDesc {
             eps,
             &mut scratch.ffn_norm,
         );
-        if self.w1.dtype == 18 {
-            quants::quantize_row_q8_k(&scratch.ffn_norm, &mut scratch.ffn_q8_k);
-        } else {
-            quants::quantize_row_q8_0(&scratch.ffn_norm, &mut scratch.ffn_q8_0);
-        }
 
-        // 9. FFN Gate (w1) and Up (w3)
-        let w1_slice = &mmap[self.w1.offset..self.w1.offset + self.w1.byte_len];
-        let w3_slice = &mmap[self.w3.offset..self.w3.offset + self.w3.byte_len];
-        if self.w1.dtype == 18 {
-            pool.run_task(GemvTask::GateUpIq3Xxs {
-                inter_out_ptr: scratch.inter.as_mut_ptr() as usize,
-                w1_ptr: w1_slice.as_ptr() as usize,
-                w3_ptr: w3_slice.as_ptr() as usize,
-                x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
-                n_rows: self.w1.n_rows,
-                n_cols: self.w1.n_cols,
-            });
-        } else if self.w1.dtype == 8 {
-            pool.run_task(GemvTask::Q8_0 {
-                out_ptr: scratch.w1.as_mut_ptr() as usize,
-                weight_ptr: w1_slice.as_ptr() as usize,
-                x_norm_ptr: scratch.ffn_norm.as_ptr() as usize,
-                n_rows: self.w1.n_rows,
-                n_cols: self.w1.n_cols,
-            });
-            pool.run_task(GemvTask::Q8_0 {
-                out_ptr: scratch.w3.as_mut_ptr() as usize,
-                weight_ptr: w3_slice.as_ptr() as usize,
-                x_norm_ptr: scratch.ffn_norm.as_ptr() as usize,
-                n_rows: self.w3.n_rows,
-                n_cols: self.w3.n_cols,
-            });
-            for j in 0..self.w1.n_rows {
-                let w1_val = scratch.w1[j];
-                let silu = w1_val / (1.0 + (-w1_val).exp());
-                scratch.inter[j] = silu * scratch.w3[j];
+        if let Some(moe) = &self.moe {
+            // MoE Forward Pass
+            let n_embd = scratch.ffn_norm.len();
+            let mut router_logits = vec![0.0f32; moe.n_experts];
+            for e in 0..moe.n_experts {
+                let r_row = &moe.router_weight[e * n_embd..(e + 1) * n_embd];
+                router_logits[e] = r_row.iter().zip(scratch.ffn_norm.iter()).map(|(&w, &x)| w * x).sum();
+            }
+
+            // Softmax over router logits
+            let max_logit = router_logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let mut exp_sum = 0.0f32;
+            let mut probs = vec![0.0f32; moe.n_experts];
+            for e in 0..moe.n_experts {
+                let p = (router_logits[e] - max_logit).exp();
+                probs[e] = p;
+                exp_sum += p;
+            }
+            let inv_sum = 1.0 / exp_sum;
+            for p in &mut probs {
+                *p *= inv_sum;
+            }
+
+            // Top-k experts
+            let mut indexed_probs: Vec<(usize, f32)> = probs.into_iter().enumerate().collect();
+            indexed_probs.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            indexed_probs.truncate(moe.n_experts_used);
+
+            // Re-normalize top-k probabilities
+            let topk_sum: f32 = indexed_probs.iter().map(|(_, p)| *p).sum();
+            let inv_topk_sum = if topk_sum > 0.0 { 1.0 / topk_sum } else { 1.0 };
+
+            scratch.mlp_out.fill(0.0);
+            let expert_dim = moe.expert_dim;
+            let gate_expert_bytes = (expert_dim * n_embd / 256) * 144;
+            let up_expert_bytes = (expert_dim * n_embd / 256) * 144;
+            let is_down_q6 = moe.down_dtype == 14;
+            let down_row_bytes = if is_down_q6 {
+                (expert_dim / 256) * 210
+            } else {
+                (expert_dim / 256) * 144
+            };
+            let down_expert_bytes = n_embd * down_row_bytes;
+
+            let gate_row_bytes = (n_embd / 256) * 144;
+            let up_row_bytes = (n_embd / 256) * 144;
+
+            use rayon::prelude::*;
+            let ffn_norm = &scratch.ffn_norm;
+            let mmap_ref: &[u8] = mmap;
+
+            // Process all 8 active experts in parallel across threads
+            let expert_outs: Vec<Vec<f32>> = indexed_probs
+                .par_iter()
+                .map(|&(e, prob)| {
+                    let weight = prob * inv_topk_sum;
+                    let exp_gate_slice = &mmap_ref[moe.gate_offset + e * gate_expert_bytes..moe.gate_offset + (e + 1) * gate_expert_bytes];
+                    let exp_up_slice = &mmap_ref[moe.up_offset + e * up_expert_bytes..moe.up_offset + (e + 1) * up_expert_bytes];
+                    let exp_down_slice = &mmap_ref[moe.down_offset + e * down_expert_bytes..moe.down_offset + (e + 1) * down_expert_bytes];
+
+                    // Compute intermediate gate & up activation (expert_dim = 768 elements)
+                    let inter: Vec<f32> = (0..expert_dim)
+                        .into_par_iter()
+                        .map(|j| {
+                            let g_raw = &exp_gate_slice[j * gate_row_bytes..(j + 1) * gate_row_bytes];
+                            let gate_val = quants::vec_dot_q4_k_f32(g_raw, ffn_norm);
+
+                            let u_raw = &exp_up_slice[j * up_row_bytes..(j + 1) * up_row_bytes];
+                            let up_val = quants::vec_dot_q4_k_f32(u_raw, ffn_norm);
+
+                            let silu = gate_val / (1.0 + (-gate_val).exp());
+                            silu * up_val
+                        })
+                        .collect();
+
+                    // Down projection across n_embd (2048 elements) in parallel
+                    let out: Vec<f32> = (0..n_embd)
+                        .into_par_iter()
+                        .map(|i| {
+                            let d_raw = &exp_down_slice[i * down_row_bytes..(i + 1) * down_row_bytes];
+                            let down_val = if is_down_q6 {
+                                quants::vec_dot_q6_k_f32(d_raw, &inter)
+                            } else {
+                                quants::vec_dot_q4_k_f32(d_raw, &inter)
+                            };
+                            weight * down_val
+                        })
+                        .collect();
+
+                    out
+                })
+                .collect();
+
+            for exp_out in expert_outs {
+                for (dst, src) in scratch.mlp_out.iter_mut().zip(exp_out.iter()) {
+                    *dst += src;
+                }
             }
         } else {
-            pool.run_task(GemvTask::GateUpIq4Nl {
-                w1_out_ptr: scratch.w1.as_mut_ptr() as usize,
-                w3_out_ptr: scratch.w3.as_mut_ptr() as usize,
-                inter_out_ptr: scratch.inter.as_mut_ptr() as usize,
-                w1_ptr: w1_slice.as_ptr() as usize,
-                w3_ptr: w3_slice.as_ptr() as usize,
-                x_blocks_ptr: scratch.ffn_q8_0.as_ptr() as usize,
-                n_rows: self.w1.n_rows,
-                n_cols: self.w1.n_cols,
-            });
-        }
+            if self.w1.dtype == 18 {
+                quants::quantize_row_q8_k(&scratch.ffn_norm, &mut scratch.ffn_q8_k);
+            } else {
+                quants::quantize_row_q8_0(&scratch.ffn_norm, &mut scratch.ffn_q8_0);
+            }
 
-        // 11. Quantize inter to Q8_K and Down Projection (w2)
-        quants::quantize_row_q8_k(&scratch.inter, &mut scratch.inter_q8_k);
-        let w2_slice = &mmap[self.w2.offset..self.w2.offset + self.w2.byte_len];
-        if self.w2.dtype == 8 {
-            pool.run_task(GemvTask::Q8_0 {
-                out_ptr: scratch.mlp_out.as_mut_ptr() as usize,
-                weight_ptr: w2_slice.as_ptr() as usize,
-                x_norm_ptr: scratch.inter.as_ptr() as usize,
-                n_rows: self.w2.n_rows,
-                n_cols: self.w2.n_cols,
-            });
-        } else {
-            pool.run_task(GemvTask::Iq3Xxs {
-                out_ptr: scratch.mlp_out.as_mut_ptr() as usize,
-                weight_ptr: w2_slice.as_ptr() as usize,
-                x_q8_k_ptr: scratch.inter_q8_k.as_ptr() as usize,
-                n_rows: self.w2.n_rows,
-                n_cols: self.w2.n_cols,
-            });
+            // 9. FFN Gate (w1) and Up (w3)
+            let w1_slice = &mmap[self.w1.offset..self.w1.offset + self.w1.byte_len];
+            let w3_slice = &mmap[self.w3.offset..self.w3.offset + self.w3.byte_len];
+            if self.w1.dtype == 18 {
+                pool.run_task(GemvTask::GateUpIq3Xxs {
+                    inter_out_ptr: scratch.inter.as_mut_ptr() as usize,
+                    w1_ptr: w1_slice.as_ptr() as usize,
+                    w3_ptr: w3_slice.as_ptr() as usize,
+                    x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
+                    n_rows: self.w1.n_rows,
+                    n_cols: self.w1.n_cols,
+                });
+            } else if self.w1.dtype == 8 {
+                pool.run_task(GemvTask::Q8_0 {
+                    out_ptr: scratch.w1.as_mut_ptr() as usize,
+                    weight_ptr: w1_slice.as_ptr() as usize,
+                    x_norm_ptr: scratch.ffn_norm.as_ptr() as usize,
+                    n_rows: self.w1.n_rows,
+                    n_cols: self.w1.n_cols,
+                });
+                pool.run_task(GemvTask::Q8_0 {
+                    out_ptr: scratch.w3.as_mut_ptr() as usize,
+                    weight_ptr: w3_slice.as_ptr() as usize,
+                    x_norm_ptr: scratch.ffn_norm.as_ptr() as usize,
+                    n_rows: self.w3.n_rows,
+                    n_cols: self.w3.n_cols,
+                });
+                for j in 0..self.w1.n_rows {
+                    let w1_val = scratch.w1[j];
+                    let silu = w1_val / (1.0 + (-w1_val).exp());
+                    scratch.inter[j] = silu * scratch.w3[j];
+                }
+            } else {
+                pool.run_task(GemvTask::GateUpIq4Nl {
+                    w1_out_ptr: scratch.w1.as_mut_ptr() as usize,
+                    w3_out_ptr: scratch.w3.as_mut_ptr() as usize,
+                    inter_out_ptr: scratch.inter.as_mut_ptr() as usize,
+                    w1_ptr: w1_slice.as_ptr() as usize,
+                    w3_ptr: w3_slice.as_ptr() as usize,
+                    x_blocks_ptr: scratch.ffn_q8_0.as_ptr() as usize,
+                    n_rows: self.w1.n_rows,
+                    n_cols: self.w1.n_cols,
+                });
+            }
+
+            // 11. Quantize inter to Q8_K and Down Projection (w2)
+            quants::quantize_row_q8_k(&scratch.inter, &mut scratch.inter_q8_k);
+            let w2_slice = &mmap[self.w2.offset..self.w2.offset + self.w2.byte_len];
+            if self.w2.dtype == 8 {
+                pool.run_task(GemvTask::Q8_0 {
+                    out_ptr: scratch.mlp_out.as_mut_ptr() as usize,
+                    weight_ptr: w2_slice.as_ptr() as usize,
+                    x_norm_ptr: scratch.inter.as_ptr() as usize,
+                    n_rows: self.w2.n_rows,
+                    n_cols: self.w2.n_cols,
+                });
+            } else {
+                pool.run_task(GemvTask::Iq3Xxs {
+                    out_ptr: scratch.mlp_out.as_mut_ptr() as usize,
+                    weight_ptr: w2_slice.as_ptr() as usize,
+                    x_q8_k_ptr: scratch.inter_q8_k.as_ptr() as usize,
+                    n_rows: self.w2.n_rows,
+                    n_cols: self.w2.n_cols,
+                });
+            }
         }
 
         // 12. Residual connection (x = x + mlp_out)
@@ -1485,7 +1640,7 @@ impl AstMicroEngine {
             .get("general.architecture")
             .and_then(|v| v.to_string().ok())
             .unwrap_or_else(|| "llama".to_string());
-        let rope_neox = matches!(arch.as_str(), "qwen2" | "qwen3");
+        let rope_neox = matches!(arch.as_str(), "qwen2" | "qwen3" | "qwen3moe");
 
         let md_get = |s: &str| -> Result<&gguf::GgufValue> {
             gguf.metadata
@@ -1506,7 +1661,11 @@ impl AstMicroEngine {
             .and_then(|m| m.to_f32().ok())
             .unwrap_or(10000.0);
 
-        let head_dim = embedding_length / head_count;
+        let head_dim = md_get("attention.key_length")
+            .ok()
+            .and_then(|m| m.to_u32().ok())
+            .map(|v| v as usize)
+            .unwrap_or_else(|| embedding_length / head_count);
         let (cos_table, sin_table) =
             precompute_freqs_cis_flat(head_dim, rope_freq_base, context_length);
 
@@ -1518,9 +1677,9 @@ impl AstMicroEngine {
             .ok_or_else(|| anyhow!("missing token_embd.weight"))?;
         let token_embd_offset = gguf.tensor_data_offset + embd_info.offset as usize;
         let token_embd_dtype = embd_info.dtype;
-        if token_embd_dtype != 8 && token_embd_dtype != 20 {
+        if token_embd_dtype != 8 && token_embd_dtype != 12 && token_embd_dtype != 20 {
             anyhow::bail!(
-                "AST-Micro requires Q8_0 or IQ4_NL token embeddings, found dtype {token_embd_dtype}"
+                "AST-Micro requires Q8_0, Q4_K, or IQ4_NL token embeddings, found dtype {token_embd_dtype}"
             );
         }
 
@@ -1528,6 +1687,8 @@ impl AstMicroEngine {
             0 => (1, 4),
             2 => (32, 18),
             8 => (32, 34),
+            12 => (256, 144),
+            14 => (256, 210),
             18 => (256, 98),
             20 => (32, 18),
             other => anyhow::bail!("unsupported token_embd dtype {other}"),
@@ -1546,9 +1707,9 @@ impl AstMicroEngine {
                     meta.shape
                 );
             }
-            if meta.dtype != 8 && meta.dtype != 20 {
+            if meta.dtype != 8 && meta.dtype != 14 && meta.dtype != 20 {
                 anyhow::bail!(
-                    "AST-Micro separate output.weight requires Q8_0 or IQ4_NL, found dtype {}",
+                    "AST-Micro separate output.weight requires Q8_0, Q6_K, or IQ4_NL, found dtype {}",
                     meta.dtype
                 );
             }
@@ -1564,6 +1725,8 @@ impl AstMicroEngine {
         let mut max_wk_rows = 0;
         let mut max_wv_rows = 0;
         let mut max_w1_rows = 0;
+
+        let is_moe_model = gguf.tensors.contains_key("blk.0.ffn_gate_exps.weight");
 
         for idx in 0..block_count {
             let prefix = format!("blk.{idx}");
@@ -1583,88 +1746,163 @@ impl AstMicroEngine {
                 .tensors
                 .get(&format!("{prefix}.attn_output.weight"))
                 .ok_or_else(|| anyhow!("missing {prefix}.attn_output.weight"))?;
-            let meta_w1 = gguf
-                .tensors
-                .get(&format!("{prefix}.ffn_gate.weight"))
-                .ok_or_else(|| anyhow!("missing {prefix}.ffn_gate.weight"))?;
-            let meta_w2 = gguf
-                .tensors
-                .get(&format!("{prefix}.ffn_down.weight"))
-                .ok_or_else(|| anyhow!("missing {prefix}.ffn_down.weight"))?;
-            let meta_w3 = gguf
-                .tensors
-                .get(&format!("{prefix}.ffn_up.weight"))
-                .ok_or_else(|| anyhow!("missing {prefix}.ffn_up.weight"))?;
 
-            if [
-                meta_wq, meta_wk, meta_wv, meta_wo, meta_w1, meta_w2, meta_w3,
-            ]
-            .iter()
-            .any(|meta| meta.dtype == 8)
-                && std::env::var_os("NIOXS_AST_EXPERIMENTAL_Q8").as_deref()
-                    != Some(std::ffi::OsStr::new("1"))
-            {
-                anyhow::bail!(
-                    "Q8_0 projection support is experimental; set NIOXS_AST_EXPERIMENTAL_Q8=1 to opt in for evaluation"
-                );
-            }
+            let (w1, w2, w3, moe, ffn_min_off, ffn_max_off) = if is_moe_model {
+                let meta_gate_exps = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_gate_exps.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_gate_exps.weight"))?;
+                let meta_up_exps = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_up_exps.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_up_exps.weight"))?;
+                let meta_down_exps = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_down_exps.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_down_exps.weight"))?;
+
+                let router_weight = Self::read_weight_vec(&mmap, &gguf, &format!("{prefix}.ffn_gate_inp.weight"))?;
+                let n_experts = meta_gate_exps.shape[0];
+                let expert_dim = meta_gate_exps.shape[1];
+                let n_experts_used = md_get("expert_used_count")
+                    .ok()
+                    .and_then(|v| v.to_u32().ok())
+                    .unwrap_or(8) as usize;
+
+                let gate_offset = gguf.tensor_data_offset + meta_gate_exps.offset as usize;
+                let up_offset = gguf.tensor_data_offset + meta_up_exps.offset as usize;
+                let down_offset = gguf.tensor_data_offset + meta_down_exps.offset as usize;
+
+                let gate_bytes = if meta_gate_exps.dtype == 14 {
+                    (meta_gate_exps.shape.iter().product::<usize>() / 256) * 210
+                } else {
+                    (meta_gate_exps.shape.iter().product::<usize>() / 256) * 144
+                };
+                let up_bytes = if meta_up_exps.dtype == 14 {
+                    (meta_up_exps.shape.iter().product::<usize>() / 256) * 210
+                } else {
+                    (meta_up_exps.shape.iter().product::<usize>() / 256) * 144
+                };
+                let down_bytes = if meta_down_exps.dtype == 14 {
+                    (meta_down_exps.shape.iter().product::<usize>() / 256) * 210
+                } else {
+                    (meta_down_exps.shape.iter().product::<usize>() / 256) * 144
+                };
+
+                let ffn_min = [gate_offset, up_offset, down_offset].into_iter().min().unwrap();
+                let ffn_max = [gate_offset + gate_bytes, up_offset + up_bytes, down_offset + down_bytes].into_iter().max().unwrap();
+
+                let dummy_slice = LinearSlice {
+                    offset: 0,
+                    byte_len: 0,
+                    n_rows: 0,
+                    n_cols: 0,
+                    dtype: 0,
+                };
+                let moe_desc = MoeLayerDesc {
+                    router_weight,
+                    n_experts,
+                    n_experts_used,
+                    expert_dim,
+                    gate_offset,
+                    gate_dtype: meta_gate_exps.dtype,
+                    up_offset,
+                    up_dtype: meta_up_exps.dtype,
+                    down_offset,
+                    down_dtype: meta_down_exps.dtype,
+                };
+                max_w1_rows = max_w1_rows.max(expert_dim);
+                (dummy_slice.clone(), dummy_slice.clone(), dummy_slice, Some(moe_desc), ffn_min, ffn_max)
+            } else {
+                let meta_w1 = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_gate.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_gate.weight"))?;
+                let meta_w2 = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_down.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_down.weight"))?;
+                let meta_w3 = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_up.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_up.weight"))?;
+
+                if [
+                    meta_wq, meta_wk, meta_wv, meta_wo, meta_w1, meta_w2, meta_w3,
+                ]
+                .iter()
+                .any(|meta| meta.dtype == 8)
+                    && std::env::var_os("NIOXS_AST_EXPERIMENTAL_Q8").as_deref()
+                        != Some(std::ffi::OsStr::new("1"))
+                {
+                    anyhow::bail!(
+                        "Q8_0 projection support is experimental; set NIOXS_AST_EXPERIMENTAL_Q8=1 to opt in for evaluation"
+                    );
+                }
+
+                for meta in [meta_w1, meta_w3] {
+                    if ![8, 18, 20].contains(&meta.dtype)
+                        || meta.shape.len() != 2
+                        || (meta.dtype == 18 && meta.shape[1] % 256 != 0)
+                        || (meta.dtype != 18 && meta.shape[1] % 32 != 0)
+                    {
+                        anyhow::bail!(
+                            "unsupported AST-Micro tensor {}: dtype {} shape {:?}; expected Q8_0, IQ3_XXS, or IQ4_NL matrix",
+                            meta.name,
+                            meta.dtype,
+                            meta.shape
+                        );
+                    }
+                }
+                if meta_w2.shape.len() != 2
+                    || !matches!(meta_w2.dtype, 8 | 18)
+                    || (meta_w2.dtype == 18 && meta_w2.shape[1] % 256 != 0)
+                    || (meta_w2.dtype == 8 && meta_w2.shape[1] % 32 != 0)
+                {
+                    anyhow::bail!(
+                        "unsupported AST-Micro tensor {}: dtype {} shape {:?}; expected Q8_0 or IQ3_XXS matrix",
+                        meta_w2.name,
+                        meta_w2.dtype,
+                        meta_w2.shape
+                    );
+                }
+
+                let w1 = LinearSlice::new(meta_w1, gguf.tensor_data_offset);
+                let w2 = LinearSlice::new(meta_w2, gguf.tensor_data_offset);
+                let w3 = LinearSlice::new(meta_w3, gguf.tensor_data_offset);
+                max_w1_rows = max_w1_rows.max(w1.n_rows);
+                let ffn_min = [w1.offset, w2.offset, w3.offset].into_iter().min().unwrap();
+                let ffn_max = [w1.offset + w1.byte_len, w2.offset + w2.byte_len, w3.offset + w3.byte_len].into_iter().max().unwrap();
+                (w1, w2, w3, None, ffn_min, ffn_max)
+            };
 
             for meta in [meta_wq, meta_wk, meta_wv, meta_wo] {
-                if ![8, 18, 20].contains(&meta.dtype)
+                if ![8, 12, 14, 18, 20].contains(&meta.dtype)
                     || meta.shape.len() != 2
                     || (meta.dtype == 18 && meta.shape[1] % 256 != 0)
-                    || (meta.dtype != 18 && meta.shape[1] % 32 != 0)
+                    || ((meta.dtype == 12 || meta.dtype == 14) && meta.shape[1] % 256 != 0)
+                    || (meta.dtype != 18 && meta.dtype != 12 && meta.dtype != 14 && meta.shape[1] % 32 != 0)
                 {
                     anyhow::bail!(
-                        "unsupported AST-Micro tensor {}: dtype {} shape {:?}; expected Q8_0, IQ3_XXS, or IQ4_NL matrix",
+                        "unsupported AST-Micro tensor {}: dtype {} shape {:?}; expected Q8_0, Q4_K, Q6_K, IQ3_XXS, or IQ4_NL matrix",
                         meta.name,
                         meta.dtype,
                         meta.shape
                     );
                 }
-            }
-            for meta in [meta_w1, meta_w3] {
-                if ![8, 18, 20].contains(&meta.dtype)
-                    || meta.shape.len() != 2
-                    || (meta.dtype == 18 && meta.shape[1] % 256 != 0)
-                    || (meta.dtype != 18 && meta.shape[1] % 32 != 0)
-                {
-                    anyhow::bail!(
-                        "unsupported AST-Micro tensor {}: dtype {} shape {:?}; expected Q8_0, IQ3_XXS, or IQ4_NL matrix",
-                        meta.name,
-                        meta.dtype,
-                        meta.shape
-                    );
-                }
-            }
-            if meta_w2.shape.len() != 2
-                || !matches!(meta_w2.dtype, 8 | 18)
-                || (meta_w2.dtype == 18 && meta_w2.shape[1] % 256 != 0)
-                || (meta_w2.dtype == 8 && meta_w2.shape[1] % 32 != 0)
-            {
-                anyhow::bail!(
-                    "unsupported AST-Micro tensor {}: dtype {} shape {:?}; expected Q8_0 or IQ3_XXS matrix",
-                    meta_w2.name,
-                    meta_w2.dtype,
-                    meta_w2.shape
-                );
             }
 
             let wq = LinearSlice::new(meta_wq, gguf.tensor_data_offset);
             let wk = LinearSlice::new(meta_wk, gguf.tensor_data_offset);
             let wv = LinearSlice::new(meta_wv, gguf.tensor_data_offset);
             let wo = LinearSlice::new(meta_wo, gguf.tensor_data_offset);
-            let w1 = LinearSlice::new(meta_w1, gguf.tensor_data_offset);
-            let w2 = LinearSlice::new(meta_w2, gguf.tensor_data_offset);
-            let w3 = LinearSlice::new(meta_w3, gguf.tensor_data_offset);
 
             max_wq_rows = max_wq_rows.max(wq.n_rows);
             max_wk_rows = max_wk_rows.max(wk.n_rows);
             max_wv_rows = max_wv_rows.max(wv.n_rows);
-            max_w1_rows = max_w1_rows.max(w1.n_rows);
 
             let min_offset = [
-                wq.offset, wk.offset, wv.offset, wo.offset, w1.offset, w2.offset, w3.offset,
+                wq.offset, wk.offset, wv.offset, wo.offset, ffn_min_off,
             ]
             .into_iter()
             .min()
@@ -1674,9 +1912,7 @@ impl AstMicroEngine {
                 wk.offset + wk.byte_len,
                 wv.offset + wv.byte_len,
                 wo.offset + wo.byte_len,
-                w1.offset + w1.byte_len,
-                w2.offset + w2.byte_len,
-                w3.offset + w3.byte_len,
+                ffn_max_off,
             ]
             .into_iter()
             .max()
@@ -1698,7 +1934,7 @@ impl AstMicroEngine {
                 &gguf,
                 &format!("{prefix}.attn_k_norm.weight"),
             )?;
-            if arch == "qwen3"
+            if (arch == "qwen3" || arch == "qwen3moe")
                 && (q_norm_weight.len() != head_dim || k_norm_weight.len() != head_dim)
             {
                 anyhow::bail!(
@@ -1724,6 +1960,7 @@ impl AstMicroEngine {
                 w1,
                 w2,
                 w3,
+                moe,
                 q_bias,
                 k_bias,
                 v_bias,
@@ -1947,6 +2184,8 @@ impl AstMicroEngine {
             0 => (1, 4),
             2 => (32, 18),
             8 => (32, 34),
+            12 => (256, 144),
+            14 => (256, 210),
             18 => (256, 98),
             20 => (32, 18),
             other => anyhow::bail!("unsupported tensor dtype {other} for {name}"),
@@ -1959,6 +2198,8 @@ impl AstMicroEngine {
             0 => quants::dequantize_row_f32(slice, &mut data),
             2 => quants::dequantize_row_q4_0(slice, &mut data),
             8 => quants::dequantize_row_q8_0(slice, &mut data),
+            12 => quants::dequantize_row_q4_k(slice, &mut data),
+            14 => quants::dequantize_row_q6_k(slice, &mut data),
             18 => quants::dequantize_row_iq3_xxs(slice, &mut data),
             20 => quants::dequantize_row_iq4_nl(slice, &mut data),
             other => anyhow::bail!("unimplemented dequantize for dtype {other}"),
@@ -1993,6 +2234,8 @@ impl AstMicroEngine {
         let slice = &mmap[start..end];
         match dtype {
             20 => quants::dequantize_row_iq4_nl(slice, out),
+            14 => quants::dequantize_row_q6_k(slice, out),
+            12 => quants::dequantize_row_q4_k(slice, out),
             8 => quants::dequantize_row_q8_0(slice, out),
             2 => quants::dequantize_row_q4_0(slice, out),
             0 => quants::dequantize_row_f32(slice, out),
@@ -2188,6 +2431,8 @@ impl AstMicroEngine {
                 }
             }
 
+
+
             if let Some(trace) = trace.as_mut() {
                 let scratch = if layer.wq.dtype == 18 && n_tokens % 3 == 0 {
                     &self.scratch2
@@ -2293,13 +2538,14 @@ impl AstMicroEngine {
     /// Return unsampled logits after prefill/forward for runtime diagnostics.
     pub fn diagnostic_logits(&mut self) -> Result<Vec<f32>> {
         quants::quantize_row_q8_0(&self.scratch.x_norm, &mut self.scratch.x_q8_0);
-        let (offset, vocab_size, row_bytes, is_iq4_nl) = if let Some(output) = &self.output_weight {
-            let row_bytes = if output.dtype == 20 {
-                (output.n_cols / 32) * 18
-            } else {
-                (output.n_cols / 32) * 34
+        let (offset, vocab_size, row_bytes, dtype) = if let Some(output) = &self.output_weight {
+            let row_bytes = match output.dtype {
+                20 => (output.n_cols / 32) * 18,
+                14 => (output.n_cols / 256) * 210,
+                12 => (output.n_cols / 256) * 144,
+                _ => (output.n_cols / 32) * 34,
             };
-            (output.offset, output.n_rows, row_bytes, output.dtype == 20)
+            (output.offset, output.n_rows, row_bytes, output.dtype)
         } else {
             let embedding = self
                 .gguf
@@ -2313,7 +2559,7 @@ impl AstMicroEngine {
                     .first()
                     .ok_or_else(|| anyhow!("invalid embedding shape"))?,
                 self.bytes_per_token,
-                self.token_embd_dtype == 20,
+                self.token_embd_dtype,
             )
         };
         let end = offset
@@ -2328,10 +2574,16 @@ impl AstMicroEngine {
             .get(offset..end)
             .ok_or_else(|| anyhow!("truncated output matrix"))?;
         use rayon::prelude::*;
-        if is_iq4_nl {
+        if dtype == 20 {
             Ok(bytes
                 .par_chunks_exact(row_bytes)
                 .map(|row| unsafe { quants::vec_dot_iq4_nl_q8_0_avx2(row, &self.scratch.x_q8_0) })
+                .collect())
+        } else if dtype == 14 {
+            let x_norm = &self.scratch.x_norm;
+            Ok(bytes
+                .par_chunks_exact(row_bytes)
+                .map(|row| quants::vec_dot_q6_k_f32(row, x_norm))
                 .collect())
         } else {
             Ok(bytes
@@ -2367,6 +2619,24 @@ impl AstMicroEngine {
         let repeat_penalty = self.repeat_penalty;
         let history = &history[history.len().saturating_sub(self.repeat_last_n)..];
 
+        let (matrix_offset, vocab_size, row_bytes, dtype) = if let Some(output) = &self.output_weight {
+            let rbytes = match output.dtype {
+                20 => (output.n_cols / 32) * 18,
+                14 => (output.n_cols / 256) * 210,
+                12 => (output.n_cols / 256) * 144,
+                _ => (output.n_cols / 32) * 34,
+            };
+            (output.offset, output.n_rows, rbytes, output.dtype)
+        } else {
+            let embd_info = self.gguf.tensors.get("token_embd.weight").unwrap();
+            (
+                self.token_embd_offset,
+                embd_info.shape[0],
+                self.bytes_per_token,
+                self.token_embd_dtype,
+            )
+        };
+
         if let Some(cands) = candidates {
             if cands.is_empty() {
                 return Ok(2); // EOS
@@ -2379,20 +2649,7 @@ impl AstMicroEngine {
                 .collect();
             let mut max_idx = 0;
             let mut max_val = f32::NEG_INFINITY;
-            let (matrix_offset, row_bytes, is_iq4_nl) = if let Some(output) = &self.output_weight {
-                let rbytes = if output.dtype == 20 {
-                    (output.n_cols / 32) * 18
-                } else {
-                    (output.n_cols / 32) * 34
-                };
-                (output.offset, rbytes, output.dtype == 20)
-            } else {
-                (
-                    self.token_embd_offset,
-                    self.bytes_per_token,
-                    self.token_embd_dtype == 20,
-                )
-            };
+            let mut row_buf = if dtype == 14 { vec![0.0f32; self._embedding_length] } else { Vec::new() };
             for (i, &tok_id) in cands.iter().enumerate() {
                 if suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2) {
                     continue;
@@ -2402,8 +2659,11 @@ impl AstMicroEngine {
                 }
                 let start = matrix_offset + (tok_id as usize) * row_bytes;
                 let slice = &self.mmap[start..start + row_bytes];
-                let val = if is_iq4_nl {
+                let val = if dtype == 20 {
                     unsafe { quants::vec_dot_iq4_nl_q8_0_avx2(slice, &self.scratch.x_q8_0) }
+                } else if dtype == 14 {
+                    quants::dequantize_row_q6_k(slice, &mut row_buf);
+                    row_buf.iter().zip(x_norm.iter()).map(|(&w, &x)| w * x).sum()
                 } else {
                     unsafe { quants::vec_dot_q8_0_q8_0_avx2(slice, &self.scratch.x_q8_0) }
                 };
@@ -2421,36 +2681,69 @@ impl AstMicroEngine {
                 }
             }
             Ok(cands[max_idx])
-        } else {
-            let (matrix_offset, vocab_size, bytes_per_token, is_iq4_nl) =
-                if let Some(output) = &self.output_weight {
-                    let rbytes = if output.dtype == 20 {
-                        (output.n_cols / 32) * 18
-                    } else {
-                        (output.n_cols / 32) * 34
-                    };
-                    (output.offset, output.n_rows, rbytes, output.dtype == 20)
-                } else {
-                    let embd_info = self.gguf.tensors.get("token_embd.weight").unwrap();
-                    (
-                        self.token_embd_offset,
-                        embd_info.shape[0],
-                        self.bytes_per_token,
-                        self.token_embd_dtype == 20,
-                    )
-                };
+        } else if dtype == 14 {
+            use rayon::prelude::*;
+            let recent: HashSet<u32> = history
+                .iter()
+                .rev()
+                .take(self.repeat_last_n.max(1))
+                .copied()
+                .collect();
+            let total_bytes = vocab_size * row_bytes;
+            let matrix_slice = &self.mmap[matrix_offset..matrix_offset + total_bytes];
 
+
+
+            let best = matrix_slice
+                .par_chunks_exact(row_bytes)
+                .enumerate()
+                .map(|(tok_idx, row)| {
+                    let tok_id = tok_idx as u32;
+                    if tok_id > 151668 {
+                        return (tok_id, f32::NEG_INFINITY);
+                    }
+                    if suppress_eos && (tok_id == 0 || tok_id == 1 || tok_id == 2 || tok_id == 151645) {
+                        return (tok_id, f32::NEG_INFINITY);
+                    }
+                    if self.suppressed_tokens.contains(&tok_id) {
+                        return (tok_id, f32::NEG_INFINITY);
+                    }
+                    let mut score: f32 = quants::vec_dot_q6_k_f32(row, x_norm);
+                    if score.is_nan() {
+                        return (tok_id, f32::NEG_INFINITY);
+                    }
+                    if recent.contains(&tok_id) {
+                        score = if score > 0.0 { score / repeat_penalty } else { score * repeat_penalty };
+                    }
+                    (tok_id, score)
+                })
+                .reduce(|| (0u32, f32::NEG_INFINITY), |a, b| {
+                    if a.1.is_nan() {
+                        b
+                    } else if b.1.is_nan() {
+                        a
+                    } else if b.1 > a.1 {
+                        b
+                    } else {
+                        a
+                    }
+                });
+
+
+
+            Ok(best.0)
+        } else {
             let suppressed_vec: Vec<u32> = self.suppressed_tokens.iter().copied().collect();
             let mut top_toks = [0u32; pool::NUM_WORKERS];
             let mut top_scores = [f32::NEG_INFINITY; pool::NUM_WORKERS];
 
-            if is_iq4_nl {
+            if dtype == 20 {
                 self.pool.run_task(GemvTask::VocabIq4Nl {
                     weight_ptr: (self.mmap.as_ptr() as usize) + matrix_offset,
                     x_blocks_ptr: self.scratch.x_q8_0.as_ptr() as usize,
                     start_tok: 0,
                     vocab_count: vocab_size,
-                    bytes_per_token,
+                    bytes_per_token: row_bytes,
                     suppress_eos,
                     history_ptr: history.as_ptr() as usize,
                     history_len: history.len(),
@@ -2466,7 +2759,7 @@ impl AstMicroEngine {
                     x_blocks_ptr: self.scratch.x_q8_0.as_ptr() as usize,
                     start_tok: 0,
                     vocab_count: vocab_size,
-                    bytes_per_token,
+                    bytes_per_token: row_bytes,
                     suppress_eos,
                     history_ptr: history.as_ptr() as usize,
                     history_len: history.len(),
