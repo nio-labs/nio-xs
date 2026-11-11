@@ -24,16 +24,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|rhino <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
-  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, all)\n\
+  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, rhino, all)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
   manta <prompt> Run local in-process Manta 494M systems guru & DAG architect (<manta_plan>)\n\
   beluga <prompt> Run local in-process Beluga 1.54B sovereign lead architect & CoT reasoning\n\
   blue <prompt>   Run local in-process Blue 3.82B sovereign reflex lead companion\n\
+  rhino <prompt>  Run local in-process Rhino 32.7B sovereign pure-code land titan (<think> invariant verification)\n\
   mcp            Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
   init           Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
   undo           Rollback last applied multi-file patch (or specific patch_id)\n\
