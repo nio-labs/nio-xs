@@ -1141,13 +1141,13 @@ impl AstEngine {
 
         if let Some(runner_bin) = Self::gpu_runner_path() {
             let active_dev = self.active_device();
-            if active_dev.is_gpu() && !self.is_rhino {
+            if active_dev.is_gpu() {
                 let model_path = self.model_path.clone();
                 // Match the native runtime's context limit, including the
                 // model's declared maximum, for every companion.
                 let context_size = context_limit.to_string();
                 let total_layers = if self.is_rhino {
-                    64
+                    48
                 } else if self.is_blue {
                     32
                 } else if self.is_beluga {
