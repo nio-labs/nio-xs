@@ -73,6 +73,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             "beluga" | "nio-beluga" => "nio-beluga",
             "cuda" | "nio-cuda" => "nio-cuda",
             "blue" | "nio-blue" => "blue",
+            "rhino" | "nio-rhino" => "rhino",
             other => other,
         };
         let path = nioxs_artifacts::prompt_and_pull_if_needed(normalized, auto_yes)
@@ -440,6 +441,68 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             .generate_stream(formatted_prompt, max_tokens, 0.35, 0.88)
             .await?;
         let mut flow = StreamFlow::new(flow_mode);
+        while let Some(chunk) = rx.recv().await {
+            flow.push(&chunk);
+        }
+        flow.finish();
+        println!();
+        return Ok(());
+    }
+    if arg.as_deref() == Some("rhino") {
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        if raw_args.is_empty() {
+            eprintln!(
+                "Usage: nioxs rhino [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
+            return Ok(());
+        }
+
+        let mut custom_max_tokens = None;
+        let mut device_pref = nioxs_engine::DevicePreference::Auto;
+        let mut flow_mode = FlowMode::Token;
+        let mut prompt_parts = Vec::new();
+        let mut iter = raw_args.clone().into_iter();
+        while let Some(a) = iter.next() {
+            if a == "-n" || a == "--max-tokens" {
+                if let Some(val) = iter.next() {
+                    custom_max_tokens = val.parse::<usize>().ok();
+                }
+            } else if a == "-d" || a == "--device" {
+                if let Some(val) = iter.next() {
+                    device_pref = nioxs_engine::DevicePreference::parse(&val);
+                }
+            } else if a == "--gpu" {
+                device_pref = nioxs_engine::DevicePreference::Gpu;
+            } else if a == "--cpu" {
+                device_pref = nioxs_engine::DevicePreference::Cpu;
+            } else if a == "--auto" {
+                device_pref = nioxs_engine::DevicePreference::Auto;
+            } else if a == "-f" || a == "--flow" {
+                if let Some(val) = iter.next() {
+                    flow_mode = FlowMode::parse(&val);
+                }
+            } else {
+                prompt_parts.push(a);
+            }
+        }
+        let prompt = prompt_parts.join(" ");
+        if prompt.is_empty() {
+            eprintln!(
+                "Usage: nioxs rhino [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
+            return Ok(());
+        }
+        let engine = nioxs_engine::AstEngine::for_model_with_device("rhino", device_pref)?;
+        let max_tokens = custom_max_tokens.unwrap_or(4096);
+        let formatted_prompt = format!(
+            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+            nioxs_engine::rhino_system()
+        );
+        let mut rx = engine
+            .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
+            .await?;
+        let mut flow = StreamFlow::new(flow_mode);
+        flow.set_show_think_tags(true);
         while let Some(chunk) = rx.recv().await {
             flow.push(&chunk);
         }

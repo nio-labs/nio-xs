@@ -134,6 +134,7 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         "Manta — Systems Guru & DAG Architect (24L, < 235 MB RAM)",
         "Beluga — Sovereign Lead Architect (28L, < 295 MB RAM)",
         "Blue — Sovereign Reflex Lead Companion (32L, < 180 MB RAM)",
+        "Rhino — Sovereign Pure-Code Land Titan (64L, 32.7B vMicroLM Reflex)",
         "Skate — Resident Micro-Guru & Edge Companion (v-µLM Companion, < 50 MB RAM)",
         "NioNano — Intent Reflex & MicroLM (~0.5M, sub-0.1ms)",
         "NioMicro — Contextual Policy Decision Arbiter (5.0M / cluster)",
@@ -257,6 +258,7 @@ async fn microlm_chat_handler(
     let system_prompt = match model_name {
         "nio-beluga" | "beluga" => nioxs_engine::beluga_system(),
         "nio-blue" | "blue" => nioxs_engine::blue_system(),
+        "nio-rhino" | "rhino" => nioxs_engine::rhino_system(),
         "nio-skate" | "skate" => {
             "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and helpful. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Beluga. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."
         }
@@ -369,6 +371,7 @@ async fn microlm_chat_handler(
     let model = match model_name {
         "nio-beluga" | "beluga" => nioxs_contracts::MODEL_BELUGA,
         "nio-blue" | "blue" => nioxs_contracts::MODEL_BLUE,
+        "nio-rhino" | "rhino" => nioxs_contracts::MODEL_RHINO,
         "nio-manta" | "manta" | "nio-echo" | "echo" => nioxs_contracts::MODEL_MANTA,
         "nio-skate" | "skate" => nioxs_contracts::MODEL_SKATE,
         "nio-viper" | "viper" => nioxs_contracts::MODEL_VIPER,
@@ -378,6 +381,7 @@ async fn microlm_chat_handler(
 
     let (temp, top_p) = match model_name {
         "nio-blue" | "blue" => (0.35, 0.88),
+        "nio-rhino" | "rhino" => (0.20, 0.85),
         "nio-beluga" | "beluga" => (0.6, 0.95),
         "nio-manta" | "manta" => (0.3, 0.90),
         "nio-skate" | "skate" => (0.65, 0.90),
@@ -575,6 +579,9 @@ async fn chat(
         }
         "nio-blue" | "blue" => {
             return microlm_chat_handler("blue", request, None).await;
+        }
+        "nio-rhino" | "rhino" => {
+            return microlm_chat_handler("rhino", request, None).await;
         }
         "nio-ray" | "ray" => {
             return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;
@@ -2393,6 +2400,8 @@ mod tests {
     fn blue_aliases_keep_companion_policy_when_client_system_prompt_is_present() {
         assert!(is_companion_model("blue"));
         assert!(is_companion_model("nio-blue"));
+        assert!(!is_companion_model("rhino"));
+        assert!(!is_companion_model("nio-rhino"));
     }
 
     #[test]

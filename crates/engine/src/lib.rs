@@ -57,6 +57,10 @@ pub fn blue_system() -> &'static str {
     "You are Blue, Nio's technical companion. Answer the user's actual question directly and accurately in the requested format. Be concise and relevant. Use standard terms; never invent API names or details. State uncertainty when needed."
 }
 
+pub fn rhino_system() -> &'static str {
+    "You are Rhino, Nio's Sovereign Pure-Code Land Titan and Grand-Master Systems Coder. You are purely a high-performance code generation engine—NOT a companion. Deliver zero conversational filler, pleasantries, or apologies. Verify formal state invariants, memory orderings, and lifetime constraints inside concise <think>...</think> tags (<= 150 tokens) and emit complete, production-grade, compilable implementations."
+}
+
 pub fn skate_system() -> Result<String> {
     if let Some(path) = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE") {
         if let Ok(prompt) = std::fs::read_to_string(&path) {
@@ -511,6 +515,7 @@ pub struct AstEngine {
     is_manta: bool,
     is_beluga: bool,
     is_blue: bool,
+    is_rhino: bool,
     device_pref: DevicePreference,
 }
 
@@ -544,6 +549,8 @@ impl AstEngine {
             || model_path.to_string_lossy().contains("beluga");
         let is_blue = matches!(lowered.as_str(), "blue" | "nio-blue")
             || model_path.to_string_lossy().contains("blue");
+        let is_rhino = matches!(lowered.as_str(), "rhino" | "nio-rhino")
+            || model_path.to_string_lossy().contains("rhino");
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -552,6 +559,7 @@ impl AstEngine {
             is_manta,
             is_beluga,
             is_blue,
+            is_rhino,
             device_pref,
         })
     }
@@ -584,6 +592,7 @@ impl AstEngine {
         let is_manta = model_path.to_string_lossy().contains("manta");
         let is_beluga = model_path.to_string_lossy().contains("beluga");
         let is_blue = model_path.to_string_lossy().contains("blue");
+        let is_rhino = model_path.to_string_lossy().contains("rhino");
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -592,6 +601,7 @@ impl AstEngine {
             is_manta,
             is_beluga,
             is_blue,
+            is_rhino,
             device_pref: DevicePreference::Auto,
         }
     }
@@ -624,6 +634,7 @@ impl AstEngine {
             "cuda" | "nio-cuda" => "nio-cuda",
             "beluga" | "nio-beluga" => "nio-beluga",
             "blue" | "nio-blue" => "blue",
+            "rhino" | "nio-rhino" => "rhino",
             other => other,
         };
 
@@ -654,6 +665,10 @@ impl AstEngine {
                 "nio-beluga.vmicrolm-vector.gguf",
             ],
             "blue" | "nio-blue" => &["blue.vmicrolm-reflex.gguf", "nio-blue.vmicrolm-reflex.gguf"],
+            "rhino" | "nio-rhino" => &[
+                "rhino.vmicrolm-reflex.gguf",
+                "nio-rhino.vmicrolm-reflex.gguf",
+            ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
                 "nio-viper-ast-32k.Q4_0.gguf",
@@ -688,6 +703,7 @@ impl AstEngine {
             "skate" | "nio-skate" => Some("NIOXS_SKATE_MODEL"),
             "beluga" | "nio-beluga" => Some("NIOXS_BELUGA_MODEL"),
             "blue" | "nio-blue" => Some("NIOXS_BLUE_MODEL"),
+            "rhino" | "nio-rhino" => Some("NIOXS_RHINO_MODEL"),
             "ray" | "nio-ray" => Some("NIOXS_RAY_MODEL"),
             _ => None,
         };
@@ -760,6 +776,16 @@ impl AstEngine {
                     return candidate2;
                 }
             }
+            if s.contains("rhino") {
+                let candidate1 = model.with_file_name("rhino-tokenizer.json");
+                if candidate1.is_file() {
+                    return candidate1;
+                }
+                let candidate2 = model.with_file_name("nio-rhino-tokenizer.json");
+                if candidate2.is_file() {
+                    return candidate2;
+                }
+            }
             if s.contains("manta") {
                 let candidate1 = model.with_file_name("manta-tokenizer.json");
                 if candidate1.is_file() {
@@ -775,6 +801,7 @@ impl AstEngine {
             Some(s) if s.contains("skate") => "skate-tokenizer.json",
             Some(s) if s.contains("beluga") => "beluga-tokenizer.json",
             Some(s) if s.contains("blue") => "blue-tokenizer.json",
+            Some(s) if s.contains("rhino") => "rhino-tokenizer.json",
             Some("nio-ray-dev.Q4_K_M.gguf") => "nio-ray-dev-tokenizer.json",
             Some(s) if s.contains("viper") => "nio-viper-tokenizer.json",
             Some(s) if s.contains("cuda") => "nio-cuda-tokenizer.json",
@@ -872,7 +899,13 @@ impl AstEngine {
         let is_manta = self.is_manta;
         let is_beluga = self.is_beluga;
         let is_blue = self.is_blue;
-        let policy = decoding::DecodingPolicy::for_model(is_skate, is_manta, is_beluga, is_blue);
+        let is_rhino = self.is_rhino;
+        let policy = decoding::DecodingPolicy::for_model(
+            is_skate,
+            is_manta,
+            is_beluga,
+            is_blue || is_rhino,
+        );
 
         // The native fallback must use CPU residency settings. Hardware probing
         // cannot enable GPU execution when the external runner is unavailable.
@@ -927,6 +960,25 @@ impl AstEngine {
                         engine.block_count
                     } else {
                         layer_setting("NIOXS_BLUE_ROLLING_WINDOW", 2, engine.block_count)
+                    };
+                    engine.set_resident_layers(resident);
+                    engine.set_rolling_window(window);
+                }
+            } else if is_rhino {
+                let gpu_layers = active_dev.recommended_gpu_layers(64);
+                if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
+                    engine.set_resident_layers(gpu_layers);
+                    engine.set_rolling_window(gpu_layers.max(4));
+                } else {
+                    let resident = std::env::var("NIOXS_RHINO_RESIDENT_LAYERS")
+                        .ok()
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(2)
+                        .min(engine.block_count);
+                    let window = if resident >= engine.block_count {
+                        engine.block_count
+                    } else {
+                        layer_setting("NIOXS_RHINO_ROLLING_WINDOW", 2, engine.block_count)
                     };
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
@@ -997,6 +1049,12 @@ impl AstEngine {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 blue_system(),
+                raw_prompt.trim()
+            )
+        } else if self.is_rhino {
+            format!(
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                rhino_system(),
                 raw_prompt.trim()
             )
         } else if self.is_skate {
@@ -1072,7 +1130,7 @@ impl AstEngine {
             self.is_skate,
             self.is_manta,
             self.is_beluga,
-            self.is_blue,
+            self.is_blue || self.is_rhino,
         );
         let prompt = self.format_prompt_for_engine(&prompt)?;
         let (prompt_tokens, context_limit) = {
@@ -1098,7 +1156,9 @@ impl AstEngine {
                 // Match the native runtime's context limit, including the
                 // model's declared maximum, for every companion.
                 let context_size = context_limit.to_string();
-                let total_layers = if self.is_blue {
+                let total_layers = if self.is_rhino {
+                    64
+                } else if self.is_blue {
                     32
                 } else if self.is_beluga {
                     28
@@ -1230,7 +1290,9 @@ impl AstEngine {
         let is_blue = self.is_blue;
         let report_stats =
             std::env::var_os("NIOXS_INFERENCE_STATS").as_deref() == Some(std::ffi::OsStr::new("1"));
-        let stats_model = if self.is_blue {
+        let stats_model = if self.is_rhino {
+            "rhino"
+        } else if self.is_blue {
             "blue"
         } else if self.is_beluga {
             "beluga"
@@ -1666,6 +1728,20 @@ mod tests {
             .expect("Blue prompt should format");
         assert!(prompt.contains(blue_system()));
         assert!(prompt.contains("answer briefly"));
+    }
+
+    #[test]
+    fn rhino_engine_prompt_uses_the_shared_rhino_policy() {
+        let engine = AstEngine::from_paths(
+            PathBuf::from("rhino.vmicrolm-reflex.gguf"),
+            PathBuf::from("rhino-tokenizer.json"),
+        );
+        let prompt = engine
+            .format_prompt_for_engine("implement lock-free ring buffer")
+            .expect("Rhino prompt should format");
+        assert!(prompt.contains(rhino_system()));
+        assert!(prompt.contains("NOT a companion"));
+        assert!(prompt.contains("implement lock-free ring buffer"));
     }
 
     #[test]

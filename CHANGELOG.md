@@ -3,6 +3,15 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
+## v0.5.5
+
+### Added
+- **Rhino (32.7B) Sovereign Pure-Code Land Titan (`vMicroLM Reflex Pure-Code`)**:
+  - Added `MODEL_RHINO` (`rhino`) across `nioxs-contracts`, `nioxs-artifacts`, `nioxs-engine`, and `nioxs-provider`.
+  - Pinned `rhino.vmicrolm-reflex.gguf` (`12,839,271,392` bytes, SHA-256 `74077f14f2be40a50b213ddb15d600f914c16000bb0a56c8f40ff6ce772b67ed`) and `rhino-tokenizer.json` (`11,422,184` bytes, SHA-256 `9fae067af7b47d39e05501d5463a15e83a8fbc62a857f2c2dc58482b8cae8034`) to the `nio-xs-models` `v0.3.2` release manifest.
+  - Added transparent multi-part GitHub Release streaming in `nioxs-artifacts` (`download_and_verify_model`) for artifacts > 2 GB (`.part-00`..`.part-06`), reassembling and verifying the full-file SHA-256 in a single streaming pass.
+  - Added `nioxs pull rhino` and `nioxs rhino <prompt>` CLI commands and `/v1/chat/completions` routing with 2-layer CPU ring buffer residency (`NIOXS_RHINO_RESIDENT_LAYERS` / `NIOXS_RHINO_ROLLING_WINDOW`) and 64-layer GPU offload.
+
 ## v0.5.4
 
 ### Added

@@ -5,7 +5,7 @@
 
 use futures_util::StreamExt;
 use nioxs_contracts::{
-    MODEL_BELUGA, MODEL_BLUE, MODEL_MANTA, MODEL_NANO, MODEL_SKATE, MODEL_VIPER,
+    MODEL_BELUGA, MODEL_BLUE, MODEL_MANTA, MODEL_NANO, MODEL_RHINO, MODEL_SKATE, MODEL_VIPER,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -96,6 +96,21 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
                 download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.1/blue-tokenizer.json".into(),
                 sha256: "8fcc6f6a32f0bd5ccdac48a0522dcd1cc575e5daf591f09d489e07f0d9035b2e".into(),
                 size_bytes: 3_911_372,
+            }),
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_RHINO.into(),
+            brand_name: "Rhino (Sovereign Pure-Code Land Titan)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-32B-Instruct (64L, vMicroLM Reflex Pure-Code)".into(),
+            filename: "rhino.vmicrolm-reflex.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.2/rhino.vmicrolm-reflex.gguf".into(),
+            sha256: "74077f14f2be40a50b213ddb15d600f914c16000bb0a56c8f40ff6ce772b67ed".into(),
+            size_bytes: 12_839_271_392,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "rhino-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.2/rhino-tokenizer.json".into(),
+                sha256: "9fae067af7b47d39e05501d5463a15e83a8fbc62a857f2c2dc58482b8cae8034".into(),
+                size_bytes: 11_422_184,
             }),
         },
     ]
@@ -319,36 +334,54 @@ pub async fn download_and_verify_model<P: ProgressListener>(
     let tmp_path = target_dir.join(format!("{}.download.tmp", entry.filename));
     listener.on_start(&entry.brand_name, entry.size_bytes);
 
-    let response = client.get(&entry.download_url).send().await.map_err(|e| {
-        format!(
-            "failed to connect to download URL {}: {e}",
-            entry.download_url
-        )
-    })?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "download failed with HTTP status {}",
-            response.status()
-        ));
-    }
-
-    let total_size = response.content_length().unwrap_or(entry.size_bytes);
+    // GitHub Releases enforce a 2.0 GiB per-asset limit; models > 2 GB published on
+    // GitHub Releases are distributed as 1.9 GB parts (`.part-00`, `.part-01`, ...)
+    // and streamed seamlessly into the single destination GGUF file.
+    const GITHUB_PART_BYTES: u64 = 1_900_000_000;
+    let part_urls: Vec<String> =
+        if entry.download_url.contains("github.com/") && entry.size_bytes > 2_000_000_000 {
+            let num_parts = entry.size_bytes.div_ceil(GITHUB_PART_BYTES);
+            (0..num_parts)
+                .map(|i| format!("{}.part-{i:02}", entry.download_url))
+                .collect()
+        } else {
+            vec![entry.download_url.clone()]
+        };
 
     let mut file = File::create(&tmp_path)
         .map_err(|e| format!("failed to create temp file {}: {e}", tmp_path.display()))?;
 
-    let mut stream = response.bytes_stream();
     let mut downloaded: u64 = 0;
     let mut hasher = Sha256::new();
 
-    while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result.map_err(|e| format!("stream read error: {e}"))?;
-        file.write_all(&chunk)
-            .map_err(|e| format!("failed to write chunk: {e}"))?;
-        hasher.update(&chunk);
-        downloaded += chunk.len() as u64;
-        listener.on_chunk(downloaded, total_size);
+    for part_url in &part_urls {
+        let response = client.get(part_url).send().await.map_err(|e| {
+            format!("failed to connect to download URL {part_url}: {e}")
+        })?;
+
+        if !response.status().is_success() {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(format!(
+                "download failed with HTTP status {}",
+                response.status()
+            ));
+        }
+
+        let total_size = if part_urls.len() == 1 {
+            response.content_length().unwrap_or(entry.size_bytes)
+        } else {
+            entry.size_bytes
+        };
+
+        let mut stream = response.bytes_stream();
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.map_err(|e| format!("stream read error: {e}"))?;
+            file.write_all(&chunk)
+                .map_err(|e| format!("failed to write chunk: {e}"))?;
+            hasher.update(&chunk);
+            downloaded += chunk.len() as u64;
+            listener.on_chunk(downloaded, total_size);
+        }
     }
 
     file.flush()
@@ -571,7 +604,7 @@ mod tests {
     // `default_manifest()` exactly, not merely look plausible.
     #[test]
     fn test_manifest_pins_real_upstream_artifacts() {
-        let expected: [(&str, &str, u64, &str); 5] = [
+        let expected: [(&str, &str, u64, &str); 6] = [
             (
                 MODEL_VIPER,
                 "58633aa691b80840dc85586cf2cb8616deff480c64ddf406bf848db749ecc3d4",
@@ -602,6 +635,12 @@ mod tests {
                 1_499_437_216,
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.1/blue.vmicrolm-reflex.gguf",
             ),
+            (
+                MODEL_RHINO,
+                "74077f14f2be40a50b213ddb15d600f914c16000bb0a56c8f40ff6ce772b67ed",
+                12_839_271_392,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.2/rhino.vmicrolm-reflex.gguf",
+            ),
         ];
         let manifest = default_manifest();
         assert_eq!(manifest.len(), expected.len());
@@ -622,18 +661,29 @@ mod tests {
                 size_bytes: 3_911_372,
             })
         );
+        let rhino = get_manifest_entry(MODEL_RHINO).unwrap();
+        assert_eq!(
+            rhino.tokenizer,
+            Some(ModelTokenizerArtifact {
+                filename: "rhino-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.2/rhino-tokenizer.json".into(),
+                sha256: "9fae067af7b47d39e05501d5463a15e83a8fbc62a857f2c2dc58482b8cae8034".into(),
+                size_bytes: 11_422_184,
+            })
+        );
     }
 
     #[test]
     fn test_manifest_contains_all_models() {
         let manifest = default_manifest();
-        assert_eq!(manifest.len(), 5);
+        assert_eq!(manifest.len(), 6);
         for id in [
             MODEL_VIPER,
             MODEL_SKATE,
             MODEL_MANTA,
             MODEL_BELUGA,
             MODEL_BLUE,
+            MODEL_RHINO,
         ] {
             assert!(manifest.iter().any(|e| e.model_id == id));
         }
