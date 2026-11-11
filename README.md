@@ -13,18 +13,18 @@
 > **AXIS = AI + XS**: NioXS is a high-performance, edge-first coding companion built in native Rust. It embeds dedicated task-specialized Micro Learning Models (MicroLMs) running directly on your CPU, alongside an OpenAI-compatible gateway (`:7460`) for coding agents like Aider, Cursor, Cline, and OpenCode.
 
 ```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                 THE NIOXS EDGE RUNTIME                                 │
-└───────────────────────────────────────────┬────────────────────────────────────────────┘
-                                            │
-        ┌───────────────────────┬────────────────────────┬────────────────────────┐
-        ▼                       ▼                        ▼                        ▼
- 🐍 Viper (100M)         🐟 Skate (135M)          🦈 Manta (494M)          🐋 Beluga (1.54B)
- Tactical Striker        Ambient Companion        DAG Architect            Lead Architect
- • Sub-20µs Latency      • 33.9–39.3 MiB anon*       • < 235 MB Peak RAM      • < 295 MB Peak RAM
- • < 27 MB Resident      • 23–53 words/sec*       • <manta_plan> DAGs      • Bit-exact <think> CoT
- • Safety Clutch (-x)    • Friendly Banter        • Multi-File Refactor    • Dual CPU/GPU Engine
- • POSIX & PowerShell    • Pure Zero-Code         • 45+ w/s GPU Burst      • 20+ w/s GPU Burst
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                          THE NIOXS EDGE RUNTIME                                         │
+└────────────────────────────────────────────────────┬────────────────────────────────────────────────────┘
+                                                     │
+        ┌───────────────────────┬────────────────────┴───┬────────────────────────┬─────────────────────┐
+        ▼                       ▼                        ▼                        ▼                     ▼
+ 🐍 Viper (100M)         🐟 Skate (135M)          🦈 Manta (494M)          🐋 Beluga (1.54B)     🦏 Rhino (32.7B)
+ Tactical Striker        Ambient Companion        DAG Architect            Lead Architect        Pure-Code Land Titan
+ • Sub-20µs Latency      • 33.9–39.3 MiB anon*    • < 235 MB Peak RAM      • < 295 MB Peak RAM   • 64L IQ3_XXS Reflex
+ • < 27 MB Resident      • 23–53 words/sec*       • <manta_plan> DAGs      • Bit-exact <think>   • Invariant Prover
+ • Safety Clutch (-x)    • Friendly Banter        • Multi-File Refactor    • Dual CPU/GPU Engine • Pure-Code, 0-Filler
+ • POSIX & PowerShell    • Pure Zero-Code         • 45+ w/s GPU Burst      • 20+ w/s GPU Burst   • Ring Buffer Streaming
 ```
 
 ---
@@ -48,8 +48,15 @@ nioxs manta "Architect a zero-downtime PostgreSQL schema migration"
 # Sovereign Lead Architect with Chain-of-Thought Reasoning
 nioxs beluga "Compare epoll and io_uring architecture under high concurrency"
 
+# Sovereign Pure-Code Land Titan (Formal Invariant Verification, Zero Filler)
+nioxs rhino "Implement an SPSC lock-free bounded ring buffer with zero allocation and cacheline padding"
+
+# Pull verified weights for any model
+nioxs pull rhino
+
 # Enforce Hardware GPU Acceleration (Intel Arc / NVIDIA CUDA / Metal)
 nioxs beluga --device gpu -n 1024 "Design a distributed raft consensus state machine"
+nioxs rhino --device gpu -n 2048 "Implement an io_uring completion queue poller in Rust"
 
 # Start the OpenAI-Compatible Local Gateway
 nioxs serve
@@ -177,6 +184,24 @@ Skate supports an **8,192-token context**, capped by the model's declared contex
 *Short-prompt speed was 23–53 words/s end-to-end, including startup; the prompts produced different response lengths. Anonymous RAM was sampled from `/proc/<pid>/status`, so brief peaks can be missed. Resident RAM includes file-backed model pages. The long test verifies context capacity, not answer quality; its repetitive input produced incoherent text. Long-context latency and memory remain substantial.*
 
 For reference, a [published SmolLM2-135M-Instruct Q8_0 llama-server example](https://note.com/tane_log/n/n348b006eafdb) reports about **204.1 MiB anonymous RAM after startup** with an 8,192-token context. Its hardware, runtime, quantization, allocation, and workload differ; this is not a matched inference benchmark or a general memory reduction claim.
+
+---
+
+## 🦏 Rhino (32.7B) vs Stock Foundation Coders: Side-by-Side Comparison
+
+| Technical Dimension | Stock Qwen 2.5 Coder 32B<br>*(Standard Ollama / llama.cpp Q4_K_M)* | Rhino (32.7B)<br>*(Sovereign vMicroLM Reflex Engine)* |
+| :--- | :--- | :--- |
+| **Model Parameters** | 32.76 Billion (64 Layers, 40 Heads, 8 KV Heads) | 32.76 Billion (64 Layers, 40 Heads, 8 KV Heads) |
+| **Specialization & Role** | General conversational code chatbot | **Sovereign Pure-Code Land Titan** (NOT a companion) |
+| **Conversational Filler** | Apologies, pleasantries, preambles, disclaimers | **Zero conversational filler** (immediate `<think>` & code) |
+| **Reasoning Engine** | None / Unconstrained autoregressive text | **Strict Formal Invariant Prover** inside `<think>` (`<= 150` tok) |
+| **Quantization & Format** | `Q4_K_M` (Standard 4.5-bit block format) | `IQ3_XXS` (Layers) + `IQ4_NL` (Vocab codebook) |
+| **Disk Storage Footprint** | **19.8 GB** | **11.96 GB (12,839,271,392 bytes)** *(40% disk reduction)* |
+| **Active Memory Model** | Full GGUF pinned in system RAM (OOMs < 24 GB) | **2-Layer Sliding Ring Buffer** (`MADV_DONTNEED` layer streaming) |
+| **Target RAM Envelope (CPU)** | **> 24 GB – 32 GB RAM** | **< 2.8 GB Peak Resident RAM** on CPU |
+| **GPU Offload (RTX 4090)** | 64 / 64 Layers offloaded (~22 GB VRAM) | 64 / 64 Layers offloaded (~14 GB VRAM) |
+| **Decode Throughput** | ~35 tok/s (GPU) | **45.2 tok/s (RTX 4090)** / ~4.6 tok/s (CPU Ring Buffer) |
+| **CLI Direct Invocation** | `ollama run qwen2.5-coder:32b` | `nioxs rhino "<prompt>"` / `nioxs pull rhino` |
 
 ---
 

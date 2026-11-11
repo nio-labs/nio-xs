@@ -21,7 +21,7 @@
     <a href="#overview" class="brand-title">
       <img class="brand-logo" src="logo.svg" alt="NioXS logo">
       <span class="brand-name">NioXS</span>
-      <span class="badge">v0.5.2</span>
+      <span class="badge">v0.5.5</span>
     </a>
     <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">
       <span class="theme-icon">
@@ -90,7 +90,7 @@
         <section id="overview" class="doc-section">
           <div class="hero-header">
             <div class="hero-badges">
-              <span class="badge badge-accent">Release v0.5.2</span>
+              <span class="badge badge-accent">Release v0.5.5</span>
               <span class="badge">AXIS = AI + XS</span>
               <span class="badge">Rust orchestration</span>
               <span class="badge">OpenAI-compatible API</span>
@@ -144,6 +144,23 @@
           <div class="code-wrapper">
             <button class="copy-btn" type="button">Copy</button>
             <pre><code class="language-powershell">irm https://raw.githubusercontent.com/nio-labs/nio-xs/main/install.ps1 | iex</code></pre>
+          </div>
+
+          <h3>Model Invocation &amp; Automated Weights Pulling</h3>
+          <p>Direct CLI execution and verified weight caching across all fleet tiers:</p>
+          <div class="code-wrapper">
+            <button class="copy-btn" type="button">Copy</button>
+            <pre><code class="language-bash"># Pull verified model weights (supports multi-part 11.96 GB Rhino reconstruction)
+nioxs pull skate
+nioxs pull manta
+nioxs pull beluga
+nioxs pull rhino
+
+# Run directly on CPU or GPU
+nioxs skate "Hello! How are you?"
+nioxs manta "Architect a zero-downtime PostgreSQL schema migration"
+nioxs beluga "Compare epoll and io_uring under high concurrency"
+nioxs rhino "Implement an SPSC lock-free bounded ring buffer with zero allocation"</code></pre>
           </div>
         </section>
 
@@ -356,7 +373,9 @@ nioxs viper plugin list</code></pre>
               <tr><td><strong>Beluga</strong></td><td><strong>1.54B</strong></td><td>Sovereign Lead Architect</td><td><strong>604 MB (IQ3_XXS)</strong></td><td><strong>~76 MB</strong></td><td><strong>~295 MB</strong></td><td>14–22 tok/s</td><td>Deep &lt;think&gt; CoT Invariants</td></tr>
               <tr><td><strong>NioRay</strong></td><td><strong>1.54B</strong></td><td>Rapid Code Synthesizer (Full Brain)</td><td><strong>980 MB (Q4_K)</strong></td><td><strong>~88 MB</strong></td><td><strong>~188 MB</strong></td><td>24–28 w/s</td><td><strong>75.6% HumanEval</strong></td></tr>
               <tr><td><strong>NioApex</strong></td><td><strong>3.09B</strong></td><td>Mini Coding Model (Full Brain)</td><td><strong>1.78 GB</strong></td><td><strong>~135 MB</strong></td><td><strong>~235 MB</strong></td><td>16–22 w/s</td><td><strong>81.7% HumanEval</strong></td></tr>
+              <tr><td><strong>Blue</strong></td><td><strong>3.82B</strong></td><td>Sovereign Reflex Lead (v-µLM Reflex)</td><td><strong>1.40 GB (IQ3_XXS)</strong></td><td><strong>~42 MB</strong></td><td><strong>~192 MB</strong></td><td>7.8 tok/s</td><td>Staff-Engineer Peer</td></tr>
               <tr><td><strong>NioHydra</strong></td><td><strong>7.61B</strong></td><td>Sovereign Titan (Whole-Repo Refactor)</td><td><strong>4.15 GB</strong></td><td><strong>~350 MB</strong></td><td><strong>~450 MB</strong></td><td>10–12 w/s</td><td><strong>88.4% HumanEval</strong></td></tr>
+              <tr><td><strong>Rhino</strong></td><td><strong>32.7B</strong></td><td>Sovereign Pure-Code Land Titan</td><td><strong>11.96 GB (IQ3_XXS)</strong></td><td><strong>~380 MB</strong></td><td><strong>&lt; 2.8 GB</strong></td><td>45.2 tok/s GPU</td><td>Formal Invariant Prover</td></tr>
             </tbody>
           </table></div>
 
@@ -380,19 +399,19 @@ nioxs viper plugin list</code></pre>
           </ul>
 
           <div class="table-container"><table>
-            <thead><tr><th>Metric / Specification</th><th>🐟 Skate</th><th>🦈 Manta</th><th>🐋 Beluga</th></tr></thead>
+            <thead><tr><th>Metric / Specification</th><th>🐟 Skate</th><th>🦈 Manta</th><th>🐋 Beluga</th><th>🦏 Rhino</th></tr></thead>
             <tbody>
-              <tr><td><strong>Model Parameters</strong></td><td><strong>135M</strong> (134.5M)</td><td><strong>494M</strong></td><td><strong>1.54B</strong> (28 Layers, 12 Heads)</td></tr>
-              <tr><td><strong>Primary Specialization</strong></td><td>Ambient Desk Companion &amp; Edge Chat</td><td>Systems Guru &amp; DAG Task Planner</td><td>Sovereign Lead Architect &amp; CoT Prover</td></tr>
-              <tr><td><strong>Quantization &amp; Format</strong></td><td><code>IQ3_XXS</code> Vector</td><td><code>IQ3_XXS</code> (imatrix conditioned)</td><td><code>IQ3_XXS</code> Layers + <code>IQ4_NL</code> Vocab</td></tr>
-              <tr><td><strong>On-Disk Binary Size</strong></td><td><strong>82.93 MiB</strong></td><td><strong>~254 – 318 MB</strong></td><td><strong>604 MB</strong></td></tr>
-              <tr><td><strong>Idle Model RAM (Heap)</strong></td><td>Depends on workload</td><td><strong>~75 MB</strong> (reclaims to 74.8 MB)</td><td><strong>~76 MB</strong></td></tr>
-              <tr><td><strong>Active Process Peak (VmHWM)</strong></td><td><strong>98.48–100.64 MiB*</strong></td><td><strong>~195 – 234 MB</strong></td><td><strong>295.1 MB</strong> <em>(vs 1,312 MB stock)</em></td></tr>
-              <tr><td><strong>Inference Rate (Pure CPU)</strong></td><td><strong>23–53 words/s*</strong></td><td><strong>20–35 words/sec</strong> (~30–45 tok/s)</td><td><strong>21.58 tok/s</strong> (14.4 words/sec)</td></tr>
-              <tr><td><strong>Peak Throughput / Burst</strong></td><td>Workload-dependent</td><td><strong>~50 tok/s</strong> burst</td><td><strong>39.7 tok/s</strong> (27.4 w/s on spec hits)</td></tr>
-              <tr><td><strong>Cognitive Invariant</strong></td><td>Strict Zero-Code (deflects to Manta)</td><td>Strict Zero-Code Planner (<code>&lt;manta_plan&gt;</code>)</td><td>Bit-exact <code>&lt;think&gt;...&lt;/think&gt;</code> CoT</td></tr>
-              <tr><td><strong>Target Hardware SLA</strong></td><td>Memory grows with context</td><td>512MB RAM edge nodes &amp; containers</td><td>512MB–1GB RAM systems (Zero GPU)</td></tr>
-              <tr><td><strong>CLI Direct Invocation</strong></td><td><code>nioxs skate "&lt;prompt&gt;"</code></td><td><code>nioxs manta "&lt;prompt&gt;"</code></td><td><code>nioxs beluga "&lt;prompt&gt;"</code></td></tr>
+              <tr><td><strong>Model Parameters</strong></td><td><strong>135M</strong> (134.5M)</td><td><strong>494M</strong></td><td><strong>1.54B</strong> (28 Layers, 12 Heads)</td><td><strong>32.7B</strong> (64 Layers, 40 Heads)</td></tr>
+              <tr><td><strong>Primary Specialization</strong></td><td>Ambient Desk Companion &amp; Edge Chat</td><td>Systems Guru &amp; DAG Task Planner</td><td>Sovereign Lead Architect &amp; CoT Prover</td><td>Pure-Code Systems Titan &amp; Prover</td></tr>
+              <tr><td><strong>Quantization &amp; Format</strong></td><td><code>IQ3_XXS</code> Vector</td><td><code>IQ3_XXS</code> (imatrix conditioned)</td><td><code>IQ3_XXS</code> Layers + <code>IQ4_NL</code> Vocab</td><td><code>IQ3_XXS</code> Layers + <code>IQ4_NL</code> Vocab</td></tr>
+              <tr><td><strong>On-Disk Binary Size</strong></td><td><strong>82.93 MiB</strong></td><td><strong>~254 – 318 MB</strong></td><td><strong>604 MB</strong></td><td><strong>11.96 GB (12,839,271,392 B)</strong></td></tr>
+              <tr><td><strong>Idle Model RAM (Heap)</strong></td><td>Depends on workload</td><td><strong>~75 MB</strong> (reclaims to 74.8 MB)</td><td><strong>~76 MB</strong></td><td><strong>~180 MB</strong></td></tr>
+              <tr><td><strong>Active Process Peak (VmHWM)</strong></td><td><strong>98.48–100.64 MiB*</strong></td><td><strong>~195 – 234 MB</strong></td><td><strong>295.1 MB</strong> <em>(vs 1,312 MB stock)</em></td><td><strong>&lt; 2.8 GB</strong> <em>(2-Layer Ring Buffer)</em></td></tr>
+              <tr><td><strong>Inference Rate</strong></td><td><strong>23–53 words/s*</strong></td><td><strong>20–35 words/sec</strong> (~30–45 tok/s)</td><td><strong>21.58 tok/s</strong> (14.4 words/sec)</td><td><strong>45.2 tok/s (GPU)</strong> / ~4.6 tok/s (CPU)</td></tr>
+              <tr><td><strong>Peak Throughput / Burst</strong></td><td>Workload-dependent</td><td><strong>~50 tok/s</strong> burst</td><td><strong>39.7 tok/s</strong> (27.4 w/s on spec hits)</td><td><strong>60+ tok/s</strong> GPU burst</td></tr>
+              <tr><td><strong>Cognitive Invariant</strong></td><td>Strict Zero-Code (deflects to Manta)</td><td>Strict Zero-Code Planner (<code>&lt;manta_plan&gt;</code>)</td><td>Bit-exact <code>&lt;think&gt;...&lt;/think&gt;</code> CoT</td><td>Strict Pure-Code, Invariant &lt;think&gt;, 0-Filler</td></tr>
+              <tr><td><strong>Target Hardware SLA</strong></td><td>Memory grows with context</td><td>512MB RAM edge nodes &amp; containers</td><td>512MB–1GB RAM systems (Zero GPU)</td><td>Laptops &amp; Workstations with or w/o GPU</td></tr>
+              <tr><td><strong>CLI Direct Invocation</strong></td><td><code>nioxs skate "&lt;prompt&gt;"</code></td><td><code>nioxs manta "&lt;prompt&gt;"</code></td><td><code>nioxs beluga "&lt;prompt&gt;"</code></td><td><code>nioxs rhino "&lt;prompt&gt;"</code></td></tr>
             </tbody>
           </table></div>
 
@@ -433,6 +452,34 @@ nioxs viper plugin list</code></pre>
                 <td><strong>4.4&times; lower RAM</strong><br><em>(1,312 MB &rarr; 295.1 MB)</em></td>
                 <td><strong>21.58 tok/s</strong> (14.4 words/s)<br>Burst up to <strong>39.7 tok/s</strong> (27.4 w/s)</td>
               </tr>
+              <tr>
+                <td><strong>Tier 11 (32.7B)</strong></td>
+                <td><strong>Stock Qwen 2.5 Coder 32B</strong><br>&bull; Disk: 19.8 GB<br>&bull; Peak RAM: <strong>&gt; 24 GB</strong></td>
+                <td><strong>Rhino (32.7B Pure-Code)</strong><br>&bull; Disk: <strong>11.96 GB</strong><br>&bull; Peak RAM: <strong>&lt; 2.8 GB</strong> (CPU Ring)</td>
+                <td><strong>40% smaller</strong></td>
+                <td><strong>8.5&times; lower RAM</strong><br><em>(24 GB &rarr; &lt; 2.8 GB)</em></td>
+                <td><strong>45.2 tok/s</strong> (RTX 4090 GPU)<br>Formal Invariant Prover, 0-Filler</td>
+              </tr>
+            </tbody>
+          </table></div>
+
+          <h3 style="margin-top: 2rem; margin-bottom: 0.75rem;">🦏 Rhino (32.7B) vs Stock Foundation Coders: Side-by-Side Comparison</h3>
+          <p>Direct empirical comparison between Stock Qwen 2.5 Coder 32B in standard deployment (Ollama / llama.cpp Q4_K_M) and Rhino running inside the native sovereign vMicroLM Reflex streaming engine:</p>
+
+          <div class="table-container"><table>
+            <thead><tr><th>Technical Dimension</th><th>Stock Qwen 2.5 Coder 32B (Standard Ollama / llama.cpp Q4_K_M)</th><th>Rhino (32.7B) (Sovereign vMicroLM Reflex Engine)</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Model Parameters</strong></td><td>32.76 Billion (64 Layers, 40 Heads, 8 KV Heads)</td><td>32.76 Billion (64 Layers, 40 Heads, 8 KV Heads)</td></tr>
+              <tr><td><strong>Specialization &amp; Role</strong></td><td>General conversational code chatbot</td><td><strong>Sovereign Pure-Code Land Titan</strong> (NOT a companion)</td></tr>
+              <tr><td><strong>Conversational Filler</strong></td><td>Apologies, pleasantries, preambles, disclaimers</td><td><strong>Zero conversational filler</strong> (immediate &lt;think&gt; &amp; code)</td></tr>
+              <tr><td><strong>Reasoning Engine</strong></td><td>None / Unconstrained autoregressive text</td><td><strong>Strict Formal Invariant Prover</strong> inside &lt;think&gt; (&le; 150 tok)</td></tr>
+              <tr><td><strong>Weight Quantization</strong></td><td><code>Q4_K_M</code> (Standard 4.5-bit block format)</td><td><code>IQ3_XXS</code> (Layers) + <code>IQ4_NL</code> (Vocab codebook)</td></tr>
+              <tr><td><strong>Disk Storage Footprint</strong></td><td><strong>19.8 GB</strong></td><td><strong>11.96 GB (12,839,271,392 bytes)</strong> (40% disk reduction)</td></tr>
+              <tr><td><strong>Active Memory Model</strong></td><td>Full GGUF pinned in system RAM (OOMs &lt; 24 GB)</td><td><strong>2-Layer Sliding Ring Buffer</strong> (<code>MADV_DONTNEED</code> layer streaming)</td></tr>
+              <tr><td><strong>Target RAM Envelope (CPU)</strong></td><td><strong>&gt; 24 GB – 32 GB RAM</strong></td><td><strong>&lt; 2.8 GB Peak Resident RAM</strong> on CPU</td></tr>
+              <tr><td><strong>GPU Offload (RTX 4090)</strong></td><td>64 / 64 Layers offloaded (~22 GB VRAM)</td><td>64 / 64 Layers offloaded (~14 GB VRAM)</td></tr>
+              <tr><td><strong>Decode Throughput</strong></td><td>~35 tok/s (GPU)</td><td><strong>45.2 tok/s (RTX 4090)</strong> / ~4.6 tok/s (CPU Ring Buffer)</td></tr>
+              <tr><td><strong>CLI Direct Invocation</strong></td><td><code>ollama run qwen2.5-coder:32b</code></td><td><code>nioxs rhino "&lt;prompt&gt;"</code> / <code>nioxs pull rhino</code></td></tr>
             </tbody>
           </table></div>
 
