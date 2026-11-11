@@ -1199,9 +1199,32 @@ impl AstEngine {
                         if let Some(stdout) = child.stdout.take() {
                             use std::io::{BufRead, BufReader};
                             let reader = BufReader::new(stdout);
+                            let mut in_prompt = false;
+                            let mut assistant_started = false;
                             for line in reader.lines().flatten() {
-                                if !line.is_empty() {
-                                    let _ = tx.blocking_send(format!("{line}\n"));
+                                let trimmed = line.trim();
+                                if trimmed.starts_with("[ Prompt:") || trimmed == "Exiting..." {
+                                    break;
+                                }
+                                if line.starts_with("> ") {
+                                    in_prompt = true;
+                                    continue;
+                                }
+                                if in_prompt {
+                                    if trimmed.ends_with("... (truncated)") || trimmed.contains("<|im_start|>assistant") {
+                                        in_prompt = false;
+                                        assistant_started = true;
+                                    }
+                                    continue;
+                                }
+                                if line.contains("<|im_start|>assistant") {
+                                    assistant_started = true;
+                                    continue;
+                                }
+                                if assistant_started {
+                                    if !trimmed.is_empty() && !trimmed.contains("<|im_end|>") {
+                                        let _ = tx.blocking_send(format!("{line}\n"));
+                                    }
                                 }
                             }
                         }
