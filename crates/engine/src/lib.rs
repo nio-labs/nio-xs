@@ -64,6 +64,10 @@ pub fn bison_system() -> &'static str {
     "You are Bison, Nio's Sovereign Pure-Code Land Titan and Systems Coder. You are purely a high-performance code generation engine—NOT a companion. Deliver zero conversational filler, pleasantries, or apologies. Verify formal state invariants, memory orderings, and lifetime constraints inside concise <think>...</think> tags (<= 150 tokens) and emit complete, production-grade, compilable implementations."
 }
 
+pub fn cheetah_system() -> &'static str {
+    "You are Cheetah, Nio's Sovereign Sub-20ms Code Sprinter. Emit concise, high-speed code, terminal commands, and immediate syntax refactors with zero conversational filler."
+}
+
 pub fn skate_system() -> Result<String> {
     if let Some(path) = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE") {
         if let Ok(prompt) = std::fs::read_to_string(&path) {
@@ -597,6 +601,7 @@ pub struct AstEngine {
     is_beluga: bool,
     is_blue: bool,
     is_bison: bool,
+    is_cheetah: bool,
     device_pref: DevicePreference,
 }
 
@@ -632,6 +637,8 @@ impl AstEngine {
             || model_path.to_string_lossy().contains("blue");
         let is_bison = matches!(lowered.as_str(), "bison" | "nio-bison")
             || model_path.to_string_lossy().contains("bison");
+        let is_cheetah = matches!(lowered.as_str(), "cheetah" | "nio-cheetah")
+            || model_path.to_string_lossy().contains("cheetah");
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -641,6 +648,7 @@ impl AstEngine {
             is_beluga,
             is_blue,
             is_bison,
+            is_cheetah,
             device_pref,
         })
     }
@@ -674,6 +682,7 @@ impl AstEngine {
         let is_beluga = model_path.to_string_lossy().contains("beluga");
         let is_blue = model_path.to_string_lossy().contains("blue");
         let is_bison = model_path.to_string_lossy().contains("bison");
+        let is_cheetah = model_path.to_string_lossy().contains("cheetah");
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -683,6 +692,7 @@ impl AstEngine {
             is_beluga,
             is_blue,
             is_bison,
+            is_cheetah,
             device_pref: DevicePreference::Auto,
         }
     }
@@ -716,6 +726,7 @@ impl AstEngine {
             "beluga" | "nio-beluga" => "nio-beluga",
             "blue" | "nio-blue" => "blue",
             "bison" | "nio-bison" => "bison",
+            "cheetah" | "nio-cheetah" => "cheetah",
             other => other,
         };
 
@@ -750,6 +761,11 @@ impl AstEngine {
                 "bison.moe-7b-q4km.gguf",
                 "bison.vmicrolm-reflex.gguf",
                 "nio-bison.vmicrolm-reflex.gguf",
+            ],
+            "cheetah" | "nio-cheetah" => &[
+                "cheetah.1.5b-q4km.gguf",
+                "cheetah.vmicrolm-sprinter.gguf",
+                "nio-cheetah.1.5b-q4km.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
@@ -868,6 +884,16 @@ impl AstEngine {
                     return candidate2;
                 }
             }
+            if s.contains("cheetah") {
+                let candidate1 = model.with_file_name("cheetah-tokenizer.json");
+                if candidate1.is_file() {
+                    return candidate1;
+                }
+                let candidate2 = model.with_file_name("nio-cheetah-tokenizer.json");
+                if candidate2.is_file() {
+                    return candidate2;
+                }
+            }
             if s.contains("manta") {
                 let candidate1 = model.with_file_name("manta-tokenizer.json");
                 if candidate1.is_file() {
@@ -982,12 +1008,14 @@ impl AstEngine {
         let is_beluga = self.is_beluga;
         let is_blue = self.is_blue;
         let is_bison = self.is_bison;
+        let is_cheetah = self.is_cheetah;
         let policy = decoding::DecodingPolicy::for_model(
             is_skate,
             is_manta,
             is_beluga,
             is_blue,
             is_bison,
+            is_cheetah,
         );
 
         // The native fallback must use CPU residency settings. Hardware probing
@@ -1067,6 +1095,25 @@ impl AstEngine {
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
                 }
+            } else if is_cheetah {
+                let gpu_layers = active_dev.recommended_gpu_layers(28);
+                if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
+                    engine.set_resident_layers(gpu_layers);
+                    engine.set_rolling_window(gpu_layers.max(4));
+                } else {
+                    let resident = std::env::var("NIOXS_CHEETAH_RESIDENT_LAYERS")
+                        .ok()
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(0)
+                        .min(engine.block_count);
+                    let window = if resident >= engine.block_count {
+                        engine.block_count
+                    } else {
+                        layer_setting("NIOXS_CHEETAH_ROLLING_WINDOW", 4, engine.block_count)
+                    };
+                    engine.set_resident_layers(resident);
+                    engine.set_rolling_window(window);
+                }
             }
 
             // Immediately park worker threads so nioxs sits at 0.0% CPU when idle
@@ -1139,6 +1186,12 @@ impl AstEngine {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 bison_system(),
+                raw_prompt.trim()
+            )
+        } else if self.is_cheetah {
+            format!(
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                cheetah_system(),
                 raw_prompt.trim()
             )
         } else if self.is_skate {
@@ -1227,6 +1280,7 @@ impl AstEngine {
             self.is_beluga,
             self.is_blue,
             self.is_bison,
+            self.is_cheetah,
         );
         let prompt = self.format_prompt_for_engine(&prompt)?;
         let (prompt_tokens, context_limit) = {
@@ -1386,7 +1440,9 @@ impl AstEngine {
         let is_blue = self.is_blue;
         let report_stats =
             std::env::var_os("NIOXS_INFERENCE_STATS").as_deref() == Some(std::ffi::OsStr::new("1"));
-        let stats_model = if self.is_bison {
+        let stats_model = if self.is_cheetah {
+            "cheetah"
+        } else if self.is_bison {
             "bison"
         } else if self.is_blue {
             "blue"
@@ -1436,6 +1492,7 @@ impl AstEngine {
             // Identify invariant system prompt prefix if available for auto-caching
             let sys_prefix_tokens: Option<Vec<u32>> = if !disable_prefix_cache && bundle.cached_prefix.is_empty() {
                 let sys_text = match stats_model {
+                    "cheetah" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", cheetah_system())),
                     "bison" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", bison_system())),
                     "blue" => Some(format!("<|system|>\n{}<|end|>\n<|user|>\n", blue_system())),
                     _ => None,

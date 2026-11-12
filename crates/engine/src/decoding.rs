@@ -9,10 +9,12 @@ pub(crate) struct DecodingPolicy {
 }
 
 impl DecodingPolicy {
-    pub fn for_model(skate: bool, manta: bool, beluga: bool, blue: bool, bison: bool) -> Self {
+    pub fn for_model(skate: bool, manta: bool, beluga: bool, blue: bool, bison: bool, cheetah: bool) -> Self {
         Self {
             repeat_penalty: if bison {
                 1.15
+            } else if cheetah {
+                1.10
             } else if blue {
                 1.05
             } else if beluga {
@@ -117,20 +119,21 @@ mod tests {
     fn runner_policy_preserves_companion_penalties_and_suppressions() {
         for (flags, expected_penalty, expected_biases) in [
             (
-                (true, false, false, false, false),
+                (true, false, false, false, false, false),
                 "1.1",
                 vec!["3725-inf", "47182-inf"],
             ),
             (
-                (false, true, false, false, false),
+                (false, true, false, false, false, false),
                 "1.15",
                 vec!["41233-inf", "54275-inf", "73594-inf"],
             ),
-            ((false, false, true, false, false), "1.02", vec![]),
-            ((false, false, false, true, false), "1.05", vec![]),
-            ((false, false, false, false, true), "1.15", vec![]),
+            ((false, false, true, false, false, false), "1.02", vec![]),
+            ((false, false, false, true, false, false), "1.05", vec![]),
+            ((false, false, false, false, true, false), "1.15", vec![]),
+            ((false, false, false, false, false, true), "1.1", vec![]),
         ] {
-            let args = DecodingPolicy::for_model(flags.0, flags.1, flags.2, flags.3, flags.4).runner_args();
+            let args = DecodingPolicy::for_model(flags.0, flags.1, flags.2, flags.3, flags.4, flags.5).runner_args();
             let value = |key| args.windows(2).find(|w| w[0] == key).map(|w| w[1].as_str());
             assert_eq!(value("--repeat-penalty"), Some(expected_penalty));
             assert_eq!(

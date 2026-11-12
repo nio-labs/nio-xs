@@ -24,10 +24,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|bison <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|bison <prompt>|cheetah <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
-  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, bison, all)\n\
+  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, bison, cheetah, all)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
@@ -35,6 +35,7 @@ Commands:\n\
   beluga <prompt> Run local in-process Beluga 1.54B sovereign lead architect & CoT reasoning\n\
   blue <prompt>   Run local in-process Blue 3.82B sovereign reflex lead companion\n\
   bison <prompt>  Run local in-process Bison 7.0B MoE sovereign pure-code land titan (<think> invariant verification)\n\
+  cheetah <prompt> Run local in-process Cheetah 1.5B sub-20ms sovereign code sprinter\n\
   mcp            Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
   init           Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
   undo           Rollback last applied multi-file patch (or specific patch_id)\n\
@@ -75,6 +76,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             "cuda" | "nio-cuda" => "nio-cuda",
             "blue" | "nio-blue" => "blue",
             "bison" | "nio-bison" => "bison",
+            "cheetah" | "nio-cheetah" => "cheetah",
             other => other,
         };
         let path = nioxs_artifacts::prompt_and_pull_if_needed(normalized, auto_yes)
@@ -511,6 +513,68 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         println!();
         return Ok(());
     }
+    if arg.as_deref() == Some("cheetah") {
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        if raw_args.is_empty() {
+            eprintln!(
+                "Usage: nioxs cheetah [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
+            return Ok(());
+        }
+
+        let mut custom_max_tokens = None;
+        let mut device_pref = nioxs_engine::DevicePreference::Auto;
+        let mut flow_mode = FlowMode::Token;
+        let mut prompt_parts = Vec::new();
+        let mut iter = raw_args.clone().into_iter();
+        while let Some(a) = iter.next() {
+            if a == "-n" || a == "--max-tokens" {
+                if let Some(val) = iter.next() {
+                    custom_max_tokens = val.parse::<usize>().ok();
+                }
+            } else if a == "-d" || a == "--device" {
+                if let Some(val) = iter.next() {
+                    device_pref = nioxs_engine::DevicePreference::parse(&val);
+                }
+            } else if a == "--gpu" {
+                device_pref = nioxs_engine::DevicePreference::Gpu;
+            } else if a == "--cpu" {
+                device_pref = nioxs_engine::DevicePreference::Cpu;
+            } else if a == "--auto" {
+                device_pref = nioxs_engine::DevicePreference::Auto;
+            } else if a == "-f" || a == "--flow" {
+                if let Some(val) = iter.next() {
+                    flow_mode = FlowMode::parse(&val);
+                }
+            } else {
+                prompt_parts.push(a);
+            }
+        }
+        let prompt = prompt_parts.join(" ");
+        if prompt.is_empty() {
+            eprintln!(
+                "Usage: nioxs cheetah [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
+            return Ok(());
+        }
+        let engine = nioxs_engine::AstEngine::for_model_with_device("cheetah", device_pref)?;
+        let max_tokens = custom_max_tokens.unwrap_or(4096);
+        let formatted_prompt = format!(
+            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+            nioxs_engine::cheetah_system()
+        );
+        let mut rx = engine
+            .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
+            .await?;
+        let mut flow = StreamFlow::new(flow_mode);
+        flow.set_show_think_tags(true);
+        while let Some(chunk) = rx.recv().await {
+            flow.push(&chunk);
+        }
+        flow.finish();
+        println!();
+        return Ok(());
+    }
     if arg.as_deref() == Some("manta") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
@@ -805,7 +869,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         return nioxs_provider::mcp::run_stdio_server().map_err(|e| e.into());
     }
     if arg.is_some() && arg.as_deref() != Some("serve") {
-        return Err("unknown command; expected 'nioxs serve', 'nioxs pull', 'nioxs viper', 'nioxs skate', 'nioxs manta', 'nioxs beluga', 'nioxs blue', 'nioxs bison', 'nioxs mcp', 'nioxs init', 'nioxs undo', or 'nioxs history'".into());
+        return Err("unknown command; expected 'nioxs serve', 'nioxs pull', 'nioxs viper', 'nioxs skate', 'nioxs manta', 'nioxs beluga', 'nioxs blue', 'nioxs bison', 'nioxs cheetah', 'nioxs mcp', 'nioxs init', 'nioxs undo', or 'nioxs history'".into());
     }
 
     let mut server_device_pref = nioxs_engine::DevicePreference::Auto;
