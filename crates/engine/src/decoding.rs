@@ -50,7 +50,7 @@ impl DecodingPolicy {
             "--presence-penalty",
             "0",
             "--no-context-shift",
-            "--no-conversation",
+            "--single-turn",
         ]
         .into_iter()
         .map(str::to_owned)
