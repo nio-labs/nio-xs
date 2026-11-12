@@ -1687,7 +1687,7 @@ pub struct AstMicroEngine {
     token_embd_dtype: u32,
     bytes_per_token: usize,
     output_weight: Option<LinearSlice>,
-    kv_caches: Vec<LayerKvCache>,
+    pub kv_caches: Vec<LayerKvCache>,
     layers: Vec<LayerDesc>,
     pub scratch: ScratchBuffers,
     pub scratch1: ScratchBuffers,

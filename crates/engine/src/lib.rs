@@ -12,6 +12,7 @@ pub mod hardware;
 pub mod iq2s_grid;
 pub mod iq3s_grid;
 pub mod pool;
+pub mod prefix_cache;
 pub mod quants;
 mod speculation;
 pub use ast_engine::{AstMicroEngine, memory_mb};
@@ -1423,6 +1424,43 @@ impl AstEngine {
             let prefill_started = std::time::Instant::now();
             let disable_prefix_cache =
                 std::env::var_os("NIOXS_DISABLE_PREFIX_CACHE").is_some();
+
+            // Try loading persisted prefix cache from disk if memory cache is empty
+            let cache_path = prefix_cache::resolve_cache_dir().join(format!("prefix_{stats_model}.bin"));
+            if !disable_prefix_cache && bundle.cached_prefix.is_empty() {
+                if let Ok(Some(cached)) = prefix_cache::try_load_prefix_cache(&cache_path, &prompt_tokens, &mut bundle.engine) {
+                    bundle.cached_prefix = cached;
+                }
+            }
+
+            // Identify invariant system prompt prefix if available for auto-caching
+            let sys_prefix_tokens: Option<Vec<u32>> = if !disable_prefix_cache && bundle.cached_prefix.is_empty() {
+                let sys_text = match stats_model {
+                    "bison" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", bison_system())),
+                    "blue" => Some(format!("<|system|>\n{}<|end|>\n<|user|>\n", blue_system())),
+                    _ => None,
+                };
+                sys_text.and_then(|text| {
+                    bundle.tokenizer.encode(text.as_str(), false).ok().map(|enc| enc.get_ids().to_vec())
+                })
+            } else {
+                None
+            };
+
+            let sys_prefix_len = sys_prefix_tokens.as_ref().map(|p| p.len());
+
+            // If we have an invariant prefix that matches and is not yet cached on disk,
+            // prefill it first and save to disk
+            if let Some(ref pfx) = sys_prefix_tokens {
+                if prompt_tokens.starts_with(pfx) && bundle.cached_prefix.is_empty() {
+                    let pfx_len = pfx.len();
+                    if let Ok(()) = bundle.engine.forward_stream(&prompt_tokens[..pfx_len], 0).map(|_| ()) {
+                        let _ = prefix_cache::save_prefix_cache(&cache_path, pfx, &bundle.engine);
+                        bundle.cached_prefix = pfx.clone();
+                    }
+                }
+            }
+
             let mut common_len = if disable_prefix_cache {
                 0
             } else {
@@ -1487,7 +1525,9 @@ impl AstEngine {
                 };
 
             if is_eos(next_token) {
-                bundle.engine.truncate_cache(bundle.cached_prefix.len());
+                let persistent_prefix_len = sys_prefix_len.unwrap_or(bundle.cached_prefix.len());
+            bundle.engine.truncate_cache(persistent_prefix_len);
+            bundle.cached_prefix.truncate(persistent_prefix_len);
                 if bundle.engine.resident_layers < bundle.engine.block_count {
                     bundle.engine.evict_all();
                 }
@@ -1502,7 +1542,9 @@ impl AstEngine {
             if let Ok(Some(chunk)) = tos.next_token(next_token) {
                 if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
                     phrase_buffer.flush(&tx);
-                    bundle.engine.truncate_cache(bundle.cached_prefix.len());
+                    let persistent_prefix_len = sys_prefix_len.unwrap_or(bundle.cached_prefix.len());
+            bundle.engine.truncate_cache(persistent_prefix_len);
+            bundle.cached_prefix.truncate(persistent_prefix_len);
                     if bundle.engine.resident_layers < bundle.engine.block_count {
                         bundle.engine.evict_all();
                     }
@@ -1791,7 +1833,9 @@ impl AstEngine {
                 );
             }
 
-            bundle.engine.truncate_cache(bundle.cached_prefix.len());
+            let persistent_prefix_len = sys_prefix_len.unwrap_or(bundle.cached_prefix.len());
+            bundle.engine.truncate_cache(persistent_prefix_len);
+            bundle.cached_prefix.truncate(persistent_prefix_len);
             if bundle.engine.resident_layers < bundle.engine.block_count {
                 bundle.engine.evict_all();
             }
