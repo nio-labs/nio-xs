@@ -1778,7 +1778,7 @@ impl AstEngine {
                             }
                         };
 
-                    if is_eos(next_tok) || next_tok == 0 {
+                    if is_eos(next_tok) {
                         break;
                     }
 
