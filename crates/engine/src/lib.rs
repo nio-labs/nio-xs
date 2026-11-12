@@ -350,7 +350,7 @@ impl PhraseBuffer {
         // Hold back any unclosed '<...' suffix so stop_position can inspect completed tags
         // before '<' is ever emitted to the stream.
         if let Some(lt_pos) = self.buffer.rfind('<') {
-            if !self.buffer[lt_pos..].contains('>') {
+            if is_potential_open_tag(&self.buffer[lt_pos..]) {
                 if lt_pos > 0 {
                     let safe_prefix = self.buffer[..lt_pos].to_string();
                     self.buffer.drain(..lt_pos);
@@ -388,7 +388,7 @@ impl PhraseBuffer {
             self.word_count = 0;
             // Strip any incomplete trailing open tag like `<end`, `<|`, or `<`
             if let Some(pos) = to_send.rfind('<') {
-                if !to_send[pos..].contains('>') || stop_position(&to_send[pos..]).is_some() {
+                if is_stop_tag_to_strip(&to_send[pos..]) {
                     to_send.truncate(pos);
                 }
             }
@@ -398,6 +398,60 @@ impl PhraseBuffer {
         }
         true
     }
+}
+
+const RESERVED_TAG_NAMES: &[&str] = &[
+    "end",
+    "endoftext",
+    "endofturn",
+    "invariant",
+    "invariant_proof",
+    "thought",
+    "thought_tag",
+    "tag",
+    "answer",
+    "verification",
+    "verify",
+];
+
+fn is_potential_open_tag(suffix: &str) -> bool {
+    if !suffix.starts_with('<') {
+        return false;
+    }
+    let rest = &suffix[1..];
+    if rest.is_empty() {
+        return true;
+    }
+    if rest.starts_with('|') {
+        return !rest.contains('>') && rest.len() < 32 && !rest.contains('\n');
+    }
+    let after_slash = rest.strip_prefix('/').unwrap_or(rest);
+    if after_slash.is_empty() {
+        return true;
+    }
+    let tag_word: String = after_slash
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    if tag_word.is_empty() {
+        return false;
+    }
+    let tag_lower = tag_word.to_ascii_lowercase();
+    let matches_reserved = RESERVED_TAG_NAMES.iter().any(|&reserved| {
+        reserved.starts_with(&tag_lower) || tag_lower.starts_with(reserved)
+    });
+    if matches_reserved {
+        !after_slash.contains('>') && after_slash.len() < 128
+    } else {
+        false
+    }
+}
+
+fn is_stop_tag_to_strip(suffix: &str) -> bool {
+    if stop_position(suffix).is_some() {
+        return true;
+    }
+    is_potential_open_tag(suffix)
 }
 
 const STOP_PHRASES: &[&str] = &[
@@ -449,6 +503,30 @@ fn stop_position(text: &str) -> Option<usize> {
         }
     }
     None
+}
+
+fn is_repetition_loop(tokens: &[u32]) -> bool {
+    let len = tokens.len();
+    // 1-token repeat: 6 identical consecutive tokens indicate degenerate collapse
+    if len >= 6 && tokens[len - 6..].iter().all(|&t| t == tokens[len - 1]) {
+        return true;
+    }
+    // 2-token cycle (e.g. A B A B A B A B) - 4 full periods
+    if len >= 8
+        && tokens[len - 1] == tokens[len - 3]
+        && tokens[len - 3] == tokens[len - 5]
+        && tokens[len - 5] == tokens[len - 7]
+        && tokens[len - 2] == tokens[len - 4]
+        && tokens[len - 4] == tokens[len - 6]
+        && tokens[len - 6] == tokens[len - 8]
+    {
+        return true;
+    }
+    // 3-token cycle (e.g. A B C A B C A B C A B C) - 4 full periods
+    if len >= 12 && (0..9).all(|i| tokens[len - 1 - i] == tokens[len - 4 - i]) {
+        return true;
+    }
+    false
 }
 
 const MAX_STOP_PHRASE_LEN: usize = 32;
@@ -907,7 +985,8 @@ impl AstEngine {
             is_skate,
             is_manta,
             is_beluga,
-            is_blue || is_bison,
+            is_blue,
+            is_bison,
         );
 
         // The native fallback must use CPU residency settings. Hardware probing
@@ -932,6 +1011,7 @@ impl AstEngine {
                 .map_err(|e| anyhow!("Tokenizer does not match model: {e}"))?;
 
             engine.set_suppressed_tokens(policy.suppressed.iter().copied());
+            engine.set_sampling(0.0, 1.0, policy.repeat_penalty, policy.history_window);
             if is_beluga {
                 let gpu_layers = active_dev.recommended_gpu_layers(28);
                 if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
@@ -1112,7 +1192,18 @@ impl AstEngine {
         _temperature: f64,
         _top_p: f64,
     ) -> Result<mpsc::Receiver<String>> {
-        let speculation_mode = if self.is_blue {
+        let speculation_mode = if self.is_bison {
+            match std::env::var("NIOXS_BISON_SPECULATION").as_deref() {
+                Ok("on") => speculation::Mode::On,
+                Ok("adaptive") => speculation::Mode::Adaptive,
+                Ok("off") | Err(_) => speculation::Mode::Off,
+                Ok(value) => {
+                    return Err(anyhow!(
+                        "Invalid NIOXS_BISON_SPECULATION={value:?}; use on, off, or adaptive"
+                    ));
+                }
+            }
+        } else if self.is_blue {
             match std::env::var("NIOXS_BLUE_SPECULATION").as_deref() {
                 Ok("off") => speculation::Mode::Off,
                 Ok("adaptive") => speculation::Mode::Adaptive,
@@ -1133,7 +1224,8 @@ impl AstEngine {
             self.is_skate,
             self.is_manta,
             self.is_beluga,
-            self.is_blue || self.is_bison,
+            self.is_blue,
+            self.is_bison,
         );
         let prompt = self.format_prompt_for_engine(&prompt)?;
         let (prompt_tokens, context_limit) = {
@@ -1505,6 +1597,10 @@ impl AstEngine {
                                         zw_cache.observe(prev_p2, last_tok, tok);
                                     }
                                     gen_tokens.push(tok);
+                                    if is_repetition_loop(&gen_tokens) {
+                                        stopped = true;
+                                        break;
+                                    }
                                     decoding::push_history_window(
                                         &mut sampling_history,
                                         tok,
@@ -1573,6 +1669,10 @@ impl AstEngine {
                                         zw_cache.observe(prev_p2, last_tok, tok);
                                     }
                                     gen_tokens.push(tok);
+                                    if is_repetition_loop(&gen_tokens) {
+                                        stopped = true;
+                                        break;
+                                    }
                                     decoding::push_history_window(
                                         &mut sampling_history,
                                         tok,
@@ -1648,6 +1748,9 @@ impl AstEngine {
                     zw_cache.observe(prev_p2, current_confirmed, next_tok);
 
                     gen_tokens.push(next_tok);
+                    if is_repetition_loop(&gen_tokens) {
+                        break;
+                    }
                     decoding::push_history_window(
                         &mut sampling_history,
                         next_tok,
@@ -1801,6 +1904,12 @@ mod tests {
                 "Safe text. "
             );
         }
+    }
+
+    #[test]
+    fn streaming_preserves_inequalities_and_code_comparisons() {
+        let code = "fn fibonacci(n: u32) -> u64 {\n    if n <= 1 {\n        return n as u64;\n    }\n    let mut a = 0;\n}";
+        assert_eq!(filtered_stream(code), code);
     }
 
     #[test]

@@ -101,16 +101,16 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
         ModelArtifactEntry {
             model_id: MODEL_BISON.into(),
             brand_name: "Bison (Sovereign Pure-Code Land Titan)".into(),
-            base_model: "Qwen/Qwen3-Coder-30B-A3B-Instruct (48L, 16-Expert Sparse MoE)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-7B-Instruct (28L, Dense)".into(),
             filename: "bison.moe-7b-q4km.gguf".into(),
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/bison.moe-7b-q4km.gguf".into(),
-            sha256: "a96f619fb8a19a975fefccc6e5750b5570b2d77efa1cdacfebfd596f85c49931".into(),
-            size_bytes: 3_153_630_976,
+            sha256: "509287f78cb4d4cf6b3843734733b914b2c158e43e22a7f4bf5e963800894d3c".into(),
+            size_bytes: 4_683_073_536,
             tokenizer: Some(ModelTokenizerArtifact {
                 filename: "bison-tokenizer.json".into(),
                 download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/bison-tokenizer.json".into(),
-                sha256: "9fae067af7b47d39e05501d5463a15e83a8fbc62a857f2c2dc58482b8cae8034".into(),
-                size_bytes: 11_422_184,
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
             }),
         },
     ]
@@ -777,8 +777,8 @@ mod tests {
             ),
             (
                 MODEL_BISON,
-                "a96f619fb8a19a975fefccc6e5750b5570b2d77efa1cdacfebfd596f85c49931",
-                3_153_630_976,
+                "509287f78cb4d4cf6b3843734733b914b2c158e43e22a7f4bf5e963800894d3c",
+                4_683_073_536,
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/bison.moe-7b-q4km.gguf",
             ),
         ];
@@ -807,8 +807,8 @@ mod tests {
             Some(ModelTokenizerArtifact {
                 filename: "bison-tokenizer.json".into(),
                 download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/bison-tokenizer.json".into(),
-                sha256: "9fae067af7b47d39e05501d5463a15e83a8fbc62a857f2c2dc58482b8cae8034".into(),
-                size_bytes: 11_422_184,
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
             })
         );
     }
