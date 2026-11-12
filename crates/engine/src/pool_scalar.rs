@@ -492,6 +492,234 @@ impl GemvTask {
                     }
                 }
             }
+            GemvTask::GenericLinear {
+                out_ptr,
+                weight_ptr,
+                x_f32_ptr,
+                x_q8_k_ptr,
+                n_rows,
+                n_cols,
+                dtype,
+            } => {
+                let (lo, hi) = worker_bounds(n_rows, id, workers);
+                if lo >= hi {
+                    return;
+                }
+                let (block_size, type_size) = match dtype {
+                    0 => (1, 4),
+                    8 => (32, 34),
+                    12 => (256, 144),
+                    13 => (256, 176),
+                    14 => (256, 210),
+                    18 => (256, 98),
+                    20 => (32, 18),
+                    21 => (256, 110),
+                    22 => (256, 82),
+                    other => panic!("unsupported dtype {other}"),
+                };
+                let row_bytes = (n_cols / block_size) * type_size;
+                let x_f32 = slice::from_raw_parts(x_f32_ptr as *const f32, n_cols);
+                let out = slice::from_raw_parts_mut(out_ptr as *mut f32, n_rows);
+                match dtype {
+                    12 => {
+                        use candle_core::quantized::k_quants::{BlockQ4K, BlockQ8K, GgmlType};
+                        let ys = slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, n_cols / 256);
+                        for r in lo..hi {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let xs = slice::from_raw_parts(r_ptr as *const BlockQ4K, n_cols / 256);
+                            out[r] = BlockQ4K::vec_dot(n_cols, xs, ys).unwrap_or(0.0);
+                        }
+                    }
+                    13 => {
+                        use candle_core::quantized::k_quants::{BlockQ5K, BlockQ8K, GgmlType};
+                        let ys = slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, n_cols / 256);
+                        for r in lo..hi {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let xs = slice::from_raw_parts(r_ptr as *const BlockQ5K, n_cols / 256);
+                            out[r] = BlockQ5K::vec_dot(n_cols, xs, ys).unwrap_or(0.0);
+                        }
+                    }
+                    14 => {
+                        use candle_core::quantized::k_quants::{BlockQ6K, BlockQ8K, GgmlType};
+                        let ys = slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, n_cols / 256);
+                        for r in lo..hi {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let xs = slice::from_raw_parts(r_ptr as *const BlockQ6K, n_cols / 256);
+                            out[r] = BlockQ6K::vec_dot(n_cols, xs, ys).unwrap_or(0.0);
+                        }
+                    }
+                    18 => {
+                        let x_q8_k = slice::from_raw_parts(
+                            x_q8_k_ptr as *const quants::BlockQ8_K,
+                            n_cols / 256,
+                        );
+                        for r in lo..hi {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = slice::from_raw_parts(r_ptr, row_bytes);
+                            out[r] = quants::scalar::vec_dot_iq3_xxs_q8_k_avx2(row_slice, x_q8_k);
+                        }
+                    }
+                    21 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in lo..hi {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_iq3_s(row_slice, &mut dequant_buf);
+                            out[r] = quants::dot_f32(&dequant_buf, x_f32);
+                        }
+                    }
+                    22 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in lo..hi {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_iq2_s(row_slice, &mut dequant_buf);
+                            out[r] = quants::dot_f32(&dequant_buf, x_f32);
+                        }
+                    }
+                    _ => panic!("unhandled generic linear dtype {dtype}"),
+                }
+            }
+            GemvTask::GenericLinear2Tokens {
+                out0_ptr,
+                out1_ptr,
+                weight_ptr,
+                x0_f32_ptr,
+                x1_f32_ptr,
+                x0_q8_k_ptr,
+                x1_q8_k_ptr,
+                n_rows,
+                n_cols,
+                dtype,
+            } => {
+                Self::GenericLinear {
+                    out_ptr: out0_ptr,
+                    weight_ptr,
+                    x_f32_ptr: x0_f32_ptr,
+                    x_q8_k_ptr: x0_q8_k_ptr,
+                    n_rows,
+                    n_cols,
+                    dtype,
+                }
+                .execute_scalar(id, workers);
+                Self::GenericLinear {
+                    out_ptr: out1_ptr,
+                    weight_ptr,
+                    x_f32_ptr: x1_f32_ptr,
+                    x_q8_k_ptr: x1_q8_k_ptr,
+                    n_rows,
+                    n_cols,
+                    dtype,
+                }
+                .execute_scalar(id, workers);
+            }
+            GemvTask::GenericLinear3Tokens {
+                out0_ptr,
+                out1_ptr,
+                out2_ptr,
+                weight_ptr,
+                x0_f32_ptr,
+                x1_f32_ptr,
+                x2_f32_ptr,
+                x0_q8_k_ptr,
+                x1_q8_k_ptr,
+                x2_q8_k_ptr,
+                n_rows,
+                n_cols,
+                dtype,
+            } => {
+                Self::GenericLinear {
+                    out_ptr: out0_ptr,
+                    weight_ptr,
+                    x_f32_ptr: x0_f32_ptr,
+                    x_q8_k_ptr: x0_q8_k_ptr,
+                    n_rows,
+                    n_cols,
+                    dtype,
+                }
+                .execute_scalar(id, workers);
+                Self::GenericLinear {
+                    out_ptr: out1_ptr,
+                    weight_ptr,
+                    x_f32_ptr: x1_f32_ptr,
+                    x_q8_k_ptr: x1_q8_k_ptr,
+                    n_rows,
+                    n_cols,
+                    dtype,
+                }
+                .execute_scalar(id, workers);
+                Self::GenericLinear {
+                    out_ptr: out2_ptr,
+                    weight_ptr,
+                    x_f32_ptr: x2_f32_ptr,
+                    x_q8_k_ptr: x2_q8_k_ptr,
+                    n_rows,
+                    n_cols,
+                    dtype,
+                }
+                .execute_scalar(id, workers);
+            }
+            GemvTask::VocabQ5K {
+                weight_ptr,
+                x_q8_k_ptr,
+                n_cols,
+                start_tok,
+                vocab_count,
+                bytes_per_token,
+                suppress_eos,
+                history_ptr,
+                history_len,
+                suppressed_ptr,
+                suppressed_len,
+                repeat_penalty,
+                top_tok_ptr,
+                top_score_ptr,
+            } => {
+                let (w0, w1) = worker_bounds(vocab_count, id, workers);
+                let (lo, hi) = (start_tok + w0, start_tok + w1);
+                if lo >= hi {
+                    return;
+                }
+                use candle_core::quantized::k_quants::{BlockQ4K, BlockQ5K, BlockQ6K, BlockQ8K, GgmlType};
+                let nb = n_cols / 256;
+                let ys = slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, nb);
+                let hist = slice::from_raw_parts(history_ptr as *const u32, history_len);
+                let sup = slice::from_raw_parts(suppressed_ptr as *const u32, suppressed_len);
+                let mut best_s = f32::NEG_INFINITY;
+                let mut best_t = lo as u32;
+                for tid in (lo as u32)..(hi as u32) {
+                    if (suppress_eos
+                        && (tid == 0 || tid == 1 || tid == 2 || tid == 151645 || tid == 151643))
+                        || (!sup.is_empty() && sup.contains(&tid))
+                    {
+                        continue;
+                    }
+                    let r_ptr = (weight_ptr as *const u8).add(tid as usize * bytes_per_token);
+                    let val = match bytes_per_token / nb {
+                        144 => {
+                            let xs = slice::from_raw_parts(r_ptr as *const BlockQ4K, nb);
+                            BlockQ4K::vec_dot(n_cols, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                        }
+                        210 => {
+                            let xs = slice::from_raw_parts(r_ptr as *const BlockQ6K, nb);
+                            BlockQ6K::vec_dot(n_cols, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                        }
+                        _ => {
+                            let xs = slice::from_raw_parts(r_ptr as *const BlockQ5K, nb);
+                            BlockQ5K::vec_dot(n_cols, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                        }
+                    };
+                    if val > best_s {
+                        let s = crate::decoding::repetition_score(val, tid, hist, repeat_penalty);
+                        if s > best_s {
+                            best_s = s;
+                            best_t = tid;
+                        }
+                    }
+                }
+                slice::from_raw_parts_mut(top_tok_ptr as *mut u32, workers)[id] = best_t;
+                slice::from_raw_parts_mut(top_score_ptr as *mut f32, workers)[id] = best_s;
+            }
         }
     }
 }

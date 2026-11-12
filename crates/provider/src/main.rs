@@ -24,17 +24,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|rhino <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|bison <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
-  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, rhino, all)\n\
+  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, bison, all)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
   manta <prompt> Run local in-process Manta 494M systems guru & DAG architect (<manta_plan>)\n\
   beluga <prompt> Run local in-process Beluga 1.54B sovereign lead architect & CoT reasoning\n\
   blue <prompt>   Run local in-process Blue 3.82B sovereign reflex lead companion\n\
-  rhino <prompt>  Run local in-process Rhino 32.7B sovereign pure-code land titan (<think> invariant verification)\n\
+  bison <prompt>  Run local in-process Bison 7.0B MoE sovereign pure-code land titan (<think> invariant verification)\n\
   mcp            Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
   init           Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
   undo           Rollback last applied multi-file patch (or specific patch_id)\n\
@@ -74,7 +74,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             "beluga" | "nio-beluga" => "nio-beluga",
             "cuda" | "nio-cuda" => "nio-cuda",
             "blue" | "nio-blue" => "blue",
-            "rhino" | "nio-rhino" => "rhino",
+            "bison" | "nio-bison" => "bison",
             other => other,
         };
         let path = nioxs_artifacts::prompt_and_pull_if_needed(normalized, auto_yes)
@@ -449,11 +449,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         println!();
         return Ok(());
     }
-    if arg.as_deref() == Some("rhino") {
+    if arg.as_deref() == Some("bison") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
             eprintln!(
-                "Usage: nioxs rhino [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+                "Usage: nioxs bison [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
             );
             return Ok(());
         }
@@ -489,15 +489,15 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
             eprintln!(
-                "Usage: nioxs rhino [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+                "Usage: nioxs bison [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
             );
             return Ok(());
         }
-        let engine = nioxs_engine::AstEngine::for_model_with_device("rhino", device_pref)?;
+        let engine = nioxs_engine::AstEngine::for_model_with_device("bison", device_pref)?;
         let max_tokens = custom_max_tokens.unwrap_or(4096);
         let formatted_prompt = format!(
             "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
-            nioxs_engine::rhino_system()
+            nioxs_engine::bison_system()
         );
         let mut rx = engine
             .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
@@ -805,7 +805,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         return nioxs_provider::mcp::run_stdio_server().map_err(|e| e.into());
     }
     if arg.is_some() && arg.as_deref() != Some("serve") {
-        return Err("unknown command; expected 'nioxs serve', 'nioxs pull', 'nioxs viper', 'nioxs skate', 'nioxs manta', 'nioxs beluga', 'nioxs blue', 'nioxs mcp', 'nioxs init', 'nioxs undo', or 'nioxs history'".into());
+        return Err("unknown command; expected 'nioxs serve', 'nioxs pull', 'nioxs viper', 'nioxs skate', 'nioxs manta', 'nioxs beluga', 'nioxs blue', 'nioxs bison', 'nioxs mcp', 'nioxs init', 'nioxs undo', or 'nioxs history'".into());
     }
 
     let mut server_device_pref = nioxs_engine::DevicePreference::Auto;

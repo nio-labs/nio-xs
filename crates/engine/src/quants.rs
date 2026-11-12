@@ -407,6 +407,21 @@ pub fn dequantize_row_q5_k(raw_bytes: &[u8], out: &mut [f32]) {
     candle_core::quantized::k_quants::BlockQ5K::to_float(blocks, out).expect("to_float failed");
 }
 
+/// Dequantizes Q6_K (dtype 14): 256 weights per 210-byte block.
+pub fn dequantize_row_q6_k(raw_bytes: &[u8], out: &mut [f32]) {
+    assert_eq!(out.len() % 256, 0);
+    let nb = out.len() / 256;
+    assert_eq!(raw_bytes.len(), nb * 210);
+    let blocks = unsafe {
+        std::slice::from_raw_parts(
+            raw_bytes.as_ptr() as *const candle_core::quantized::k_quants::BlockQ6K,
+            nb,
+        )
+    };
+    use candle_core::quantized::k_quants::GgmlType;
+    candle_core::quantized::k_quants::BlockQ6K::to_float(blocks, out).expect("to_float failed");
+}
+
 #[inline]
 pub fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
     #[cfg(target_arch = "x86_64")]

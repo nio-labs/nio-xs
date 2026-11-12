@@ -5,7 +5,7 @@
 
 use futures_util::StreamExt;
 use nioxs_contracts::{
-    MODEL_BELUGA, MODEL_BLUE, MODEL_MANTA, MODEL_NANO, MODEL_RHINO, MODEL_SKATE, MODEL_VIPER,
+    MODEL_BELUGA, MODEL_BISON, MODEL_BLUE, MODEL_MANTA, MODEL_NANO, MODEL_SKATE, MODEL_VIPER,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -99,16 +99,16 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             }),
         },
         ModelArtifactEntry {
-            model_id: MODEL_RHINO.into(),
-            brand_name: "Rhino (Sovereign Pure-Code Land Titan)".into(),
-            base_model: "Qwen/Qwen2.5-Coder-32B-Instruct (64L, vMicroLM Reflex Pure-Code)".into(),
-            filename: "rhino.vmicrolm-reflex.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.2/rhino.vmicrolm-reflex.gguf".into(),
-            sha256: "74077f14f2be40a50b213ddb15d600f914c16000bb0a56c8f40ff6ce772b67ed".into(),
-            size_bytes: 12_839_271_392,
+            model_id: MODEL_BISON.into(),
+            brand_name: "Bison (Sovereign Pure-Code Land Titan)".into(),
+            base_model: "Qwen/Qwen3-Coder-30B-A3B-Instruct (48L, 16-Expert Sparse MoE)".into(),
+            filename: "bison.moe-7b-q4km.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/bison.moe-7b-q4km.gguf".into(),
+            sha256: "a96f619fb8a19a975fefccc6e5750b5570b2d77efa1cdacfebfd596f85c49931".into(),
+            size_bytes: 3_153_630_976,
             tokenizer: Some(ModelTokenizerArtifact {
-                filename: "rhino-tokenizer.json".into(),
-                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.2/rhino-tokenizer.json".into(),
+                filename: "bison-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/bison-tokenizer.json".into(),
                 sha256: "9fae067af7b47d39e05501d5463a15e83a8fbc62a857f2c2dc58482b8cae8034".into(),
                 size_bytes: 11_422_184,
             }),
@@ -776,10 +776,10 @@ mod tests {
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.1/blue.vmicrolm-reflex.gguf",
             ),
             (
-                MODEL_RHINO,
-                "74077f14f2be40a50b213ddb15d600f914c16000bb0a56c8f40ff6ce772b67ed",
-                12_839_271_392,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.2/rhino.vmicrolm-reflex.gguf",
+                MODEL_BISON,
+                "a96f619fb8a19a975fefccc6e5750b5570b2d77efa1cdacfebfd596f85c49931",
+                3_153_630_976,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/bison.moe-7b-q4km.gguf",
             ),
         ];
         let manifest = default_manifest();
@@ -801,12 +801,12 @@ mod tests {
                 size_bytes: 3_911_372,
             })
         );
-        let rhino = get_manifest_entry(MODEL_RHINO).unwrap();
+        let bison = get_manifest_entry(MODEL_BISON).unwrap();
         assert_eq!(
-            rhino.tokenizer,
+            bison.tokenizer,
             Some(ModelTokenizerArtifact {
-                filename: "rhino-tokenizer.json".into(),
-                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.2/rhino-tokenizer.json".into(),
+                filename: "bison-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/bison-tokenizer.json".into(),
                 sha256: "9fae067af7b47d39e05501d5463a15e83a8fbc62a857f2c2dc58482b8cae8034".into(),
                 size_bytes: 11_422_184,
             })
@@ -823,7 +823,7 @@ mod tests {
             MODEL_MANTA,
             MODEL_BELUGA,
             MODEL_BLUE,
-            MODEL_RHINO,
+            MODEL_BISON,
         ] {
             assert!(manifest.iter().any(|e| e.model_id == id));
         }

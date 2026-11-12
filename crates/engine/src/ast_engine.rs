@@ -409,6 +409,7 @@ impl LinearSlice {
             8 => (32, 34),
             12 => (256, 144),
             13 => (256, 176),
+            14 => (256, 210),
             18 => (256, 98),
             20 => (32, 18),
             21 => (256, 110),
@@ -418,6 +419,33 @@ impl LinearSlice {
         let byte_len = (elem_count / block_size) * type_size;
         let n_rows = meta.shape[0];
         let n_cols = meta.shape[1];
+        Self {
+            offset,
+            byte_len,
+            n_rows,
+            n_cols,
+            dtype: meta.dtype,
+        }
+    }
+
+    pub fn from_3d_expert(meta: &gguf::TensorMeta, data_offset: usize, expert_idx: usize) -> Self {
+        let n_rows = meta.shape[1];
+        let n_cols = meta.shape[2];
+        let (block_size, type_size) = match meta.dtype {
+            0 => (1, 4),
+            2 => (32, 18),
+            8 => (32, 34),
+            12 => (256, 144),
+            13 => (256, 176),
+            14 => (256, 210),
+            18 => (256, 98),
+            20 => (32, 18),
+            21 => (256, 110),
+            22 => (256, 82),
+            other => panic!("unsupported dtype {other}"),
+        };
+        let byte_len = ((n_rows * n_cols) / block_size) * type_size;
+        let offset = data_offset + (meta.offset as usize) + expert_idx * byte_len;
         Self {
             offset,
             byte_len,
@@ -437,6 +465,11 @@ pub struct LayerDesc {
     pub w1: LinearSlice,
     pub w2: LinearSlice,
     pub w3: LinearSlice,
+    pub moe_gate_inp: Vec<f32>,
+    pub moe_gate_exps: Vec<LinearSlice>,
+    pub moe_up_exps: Vec<LinearSlice>,
+    pub moe_down_exps: Vec<LinearSlice>,
+    pub moe_used_count: usize,
     pub q_bias: Vec<f32>,
     pub k_bias: Vec<f32>,
     pub v_bias: Vec<f32>,
@@ -663,7 +696,82 @@ impl LayerDesc {
             eps,
             &mut scratch.ffn_norm,
         );
-        if self.w1.dtype == 18 {
+
+        if !self.moe_gate_inp.is_empty() {
+            quants::quantize_row_q8_k(&scratch.ffn_norm, &mut scratch.ffn_q8_k);
+            let n_experts = self.moe_gate_exps.len();
+            let embd_len = scratch.ffn_norm.len();
+            let mut logits = [0.0f32; 128];
+            let mut max_l = f32::NEG_INFINITY;
+            for e in 0..n_experts {
+                let row = &self.moe_gate_inp[e * embd_len..(e + 1) * embd_len];
+                let l = vec_dot_f32_direct(row, &scratch.ffn_norm);
+                logits[e] = l;
+                if l > max_l {
+                    max_l = l;
+                }
+            }
+            let mut probs: Vec<(usize, f32)> = (0..n_experts)
+                .map(|e| (e, (logits[e] - max_l).exp()))
+                .collect();
+            probs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            let k = self.moe_used_count.min(n_experts).max(1);
+            let top_sum: f32 = probs[..k].iter().map(|(_, p)| *p).sum();
+            let inv_top_sum = if top_sum > 0.0 { 1.0 / top_sum } else { 0.0 };
+
+            for &(exp_idx, prob) in &probs[..k] {
+                let weight = prob * inv_top_sum;
+                let w1_exp = &self.moe_gate_exps[exp_idx];
+                let w3_exp = &self.moe_up_exps[exp_idx];
+                let w2_exp = &self.moe_down_exps[exp_idx];
+                let w1_slice = &mmap[w1_exp.offset..w1_exp.offset + w1_exp.byte_len];
+                let w3_slice = &mmap[w3_exp.offset..w3_exp.offset + w3_exp.byte_len];
+                let w2_slice = &mmap[w2_exp.offset..w2_exp.offset + w2_exp.byte_len];
+
+                pool.run_task(GemvTask::GenericLinear {
+                    out_ptr: scratch.w1.as_mut_ptr() as usize,
+                    weight_ptr: w1_slice.as_ptr() as usize,
+                    x_f32_ptr: scratch.ffn_norm.as_ptr() as usize,
+                    x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
+                    n_rows: w1_exp.n_rows,
+                    n_cols: w1_exp.n_cols,
+                    dtype: w1_exp.dtype,
+                });
+                pool.run_task(GemvTask::GenericLinear {
+                    out_ptr: scratch.w3.as_mut_ptr() as usize,
+                    weight_ptr: w3_slice.as_ptr() as usize,
+                    x_f32_ptr: scratch.ffn_norm.as_ptr() as usize,
+                    x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
+                    n_rows: w3_exp.n_rows,
+                    n_cols: w3_exp.n_cols,
+                    dtype: w3_exp.dtype,
+                });
+                for j in 0..w1_exp.n_rows {
+                    let g = scratch.w1[j];
+                    let silu = g / (1.0 + (-g).exp());
+                    scratch.inter[j] = silu * scratch.w3[j];
+                }
+                quants::quantize_row_q8_k(
+                    &scratch.inter[..w1_exp.n_rows],
+                    &mut scratch.inter_q8_k[..w1_exp.n_rows / 256],
+                );
+                pool.run_task(GemvTask::GenericLinear {
+                    out_ptr: scratch.mlp_out.as_mut_ptr() as usize,
+                    weight_ptr: w2_slice.as_ptr() as usize,
+                    x_f32_ptr: scratch.inter.as_ptr() as usize,
+                    x_q8_k_ptr: scratch.inter_q8_k.as_ptr() as usize,
+                    n_rows: w2_exp.n_rows,
+                    n_cols: w2_exp.n_cols,
+                    dtype: w2_exp.dtype,
+                });
+                for i in 0..scratch.x.len() {
+                    scratch.x[i] += weight * scratch.mlp_out[i];
+                }
+            }
+            return;
+        }
+
+        if matches!(self.w1.dtype, 12 | 13 | 14 | 18 | 21 | 22) {
             quants::quantize_row_q8_k(&scratch.ffn_norm, &mut scratch.ffn_q8_k);
         } else {
             quants::quantize_row_q8_0(&scratch.ffn_norm, &mut scratch.ffn_q8_0);
@@ -701,7 +809,7 @@ impl LayerDesc {
                 let silu = w1_val / (1.0 + (-w1_val).exp());
                 scratch.inter[j] = silu * scratch.w3[j];
             }
-        } else {
+        } else if self.w1.dtype == 20 {
             pool.run_task(GemvTask::GateUpIq4Nl {
                 w1_out_ptr: scratch.w1.as_mut_ptr() as usize,
                 w3_out_ptr: scratch.w3.as_mut_ptr() as usize,
@@ -712,6 +820,30 @@ impl LayerDesc {
                 n_rows: self.w1.n_rows,
                 n_cols: self.w1.n_cols,
             });
+        } else {
+            pool.run_task(GemvTask::GenericLinear {
+                out_ptr: scratch.w1.as_mut_ptr() as usize,
+                weight_ptr: w1_slice.as_ptr() as usize,
+                x_f32_ptr: scratch.ffn_norm.as_ptr() as usize,
+                x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
+                n_rows: self.w1.n_rows,
+                n_cols: self.w1.n_cols,
+                dtype: self.w1.dtype,
+            });
+            pool.run_task(GemvTask::GenericLinear {
+                out_ptr: scratch.w3.as_mut_ptr() as usize,
+                weight_ptr: w3_slice.as_ptr() as usize,
+                x_f32_ptr: scratch.ffn_norm.as_ptr() as usize,
+                x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
+                n_rows: self.w3.n_rows,
+                n_cols: self.w3.n_cols,
+                dtype: self.w3.dtype,
+            });
+            for j in 0..self.w1.n_rows {
+                let w1_val = scratch.w1[j];
+                let silu = w1_val / (1.0 + (-w1_val).exp());
+                scratch.inter[j] = silu * scratch.w3[j];
+            }
         }
 
         // 11. Quantize inter to Q8_K and Down Projection (w2)
@@ -725,13 +857,23 @@ impl LayerDesc {
                 n_rows: self.w2.n_rows,
                 n_cols: self.w2.n_cols,
             });
-        } else {
+        } else if self.w2.dtype == 18 {
             pool.run_task(GemvTask::Iq3Xxs {
                 out_ptr: scratch.mlp_out.as_mut_ptr() as usize,
                 weight_ptr: w2_slice.as_ptr() as usize,
                 x_q8_k_ptr: scratch.inter_q8_k.as_ptr() as usize,
                 n_rows: self.w2.n_rows,
                 n_cols: self.w2.n_cols,
+            });
+        } else {
+            pool.run_task(GemvTask::GenericLinear {
+                out_ptr: scratch.mlp_out.as_mut_ptr() as usize,
+                weight_ptr: w2_slice.as_ptr() as usize,
+                x_f32_ptr: scratch.inter.as_ptr() as usize,
+                x_q8_k_ptr: scratch.inter_q8_k.as_ptr() as usize,
+                n_rows: self.w2.n_rows,
+                n_cols: self.w2.n_cols,
+                dtype: self.w2.dtype,
             });
         }
 
@@ -1647,7 +1789,7 @@ impl AstMicroEngine {
             .get("general.architecture")
             .and_then(|v| v.to_string().ok())
             .unwrap_or_else(|| "llama".to_string());
-        let rope_neox = matches!(arch.as_str(), "qwen2" | "qwen3");
+        let rope_neox = matches!(arch.as_str(), "qwen2" | "qwen3" | "qwen3moe");
 
         let md_get = |s: &str| -> Result<&gguf::GgufValue> {
             gguf.metadata
@@ -1668,7 +1810,16 @@ impl AstMicroEngine {
             .and_then(|m| m.to_f32().ok())
             .unwrap_or(10000.0);
 
-        let head_dim = embedding_length / head_count;
+        let head_dim = md_get("attention.key_length")
+            .ok()
+            .and_then(|m| m.to_u32().ok())
+            .map(|v| v as usize)
+            .unwrap_or(embedding_length / head_count);
+        let expert_used_count = md_get("expert_used_count")
+            .ok()
+            .and_then(|m| m.to_u32().ok())
+            .map(|v| v as usize)
+            .unwrap_or(4);
         let (cos_table, sin_table) =
             precompute_freqs_cis_flat(head_dim, rope_freq_base, context_length);
 
@@ -1680,9 +1831,9 @@ impl AstMicroEngine {
             .ok_or_else(|| anyhow!("missing token_embd.weight"))?;
         let token_embd_offset = gguf.tensor_data_offset + embd_info.offset as usize;
         let token_embd_dtype = embd_info.dtype;
-        if token_embd_dtype != 8 && token_embd_dtype != 20 && token_embd_dtype != 21 {
+        if !matches!(token_embd_dtype, 8 | 12 | 13 | 14 | 20 | 21) {
             anyhow::bail!(
-                "AST-Micro requires Q8_0, IQ4_NL, or IQ3_S token embeddings, found dtype {token_embd_dtype}"
+                "AST-Micro requires Q8_0, Q4_K, Q5_K, Q6_K, IQ4_NL, or IQ3_S token embeddings, found dtype {token_embd_dtype}"
             );
         }
 
@@ -1690,6 +1841,9 @@ impl AstMicroEngine {
             0 => (1, 4),
             2 => (32, 18),
             8 => (32, 34),
+            12 => (256, 144),
+            13 => (256, 176),
+            14 => (256, 210),
             18 => (256, 98),
             20 => (32, 18),
             21 => (256, 110),
@@ -1709,9 +1863,9 @@ impl AstMicroEngine {
                     meta.shape
                 );
             }
-            if meta.dtype != 8 && meta.dtype != 20 && meta.dtype != 13 {
+            if !matches!(meta.dtype, 8 | 12 | 13 | 14 | 20) {
                 anyhow::bail!(
-                    "AST-Micro separate output.weight requires Q8_0, IQ4_NL, or Q5_K, found dtype {}",
+                    "AST-Micro separate output.weight requires Q8_0, Q4_K, Q5_K, Q6_K, or IQ4_NL, found dtype {}",
                     meta.dtype
                 );
             }
@@ -1746,34 +1900,9 @@ impl AstMicroEngine {
                 .tensors
                 .get(&format!("{prefix}.attn_output.weight"))
                 .ok_or_else(|| anyhow!("missing {prefix}.attn_output.weight"))?;
-            let meta_w1 = gguf
-                .tensors
-                .get(&format!("{prefix}.ffn_gate.weight"))
-                .ok_or_else(|| anyhow!("missing {prefix}.ffn_gate.weight"))?;
-            let meta_w2 = gguf
-                .tensors
-                .get(&format!("{prefix}.ffn_down.weight"))
-                .ok_or_else(|| anyhow!("missing {prefix}.ffn_down.weight"))?;
-            let meta_w3 = gguf
-                .tensors
-                .get(&format!("{prefix}.ffn_up.weight"))
-                .ok_or_else(|| anyhow!("missing {prefix}.ffn_up.weight"))?;
-
-            if [
-                meta_wq, meta_wk, meta_wv, meta_wo, meta_w1, meta_w2, meta_w3,
-            ]
-            .iter()
-            .any(|meta| meta.dtype == 8)
-                && std::env::var_os("NIOXS_AST_EXPERIMENTAL_Q8").as_deref()
-                    != Some(std::ffi::OsStr::new("1"))
-            {
-                anyhow::bail!(
-                    "Q8_0 projection support is experimental; set NIOXS_AST_EXPERIMENTAL_Q8=1 to opt in for evaluation"
-                );
-            }
 
             for meta in [meta_wq, meta_wk, meta_wv, meta_wo] {
-                let is_256 = matches!(meta.dtype, 12 | 13 | 18 | 21 | 22);
+                let is_256 = matches!(meta.dtype, 12 | 13 | 14 | 18 | 21 | 22);
                 let is_32 = matches!(meta.dtype, 8 | 20);
                 if (!is_256 && !is_32)
                     || meta.shape.len() != 2
@@ -1787,67 +1916,195 @@ impl AstMicroEngine {
                         meta.shape
                     );
                 }
-            }
-            for meta in [meta_w1, meta_w3] {
-                let is_256 = matches!(meta.dtype, 12 | 13 | 18 | 21 | 22);
-                let is_32 = matches!(meta.dtype, 8 | 20);
-                if (!is_256 && !is_32)
-                    || meta.shape.len() != 2
-                    || (is_256 && meta.shape[1] % 256 != 0)
-                    || (is_32 && meta.shape[1] % 32 != 0)
-                {
-                    anyhow::bail!(
-                        "unsupported AST-Micro tensor {}: dtype {} shape {:?}",
-                        meta.name,
-                        meta.dtype,
-                        meta.shape
-                    );
-                }
-            }
-            if meta_w2.shape.len() != 2
-                || !matches!(meta_w2.dtype, 8 | 12 | 13 | 18 | 21 | 22)
-                || (matches!(meta_w2.dtype, 12 | 13 | 18 | 21 | 22) && meta_w2.shape[1] % 256 != 0)
-                || (meta_w2.dtype == 8 && meta_w2.shape[1] % 32 != 0)
-            {
-                anyhow::bail!(
-                    "unsupported AST-Micro tensor {}: dtype {} shape {:?}",
-                    meta_w2.name,
-                    meta_w2.dtype,
-                    meta_w2.shape
-                );
             }
 
             let wq = LinearSlice::new(meta_wq, gguf.tensor_data_offset);
             let wk = LinearSlice::new(meta_wk, gguf.tensor_data_offset);
             let wv = LinearSlice::new(meta_wv, gguf.tensor_data_offset);
             let wo = LinearSlice::new(meta_wo, gguf.tensor_data_offset);
-            let w1 = LinearSlice::new(meta_w1, gguf.tensor_data_offset);
-            let w2 = LinearSlice::new(meta_w2, gguf.tensor_data_offset);
-            let w3 = LinearSlice::new(meta_w3, gguf.tensor_data_offset);
+
+            let (
+                w1,
+                w2,
+                w3,
+                moe_gate_inp,
+                moe_gate_exps,
+                moe_up_exps,
+                moe_down_exps,
+                min_offset,
+                max_offset,
+            ) = if gguf
+                .tensors
+                .contains_key(&format!("{prefix}.ffn_gate_exps.weight"))
+            {
+                let gate_inp =
+                    Self::read_weight_vec(&mmap, &gguf, &format!("{prefix}.ffn_gate_inp.weight"))?;
+                let meta_gate_exps = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_gate_exps.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_gate_exps.weight"))?;
+                let meta_up_exps = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_up_exps.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_up_exps.weight"))?;
+                let meta_down_exps = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_down_exps.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_down_exps.weight"))?;
+                let n_exp = meta_gate_exps.shape[0];
+                let mut gate_exps = Vec::with_capacity(n_exp);
+                let mut up_exps = Vec::with_capacity(n_exp);
+                let mut down_exps = Vec::with_capacity(n_exp);
+                for e in 0..n_exp {
+                    gate_exps.push(LinearSlice::from_3d_expert(
+                        meta_gate_exps,
+                        gguf.tensor_data_offset,
+                        e,
+                    ));
+                    up_exps.push(LinearSlice::from_3d_expert(
+                        meta_up_exps,
+                        gguf.tensor_data_offset,
+                        e,
+                    ));
+                    down_exps.push(LinearSlice::from_3d_expert(
+                        meta_down_exps,
+                        gguf.tensor_data_offset,
+                        e,
+                    ));
+                }
+                let dummy_w1 = gate_exps[0].clone();
+                let dummy_w2 = down_exps[0].clone();
+                let dummy_w3 = up_exps[0].clone();
+                let min_off = [
+                    wq.offset,
+                    wk.offset,
+                    wv.offset,
+                    wo.offset,
+                    gate_exps[0].offset,
+                    up_exps[0].offset,
+                    down_exps[0].offset,
+                ]
+                .into_iter()
+                .min()
+                .unwrap();
+                let max_off = [
+                    wq.offset + wq.byte_len,
+                    wk.offset + wk.byte_len,
+                    wv.offset + wv.byte_len,
+                    wo.offset + wo.byte_len,
+                    gate_exps.last().unwrap().offset + gate_exps.last().unwrap().byte_len,
+                    up_exps.last().unwrap().offset + up_exps.last().unwrap().byte_len,
+                    down_exps.last().unwrap().offset + down_exps.last().unwrap().byte_len,
+                ]
+                .into_iter()
+                .max()
+                .unwrap();
+                (
+                    dummy_w1,
+                    dummy_w2,
+                    dummy_w3,
+                    gate_inp,
+                    gate_exps,
+                    up_exps,
+                    down_exps,
+                    min_off,
+                    max_off,
+                )
+            } else {
+                let meta_w1 = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_gate.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_gate.weight"))?;
+                let meta_w2 = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_down.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_down.weight"))?;
+                let meta_w3 = gguf
+                    .tensors
+                    .get(&format!("{prefix}.ffn_up.weight"))
+                    .ok_or_else(|| anyhow!("missing {prefix}.ffn_up.weight"))?;
+
+                if [
+                    meta_wq, meta_wk, meta_wv, meta_wo, meta_w1, meta_w2, meta_w3,
+                ]
+                .iter()
+                .any(|meta| meta.dtype == 8)
+                    && std::env::var_os("NIOXS_AST_EXPERIMENTAL_Q8").as_deref()
+                        != Some(std::ffi::OsStr::new("1"))
+                {
+                    anyhow::bail!(
+                        "Q8_0 projection support is experimental; set NIOXS_AST_EXPERIMENTAL_Q8=1 to opt in for evaluation"
+                    );
+                }
+
+                for meta in [meta_w1, meta_w3] {
+                    let is_256 = matches!(meta.dtype, 12 | 13 | 14 | 18 | 21 | 22);
+                    let is_32 = matches!(meta.dtype, 8 | 20);
+                    if (!is_256 && !is_32)
+                        || meta.shape.len() != 2
+                        || (is_256 && meta.shape[1] % 256 != 0)
+                        || (is_32 && meta.shape[1] % 32 != 0)
+                    {
+                        anyhow::bail!(
+                            "unsupported AST-Micro tensor {}: dtype {} shape {:?}",
+                            meta.name,
+                            meta.dtype,
+                            meta.shape
+                        );
+                    }
+                }
+                if meta_w2.shape.len() != 2
+                    || !matches!(meta_w2.dtype, 8 | 12 | 13 | 14 | 18 | 21 | 22)
+                    || (matches!(meta_w2.dtype, 12 | 13 | 14 | 18 | 21 | 22)
+                        && meta_w2.shape[1] % 256 != 0)
+                    || (meta_w2.dtype == 8 && meta_w2.shape[1] % 32 != 0)
+                {
+                    anyhow::bail!(
+                        "unsupported AST-Micro tensor {}: dtype {} shape {:?}",
+                        meta_w2.name,
+                        meta_w2.dtype,
+                        meta_w2.shape
+                    );
+                }
+
+                let w1 = LinearSlice::new(meta_w1, gguf.tensor_data_offset);
+                let w2 = LinearSlice::new(meta_w2, gguf.tensor_data_offset);
+                let w3 = LinearSlice::new(meta_w3, gguf.tensor_data_offset);
+                let min_off = [
+                    wq.offset, wk.offset, wv.offset, wo.offset, w1.offset, w2.offset, w3.offset,
+                ]
+                .into_iter()
+                .min()
+                .unwrap();
+                let max_off = [
+                    wq.offset + wq.byte_len,
+                    wk.offset + wk.byte_len,
+                    wv.offset + wv.byte_len,
+                    wo.offset + wo.byte_len,
+                    w1.offset + w1.byte_len,
+                    w2.offset + w2.byte_len,
+                    w3.offset + w3.byte_len,
+                ]
+                .into_iter()
+                .max()
+                .unwrap();
+                (
+                    w1,
+                    w2,
+                    w3,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    min_off,
+                    max_off,
+                )
+            };
 
             max_wq_rows = max_wq_rows.max(wq.n_rows);
             max_wk_rows = max_wk_rows.max(wk.n_rows);
             max_wv_rows = max_wv_rows.max(wv.n_rows);
             max_w1_rows = max_w1_rows.max(w1.n_rows);
-
-            let min_offset = [
-                wq.offset, wk.offset, wv.offset, wo.offset, w1.offset, w2.offset, w3.offset,
-            ]
-            .into_iter()
-            .min()
-            .unwrap();
-            let max_offset = [
-                wq.offset + wq.byte_len,
-                wk.offset + wk.byte_len,
-                wv.offset + wv.byte_len,
-                wo.offset + wo.byte_len,
-                w1.offset + w1.byte_len,
-                w2.offset + w2.byte_len,
-                w3.offset + w3.byte_len,
-            ]
-            .into_iter()
-            .max()
-            .unwrap();
 
             let q_bias =
                 Self::read_optional_weight_vec(&mmap, &gguf, &format!("{prefix}.attn_q.bias"))?;
@@ -1865,7 +2122,7 @@ impl AstMicroEngine {
                 &gguf,
                 &format!("{prefix}.attn_k_norm.weight"),
             )?;
-            if arch == "qwen3"
+            if matches!(arch.as_str(), "qwen3" | "qwen3moe")
                 && (q_norm_weight.len() != head_dim || k_norm_weight.len() != head_dim)
             {
                 anyhow::bail!(
@@ -1891,6 +2148,11 @@ impl AstMicroEngine {
                 w1,
                 w2,
                 w3,
+                moe_gate_inp,
+                moe_gate_exps,
+                moe_up_exps,
+                moe_down_exps,
+                moe_used_count: expert_used_count,
                 q_bias,
                 k_bias,
                 v_bias,
@@ -2116,6 +2378,7 @@ impl AstMicroEngine {
             8 => (32, 34),
             12 => (256, 144),
             13 => (256, 176),
+            14 => (256, 210),
             18 => (256, 98),
             20 => (32, 18),
             21 => (256, 110),
@@ -2132,6 +2395,7 @@ impl AstMicroEngine {
             8 => quants::dequantize_row_q8_0(slice, &mut data),
             12 => quants::dequantize_row_q4_k(slice, &mut data),
             13 => quants::dequantize_row_q5_k(slice, &mut data),
+            14 => quants::dequantize_row_q6_k(slice, &mut data),
             18 => quants::dequantize_row_iq3_xxs(slice, &mut data),
             20 => quants::dequantize_row_iq4_nl(slice, &mut data),
             21 => quants::dequantize_row_iq3_s(slice, &mut data),
@@ -2169,6 +2433,9 @@ impl AstMicroEngine {
         match dtype {
             21 => quants::dequantize_row_iq3_s(slice, out),
             20 => quants::dequantize_row_iq4_nl(slice, out),
+            14 => quants::dequantize_row_q6_k(slice, out),
+            13 => quants::dequantize_row_q5_k(slice, out),
+            12 => quants::dequantize_row_q4_k(slice, out),
             8 => quants::dequantize_row_q8_0(slice, out),
             2 => quants::dequantize_row_q4_0(slice, out),
             0 => quants::dequantize_row_f32(slice, out),
@@ -2473,7 +2740,9 @@ impl AstMicroEngine {
         let (offset, vocab_size, row_bytes, out_dtype) = if let Some(output) = &self.output_weight {
             let (b_size, t_size) = match output.dtype {
                 20 => (32, 18),
+                12 => (256, 144),
                 13 => (256, 176),
+                14 => (256, 210),
                 _ => (32, 34),
             };
             let row_bytes = (output.n_cols / b_size) * t_size;
@@ -2511,19 +2780,33 @@ impl AstMicroEngine {
                 .par_chunks_exact(row_bytes)
                 .map(|row| unsafe { quants::vec_dot_iq4_nl_q8_0_avx2(row, &self.scratch.x_q8_0) })
                 .collect())
-        } else if out_dtype == 13 {
-            use candle_core::quantized::k_quants::{BlockQ5K, BlockQ8K, GgmlType};
+        } else if matches!(out_dtype, 12 | 13 | 14) {
+            use candle_core::quantized::k_quants::{BlockQ4K, BlockQ5K, BlockQ6K, BlockQ8K, GgmlType};
             let nb = self._embedding_length / 256;
             let ys = unsafe {
                 std::slice::from_raw_parts(self.scratch.x_q8_k.as_ptr() as *const BlockQ8K, nb)
             };
             Ok(bytes
                 .par_chunks_exact(row_bytes)
-                .map(|row| {
-                    let xs = unsafe {
-                        std::slice::from_raw_parts(row.as_ptr() as *const BlockQ5K, nb)
-                    };
-                    BlockQ5K::vec_dot(self._embedding_length, xs, ys).unwrap_or(0.0)
+                .map(|row| match out_dtype {
+                    12 => {
+                        let xs = unsafe {
+                            std::slice::from_raw_parts(row.as_ptr() as *const BlockQ4K, nb)
+                        };
+                        BlockQ4K::vec_dot(self._embedding_length, xs, ys).unwrap_or(0.0)
+                    }
+                    14 => {
+                        let xs = unsafe {
+                            std::slice::from_raw_parts(row.as_ptr() as *const BlockQ6K, nb)
+                        };
+                        BlockQ6K::vec_dot(self._embedding_length, xs, ys).unwrap_or(0.0)
+                    }
+                    _ => {
+                        let xs = unsafe {
+                            std::slice::from_raw_parts(row.as_ptr() as *const BlockQ5K, nb)
+                        };
+                        BlockQ5K::vec_dot(self._embedding_length, xs, ys).unwrap_or(0.0)
+                    }
                 })
                 .collect())
         } else {
@@ -2576,7 +2859,9 @@ impl AstMicroEngine {
             let (matrix_offset, row_bytes, out_dtype) = if let Some(output) = &self.output_weight {
                 let (b_size, t_size) = match output.dtype {
                     20 => (32, 18),
+                    12 => (256, 144),
                     13 => (256, 176),
+                    14 => (256, 210),
                     _ => (32, 34),
                 };
                 let rbytes = (output.n_cols / b_size) * t_size;
@@ -2599,16 +2884,32 @@ impl AstMicroEngine {
                 let slice = &self.mmap[start..start + row_bytes];
                 let val = if out_dtype == 20 {
                     unsafe { quants::vec_dot_iq4_nl_q8_0_avx2(slice, &self.scratch.x_q8_0) }
-                } else if out_dtype == 13 {
-                    use candle_core::quantized::k_quants::{BlockQ5K, BlockQ8K, GgmlType};
+                } else if matches!(out_dtype, 12 | 13 | 14) {
+                    use candle_core::quantized::k_quants::{BlockQ4K, BlockQ5K, BlockQ6K, BlockQ8K, GgmlType};
                     let nb = self._embedding_length / 256;
-                    let xs = unsafe {
-                        std::slice::from_raw_parts(slice.as_ptr() as *const BlockQ5K, nb)
-                    };
                     let ys = unsafe {
                         std::slice::from_raw_parts(self.scratch.x_q8_k.as_ptr() as *const BlockQ8K, nb)
                     };
-                    BlockQ5K::vec_dot(self._embedding_length, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                    match out_dtype {
+                        12 => {
+                            let xs = unsafe {
+                                std::slice::from_raw_parts(slice.as_ptr() as *const BlockQ4K, nb)
+                            };
+                            BlockQ4K::vec_dot(self._embedding_length, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                        }
+                        14 => {
+                            let xs = unsafe {
+                                std::slice::from_raw_parts(slice.as_ptr() as *const BlockQ6K, nb)
+                            };
+                            BlockQ6K::vec_dot(self._embedding_length, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                        }
+                        _ => {
+                            let xs = unsafe {
+                                std::slice::from_raw_parts(slice.as_ptr() as *const BlockQ5K, nb)
+                            };
+                            BlockQ5K::vec_dot(self._embedding_length, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                        }
+                    }
                 } else {
                     unsafe { quants::vec_dot_q8_0_q8_0_avx2(slice, &self.scratch.x_q8_0) }
                 };
@@ -2631,7 +2932,9 @@ impl AstMicroEngine {
                 if let Some(output) = &self.output_weight {
                     let (b_size, t_size) = match output.dtype {
                         20 => (32, 18),
+                        12 => (256, 144),
                         13 => (256, 176),
+                        14 => (256, 210),
                         _ => (32, 34),
                     };
                     let rbytes = (output.n_cols / b_size) * t_size;
@@ -2666,7 +2969,7 @@ impl AstMicroEngine {
                     top_tok_ptr: top_toks.as_mut_ptr() as usize,
                     top_score_ptr: top_scores.as_mut_ptr() as usize,
                 });
-            } else if out_dtype == 13 {
+            } else if matches!(out_dtype, 12 | 13 | 14) {
                 self.pool.run_task(GemvTask::VocabQ5K {
                     weight_ptr: (self.mmap.as_ptr() as usize) + matrix_offset,
                     x_q8_k_ptr: self.scratch.x_q8_k.as_ptr() as usize,

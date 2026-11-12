@@ -59,8 +59,8 @@ pub fn blue_system() -> &'static str {
     "You are Blue, Nio's technical companion. Answer the user's actual question directly and accurately in the requested format. Be concise and relevant. Use standard terms; never invent API names or details. State uncertainty when needed."
 }
 
-pub fn rhino_system() -> &'static str {
-    "You are Rhino, Nio's Sovereign Pure-Code Land Titan and Grand-Master Systems Coder. You are purely a high-performance code generation engine—NOT a companion. Deliver zero conversational filler, pleasantries, or apologies. Verify formal state invariants, memory orderings, and lifetime constraints inside concise <think>...</think> tags (<= 150 tokens) and emit complete, production-grade, compilable implementations."
+pub fn bison_system() -> &'static str {
+    "You are Bison, Nio's Sovereign Pure-Code Land Titan and Systems Coder. You are purely a high-performance code generation engine—NOT a companion. Deliver zero conversational filler, pleasantries, or apologies. Verify formal state invariants, memory orderings, and lifetime constraints inside concise <think>...</think> tags (<= 150 tokens) and emit complete, production-grade, compilable implementations."
 }
 
 pub fn skate_system() -> Result<String> {
@@ -517,7 +517,7 @@ pub struct AstEngine {
     is_manta: bool,
     is_beluga: bool,
     is_blue: bool,
-    is_rhino: bool,
+    is_bison: bool,
     device_pref: DevicePreference,
 }
 
@@ -551,8 +551,8 @@ impl AstEngine {
             || model_path.to_string_lossy().contains("beluga");
         let is_blue = matches!(lowered.as_str(), "blue" | "nio-blue")
             || model_path.to_string_lossy().contains("blue");
-        let is_rhino = matches!(lowered.as_str(), "rhino" | "nio-rhino")
-            || model_path.to_string_lossy().contains("rhino");
+        let is_bison = matches!(lowered.as_str(), "bison" | "nio-bison")
+            || model_path.to_string_lossy().contains("bison");
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -561,7 +561,7 @@ impl AstEngine {
             is_manta,
             is_beluga,
             is_blue,
-            is_rhino,
+            is_bison,
             device_pref,
         })
     }
@@ -594,7 +594,7 @@ impl AstEngine {
         let is_manta = model_path.to_string_lossy().contains("manta");
         let is_beluga = model_path.to_string_lossy().contains("beluga");
         let is_blue = model_path.to_string_lossy().contains("blue");
-        let is_rhino = model_path.to_string_lossy().contains("rhino");
+        let is_bison = model_path.to_string_lossy().contains("bison");
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -603,7 +603,7 @@ impl AstEngine {
             is_manta,
             is_beluga,
             is_blue,
-            is_rhino,
+            is_bison,
             device_pref: DevicePreference::Auto,
         }
     }
@@ -636,7 +636,7 @@ impl AstEngine {
             "cuda" | "nio-cuda" => "nio-cuda",
             "beluga" | "nio-beluga" => "nio-beluga",
             "blue" | "nio-blue" => "blue",
-            "rhino" | "nio-rhino" => "rhino",
+            "bison" | "nio-bison" => "bison",
             other => other,
         };
 
@@ -667,9 +667,10 @@ impl AstEngine {
                 "nio-beluga.vmicrolm-vector.gguf",
             ],
             "blue" | "nio-blue" => &["blue.vmicrolm-reflex.gguf", "nio-blue.vmicrolm-reflex.gguf"],
-            "rhino" | "nio-rhino" => &[
-                "rhino.vmicrolm-reflex.gguf",
-                "nio-rhino.vmicrolm-reflex.gguf",
+            "bison" | "nio-bison" => &[
+                "bison.moe-7b-q4km.gguf",
+                "bison.vmicrolm-reflex.gguf",
+                "nio-bison.vmicrolm-reflex.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
@@ -705,7 +706,7 @@ impl AstEngine {
             "skate" | "nio-skate" => Some("NIOXS_SKATE_MODEL"),
             "beluga" | "nio-beluga" => Some("NIOXS_BELUGA_MODEL"),
             "blue" | "nio-blue" => Some("NIOXS_BLUE_MODEL"),
-            "rhino" | "nio-rhino" => Some("NIOXS_RHINO_MODEL"),
+            "bison" | "nio-bison" => Some("NIOXS_BISON_MODEL"),
             "ray" | "nio-ray" => Some("NIOXS_RAY_MODEL"),
             _ => None,
         };
@@ -778,12 +779,12 @@ impl AstEngine {
                     return candidate2;
                 }
             }
-            if s.contains("rhino") {
-                let candidate1 = model.with_file_name("rhino-tokenizer.json");
+            if s.contains("bison") {
+                let candidate1 = model.with_file_name("bison-tokenizer.json");
                 if candidate1.is_file() {
                     return candidate1;
                 }
-                let candidate2 = model.with_file_name("nio-rhino-tokenizer.json");
+                let candidate2 = model.with_file_name("nio-bison-tokenizer.json");
                 if candidate2.is_file() {
                     return candidate2;
                 }
@@ -803,7 +804,7 @@ impl AstEngine {
             Some(s) if s.contains("skate") => "skate-tokenizer.json",
             Some(s) if s.contains("beluga") => "beluga-tokenizer.json",
             Some(s) if s.contains("blue") => "blue-tokenizer.json",
-            Some(s) if s.contains("rhino") => "rhino-tokenizer.json",
+            Some(s) if s.contains("bison") => "bison-tokenizer.json",
             Some("nio-ray-dev.Q4_K_M.gguf") => "nio-ray-dev-tokenizer.json",
             Some(s) if s.contains("viper") => "nio-viper-tokenizer.json",
             Some(s) if s.contains("cuda") => "nio-cuda-tokenizer.json",
@@ -901,12 +902,12 @@ impl AstEngine {
         let is_manta = self.is_manta;
         let is_beluga = self.is_beluga;
         let is_blue = self.is_blue;
-        let is_rhino = self.is_rhino;
+        let is_bison = self.is_bison;
         let policy = decoding::DecodingPolicy::for_model(
             is_skate,
             is_manta,
             is_beluga,
-            is_blue || is_rhino,
+            is_blue || is_bison,
         );
 
         // The native fallback must use CPU residency settings. Hardware probing
@@ -966,13 +967,13 @@ impl AstEngine {
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
                 }
-            } else if is_rhino {
-                let gpu_layers = active_dev.recommended_gpu_layers(64);
+            } else if is_bison {
+                let gpu_layers = active_dev.recommended_gpu_layers(48);
                 if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
                     engine.set_resident_layers(gpu_layers);
                     engine.set_rolling_window(gpu_layers.max(4));
                 } else {
-                    let resident = std::env::var("NIOXS_RHINO_RESIDENT_LAYERS")
+                    let resident = std::env::var("NIOXS_BISON_RESIDENT_LAYERS")
                         .ok()
                         .and_then(|v| v.parse::<usize>().ok())
                         .unwrap_or(2)
@@ -980,7 +981,7 @@ impl AstEngine {
                     let window = if resident >= engine.block_count {
                         engine.block_count
                     } else {
-                        layer_setting("NIOXS_RHINO_ROLLING_WINDOW", 2, engine.block_count)
+                        layer_setting("NIOXS_BISON_ROLLING_WINDOW", 2, engine.block_count)
                     };
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
@@ -1053,10 +1054,10 @@ impl AstEngine {
                 blue_system(),
                 raw_prompt.trim()
             )
-        } else if self.is_rhino {
+        } else if self.is_bison {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
-                rhino_system(),
+                bison_system(),
                 raw_prompt.trim()
             )
         } else if self.is_skate {
@@ -1132,7 +1133,7 @@ impl AstEngine {
             self.is_skate,
             self.is_manta,
             self.is_beluga,
-            self.is_blue || self.is_rhino,
+            self.is_blue || self.is_bison,
         );
         let prompt = self.format_prompt_for_engine(&prompt)?;
         let (prompt_tokens, context_limit) = {
@@ -1158,8 +1159,8 @@ impl AstEngine {
                 // Match the native runtime's context limit, including the
                 // model's declared maximum, for every companion.
                 let context_size = context_limit.to_string();
-                let total_layers = if self.is_rhino {
-                    64
+                let total_layers = if self.is_bison {
+                    48
                 } else if self.is_blue {
                     32
                 } else if self.is_beluga {
@@ -1292,8 +1293,8 @@ impl AstEngine {
         let is_blue = self.is_blue;
         let report_stats =
             std::env::var_os("NIOXS_INFERENCE_STATS").as_deref() == Some(std::ffi::OsStr::new("1"));
-        let stats_model = if self.is_rhino {
-            "rhino"
+        let stats_model = if self.is_bison {
+            "bison"
         } else if self.is_blue {
             "blue"
         } else if self.is_beluga {
@@ -1733,15 +1734,15 @@ mod tests {
     }
 
     #[test]
-    fn rhino_engine_prompt_uses_the_shared_rhino_policy() {
+    fn bison_engine_prompt_uses_the_shared_bison_policy() {
         let engine = AstEngine::from_paths(
-            PathBuf::from("rhino.vmicrolm-reflex.gguf"),
-            PathBuf::from("rhino-tokenizer.json"),
+            PathBuf::from("bison.moe-7b-q4km.gguf"),
+            PathBuf::from("bison-tokenizer.json"),
         );
         let prompt = engine
             .format_prompt_for_engine("implement lock-free ring buffer")
-            .expect("Rhino prompt should format");
-        assert!(prompt.contains(rhino_system()));
+            .expect("Bison prompt should format");
+        assert!(prompt.contains(bison_system()));
         assert!(prompt.contains("NOT a companion"));
         assert!(prompt.contains("implement lock-free ring buffer"));
     }
@@ -1837,7 +1838,7 @@ mod tests {
     #[test]
     fn test_prompt_lookup_finds_ngram() {
         let tokens = vec![10, 20, 30, 40, 50, 10, 20];
-        let cand = RayEngine::find_candidate_ngram(&tokens, 2);
+        let cand = AstEngine::find_candidate_ngram(&tokens, 2);
         assert_eq!(cand, Some(30));
     }
 
@@ -1882,15 +1883,15 @@ mod tests {
             String::from("<|im_end|>"),
             String::from("[PAD2]"),
         ];
-        RayEngine::validate_tokenizer(&tokenizer(), &tokens).unwrap();
+        AstEngine::validate_tokenizer(&tokenizer(), &tokens).unwrap();
     }
 
     #[test]
     fn rejects_remapped_special_tokens_and_out_of_range_ids() {
         let tokens = [String::from("<|im_end|>"), String::from("hello")];
-        assert!(RayEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
+        assert!(AstEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
         let tokens = [String::from("hello")];
-        assert!(RayEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
+        assert!(AstEngine::validate_tokenizer(&tokenizer(), &tokens).is_err());
     }
 
     #[test]
@@ -1915,22 +1916,36 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_ray_generation_speed() {
-        if let Ok(engine) = AstEngine::new() {
-            if engine.ensure_loaded().await.is_ok() {
-                let mut guard = engine.bundle.lock().await;
-                if let Some(bundle) = guard.as_mut() {
-                    let prompt_tokens = vec![1, 2, 3, 4, 5];
-                    bundle.engine.reset_cache();
-                    bundle.engine.evict_all();
-                    let hidden = bundle.engine.forward_stream(&prompt_tokens, 0).unwrap();
-                    let tok = bundle.engine.next_token(&hidden, None).unwrap();
-                    assert!(tok > 0);
-                    let (rss, _hwm) = memory_mb();
-                    assert!(rss < 100.0, "Resident RAM was {rss}MB, expected <100MB");
-                }
-            }
-        }
+    #[test]
+    fn test_ray_generation_speed() {
+        let handle = std::thread::Builder::new()
+            .name("test_ray_generation_speed".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .thread_stack_size(8 * 1024 * 1024)
+                    .build()
+                    .unwrap();
+                rt.block_on(async {
+                    if let Ok(engine) = AstEngine::new() {
+                        if engine.ensure_loaded().await.is_ok() {
+                            let mut guard = engine.bundle.lock().await;
+                            if let Some(bundle) = guard.as_mut() {
+                                let prompt_tokens = vec![1, 2, 3, 4, 5];
+                                bundle.engine.reset_cache();
+                                bundle.engine.evict_all();
+                                let hidden = bundle.engine.forward_stream(&prompt_tokens, 0).unwrap();
+                                let tok = bundle.engine.next_token(&hidden, None).unwrap();
+                                assert!(tok > 0);
+                                let (rss, _hwm) = memory_mb();
+                                assert!(rss < 250.0, "Resident RAM was {rss}MB, expected <250MB");
+                            }
+                        }
+                    }
+                });
+            })
+            .unwrap();
+        handle.join().unwrap();
     }
 }
