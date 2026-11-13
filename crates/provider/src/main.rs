@@ -746,120 +746,143 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let user_prompt = prompt_parts.join(" ");
 
         // Prefer native Rust AstEngine for nio-manta
-        if let Ok(engine) = nioxs_engine::AstEngine::for_model_with_device("nio-manta", device_pref)
-        {
-            let sys_msg = nioxs_engine::manta_system(is_plan);
-            let formatted_prompt = format!(
-                "<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n"
-            );
-            let max_tokens = custom_max_tokens.unwrap_or(if is_plan { 4096 } else { 128 });
-            let mut rx = engine
-                .generate_stream(formatted_prompt, max_tokens, 0.2, 0.9)
-                .await?;
-            if is_plan {
-                let mut output = String::new();
-                while let Some(chunk) = rx.recv().await {
-                    output.push_str(&chunk);
+        match nioxs_engine::AstEngine::for_model_with_device("nio-manta", device_pref) {
+            Ok(engine) => {
+                let sys_msg = nioxs_engine::manta_system(is_plan);
+                let (formatted_prompt, temp) = if is_plan {
+                    (
+                        format!(
+                            "<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n<manta_plan>\n<step id=\"step-1\" depends_on=\"\">\n"
+                        ),
+                        0.0,
+                    )
+                } else {
+                    (
+                        format!(
+                            "<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_prompt}<|im_end|>\n<|im_start|>assistant\n"
+                        ),
+                        0.2,
+                    )
+                };
+                let max_tokens = custom_max_tokens.unwrap_or(if is_plan { 4096 } else { 128 });
+                let mut rx = engine
+                    .generate_stream(formatted_prompt, max_tokens, temp, 0.9)
+                    .await?;
+                if is_plan {
+                    let mut output =
+                        String::from("<manta_plan>\n<step id=\"step-1\" depends_on=\"\">\n");
+                    while let Some(chunk) = rx.recv().await {
+                        output.push_str(&chunk);
+                    }
+                    let trimmed = output.trim();
+                    let plan_str = if let Some(start) = trimmed.find("<manta_plan>") {
+                        if let Some(end) = trimmed.rfind("</manta_plan>") {
+                            &trimmed[start..end + "</manta_plan>".len()]
+                        } else {
+                            &trimmed[start..]
+                        }
+                    } else {
+                        trimmed
+                    };
+                    nioxs_provider::manta_plan::validate(plan_str)
+                        .map_err(|error| format!("Manta plan rejected: {error:#}\nRaw output:\n{trimmed}"))?;
+                    println!("{}", plan_str.trim());
+                    return Ok(());
                 }
-                nioxs_provider::manta_plan::validate(&output)
-                    .map_err(|error| format!("Manta plan rejected: {error:#}"))?;
-                println!("{}", output.trim());
+                let mut flow = StreamFlow::new(flow_mode);
+                while let Some(chunk) = rx.recv().await {
+                    flow.push(&chunk);
+                }
+                flow.finish();
+                println!();
                 return Ok(());
             }
-            let mut flow = StreamFlow::new(flow_mode);
-            while let Some(chunk) = rx.recv().await {
-                flow.push(&chunk);
-            }
-            flow.finish();
-            println!();
-            return Ok(());
-        }
+            Err(e) => {
+                // Fallback: Locate runner script if available
+                let exe_dir = std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+                let mut script_candidates = vec![
+                    std::path::PathBuf::from("scripts/run_niomanta_onnx.py"),
+                    std::path::PathBuf::from("/home/mn/nio-labs/nio-xs/scripts/run_niomanta_onnx.py"),
+                ];
+                if let Some(dir) = exe_dir {
+                    script_candidates.push(dir.join("../scripts/run_niomanta_onnx.py"));
+                    script_candidates.push(dir.join("scripts/run_niomanta_onnx.py"));
+                }
 
-        // Fallback: Locate runner script
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()));
-        let mut script_candidates = vec![
-            std::path::PathBuf::from("scripts/run_niomanta_onnx.py"),
-            std::path::PathBuf::from("/home/mn/nio-labs/nio-xs/scripts/run_niomanta_onnx.py"),
-        ];
-        if let Some(dir) = exe_dir {
-            script_candidates.push(dir.join("../scripts/run_niomanta_onnx.py"));
-            script_candidates.push(dir.join("scripts/run_niomanta_onnx.py"));
-        }
+                let script = script_candidates.into_iter().find(|p| p.exists());
 
-        let script = script_candidates.into_iter().find(|p| p.exists());
+                if script.is_none() {
+                    return Err(format!("Failed to initialize Manta: {e}").into());
+                }
 
-        // Locate python interpreter
-        let py_candidates = [
-            std::env::var("NIOXS_PYTHON").ok(),
-            Some("/home/mn/nio-labs/.venv/bin/python3".into()),
-            Some(".venv/bin/python3".into()),
-            Some("python3".into()),
-        ];
-        let python = py_candidates
-            .into_iter()
-            .flatten()
-            .find(|p| {
-                std::process::Command::new(p)
-                    .arg("--version")
-                    .output()
-                    .is_ok()
-            })
-            .unwrap_or_else(|| "python3".into());
+                // Locate python interpreter
+                let py_candidates = [
+                    std::env::var("NIOXS_PYTHON").ok(),
+                    Some("/home/mn/nio-labs/.venv/bin/python3".into()),
+                    Some(".venv/bin/python3".into()),
+                    Some("python3".into()),
+                ];
+                let python = py_candidates
+                    .into_iter()
+                    .flatten()
+                    .find(|p| {
+                        std::process::Command::new(p)
+                            .arg("--version")
+                            .output()
+                            .is_ok()
+                    })
+                    .unwrap_or_else(|| "python3".into());
 
-        if let Some(script_path) = script {
-            let mut cmd = std::process::Command::new(&python);
-            cmd.arg(&script_path);
+                let script_path = script.unwrap();
+                let mut cmd = std::process::Command::new(&python);
+                cmd.arg(&script_path);
 
-            let mut is_plan = false;
-            let mut prompt_parts = Vec::new();
+                let mut is_plan = false;
+                let mut prompt_parts = Vec::new();
 
-            for a in raw_args {
-                if a == "--plan" {
-                    is_plan = true;
-                } else if a == "--benchmark" || a == "-b" {
-                    cmd.arg("--benchmark");
-                } else if a == "-i" || a == "--interactive" {
-                    cmd.arg("--interactive");
+                for a in raw_args {
+                    if a == "--plan" {
+                        is_plan = true;
+                    } else if a == "--benchmark" || a == "-b" {
+                        cmd.arg("--benchmark");
+                    } else if a == "-i" || a == "--interactive" {
+                        cmd.arg("--interactive");
+                    } else {
+                        prompt_parts.push(a);
+                    }
+                }
+
+                if is_plan {
+                    cmd.arg("--plan");
+                }
+                let prompt = prompt_parts.join(" ");
+                if !prompt.is_empty() {
+                    cmd.arg("-p").arg(prompt);
+                }
+
+                if is_plan {
+                    let output = cmd.output()?;
+                    if !output.status.success() {
+                        return Err(format!(
+                            "Manta fallback failed: {}",
+                            String::from_utf8_lossy(&output.stderr)
+                        )
+                        .into());
+                    }
+                    let output = String::from_utf8(output.stdout)?;
+                    nioxs_provider::manta_plan::validate(&output)
+                        .map_err(|error| format!("Manta plan rejected: {error:#}"))?;
+                    println!("{}", output.trim());
                 } else {
-                    prompt_parts.push(a);
+                    let status = cmd.status()?;
+                    if !status.success() {
+                        std::process::exit(status.code().unwrap_or(1));
+                    }
                 }
+                return Ok(());
             }
-
-            if is_plan {
-                cmd.arg("--plan");
-            }
-            let prompt = prompt_parts.join(" ");
-            if !prompt.is_empty() {
-                cmd.arg("-p").arg(prompt);
-            }
-
-            if is_plan {
-                let output = cmd.output()?;
-                if !output.status.success() {
-                    return Err(format!(
-                        "Manta fallback failed: {}",
-                        String::from_utf8_lossy(&output.stderr)
-                    )
-                    .into());
-                }
-                let output = String::from_utf8(output.stdout)?;
-                nioxs_provider::manta_plan::validate(&output)
-                    .map_err(|error| format!("Manta plan rejected: {error:#}"))?;
-                println!("{}", output.trim());
-            } else {
-                let status = cmd.status()?;
-                if !status.success() {
-                    std::process::exit(status.code().unwrap_or(1));
-                }
-            }
-            return Ok(());
-        } else {
-            eprintln!(
-                "NioManta ONNX runner script not found. Expected at scripts/run_niomanta_onnx.py"
-            );
-            return Ok(());
         }
     }
     if arg.as_deref() == Some("init") {

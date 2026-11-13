@@ -500,9 +500,10 @@ impl LayerDesc {
     ) {
         // 1. Attention Norm
         rms_norm_slice(&scratch.x, &self.attn_norm_weight, eps, &mut scratch.x_norm);
-        quants::quantize_row_q8_k(&scratch.x_norm, &mut scratch.x_q8_k);
         if self.wq.dtype == 8 || self.wq.dtype == 20 {
             quants::quantize_row_q8_0(&scratch.x_norm, &mut scratch.x_q8_0);
+        } else if scratch.x_norm.len() % 256 == 0 {
+            quants::quantize_row_q8_k(&scratch.x_norm, &mut scratch.x_q8_k);
         }
 
         // 2. Q, K, V Projections (Pure AVX2 parallelized across spin threadpool)
@@ -915,8 +916,13 @@ impl LayerDesc {
             eps,
             &mut scratch1.x_norm,
         );
-        quants::quantize_row_q8_k(&scratch0.x_norm, &mut scratch0.x_q8_k);
-        quants::quantize_row_q8_k(&scratch1.x_norm, &mut scratch1.x_q8_k);
+        if self.wq.dtype == 8 || self.wq.dtype == 20 {
+            quants::quantize_row_q8_0(&scratch0.x_norm, &mut scratch0.x_q8_0);
+            quants::quantize_row_q8_0(&scratch1.x_norm, &mut scratch1.x_q8_0);
+        } else if scratch0.x_norm.len() % 256 == 0 {
+            quants::quantize_row_q8_k(&scratch0.x_norm, &mut scratch0.x_q8_k);
+            quants::quantize_row_q8_k(&scratch1.x_norm, &mut scratch1.x_q8_k);
+        }
 
         // 2. QKV Joint Projection (streams wq, wk, wv ONCE)
         let wq_slice = &mmap[self.wq.offset..self.wq.offset + self.wq.byte_len];
@@ -1195,9 +1201,15 @@ impl LayerDesc {
             eps,
             &mut scratch2.x_norm,
         );
-        quants::quantize_row_q8_k(&scratch0.x_norm, &mut scratch0.x_q8_k);
-        quants::quantize_row_q8_k(&scratch1.x_norm, &mut scratch1.x_q8_k);
-        quants::quantize_row_q8_k(&scratch2.x_norm, &mut scratch2.x_q8_k);
+        if self.wq.dtype == 8 || self.wq.dtype == 20 {
+            quants::quantize_row_q8_0(&scratch0.x_norm, &mut scratch0.x_q8_0);
+            quants::quantize_row_q8_0(&scratch1.x_norm, &mut scratch1.x_q8_0);
+            quants::quantize_row_q8_0(&scratch2.x_norm, &mut scratch2.x_q8_0);
+        } else if scratch0.x_norm.len() % 256 == 0 {
+            quants::quantize_row_q8_k(&scratch0.x_norm, &mut scratch0.x_q8_k);
+            quants::quantize_row_q8_k(&scratch1.x_norm, &mut scratch1.x_q8_k);
+            quants::quantize_row_q8_k(&scratch2.x_norm, &mut scratch2.x_q8_k);
+        }
 
         // 2. QKV Joint Projection (streams wq, wk, wv ONCE)
         let wq_slice = &mmap[self.wq.offset..self.wq.offset + self.wq.byte_len];
@@ -2736,7 +2748,9 @@ impl AstMicroEngine {
     /// Return unsampled logits after prefill/forward for runtime diagnostics.
     pub fn diagnostic_logits(&mut self) -> Result<Vec<f32>> {
         quants::quantize_row_q8_0(&self.scratch.x_norm, &mut self.scratch.x_q8_0);
-        quants::quantize_row_q8_k(&self.scratch.x_norm, &mut self.scratch.x_q8_k);
+        if self.scratch.x_norm.len() % 256 == 0 {
+            quants::quantize_row_q8_k(&self.scratch.x_norm, &mut self.scratch.x_q8_k);
+        }
         let (offset, vocab_size, row_bytes, out_dtype) = if let Some(output) = &self.output_weight {
             let (b_size, t_size) = match output.dtype {
                 20 => (32, 18),
@@ -2840,7 +2854,9 @@ impl AstMicroEngine {
     ) -> Result<u32> {
         self.pool.unpark();
         quants::quantize_row_q8_0(x_norm, &mut self.scratch.x_q8_0);
-        quants::quantize_row_q8_k(x_norm, &mut self.scratch.x_q8_k);
+        if x_norm.len() % 256 == 0 {
+            quants::quantize_row_q8_k(x_norm, &mut self.scratch.x_q8_k);
+        }
         let repeat_penalty = self.repeat_penalty;
         let history = &history[history.len().saturating_sub(self.repeat_last_n)..];
 

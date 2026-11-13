@@ -748,6 +748,7 @@ impl AstEngine {
             "bison" | "nio-bison" => "bison",
             "cheetah" | "nio-cheetah" => "cheetah",
             "tiger" | "nio-tiger" => "tiger",
+            "fox" | "nio-fox" => "fox",
             other => other,
         };
 

@@ -70,8 +70,13 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             filename: "manta.vmicrolm-vector.gguf".into(),
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.7/manta.vmicrolm-vector.gguf".into(),
             sha256: "fa981bab81c7cb32a7072dfd193f1e03f988eb800d7e6773a03b69c861d452a5".into(),
-            size_bytes: 333_363_520,
-            tokenizer: None,
+            size_bytes: 333_360_320,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "manta-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.7/manta-tokenizer.json".into(),
+                sha256: "ade71ec5118be2cdd8aef3a7dcd417c51fa7e76b3e164adb339f446b42e97bc8".into(),
+                size_bytes: 14_569_356,
+            }),
         },
         ModelArtifactEntry {
             model_id: MODEL_BELUGA.into(),
@@ -81,7 +86,12 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.0/beluga.vmicrolm-vector.gguf".into(),
             sha256: "d2d4642d36b907c8658301208e8cd4ab3c6d72051a37a780ebc35a56ff83d5ba".into(),
             size_bytes: 639_362_560,
-            tokenizer: None,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "beluga-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.0/beluga-tokenizer.json".into(),
+                sha256: "cf535eea1ed9374c2bc3436625216c18fc703fc37aae8e019b3e85cc658e0395".into(),
+                size_bytes: 11_422_174,
+            }),
         },
         ModelArtifactEntry {
             model_id: MODEL_BLUE.into(),
@@ -816,7 +826,7 @@ mod tests {
             (
                 MODEL_MANTA,
                 "fa981bab81c7cb32a7072dfd193f1e03f988eb800d7e6773a03b69c861d452a5",
-                333_363_520,
+                333_360_320,
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.7/manta.vmicrolm-vector.gguf",
             ),
             (
@@ -865,6 +875,26 @@ mod tests {
             assert_eq!(entry.size_bytes, size_bytes, "size for {id}");
             assert_eq!(entry.download_url, url, "download_url for {id}");
         }
+        let manta = get_manifest_entry(MODEL_MANTA).unwrap();
+        assert_eq!(
+            manta.tokenizer,
+            Some(ModelTokenizerArtifact {
+                filename: "manta-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.7/manta-tokenizer.json".into(),
+                sha256: "ade71ec5118be2cdd8aef3a7dcd417c51fa7e76b3e164adb339f446b42e97bc8".into(),
+                size_bytes: 14_569_356,
+            })
+        );
+        let beluga = get_manifest_entry(MODEL_BELUGA).unwrap();
+        assert_eq!(
+            beluga.tokenizer,
+            Some(ModelTokenizerArtifact {
+                filename: "beluga-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.3.0/beluga-tokenizer.json".into(),
+                sha256: "cf535eea1ed9374c2bc3436625216c18fc703fc37aae8e019b3e85cc658e0395".into(),
+                size_bytes: 11_422_174,
+            })
+        );
         let blue = get_manifest_entry(MODEL_BLUE).unwrap();
         assert_eq!(
             blue.tokenizer,
