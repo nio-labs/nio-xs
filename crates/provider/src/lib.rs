@@ -137,6 +137,7 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         "Bison — Sovereign Pure-Code Land Titan (48L, 7.0B MoE, < 1.5 GB RAM)",
         "Tiger — Sovereign Vibe Coder & Daily Workhorse (36L, 3.0B, < 720 MB RAM)",
         "Cheetah — Sovereign Code Sprinter (28L, 1.5B, < 450 MB RAM)",
+        "Fox — Sovereign Articulate Mentor & Rubber Duck (36L, 3.0B, < 720 MB RAM)",
         "Skate — Resident Micro-Guru & Edge Companion (v-µLM Companion, < 50 MB RAM)",
         "NioNano — Intent Reflex & MicroLM (~0.5M, sub-0.1ms)",
         "NioMicro — Contextual Policy Decision Arbiter (5.0M / cluster)",

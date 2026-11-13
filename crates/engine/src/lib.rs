@@ -72,6 +72,10 @@ pub fn tiger_system() -> &'static str {
     "You are Tiger, Nio's Sovereign Vibe Coder and Daily Systems Workhorse. You are purely a high-performance code generation engine—NOT a companion. Deliver zero conversational filler, pleasantries, or apologies. Do NOT output introductory preamble like 'Certainly' or 'Here is'. Emit complete, production-grade, compilable implementations, full modules, and comprehensive tests."
 }
 
+pub fn fox_system() -> &'static str {
+    "You are Fox, Nio's Sovereign Articulate Mentor, Rubber Duck, and Interactive Pair Programmer. You love discussing code, explaining architectural decisions, dissecting trade-offs, and teaching. Be conversational, insightful, engaging, and clear. Walk the user through implementations, provide helpful context, point out subtleties or pitfalls, and suggest thoughtful follow-up questions."
+}
+
 pub fn skate_system() -> Result<String> {
     if let Some(path) = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE") {
         if let Ok(prompt) = std::fs::read_to_string(&path) {
@@ -607,6 +611,7 @@ pub struct AstEngine {
     is_bison: bool,
     is_cheetah: bool,
     is_tiger: bool,
+    is_fox: bool,
     device_pref: DevicePreference,
 }
 
@@ -646,6 +651,8 @@ impl AstEngine {
             || model_path.to_string_lossy().contains("cheetah");
         let is_tiger = matches!(lowered.as_str(), "tiger" | "nio-tiger")
             || model_path.to_string_lossy().contains("tiger");
+        let is_fox = matches!(lowered.as_str(), "fox" | "nio-fox")
+            || model_path.to_string_lossy().contains("fox");
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -657,6 +664,7 @@ impl AstEngine {
             is_bison,
             is_cheetah,
             is_tiger,
+            is_fox,
             device_pref,
         })
     }
@@ -692,6 +700,7 @@ impl AstEngine {
         let is_bison = model_path.to_string_lossy().contains("bison");
         let is_cheetah = model_path.to_string_lossy().contains("cheetah");
         let is_tiger = model_path.to_string_lossy().contains("tiger");
+        let is_fox = model_path.to_string_lossy().contains("fox");
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -703,6 +712,7 @@ impl AstEngine {
             is_bison,
             is_cheetah,
             is_tiger,
+            is_fox,
             device_pref: DevicePreference::Auto,
         }
     }
@@ -782,6 +792,12 @@ impl AstEngine {
                 "tiger.3b-q4km.gguf",
                 "tiger.vmicrolm-vibe.gguf",
                 "nio-tiger.3b-q4km.gguf",
+            ],
+            "fox" | "nio-fox" => &[
+                "fox.3b-q4km.gguf",
+                "tiger.3b-q4km.gguf",
+                "fox.vmicrolm-mentor.gguf",
+                "nio-fox.3b-q4km.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
@@ -920,6 +936,16 @@ impl AstEngine {
                     return candidate2;
                 }
             }
+            if s.contains("fox") {
+                let candidate1 = model.with_file_name("fox-tokenizer.json");
+                if candidate1.is_file() {
+                    return candidate1;
+                }
+                let candidate2 = model.with_file_name("tiger-tokenizer.json");
+                if candidate2.is_file() {
+                    return candidate2;
+                }
+            }
             if s.contains("manta") {
                 let candidate1 = model.with_file_name("manta-tokenizer.json");
                 if candidate1.is_file() {
@@ -1036,6 +1062,7 @@ impl AstEngine {
         let is_bison = self.is_bison;
         let is_cheetah = self.is_cheetah;
         let is_tiger = self.is_tiger;
+        let is_fox = self.is_fox;
         let policy = decoding::DecodingPolicy::for_model(
             is_skate,
             is_manta,
@@ -1044,6 +1071,7 @@ impl AstEngine {
             is_bison,
             is_cheetah,
             is_tiger,
+            is_fox,
         );
 
         // The native fallback must use CPU residency settings. Hardware probing
@@ -1142,7 +1170,7 @@ impl AstEngine {
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
                 }
-            } else if is_tiger {
+            } else if is_tiger || is_fox {
                 let gpu_layers = active_dev.recommended_gpu_layers(36);
                 if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
                     engine.set_resident_layers(gpu_layers);
@@ -1247,6 +1275,12 @@ impl AstEngine {
                 tiger_system(),
                 raw_prompt.trim()
             )
+        } else if self.is_fox {
+            format!(
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                fox_system(),
+                raw_prompt.trim()
+            )
         } else if self.is_skate {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
@@ -1335,6 +1369,7 @@ impl AstEngine {
             self.is_bison,
             self.is_cheetah,
             self.is_tiger,
+            self.is_fox,
         );
         let prompt = self.format_prompt_for_engine(&prompt)?;
         let (prompt_tokens, context_limit) = {
@@ -1498,6 +1533,8 @@ impl AstEngine {
             "cheetah"
         } else if self.is_tiger {
             "tiger"
+        } else if self.is_fox {
+            "fox"
         } else if self.is_bison {
             "bison"
         } else if self.is_blue {
@@ -1550,6 +1587,7 @@ impl AstEngine {
                 let sys_text = match stats_model {
                     "cheetah" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", cheetah_system())),
                     "tiger" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", tiger_system())),
+                    "fox" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", fox_system())),
                     "bison" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", bison_system())),
                     "blue" => Some(format!("<|system|>\n{}<|end|>\n<|user|>\n", blue_system())),
                     _ => None,
