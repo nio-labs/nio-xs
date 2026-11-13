@@ -11,6 +11,12 @@ Notable changes to NioXS / NioNano. The version matches the workspace
   - Removed `nioxs bison` CLI subcommand and internal engine routing.
   - Updated documentation, tables, and quickstarts.
 
+### Added
+- **Rabbit (3.0B) Sovereign Deep Thinker & Root-Cause Detective**:
+  - Added `MODEL_RABBIT` (`rabbit`) across `nioxs-contracts`, `nioxs-artifacts`, `nioxs-engine`, and `nioxs-provider`.
+  - Added dedicated CLI direct invocation: `nioxs rabbit "<prompt>"` with deliberate step-by-step `<think>...</think>` Chain-of-Thought reasoning.
+  - Shares the 3.0B Qwen2.5-Coder weights (`tiger.3b-q4km.gguf`) with zero extra disk footprint and strict sub-720 MB RAM residency.
+
 ### Changed
 - Promoted **Tiger (3.0B)** (Sovereign Vibe Coder & Daily Systems Workhorse), **Cheetah (1.5B)** (Sovereign Code Sprinter), and **Fox (3.0B)** (Sovereign Articulate Mentor & Rubber Duck) with full `/v1/chat/completions` routing, system prompt injection, and sampling presets.
 

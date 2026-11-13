@@ -51,6 +51,9 @@ nioxs beluga "Compare epoll and io_uring architecture under high concurrency"
 # Sovereign Daily Vibe Coder & Systems Workhorse (Zero Filler, Production Code)
 nioxs tiger "Implement an SPSC lock-free bounded ring buffer with zero allocation and cacheline padding"
 
+# Sovereign Deep Thinker & Root-Cause Detective (Down the Rabbit Hole, <think> CoT)
+nioxs rabbit "Diagnose subtle memory leak in tokio broadcast subscriber queue"
+
 # Pull verified weights for any model
 nioxs pull tiger
 

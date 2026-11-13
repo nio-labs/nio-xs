@@ -72,6 +72,10 @@ pub fn fox_system() -> &'static str {
     "You are Fox, Nio's Sovereign Articulate Mentor, Rubber Duck, and Interactive Pair Programmer. You love discussing code, explaining architectural decisions, dissecting trade-offs, and teaching. Be conversational, insightful, engaging, and clear. Walk the user through implementations, provide helpful context, point out subtleties or pitfalls, and suggest thoughtful follow-up questions."
 }
 
+pub fn rabbit_system() -> &'static str {
+    "You are Rabbit, Nio's Sovereign Deep Thinker, Architectural Reasoner, and Root-Cause Detective. You go down the rabbit hole to untangle convoluted bugs, concurrency deadlocks, memory leaks, and complex systems architecture. Before delivering your solution, always perform rigorous step-by-step reasoning inside concise <think>...</think> tags (100–300 tokens) verifying state invariants, potential failure modes, and execution paths. Then emit a precise, production-grade implementation or architectural breakdown."
+}
+
 pub fn skate_system() -> Result<String> {
     if let Some(path) = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE") {
         if let Ok(prompt) = std::fs::read_to_string(&path) {
@@ -607,6 +611,7 @@ pub struct AstEngine {
     is_cheetah: bool,
     is_tiger: bool,
     is_fox: bool,
+    is_rabbit: bool,
     device_pref: DevicePreference,
 }
 
@@ -646,6 +651,8 @@ impl AstEngine {
             || model_path.to_string_lossy().contains("tiger");
         let is_fox = matches!(lowered.as_str(), "fox" | "nio-fox")
             || model_path.to_string_lossy().contains("fox");
+        let is_rabbit = matches!(lowered.as_str(), "rabbit" | "nio-rabbit")
+            || model_path.to_string_lossy().contains("rabbit");
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -657,6 +664,7 @@ impl AstEngine {
             is_cheetah,
             is_tiger,
             is_fox,
+            is_rabbit,
             device_pref,
         })
     }
@@ -692,6 +700,7 @@ impl AstEngine {
         let is_cheetah = model_path.to_string_lossy().contains("cheetah");
         let is_tiger = model_path.to_string_lossy().contains("tiger");
         let is_fox = model_path.to_string_lossy().contains("fox");
+        let is_rabbit = model_path.to_string_lossy().contains("rabbit");
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -703,6 +712,7 @@ impl AstEngine {
             is_cheetah,
             is_tiger,
             is_fox,
+            is_rabbit,
             device_pref: DevicePreference::Auto,
         }
     }
@@ -738,6 +748,7 @@ impl AstEngine {
             "cheetah" | "nio-cheetah" => "cheetah",
             "tiger" | "nio-tiger" => "tiger",
             "fox" | "nio-fox" => "fox",
+            "rabbit" | "nio-rabbit" => "rabbit",
             other => other,
         };
 
@@ -783,6 +794,12 @@ impl AstEngine {
                 "tiger.3b-q4km.gguf",
                 "fox.vmicrolm-mentor.gguf",
                 "nio-fox.3b-q4km.gguf",
+            ],
+            "rabbit" | "nio-rabbit" => &[
+                "rabbit.3b-q4km.gguf",
+                "tiger.3b-q4km.gguf",
+                "rabbit.vmicrolm-detective.gguf",
+                "nio-rabbit.3b-q4km.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
@@ -920,6 +937,16 @@ impl AstEngine {
                     return candidate2;
                 }
             }
+            if s.contains("rabbit") {
+                let candidate1 = model.with_file_name("rabbit-tokenizer.json");
+                if candidate1.is_file() {
+                    return candidate1;
+                }
+                let candidate2 = model.with_file_name("tiger-tokenizer.json");
+                if candidate2.is_file() {
+                    return candidate2;
+                }
+            }
             if s.contains("manta") {
                 let candidate1 = model.with_file_name("manta-tokenizer.json");
                 if candidate1.is_file() {
@@ -1045,6 +1072,7 @@ impl AstEngine {
         let is_cheetah = self.is_cheetah;
         let is_tiger = self.is_tiger;
         let is_fox = self.is_fox;
+        let is_rabbit = self.is_rabbit;
         let policy = decoding::DecodingPolicy::for_model(
             is_skate,
             is_manta,
@@ -1053,6 +1081,7 @@ impl AstEngine {
             is_cheetah,
             is_tiger,
             is_fox,
+            is_rabbit,
         );
 
         // The native fallback must use CPU residency settings. Hardware probing
@@ -1132,7 +1161,7 @@ impl AstEngine {
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
                 }
-            } else if is_tiger || is_fox {
+            } else if is_tiger || is_fox || is_rabbit {
                 let gpu_layers = active_dev.recommended_gpu_layers(36);
                 if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
                     engine.set_resident_layers(gpu_layers);
@@ -1237,6 +1266,12 @@ impl AstEngine {
                 fox_system(),
                 raw_prompt.trim()
             )
+        } else if self.is_rabbit {
+            format!(
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n<think>\n",
+                rabbit_system(),
+                raw_prompt.trim()
+            )
         } else if self.is_skate {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
@@ -1314,6 +1349,7 @@ impl AstEngine {
             self.is_cheetah,
             self.is_tiger,
             self.is_fox,
+            self.is_rabbit,
         );
         let prompt = self.format_prompt_for_engine(&prompt)?;
         let (prompt_tokens, context_limit) = {
@@ -1477,6 +1513,8 @@ impl AstEngine {
             "tiger"
         } else if self.is_fox {
             "fox"
+        } else if self.is_rabbit {
+            "rabbit"
         } else if self.is_blue {
             "blue"
         } else if self.is_beluga {
@@ -1528,6 +1566,7 @@ impl AstEngine {
                     "cheetah" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", cheetah_system())),
                     "tiger" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", tiger_system())),
                     "fox" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", fox_system())),
+                    "rabbit" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", rabbit_system())),
                     "blue" => Some(format!("<|system|>\n{}<|end|>\n<|user|>\n", blue_system())),
                     _ => None,
                 };
@@ -1983,6 +2022,20 @@ mod tests {
         assert!(prompt.contains(tiger_system()));
         assert!(prompt.contains("NOT a companion"));
         assert!(prompt.contains("implement lock-free ring buffer"));
+    }
+
+    #[test]
+    fn rabbit_engine_prompt_uses_the_shared_rabbit_policy() {
+        let engine = AstEngine::from_paths(
+            PathBuf::from("rabbit.3b-q4km.gguf"),
+            PathBuf::from("rabbit-tokenizer.json"),
+        );
+        let prompt = engine
+            .format_prompt_for_engine("diagnose memory leak in tokio broadcast channel")
+            .expect("Rabbit prompt should format");
+        assert!(prompt.contains(rabbit_system()));
+        assert!(prompt.contains("<think>"));
+        assert!(prompt.contains("diagnose memory leak in tokio broadcast channel"));
     }
 
     #[test]

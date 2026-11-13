@@ -137,6 +137,7 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         "Tiger — Sovereign Vibe Coder & Daily Workhorse (36L, 3.0B, < 720 MB RAM)",
         "Cheetah — Sovereign Code Sprinter (28L, 1.5B, < 450 MB RAM)",
         "Fox — Sovereign Articulate Mentor & Rubber Duck (36L, 3.0B, < 720 MB RAM)",
+        "Rabbit — Sovereign Deep Thinker & Root-Cause Detective (36L, 3.0B, < 720 MB RAM)",
         "Skate — Resident Micro-Guru & Edge Companion (v-µLM Companion, < 50 MB RAM)",
         "NioNano — Intent Reflex & MicroLM (~0.5M, sub-0.1ms)",
         "NioMicro — Contextual Policy Decision Arbiter (5.0M / cluster)",
@@ -263,6 +264,7 @@ async fn microlm_chat_handler(
         "nio-cheetah" | "cheetah" => nioxs_engine::cheetah_system(),
         "nio-tiger" | "tiger" => nioxs_engine::tiger_system(),
         "nio-fox" | "fox" => nioxs_engine::fox_system(),
+        "nio-rabbit" | "rabbit" => nioxs_engine::rabbit_system(),
         "nio-skate" | "skate" => {
             "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and helpful. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Beluga. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."
         }
@@ -378,6 +380,7 @@ async fn microlm_chat_handler(
         "nio-cheetah" | "cheetah" => nioxs_contracts::MODEL_CHEETAH,
         "nio-tiger" | "tiger" => nioxs_contracts::MODEL_TIGER,
         "nio-fox" | "fox" => nioxs_contracts::MODEL_FOX,
+        "nio-rabbit" | "rabbit" => nioxs_contracts::MODEL_RABBIT,
         "nio-manta" | "manta" | "nio-echo" | "echo" => nioxs_contracts::MODEL_MANTA,
         "nio-skate" | "skate" => nioxs_contracts::MODEL_SKATE,
         "nio-viper" | "viper" => nioxs_contracts::MODEL_VIPER,
@@ -390,6 +393,7 @@ async fn microlm_chat_handler(
         "nio-cheetah" | "cheetah" => (0.20, 0.85),
         "nio-tiger" | "tiger" => (0.20, 0.85),
         "nio-fox" | "fox" => (0.40, 0.90),
+        "nio-rabbit" | "rabbit" => (0.20, 0.85),
         "nio-beluga" | "beluga" => (0.6, 0.95),
         "nio-manta" | "manta" => (0.3, 0.90),
         "nio-skate" | "skate" => (0.65, 0.90),
@@ -549,6 +553,8 @@ fn is_companion_model(model_name: &str) -> bool {
             | "nio-manta"
             | "skate"
             | "nio-skate"
+            | "rabbit"
+            | "nio-rabbit"
     )
 }
 
@@ -596,6 +602,9 @@ async fn chat(
         }
         "nio-fox" | "fox" => {
             return microlm_chat_handler("fox", request, None).await;
+        }
+        "nio-rabbit" | "rabbit" => {
+            return microlm_chat_handler("rabbit", request, None).await;
         }
         "nio-ray" | "ray" => {
             return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;
