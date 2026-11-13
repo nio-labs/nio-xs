@@ -647,12 +647,12 @@ impl AstEngine {
             || model_path.to_string_lossy().contains("blue");
         let is_cheetah = matches!(lowered.as_str(), "cheetah" | "nio-cheetah")
             || model_path.to_string_lossy().contains("cheetah");
-        let is_tiger = matches!(lowered.as_str(), "tiger" | "nio-tiger")
-            || model_path.to_string_lossy().contains("tiger");
-        let is_fox = matches!(lowered.as_str(), "fox" | "nio-fox")
-            || model_path.to_string_lossy().contains("fox");
-        let is_rabbit = matches!(lowered.as_str(), "rabbit" | "nio-rabbit")
-            || model_path.to_string_lossy().contains("rabbit");
+        let is_rabbit = matches!(lowered.as_str(), "rabbit" | "nio-rabbit");
+        let is_fox = matches!(lowered.as_str(), "fox" | "nio-fox");
+        let is_tiger = (matches!(lowered.as_str(), "tiger" | "nio-tiger")
+            || model_path.to_string_lossy().contains("tiger"))
+            && !is_rabbit
+            && !is_fox;
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -693,14 +693,15 @@ impl AstEngine {
     }
 
     pub fn from_paths(model_path: PathBuf, tokenizer_path: PathBuf) -> Self {
-        let is_skate = model_path.to_string_lossy().contains("skate");
-        let is_manta = model_path.to_string_lossy().contains("manta");
-        let is_beluga = model_path.to_string_lossy().contains("beluga");
-        let is_blue = model_path.to_string_lossy().contains("blue");
-        let is_cheetah = model_path.to_string_lossy().contains("cheetah");
-        let is_tiger = model_path.to_string_lossy().contains("tiger");
-        let is_fox = model_path.to_string_lossy().contains("fox");
-        let is_rabbit = model_path.to_string_lossy().contains("rabbit");
+        let p_str = model_path.to_string_lossy();
+        let is_skate = p_str.contains("skate");
+        let is_manta = p_str.contains("manta");
+        let is_beluga = p_str.contains("beluga");
+        let is_blue = p_str.contains("blue");
+        let is_cheetah = p_str.contains("cheetah");
+        let is_rabbit = p_str.contains("rabbit");
+        let is_fox = p_str.contains("fox");
+        let is_tiger = p_str.contains("tiger") && !is_rabbit && !is_fox;
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -1254,10 +1255,10 @@ impl AstEngine {
                 cheetah_system(),
                 raw_prompt.trim()
             )
-        } else if self.is_tiger {
+        } else if self.is_rabbit {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
-                tiger_system(),
+                rabbit_system(),
                 raw_prompt.trim()
             )
         } else if self.is_fox {
@@ -1266,10 +1267,10 @@ impl AstEngine {
                 fox_system(),
                 raw_prompt.trim()
             )
-        } else if self.is_rabbit {
+        } else if self.is_tiger {
             format!(
-                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n<think>\n",
-                rabbit_system(),
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                tiger_system(),
                 raw_prompt.trim()
             )
         } else if self.is_skate {
@@ -1507,14 +1508,14 @@ impl AstEngine {
         let is_blue = self.is_blue;
         let report_stats =
             std::env::var_os("NIOXS_INFERENCE_STATS").as_deref() == Some(std::ffi::OsStr::new("1"));
-        let stats_model = if self.is_cheetah {
+        let stats_model = if self.is_rabbit {
+            "rabbit"
+        } else if self.is_fox {
+            "fox"
+        } else if self.is_cheetah {
             "cheetah"
         } else if self.is_tiger {
             "tiger"
-        } else if self.is_fox {
-            "fox"
-        } else if self.is_rabbit {
-            "rabbit"
         } else if self.is_blue {
             "blue"
         } else if self.is_beluga {
