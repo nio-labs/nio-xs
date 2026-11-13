@@ -155,7 +155,7 @@ impl StreamFlow {
                     self.stream_buffer.drain(..tag_start + tag_len);
                     self.in_think = true;
                     if self.is_tty {
-                        self.emit_raw("\x1b[2;38;5;244m💭 ");
+                        self.emit_raw("\x1b[2;38;5;244m");
                     }
                     continue;
                 }
