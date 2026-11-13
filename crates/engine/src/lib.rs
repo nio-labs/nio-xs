@@ -957,6 +957,16 @@ impl AstEngine {
                     return candidate2;
                 }
             }
+            if s.contains("viper") {
+                let candidate1 = model.with_file_name("viper-tokenizer.json");
+                if candidate1.is_file() {
+                    return candidate1;
+                }
+                let candidate2 = model.with_file_name("nio-viper-tokenizer.json");
+                if candidate2.is_file() {
+                    return candidate2;
+                }
+            }
         }
         let name = match model.file_name().and_then(|s| s.to_str()) {
             Some(s) if s.contains("skate") => "skate-tokenizer.json",

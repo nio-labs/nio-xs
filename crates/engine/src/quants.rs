@@ -625,8 +625,9 @@ pub unsafe fn quantize_row_q8_k_avx2(x: &[f32], out: &mut [BlockQ8_K]) {
 }
 
 pub fn quantize_row_q8_k(x: &[f32], out: &mut [BlockQ8_K]) {
-    assert_eq!(x.len() % 256, 0);
-    assert_eq!(out.len(), x.len() / 256);
+    if x.len() % 256 != 0 || out.len() < x.len() / 256 {
+        return;
+    }
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
         unsafe {

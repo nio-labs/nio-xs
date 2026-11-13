@@ -45,8 +45,13 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             filename: "viper.Q4_0.gguf".into(),
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.1.0/viper.Q4_0.gguf".into(),
             sha256: "58633aa691b80840dc85586cf2cb8616deff480c64ddf406bf848db749ecc3d4".into(),
-            size_bytes: 64_686_080,
-            tokenizer: None,
+            size_bytes: 64_684_160,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "viper-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.1.0/viper-tokenizer.json".into(),
+                sha256: "a136e7acd3d47fe1a2572bf0fe7af79528e4492bf15f1ecea24e2216cf78c690".into(),
+                size_bytes: 3_173_909,
+            }),
         },
         ModelArtifactEntry {
             model_id: MODEL_SKATE.into(),
@@ -55,7 +60,7 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             filename: "skate.vmicrolm-vector.gguf".into(),
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.6/skate.vmicrolm-vector.gguf".into(),
             sha256: "a00921dca072e640bb1f9730a95e3d88ed843cba3dd0a5648a6fd5e3e9e3d86b".into(),
-            size_bytes: 86_958_464,
+            size_bytes: 86_957_792,
             tokenizer: Some(ModelTokenizerArtifact {
                 filename: "skate-tokenizer.json".into(),
                 download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.6/skate-tokenizer.json".into(),
@@ -814,13 +819,13 @@ mod tests {
             (
                 MODEL_VIPER,
                 "58633aa691b80840dc85586cf2cb8616deff480c64ddf406bf848db749ecc3d4",
-                64_686_080,
+                64_684_160,
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.1.0/viper.Q4_0.gguf",
             ),
             (
                 MODEL_SKATE,
                 "a00921dca072e640bb1f9730a95e3d88ed843cba3dd0a5648a6fd5e3e9e3d86b",
-                86_958_464,
+                86_957_792,
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.2.6/skate.vmicrolm-vector.gguf",
             ),
             (

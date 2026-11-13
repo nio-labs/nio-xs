@@ -848,7 +848,9 @@ impl LayerDesc {
         }
 
         // 11. Quantize inter to Q8_K and Down Projection (w2)
-        quants::quantize_row_q8_k(&scratch.inter, &mut scratch.inter_q8_k);
+        if matches!(self.w2.dtype, 12 | 13 | 14 | 18 | 21 | 22) && scratch.inter.len() % 256 == 0 {
+            quants::quantize_row_q8_k(&scratch.inter, &mut scratch.inter_q8_k);
+        }
         let w2_slice = &mmap[self.w2.offset..self.w2.offset + self.w2.byte_len];
         if self.w2.dtype == 8 {
             pool.run_task(GemvTask::Q8_0 {
@@ -1843,9 +1845,9 @@ impl AstMicroEngine {
             .ok_or_else(|| anyhow!("missing token_embd.weight"))?;
         let token_embd_offset = gguf.tensor_data_offset + embd_info.offset as usize;
         let token_embd_dtype = embd_info.dtype;
-        if !matches!(token_embd_dtype, 8 | 12 | 13 | 14 | 20 | 21) {
+        if !matches!(token_embd_dtype, 2 | 8 | 12 | 13 | 14 | 20 | 21) {
             anyhow::bail!(
-                "AST-Micro requires Q8_0, Q4_K, Q5_K, Q6_K, IQ4_NL, or IQ3_S token embeddings, found dtype {token_embd_dtype}"
+                "AST-Micro requires Q4_0, Q8_0, Q4_K, Q5_K, Q6_K, IQ4_NL, or IQ3_S token embeddings, found dtype {token_embd_dtype}"
             );
         }
 
@@ -1875,9 +1877,9 @@ impl AstMicroEngine {
                     meta.shape
                 );
             }
-            if !matches!(meta.dtype, 8 | 12 | 13 | 14 | 20) {
+            if !matches!(meta.dtype, 2 | 8 | 12 | 13 | 14 | 20) {
                 anyhow::bail!(
-                    "AST-Micro separate output.weight requires Q8_0, Q4_K, Q5_K, Q6_K, or IQ4_NL, found dtype {}",
+                    "AST-Micro separate output.weight requires Q4_0, Q8_0, Q4_K, Q5_K, Q6_K, or IQ4_NL, found dtype {}",
                     meta.dtype
                 );
             }
@@ -1915,7 +1917,7 @@ impl AstMicroEngine {
 
             for meta in [meta_wq, meta_wk, meta_wv, meta_wo] {
                 let is_256 = matches!(meta.dtype, 12 | 13 | 14 | 18 | 21 | 22);
-                let is_32 = matches!(meta.dtype, 8 | 20);
+                let is_32 = matches!(meta.dtype, 2 | 8 | 20);
                 if (!is_256 && !is_32)
                     || meta.shape.len() != 2
                     || (is_256 && meta.shape[1] % 256 != 0)
@@ -2051,7 +2053,7 @@ impl AstMicroEngine {
 
                 for meta in [meta_w1, meta_w3] {
                     let is_256 = matches!(meta.dtype, 12 | 13 | 14 | 18 | 21 | 22);
-                    let is_32 = matches!(meta.dtype, 8 | 20);
+                    let is_32 = matches!(meta.dtype, 2 | 8 | 20);
                     if (!is_256 && !is_32)
                         || meta.shape.len() != 2
                         || (is_256 && meta.shape[1] % 256 != 0)
@@ -2066,10 +2068,10 @@ impl AstMicroEngine {
                     }
                 }
                 if meta_w2.shape.len() != 2
-                    || !matches!(meta_w2.dtype, 8 | 12 | 13 | 14 | 18 | 21 | 22)
+                    || !matches!(meta_w2.dtype, 2 | 8 | 12 | 13 | 14 | 18 | 21 | 22)
                     || (matches!(meta_w2.dtype, 12 | 13 | 14 | 18 | 21 | 22)
                         && meta_w2.shape[1] % 256 != 0)
-                    || (meta_w2.dtype == 8 && meta_w2.shape[1] % 32 != 0)
+                    || ((meta_w2.dtype == 2 || meta_w2.dtype == 8) && meta_w2.shape[1] % 32 != 0)
                 {
                     anyhow::bail!(
                         "unsupported AST-Micro tensor {}: dtype {} shape {:?}",

@@ -1983,6 +1983,7 @@ impl GemvTask {
                 }
                 let (block_size, type_size) = match dtype {
                     0 => (1, 4),
+                    2 => (32, 18),
                     8 => (32, 34),
                     12 => (256, 144),
                     13 => (256, 176),
@@ -2072,6 +2073,15 @@ impl GemvTask {
                             out[r] = quants::vec_dot_iq3_xxs_q8_k_avx2(row_slice, x_q8_k);
                         }
                     }
+                    2 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_q4_0(row_slice, &mut dequant_buf);
+                            out[r] = quants::dot_f32(&dequant_buf, x_f32);
+                        }
+                    }
                     _ => panic!("unhandled generic linear dtype {dtype}"),
                 }
             }
@@ -2095,6 +2105,7 @@ impl GemvTask {
                 }
                 let (block_size, type_size) = match dtype {
                     0 => (1, 4),
+                    2 => (32, 18),
                     8 => (32, 34),
                     12 => (256, 144),
                     13 => (256, 176),
@@ -2231,6 +2242,7 @@ impl GemvTask {
                 }
                 let (block_size, type_size) = match dtype {
                     0 => (1, 4),
+                    2 => (32, 18),
                     8 => (32, 34),
                     12 => (256, 144),
                     13 => (256, 176),
