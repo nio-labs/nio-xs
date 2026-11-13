@@ -11,12 +11,12 @@ pub(crate) struct DecodingPolicy {
 impl DecodingPolicy {
     pub fn for_model(skate: bool, manta: bool, beluga: bool, blue: bool, cheetah: bool, tiger: bool, fox: bool, rabbit: bool) -> Self {
         Self {
-            repeat_penalty: if cheetah || tiger || fox || rabbit {
+            repeat_penalty: if cheetah || tiger || fox {
                 1.10
+            } else if beluga || rabbit {
+                1.02
             } else if blue {
                 1.05
-            } else if beluga {
-                1.02
             } else if manta {
                 1.15
             } else {
@@ -143,7 +143,7 @@ mod tests {
             ),
             (
                 (false, false, false, false, false, false, false, true),
-                "1.1",
+                "1.02",
                 vec![],
             ),
         ] {

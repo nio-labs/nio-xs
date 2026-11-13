@@ -692,7 +692,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             nioxs_engine::rabbit_system()
         );
         let mut rx = engine
-            .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
+            .generate_stream(formatted_prompt, max_tokens, 0.6, 0.95)
             .await?;
         let mut flow = StreamFlow::new(flow_mode);
         flow.set_show_think_tags(true);

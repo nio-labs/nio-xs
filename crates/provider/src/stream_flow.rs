@@ -282,6 +282,9 @@ impl StreamFlow {
 
     pub fn finish(&mut self) {
         if self.in_think {
+            if self.show_think_tags {
+                self.emit_raw("</think>");
+            }
             if self.is_tty {
                 self.emit_raw("\x1b[0m\r\n\r\n");
             } else {

@@ -393,7 +393,7 @@ async fn microlm_chat_handler(
         "nio-cheetah" | "cheetah" => (0.20, 0.85),
         "nio-tiger" | "tiger" => (0.20, 0.85),
         "nio-fox" | "fox" => (0.40, 0.90),
-        "nio-rabbit" | "rabbit" => (0.20, 0.85),
+        "nio-rabbit" | "rabbit" => (0.6, 0.95),
         "nio-beluga" | "beluga" => (0.6, 0.95),
         "nio-manta" | "manta" => (0.3, 0.90),
         "nio-skate" | "skate" => (0.65, 0.90),
