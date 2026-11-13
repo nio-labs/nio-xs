@@ -61,9 +61,7 @@ fn main() -> Result<()> {
     let model_path = std::env::args()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from("/root/.nioxs/models/beluga.vmicrolm-vector.gguf")
-        });
+        .unwrap_or_else(|| PathBuf::from("/root/.nioxs/models/beluga.vmicrolm-vector.gguf"));
     let tokenizer_path = std::env::var_os("NIOXS_BELUGA_TOKENIZER")
         .map(PathBuf::from)
         .unwrap_or_else(|| model_path.with_file_name("beluga-tokenizer.json"));

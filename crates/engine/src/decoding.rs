@@ -9,7 +9,16 @@ pub(crate) struct DecodingPolicy {
 }
 
 impl DecodingPolicy {
-    pub fn for_model(skate: bool, manta: bool, beluga: bool, blue: bool, cheetah: bool, tiger: bool, fox: bool, rabbit: bool) -> Self {
+    pub fn for_model(
+        skate: bool,
+        manta: bool,
+        beluga: bool,
+        blue: bool,
+        cheetah: bool,
+        tiger: bool,
+        fox: bool,
+        rabbit: bool,
+    ) -> Self {
         Self {
             repeat_penalty: if cheetah || tiger || fox {
                 1.10
@@ -22,7 +31,11 @@ impl DecodingPolicy {
             } else {
                 1.10
             },
-            history_window: if manta || tiger || fox || rabbit { 128 } else { HISTORY_WINDOW },
+            history_window: if manta || tiger || fox || rabbit {
+                128
+            } else {
+                HISTORY_WINDOW
+            },
             suppressed: if skate {
                 &[3725, 47182]
             } else if manta {
@@ -128,9 +141,21 @@ mod tests {
                 "1.15",
                 vec!["41233-inf", "54275-inf", "73594-inf"],
             ),
-            ((false, false, true, false, false, false, false, false), "1.02", vec![]),
-            ((false, false, false, true, false, false, false, false), "1.05", vec![]),
-            ((false, false, false, false, true, false, false, false), "1.1", vec![]),
+            (
+                (false, false, true, false, false, false, false, false),
+                "1.02",
+                vec![],
+            ),
+            (
+                (false, false, false, true, false, false, false, false),
+                "1.05",
+                vec![],
+            ),
+            (
+                (false, false, false, false, true, false, false, false),
+                "1.1",
+                vec![],
+            ),
             (
                 (false, false, false, false, false, true, false, false),
                 "1.1",
@@ -147,12 +172,19 @@ mod tests {
                 vec![],
             ),
         ] {
-            let args = DecodingPolicy::for_model(flags.0, flags.1, flags.2, flags.3, flags.4, flags.5, flags.6, flags.7).runner_args();
+            let args = DecodingPolicy::for_model(
+                flags.0, flags.1, flags.2, flags.3, flags.4, flags.5, flags.6, flags.7,
+            )
+            .runner_args();
             let value = |key| args.windows(2).find(|w| w[0] == key).map(|w| w[1].as_str());
             assert_eq!(value("--repeat-penalty"), Some(expected_penalty));
             assert_eq!(
                 value("--repeat-last-n"),
-                Some(if flags.1 || flags.5 || flags.6 || flags.7 { "128" } else { "64" })
+                Some(if flags.1 || flags.5 || flags.6 || flags.7 {
+                    "128"
+                } else {
+                    "64"
+                })
             );
             assert_eq!(value("--temp"), Some("0"));
             assert_eq!(value("--frequency-penalty"), Some("0"));

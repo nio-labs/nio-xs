@@ -450,9 +450,9 @@ fn is_potential_open_tag(suffix: &str) -> bool {
         return false;
     }
     let tag_lower = tag_word.to_ascii_lowercase();
-    let matches_reserved = RESERVED_TAG_NAMES.iter().any(|&reserved| {
-        reserved.starts_with(&tag_lower) || tag_lower.starts_with(reserved)
-    });
+    let matches_reserved = RESERVED_TAG_NAMES
+        .iter()
+        .any(|&reserved| reserved.starts_with(&tag_lower) || tag_lower.starts_with(reserved));
     if matches_reserved {
         !after_slash.contains('>') && after_slash.len() < 128
     } else {
@@ -1075,14 +1075,7 @@ impl AstEngine {
         let is_fox = self.is_fox;
         let is_rabbit = self.is_rabbit;
         let policy = decoding::DecodingPolicy::for_model(
-            is_skate,
-            is_manta,
-            is_beluga,
-            is_blue,
-            is_cheetah,
-            is_tiger,
-            is_fox,
-            is_rabbit,
+            is_skate, is_manta, is_beluga, is_blue, is_cheetah, is_tiger, is_fox, is_rabbit,
         );
 
         // The native fallback must use CPU residency settings. Hardware probing
@@ -1364,7 +1357,11 @@ impl AstEngine {
                 .map_err(|e| anyhow!("Tokenizer error: {e}"))?
                 .get_ids()
                 .to_vec();
-            (tokens, bundle.engine.context_length(), bundle.engine.block_count)
+            (
+                tokens,
+                bundle.engine.context_length(),
+                bundle.engine.block_count,
+            )
         };
         let max_tokens = output_budget(prompt_tokens.len(), context_limit, max_tokens)?;
         let (tx, rx) = mpsc::channel(64);
@@ -1541,33 +1538,54 @@ impl AstEngine {
             bundle.engine.unpark();
 
             let prefill_started = std::time::Instant::now();
-            let disable_prefix_cache =
-                std::env::var_os("NIOXS_DISABLE_PREFIX_CACHE").is_some();
+            let disable_prefix_cache = std::env::var_os("NIOXS_DISABLE_PREFIX_CACHE").is_some();
 
             // Try loading persisted prefix cache from disk if memory cache is empty
-            let cache_path = prefix_cache::resolve_cache_dir().join(format!("prefix_{stats_model}.bin"));
+            let cache_path =
+                prefix_cache::resolve_cache_dir().join(format!("prefix_{stats_model}.bin"));
             if !disable_prefix_cache && bundle.cached_prefix.is_empty() {
-                if let Ok(Some(cached)) = prefix_cache::try_load_prefix_cache(&cache_path, &prompt_tokens, &mut bundle.engine) {
+                if let Ok(Some(cached)) = prefix_cache::try_load_prefix_cache(
+                    &cache_path,
+                    &prompt_tokens,
+                    &mut bundle.engine,
+                ) {
                     bundle.cached_prefix = cached;
                 }
             }
 
             // Identify invariant system prompt prefix if available for auto-caching
-            let sys_prefix_tokens: Option<Vec<u32>> = if !disable_prefix_cache && bundle.cached_prefix.is_empty() {
-                let sys_text = match stats_model {
-                    "cheetah" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", cheetah_system())),
-                    "tiger" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", tiger_system())),
-                    "fox" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", fox_system())),
-                    "rabbit" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", rabbit_system())),
-                    "blue" => Some(format!("<|system|>\n{}<|end|>\n<|user|>\n", blue_system())),
-                    _ => None,
+            let sys_prefix_tokens: Option<Vec<u32>> =
+                if !disable_prefix_cache && bundle.cached_prefix.is_empty() {
+                    let sys_text = match stats_model {
+                        "cheetah" => Some(format!(
+                            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
+                            cheetah_system()
+                        )),
+                        "tiger" => Some(format!(
+                            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
+                            tiger_system()
+                        )),
+                        "fox" => Some(format!(
+                            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
+                            fox_system()
+                        )),
+                        "rabbit" => Some(format!(
+                            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
+                            rabbit_system()
+                        )),
+                        "blue" => Some(format!("<|system|>\n{}<|end|>\n<|user|>\n", blue_system())),
+                        _ => None,
+                    };
+                    sys_text.and_then(|text| {
+                        bundle
+                            .tokenizer
+                            .encode(text.as_str(), false)
+                            .ok()
+                            .map(|enc| enc.get_ids().to_vec())
+                    })
+                } else {
+                    None
                 };
-                sys_text.and_then(|text| {
-                    bundle.tokenizer.encode(text.as_str(), false).ok().map(|enc| enc.get_ids().to_vec())
-                })
-            } else {
-                None
-            };
 
             let sys_prefix_len = sys_prefix_tokens.as_ref().map(|p| p.len());
 
@@ -1576,7 +1594,11 @@ impl AstEngine {
             if let Some(ref pfx) = sys_prefix_tokens {
                 if prompt_tokens.starts_with(pfx) && bundle.cached_prefix.is_empty() {
                     let pfx_len = pfx.len();
-                    if let Ok(()) = bundle.engine.forward_stream(&prompt_tokens[..pfx_len], 0).map(|_| ()) {
+                    if let Ok(()) = bundle
+                        .engine
+                        .forward_stream(&prompt_tokens[..pfx_len], 0)
+                        .map(|_| ())
+                    {
                         let _ = prefix_cache::save_prefix_cache(&cache_path, pfx, &bundle.engine);
                         bundle.cached_prefix = pfx.clone();
                     }
@@ -1648,8 +1670,8 @@ impl AstEngine {
 
             if is_eos(next_token) {
                 let persistent_prefix_len = sys_prefix_len.unwrap_or(bundle.cached_prefix.len());
-            bundle.engine.truncate_cache(persistent_prefix_len);
-            bundle.cached_prefix.truncate(persistent_prefix_len);
+                bundle.engine.truncate_cache(persistent_prefix_len);
+                bundle.cached_prefix.truncate(persistent_prefix_len);
                 if bundle.engine.resident_layers < bundle.engine.block_count {
                     bundle.engine.evict_all();
                 }
@@ -1664,9 +1686,10 @@ impl AstEngine {
             if let Ok(Some(chunk)) = tos.next_token(next_token) {
                 if !push_safe_chunk(&chunk, &mut emitted, &mut phrase_buffer, &tx) {
                     phrase_buffer.flush(&tx);
-                    let persistent_prefix_len = sys_prefix_len.unwrap_or(bundle.cached_prefix.len());
-            bundle.engine.truncate_cache(persistent_prefix_len);
-            bundle.cached_prefix.truncate(persistent_prefix_len);
+                    let persistent_prefix_len =
+                        sys_prefix_len.unwrap_or(bundle.cached_prefix.len());
+                    bundle.engine.truncate_cache(persistent_prefix_len);
+                    bundle.cached_prefix.truncate(persistent_prefix_len);
                     if bundle.engine.resident_layers < bundle.engine.block_count {
                         bundle.engine.evict_all();
                     }
@@ -2224,7 +2247,8 @@ mod tests {
                                 let prompt_tokens = vec![1, 2, 3, 4, 5];
                                 bundle.engine.reset_cache();
                                 bundle.engine.evict_all();
-                                let hidden = bundle.engine.forward_stream(&prompt_tokens, 0).unwrap();
+                                let hidden =
+                                    bundle.engine.forward_stream(&prompt_tokens, 0).unwrap();
                                 let tok = bundle.engine.next_token(&hidden, None).unwrap();
                                 assert!(tok > 0);
                                 let (rss, _hwm) = memory_mb();

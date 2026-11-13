@@ -2001,46 +2001,34 @@ impl GemvTask {
                 match dtype {
                     12 => {
                         use candle_core::quantized::k_quants::{BlockQ4K, BlockQ8K, GgmlType};
-                        let ys = std::slice::from_raw_parts(
-                            x_q8_k_ptr as *const BlockQ8K,
-                            n_cols / 256,
-                        );
+                        let ys =
+                            std::slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, n_cols / 256);
                         for r in start_r..end_r {
                             let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let xs = std::slice::from_raw_parts(
-                                r_ptr as *const BlockQ4K,
-                                n_cols / 256,
-                            );
+                            let xs =
+                                std::slice::from_raw_parts(r_ptr as *const BlockQ4K, n_cols / 256);
                             out[r] = BlockQ4K::vec_dot(n_cols, xs, ys).unwrap_or(0.0);
                         }
                     }
                     13 => {
                         use candle_core::quantized::k_quants::{BlockQ5K, BlockQ8K, GgmlType};
-                        let ys = std::slice::from_raw_parts(
-                            x_q8_k_ptr as *const BlockQ8K,
-                            n_cols / 256,
-                        );
+                        let ys =
+                            std::slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, n_cols / 256);
                         for r in start_r..end_r {
                             let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let xs = std::slice::from_raw_parts(
-                                r_ptr as *const BlockQ5K,
-                                n_cols / 256,
-                            );
+                            let xs =
+                                std::slice::from_raw_parts(r_ptr as *const BlockQ5K, n_cols / 256);
                             out[r] = BlockQ5K::vec_dot(n_cols, xs, ys).unwrap_or(0.0);
                         }
                     }
                     14 => {
                         use candle_core::quantized::k_quants::{BlockQ6K, BlockQ8K, GgmlType};
-                        let ys = std::slice::from_raw_parts(
-                            x_q8_k_ptr as *const BlockQ8K,
-                            n_cols / 256,
-                        );
+                        let ys =
+                            std::slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, n_cols / 256);
                         for r in start_r..end_r {
                             let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let xs = std::slice::from_raw_parts(
-                                r_ptr as *const BlockQ6K,
-                                n_cols / 256,
-                            );
+                            let xs =
+                                std::slice::from_raw_parts(r_ptr as *const BlockQ6K, n_cols / 256);
                             out[r] = BlockQ6K::vec_dot(n_cols, xs, ys).unwrap_or(0.0);
                         }
                     }
@@ -2135,10 +2123,8 @@ impl GemvTask {
                         );
                         for r in start_r..end_r {
                             let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let xs = std::slice::from_raw_parts(
-                                r_ptr as *const BlockQ4K,
-                                n_cols / 256,
-                            );
+                            let xs =
+                                std::slice::from_raw_parts(r_ptr as *const BlockQ4K, n_cols / 256);
                             out0[r] = BlockQ4K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
                             out1[r] = BlockQ4K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
                         }
@@ -2155,10 +2141,8 @@ impl GemvTask {
                         );
                         for r in start_r..end_r {
                             let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let xs = std::slice::from_raw_parts(
-                                r_ptr as *const BlockQ5K,
-                                n_cols / 256,
-                            );
+                            let xs =
+                                std::slice::from_raw_parts(r_ptr as *const BlockQ5K, n_cols / 256);
                             out0[r] = BlockQ5K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
                             out1[r] = BlockQ5K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
                         }
@@ -2175,10 +2159,8 @@ impl GemvTask {
                         );
                         for r in start_r..end_r {
                             let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let xs = std::slice::from_raw_parts(
-                                r_ptr as *const BlockQ6K,
-                                n_cols / 256,
-                            );
+                            let xs =
+                                std::slice::from_raw_parts(r_ptr as *const BlockQ6K, n_cols / 256);
                             out0[r] = BlockQ6K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
                             out1[r] = BlockQ6K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
                         }
@@ -2278,10 +2260,8 @@ impl GemvTask {
                         );
                         for r in start_r..end_r {
                             let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let xs = std::slice::from_raw_parts(
-                                r_ptr as *const BlockQ4K,
-                                n_cols / 256,
-                            );
+                            let xs =
+                                std::slice::from_raw_parts(r_ptr as *const BlockQ4K, n_cols / 256);
                             out0[r] = BlockQ4K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
                             out1[r] = BlockQ4K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
                             out2[r] = BlockQ4K::vec_dot(n_cols, xs, ys2).unwrap_or(0.0);
@@ -2303,10 +2283,8 @@ impl GemvTask {
                         );
                         for r in start_r..end_r {
                             let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let xs = std::slice::from_raw_parts(
-                                r_ptr as *const BlockQ5K,
-                                n_cols / 256,
-                            );
+                            let xs =
+                                std::slice::from_raw_parts(r_ptr as *const BlockQ5K, n_cols / 256);
                             out0[r] = BlockQ5K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
                             out1[r] = BlockQ5K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
                             out2[r] = BlockQ5K::vec_dot(n_cols, xs, ys2).unwrap_or(0.0);
@@ -2328,10 +2306,8 @@ impl GemvTask {
                         );
                         for r in start_r..end_r {
                             let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let xs = std::slice::from_raw_parts(
-                                r_ptr as *const BlockQ6K,
-                                n_cols / 256,
-                            );
+                            let xs =
+                                std::slice::from_raw_parts(r_ptr as *const BlockQ6K, n_cols / 256);
                             out0[r] = BlockQ6K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
                             out1[r] = BlockQ6K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
                             out2[r] = BlockQ6K::vec_dot(n_cols, xs, ys2).unwrap_or(0.0);
@@ -2395,12 +2371,13 @@ impl GemvTask {
             } => {
                 let chunk = (vocab_count + num_workers - 1) / num_workers;
                 let worker_start = (start_tok + worker_id * chunk).min(start_tok + vocab_count);
-                let worker_end =
-                    (start_tok + (worker_id + 1) * chunk).min(start_tok + vocab_count);
+                let worker_end = (start_tok + (worker_id + 1) * chunk).min(start_tok + vocab_count);
                 if worker_start >= worker_end {
                     return;
                 }
-                use candle_core::quantized::k_quants::{BlockQ4K, BlockQ5K, BlockQ6K, BlockQ8K, GgmlType};
+                use candle_core::quantized::k_quants::{
+                    BlockQ4K, BlockQ5K, BlockQ6K, BlockQ8K, GgmlType,
+                };
                 let nb = n_cols / 256;
                 let ys = std::slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, nb);
                 let recent_slice =
@@ -2441,16 +2418,14 @@ impl GemvTask {
                     };
                     if val > best_score {
                         let mut score = val;
-                        score =
-                            crate::decoding::repetition_score(score, tok_id, recent_slice, pen);
+                        score = crate::decoding::repetition_score(score, tok_id, recent_slice, pen);
                         if score > best_score {
                             best_score = score;
                             best_tok = tok_id;
                         }
                     }
                 }
-                let top_toks =
-                    std::slice::from_raw_parts_mut(top_tok_ptr as *mut u32, num_workers);
+                let top_toks = std::slice::from_raw_parts_mut(top_tok_ptr as *mut u32, num_workers);
                 let top_scores =
                     std::slice::from_raw_parts_mut(top_score_ptr as *mut f32, num_workers);
                 top_toks[worker_id] = best_tok;

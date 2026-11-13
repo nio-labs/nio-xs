@@ -2014,14 +2014,7 @@ impl AstMicroEngine {
                 .max()
                 .unwrap();
                 (
-                    dummy_w1,
-                    dummy_w2,
-                    dummy_w3,
-                    gate_inp,
-                    gate_exps,
-                    up_exps,
-                    down_exps,
-                    min_off,
+                    dummy_w1, dummy_w2, dummy_w3, gate_inp, gate_exps, up_exps, down_exps, min_off,
                     max_off,
                 )
             } else {
@@ -2797,7 +2790,9 @@ impl AstMicroEngine {
                 .map(|row| unsafe { quants::vec_dot_iq4_nl_q8_0_avx2(row, &self.scratch.x_q8_0) })
                 .collect())
         } else if matches!(out_dtype, 12 | 13 | 14) {
-            use candle_core::quantized::k_quants::{BlockQ4K, BlockQ5K, BlockQ6K, BlockQ8K, GgmlType};
+            use candle_core::quantized::k_quants::{
+                BlockQ4K, BlockQ5K, BlockQ6K, BlockQ8K, GgmlType,
+            };
             let nb = self._embedding_length / 256;
             let ys = unsafe {
                 std::slice::from_raw_parts(self.scratch.x_q8_k.as_ptr() as *const BlockQ8K, nb)
@@ -2903,29 +2898,37 @@ impl AstMicroEngine {
                 let val = if out_dtype == 20 {
                     unsafe { quants::vec_dot_iq4_nl_q8_0_avx2(slice, &self.scratch.x_q8_0) }
                 } else if matches!(out_dtype, 12 | 13 | 14) {
-                    use candle_core::quantized::k_quants::{BlockQ4K, BlockQ5K, BlockQ6K, BlockQ8K, GgmlType};
+                    use candle_core::quantized::k_quants::{
+                        BlockQ4K, BlockQ5K, BlockQ6K, BlockQ8K, GgmlType,
+                    };
                     let nb = self._embedding_length / 256;
                     let ys = unsafe {
-                        std::slice::from_raw_parts(self.scratch.x_q8_k.as_ptr() as *const BlockQ8K, nb)
+                        std::slice::from_raw_parts(
+                            self.scratch.x_q8_k.as_ptr() as *const BlockQ8K,
+                            nb,
+                        )
                     };
                     match out_dtype {
                         12 => {
                             let xs = unsafe {
                                 std::slice::from_raw_parts(slice.as_ptr() as *const BlockQ4K, nb)
                             };
-                            BlockQ4K::vec_dot(self._embedding_length, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                            BlockQ4K::vec_dot(self._embedding_length, xs, ys)
+                                .unwrap_or(f32::NEG_INFINITY)
                         }
                         14 => {
                             let xs = unsafe {
                                 std::slice::from_raw_parts(slice.as_ptr() as *const BlockQ6K, nb)
                             };
-                            BlockQ6K::vec_dot(self._embedding_length, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                            BlockQ6K::vec_dot(self._embedding_length, xs, ys)
+                                .unwrap_or(f32::NEG_INFINITY)
                         }
                         _ => {
                             let xs = unsafe {
                                 std::slice::from_raw_parts(slice.as_ptr() as *const BlockQ5K, nb)
                             };
-                            BlockQ5K::vec_dot(self._embedding_length, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                            BlockQ5K::vec_dot(self._embedding_length, xs, ys)
+                                .unwrap_or(f32::NEG_INFINITY)
                         }
                     }
                 } else {

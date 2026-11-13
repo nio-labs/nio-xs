@@ -690,7 +690,9 @@ impl GemvTask {
                 if lo >= hi {
                     return;
                 }
-                use candle_core::quantized::k_quants::{BlockQ4K, BlockQ5K, BlockQ6K, BlockQ8K, GgmlType};
+                use candle_core::quantized::k_quants::{
+                    BlockQ4K, BlockQ5K, BlockQ6K, BlockQ8K, GgmlType,
+                };
                 let nb = n_cols / 256;
                 let ys = slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, nb);
                 let hist = slice::from_raw_parts(history_ptr as *const u32, history_len);

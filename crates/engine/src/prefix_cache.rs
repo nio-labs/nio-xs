@@ -22,11 +22,7 @@ pub fn resolve_cache_dir() -> PathBuf {
 const MAGIC: &[u8; 8] = b"NIOXSPFX";
 const VERSION: u32 = 1;
 
-pub fn save_prefix_cache(
-    path: &Path,
-    tokens: &[u32],
-    engine: &AstMicroEngine,
-) -> Result<()> {
+pub fn save_prefix_cache(path: &Path, tokens: &[u32], engine: &AstMicroEngine) -> Result<()> {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -46,7 +42,10 @@ pub fn save_prefix_cache(
     let x_norm = &engine.scratch.x_norm;
     writer.write_all(&(x_norm.len() as u32).to_le_bytes())?;
     let x_bytes = unsafe {
-        std::slice::from_raw_parts(x_norm.as_ptr() as *const u8, x_norm.len() * std::mem::size_of::<f32>())
+        std::slice::from_raw_parts(
+            x_norm.as_ptr() as *const u8,
+            x_norm.len() * std::mem::size_of::<f32>(),
+        )
     };
     writer.write_all(x_bytes)?;
 
@@ -58,14 +57,20 @@ pub fn save_prefix_cache(
         // k
         writer.write_all(&(cache.k.len() as u32).to_le_bytes())?;
         let k_bytes = unsafe {
-            std::slice::from_raw_parts(cache.k.as_ptr() as *const u8, cache.k.len() * std::mem::size_of::<f32>())
+            std::slice::from_raw_parts(
+                cache.k.as_ptr() as *const u8,
+                cache.k.len() * std::mem::size_of::<f32>(),
+            )
         };
         writer.write_all(k_bytes)?;
 
         // v
         writer.write_all(&(cache.v.len() as u32).to_le_bytes())?;
         let v_bytes = unsafe {
-            std::slice::from_raw_parts(cache.v.as_ptr() as *const u8, cache.v.len() * std::mem::size_of::<f32>())
+            std::slice::from_raw_parts(
+                cache.v.as_ptr() as *const u8,
+                cache.v.len() * std::mem::size_of::<f32>(),
+            )
         };
         writer.write_all(v_bytes)?;
     }
@@ -109,7 +114,10 @@ pub fn try_load_prefix_cache(
 
     let mut cached_tokens = vec![0u32; num_tokens];
     let tok_bytes = unsafe {
-        std::slice::from_raw_parts_mut(cached_tokens.as_mut_ptr() as *mut u8, num_tokens * std::mem::size_of::<u32>())
+        std::slice::from_raw_parts_mut(
+            cached_tokens.as_mut_ptr() as *mut u8,
+            num_tokens * std::mem::size_of::<u32>(),
+        )
     };
     if reader.read_exact(tok_bytes).is_err() {
         return Ok(None);
@@ -129,7 +137,10 @@ pub fn try_load_prefix_cache(
         return Ok(None);
     }
     let x_bytes = unsafe {
-        std::slice::from_raw_parts_mut(engine.scratch.x_norm.as_mut_ptr() as *mut u8, x_norm_len * std::mem::size_of::<f32>())
+        std::slice::from_raw_parts_mut(
+            engine.scratch.x_norm.as_mut_ptr() as *mut u8,
+            x_norm_len * std::mem::size_of::<f32>(),
+        )
     };
     if reader.read_exact(x_bytes).is_err() {
         return Ok(None);
@@ -158,7 +169,10 @@ pub fn try_load_prefix_cache(
         let k_len = u32::from_le_bytes(u32_buf) as usize;
         cache.k.resize(k_len, 0.0);
         let k_bytes = unsafe {
-            std::slice::from_raw_parts_mut(cache.k.as_mut_ptr() as *mut u8, k_len * std::mem::size_of::<f32>())
+            std::slice::from_raw_parts_mut(
+                cache.k.as_mut_ptr() as *mut u8,
+                k_len * std::mem::size_of::<f32>(),
+            )
         };
         if reader.read_exact(k_bytes).is_err() {
             return Ok(None);
@@ -171,7 +185,10 @@ pub fn try_load_prefix_cache(
         let v_len = u32::from_le_bytes(u32_buf) as usize;
         cache.v.resize(v_len, 0.0);
         let v_bytes = unsafe {
-            std::slice::from_raw_parts_mut(cache.v.as_mut_ptr() as *mut u8, v_len * std::mem::size_of::<f32>())
+            std::slice::from_raw_parts_mut(
+                cache.v.as_mut_ptr() as *mut u8,
+                v_len * std::mem::size_of::<f32>(),
+            )
         };
         if reader.read_exact(v_bytes).is_err() {
             return Ok(None);

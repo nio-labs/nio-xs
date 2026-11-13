@@ -784,8 +784,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     } else {
                         trimmed
                     };
-                    nioxs_provider::manta_plan::validate(plan_str)
-                        .map_err(|error| format!("Manta plan rejected: {error:#}\nRaw output:\n{trimmed}"))?;
+                    nioxs_provider::manta_plan::validate(plan_str).map_err(|error| {
+                        format!("Manta plan rejected: {error:#}\nRaw output:\n{trimmed}")
+                    })?;
                     println!("{}", plan_str.trim());
                     return Ok(());
                 }
@@ -804,7 +805,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     .and_then(|p| p.parent().map(|p| p.to_path_buf()));
                 let mut script_candidates = vec![
                     std::path::PathBuf::from("scripts/run_niomanta_onnx.py"),
-                    std::path::PathBuf::from("/home/mn/nio-labs/nio-xs/scripts/run_niomanta_onnx.py"),
+                    std::path::PathBuf::from(
+                        "/home/mn/nio-labs/nio-xs/scripts/run_niomanta_onnx.py",
+                    ),
                 ];
                 if let Some(dir) = exe_dir {
                     script_candidates.push(dir.join("../scripts/run_niomanta_onnx.py"));

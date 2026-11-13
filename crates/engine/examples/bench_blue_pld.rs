@@ -305,7 +305,13 @@ fn main() -> Result<()> {
 
         println!(
             "  --> Summary {}: Avg Generation = {:.2} tok/s ({:.2} w/s) | Draft Acc = {:.1}% ({}/{}) | Peak RssAnon = {:.1} MB",
-            mode_label, avg_tps, avg_wps, overall_accept, total_drafts_accepted, total_drafts_proposed, mode_peak_anon
+            mode_label,
+            avg_tps,
+            avg_wps,
+            overall_accept,
+            total_drafts_accepted,
+            total_drafts_proposed,
+            mode_peak_anon
         );
     }
 
@@ -321,7 +327,13 @@ fn main() -> Result<()> {
         };
         println!(
             "  * {:<42} | Gen: {:5.2} tok/s ({:5.2} w/s) | Speedup: {:4.2}x | Draft Acc: {:4.1}% | Peak RssAnon: {:5.1} MB | Peak HWM: {:5.1} MB",
-            stat.label, stat.avg_tps, stat.avg_wps, speedup, stat.acceptance_pct, stat.peak_anon, stat.peak_hwm
+            stat.label,
+            stat.avg_tps,
+            stat.avg_wps,
+            speedup,
+            stat.acceptance_pct,
+            stat.peak_anon,
+            stat.peak_hwm
         );
     }
     println!("========================================================\n");

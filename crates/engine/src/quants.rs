@@ -300,8 +300,16 @@ pub fn dequantize_row_iq3_s(raw_bytes: &[u8], out: &mut [f32]) {
                 let signs_val = signs[signs_idx + l];
 
                 for j in 0..4 {
-                    let s1 = if (signs_val & KMASK_IQ2XS[j]) != 0 { -1.0 } else { 1.0 };
-                    let s2 = if (signs_val & KMASK_IQ2XS[j + 4]) != 0 { -1.0 } else { 1.0 };
+                    let s1 = if (signs_val & KMASK_IQ2XS[j]) != 0 {
+                        -1.0
+                    } else {
+                        1.0
+                    };
+                    let s2 = if (signs_val & KMASK_IQ2XS[j + 4]) != 0 {
+                        -1.0
+                    } else {
+                        1.0
+                    };
                     out[y_idx + j] = db1 * (g1_bytes[j] as f32) * s1;
                     out[y_idx + j + 4] = db1 * (g2_bytes[j] as f32) * s2;
                 }
@@ -319,8 +327,16 @@ pub fn dequantize_row_iq3_s(raw_bytes: &[u8], out: &mut [f32]) {
                 let signs_val = signs[signs_idx + l];
 
                 for j in 0..4 {
-                    let s1 = if (signs_val & KMASK_IQ2XS[j]) != 0 { -1.0 } else { 1.0 };
-                    let s2 = if (signs_val & KMASK_IQ2XS[j + 4]) != 0 { -1.0 } else { 1.0 };
+                    let s1 = if (signs_val & KMASK_IQ2XS[j]) != 0 {
+                        -1.0
+                    } else {
+                        1.0
+                    };
+                    let s2 = if (signs_val & KMASK_IQ2XS[j + 4]) != 0 {
+                        -1.0
+                    } else {
+                        1.0
+                    };
                     out[y_idx + j] = db2 * (g1_bytes[j] as f32) * s1;
                     out[y_idx + j + 4] = db2 * (g2_bytes[j] as f32) * s2;
                 }
@@ -366,7 +382,11 @@ pub fn dequantize_row_iq2_s(raw_bytes: &[u8], out: &mut [f32]) {
                 let signs_val = signs[signs_idx + l];
 
                 for j in 0..8 {
-                    let s = if (signs_val & KMASK_IQ2XS[j]) != 0 { -1.0 } else { 1.0 };
+                    let s = if (signs_val & KMASK_IQ2XS[j]) != 0 {
+                        -1.0
+                    } else {
+                        1.0
+                    };
                     out[y_idx + j] = dl * (grid_bytes[j] as f32) * s;
                 }
                 y_idx += 8;
