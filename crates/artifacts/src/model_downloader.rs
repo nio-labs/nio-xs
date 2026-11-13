@@ -5,7 +5,7 @@
 
 use futures_util::StreamExt;
 use nioxs_contracts::{
-    MODEL_BELUGA, MODEL_BISON, MODEL_BLUE, MODEL_CHEETAH, MODEL_MANTA, MODEL_NANO, MODEL_SKATE, MODEL_VIPER,
+    MODEL_BELUGA, MODEL_BISON, MODEL_BLUE, MODEL_CHEETAH, MODEL_MANTA, MODEL_NANO, MODEL_SKATE, MODEL_TIGER, MODEL_VIPER,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -124,6 +124,21 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             tokenizer: Some(ModelTokenizerArtifact {
                 filename: "cheetah-tokenizer.json".into(),
                 download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
+            }),
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_TIGER.into(),
+            brand_name: "Tiger (Sovereign Vibe Coder & Daily Workhorse)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-3B-Instruct (36L, Dense)".into(),
+            filename: "tiger.3b-q4km.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/tiger.3b-q4km.gguf".into(),
+            sha256: "724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7".into(),
+            size_bytes: 2_104_932_800,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "tiger-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/tiger-tokenizer.json".into(),
                 sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
                 size_bytes: 7_031_645,
             }),
@@ -759,7 +774,7 @@ mod tests {
     // `default_manifest()` exactly, not merely look plausible.
     #[test]
     fn test_manifest_pins_real_upstream_artifacts() {
-        let expected: [(&str, &str, u64, &str); 7] = [
+        let expected: [(&str, &str, u64, &str); 8] = [
             (
                 MODEL_VIPER,
                 "58633aa691b80840dc85586cf2cb8616deff480c64ddf406bf848db749ecc3d4",
@@ -802,6 +817,12 @@ mod tests {
                 1_117_320_768,
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah.1.5b-q4km.gguf",
             ),
+            (
+                MODEL_TIGER,
+                "724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7",
+                2_104_932_800,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/tiger.3b-q4km.gguf",
+            ),
         ];
         let manifest = default_manifest();
         assert_eq!(manifest.len(), expected.len());
@@ -842,12 +863,22 @@ mod tests {
                 size_bytes: 7_031_645,
             })
         );
+        let tiger = get_manifest_entry(MODEL_TIGER).unwrap();
+        assert_eq!(
+            tiger.tokenizer,
+            Some(ModelTokenizerArtifact {
+                filename: "tiger-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/tiger-tokenizer.json".into(),
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
+            })
+        );
     }
 
     #[test]
     fn test_manifest_contains_all_models() {
         let manifest = default_manifest();
-        assert_eq!(manifest.len(), 7);
+        assert_eq!(manifest.len(), 8);
         for id in [
             MODEL_VIPER,
             MODEL_SKATE,
@@ -856,6 +887,7 @@ mod tests {
             MODEL_BLUE,
             MODEL_BISON,
             MODEL_CHEETAH,
+            MODEL_TIGER,
         ] {
             assert!(manifest.iter().any(|e| e.model_id == id));
         }
