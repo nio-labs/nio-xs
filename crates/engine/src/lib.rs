@@ -1353,7 +1353,7 @@ impl AstEngine {
             self.is_rabbit,
         );
         let prompt = self.format_prompt_for_engine(&prompt)?;
-        let (prompt_tokens, context_limit) = {
+        let (prompt_tokens, context_limit, total_layers) = {
             let guard = self.bundle.lock().await;
             let bundle = guard
                 .as_ref()
@@ -1364,7 +1364,7 @@ impl AstEngine {
                 .map_err(|e| anyhow!("Tokenizer error: {e}"))?
                 .get_ids()
                 .to_vec();
-            (tokens, bundle.engine.context_length())
+            (tokens, bundle.engine.context_length(), bundle.engine.block_count)
         };
         let max_tokens = output_budget(prompt_tokens.len(), context_limit, max_tokens)?;
         let (tx, rx) = mpsc::channel(64);
@@ -1376,15 +1376,6 @@ impl AstEngine {
                 // Match the native runtime's context limit, including the
                 // model's declared maximum, for every companion.
                 let context_size = context_limit.to_string();
-                let total_layers = if self.is_blue {
-                    32
-                } else if self.is_beluga {
-                    28
-                } else if self.is_manta {
-                    24
-                } else {
-                    30
-                };
                 let gpu_layers = active_dev.recommended_gpu_layers(total_layers);
                 let ngl_arg = gpu_layers.to_string();
                 eprintln!(
