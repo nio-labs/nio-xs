@@ -60,10 +60,6 @@ pub fn blue_system() -> &'static str {
     "You are Blue, Nio's technical companion. Answer the user's actual question directly and accurately in the requested format. Be concise and relevant. Use standard terms; never invent API names or details. State uncertainty when needed."
 }
 
-pub fn bison_system() -> &'static str {
-    "You are Bison, Nio's Sovereign Pure-Code Land Titan and Systems Coder. You are purely a high-performance code generation engine—NOT a companion. Deliver zero conversational filler, pleasantries, or apologies. Verify formal state invariants, memory orderings, and lifetime constraints inside concise <think>...</think> tags (<= 150 tokens) and emit complete, production-grade, compilable implementations."
-}
-
 pub fn cheetah_system() -> &'static str {
     "You are Cheetah, Nio's Sovereign Sub-20ms Code Sprinter. Emit concise, high-speed code, terminal commands, and immediate syntax refactors with zero conversational filler."
 }
@@ -608,7 +604,6 @@ pub struct AstEngine {
     is_manta: bool,
     is_beluga: bool,
     is_blue: bool,
-    is_bison: bool,
     is_cheetah: bool,
     is_tiger: bool,
     is_fox: bool,
@@ -645,8 +640,6 @@ impl AstEngine {
             || model_path.to_string_lossy().contains("beluga");
         let is_blue = matches!(lowered.as_str(), "blue" | "nio-blue")
             || model_path.to_string_lossy().contains("blue");
-        let is_bison = matches!(lowered.as_str(), "bison" | "nio-bison")
-            || model_path.to_string_lossy().contains("bison");
         let is_cheetah = matches!(lowered.as_str(), "cheetah" | "nio-cheetah")
             || model_path.to_string_lossy().contains("cheetah");
         let is_tiger = matches!(lowered.as_str(), "tiger" | "nio-tiger")
@@ -661,7 +654,6 @@ impl AstEngine {
             is_manta,
             is_beluga,
             is_blue,
-            is_bison,
             is_cheetah,
             is_tiger,
             is_fox,
@@ -697,7 +689,6 @@ impl AstEngine {
         let is_manta = model_path.to_string_lossy().contains("manta");
         let is_beluga = model_path.to_string_lossy().contains("beluga");
         let is_blue = model_path.to_string_lossy().contains("blue");
-        let is_bison = model_path.to_string_lossy().contains("bison");
         let is_cheetah = model_path.to_string_lossy().contains("cheetah");
         let is_tiger = model_path.to_string_lossy().contains("tiger");
         let is_fox = model_path.to_string_lossy().contains("fox");
@@ -709,7 +700,6 @@ impl AstEngine {
             is_manta,
             is_beluga,
             is_blue,
-            is_bison,
             is_cheetah,
             is_tiger,
             is_fox,
@@ -745,7 +735,6 @@ impl AstEngine {
             "cuda" | "nio-cuda" => "nio-cuda",
             "beluga" | "nio-beluga" => "nio-beluga",
             "blue" | "nio-blue" => "blue",
-            "bison" | "nio-bison" => "bison",
             "cheetah" | "nio-cheetah" => "cheetah",
             "tiger" | "nio-tiger" => "tiger",
             "fox" | "nio-fox" => "fox",
@@ -779,11 +768,6 @@ impl AstEngine {
                 "nio-beluga.vmicrolm-vector.gguf",
             ],
             "blue" | "nio-blue" => &["blue.vmicrolm-reflex.gguf", "nio-blue.vmicrolm-reflex.gguf"],
-            "bison" | "nio-bison" => &[
-                "bison.moe-7b-q4km.gguf",
-                "bison.vmicrolm-reflex.gguf",
-                "nio-bison.vmicrolm-reflex.gguf",
-            ],
             "cheetah" | "nio-cheetah" => &[
                 "cheetah.1.5b-q4km.gguf",
                 "cheetah.vmicrolm-sprinter.gguf",
@@ -834,7 +818,6 @@ impl AstEngine {
             "skate" | "nio-skate" => Some("NIOXS_SKATE_MODEL"),
             "beluga" | "nio-beluga" => Some("NIOXS_BELUGA_MODEL"),
             "blue" | "nio-blue" => Some("NIOXS_BLUE_MODEL"),
-            "bison" | "nio-bison" => Some("NIOXS_BISON_MODEL"),
             "ray" | "nio-ray" => Some("NIOXS_RAY_MODEL"),
             _ => None,
         };
@@ -907,16 +890,6 @@ impl AstEngine {
                     return candidate2;
                 }
             }
-            if s.contains("bison") {
-                let candidate1 = model.with_file_name("bison-tokenizer.json");
-                if candidate1.is_file() {
-                    return candidate1;
-                }
-                let candidate2 = model.with_file_name("nio-bison-tokenizer.json");
-                if candidate2.is_file() {
-                    return candidate2;
-                }
-            }
             if s.contains("cheetah") {
                 let candidate1 = model.with_file_name("cheetah-tokenizer.json");
                 if candidate1.is_file() {
@@ -972,7 +945,6 @@ impl AstEngine {
             Some(s) if s.contains("skate") => "skate-tokenizer.json",
             Some(s) if s.contains("beluga") => "beluga-tokenizer.json",
             Some(s) if s.contains("blue") => "blue-tokenizer.json",
-            Some(s) if s.contains("bison") => "bison-tokenizer.json",
             Some("nio-ray-dev.Q4_K_M.gguf") => "nio-ray-dev-tokenizer.json",
             Some(s) if s.contains("viper") => "nio-viper-tokenizer.json",
             Some(s) if s.contains("cuda") => "nio-cuda-tokenizer.json",
@@ -1070,7 +1042,6 @@ impl AstEngine {
         let is_manta = self.is_manta;
         let is_beluga = self.is_beluga;
         let is_blue = self.is_blue;
-        let is_bison = self.is_bison;
         let is_cheetah = self.is_cheetah;
         let is_tiger = self.is_tiger;
         let is_fox = self.is_fox;
@@ -1079,7 +1050,6 @@ impl AstEngine {
             is_manta,
             is_beluga,
             is_blue,
-            is_bison,
             is_cheetah,
             is_tiger,
             is_fox,
@@ -1139,25 +1109,6 @@ impl AstEngine {
                         engine.block_count
                     } else {
                         layer_setting("NIOXS_BLUE_ROLLING_WINDOW", 2, engine.block_count)
-                    };
-                    engine.set_resident_layers(resident);
-                    engine.set_rolling_window(window);
-                }
-            } else if is_bison {
-                let gpu_layers = active_dev.recommended_gpu_layers(48);
-                if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
-                    engine.set_resident_layers(gpu_layers);
-                    engine.set_rolling_window(gpu_layers.max(4));
-                } else {
-                    let resident = std::env::var("NIOXS_BISON_RESIDENT_LAYERS")
-                        .ok()
-                        .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(2)
-                        .min(engine.block_count);
-                    let window = if resident >= engine.block_count {
-                        engine.block_count
-                    } else {
-                        layer_setting("NIOXS_BISON_ROLLING_WINDOW", 2, engine.block_count)
                     };
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
@@ -1268,12 +1219,6 @@ impl AstEngine {
                 blue_system(),
                 raw_prompt.trim()
             )
-        } else if self.is_bison {
-            format!(
-                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
-                bison_system(),
-                raw_prompt.trim()
-            )
         } else if self.is_cheetah {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
@@ -1344,18 +1289,7 @@ impl AstEngine {
         _temperature: f64,
         _top_p: f64,
     ) -> Result<mpsc::Receiver<String>> {
-        let speculation_mode = if self.is_bison {
-            match std::env::var("NIOXS_BISON_SPECULATION").as_deref() {
-                Ok("on") => speculation::Mode::On,
-                Ok("adaptive") => speculation::Mode::Adaptive,
-                Ok("off") | Err(_) => speculation::Mode::Off,
-                Ok(value) => {
-                    return Err(anyhow!(
-                        "Invalid NIOXS_BISON_SPECULATION={value:?}; use on, off, or adaptive"
-                    ));
-                }
-            }
-        } else if self.is_blue {
+        let speculation_mode = if self.is_blue {
             match std::env::var("NIOXS_BLUE_SPECULATION").as_deref() {
                 Ok("off") => speculation::Mode::Off,
                 Ok("adaptive") => speculation::Mode::Adaptive,
@@ -1377,7 +1311,6 @@ impl AstEngine {
             self.is_manta,
             self.is_beluga,
             self.is_blue,
-            self.is_bison,
             self.is_cheetah,
             self.is_tiger,
             self.is_fox,
@@ -1406,9 +1339,7 @@ impl AstEngine {
                 // Match the native runtime's context limit, including the
                 // model's declared maximum, for every companion.
                 let context_size = context_limit.to_string();
-                let total_layers = if self.is_bison {
-                    48
-                } else if self.is_blue {
+                let total_layers = if self.is_blue {
                     32
                 } else if self.is_beluga {
                     28
@@ -1546,8 +1477,6 @@ impl AstEngine {
             "tiger"
         } else if self.is_fox {
             "fox"
-        } else if self.is_bison {
-            "bison"
         } else if self.is_blue {
             "blue"
         } else if self.is_beluga {
@@ -1599,7 +1528,6 @@ impl AstEngine {
                     "cheetah" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", cheetah_system())),
                     "tiger" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", tiger_system())),
                     "fox" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", fox_system())),
-                    "bison" => Some(format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n", bison_system())),
                     "blue" => Some(format!("<|system|>\n{}<|end|>\n<|user|>\n", blue_system())),
                     _ => None,
                 };
@@ -2044,15 +1972,15 @@ mod tests {
     }
 
     #[test]
-    fn bison_engine_prompt_uses_the_shared_bison_policy() {
+    fn tiger_engine_prompt_uses_the_shared_tiger_policy() {
         let engine = AstEngine::from_paths(
-            PathBuf::from("bison.moe-7b-q4km.gguf"),
-            PathBuf::from("bison-tokenizer.json"),
+            PathBuf::from("tiger.3b-q4km.gguf"),
+            PathBuf::from("tiger-tokenizer.json"),
         );
         let prompt = engine
             .format_prompt_for_engine("implement lock-free ring buffer")
-            .expect("Bison prompt should format");
-        assert!(prompt.contains(bison_system()));
+            .expect("Tiger prompt should format");
+        assert!(prompt.contains(tiger_system()));
         assert!(prompt.contains("NOT a companion"));
         assert!(prompt.contains("implement lock-free ring buffer"));
     }

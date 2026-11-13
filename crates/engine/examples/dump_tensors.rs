@@ -7,7 +7,7 @@ fn main() -> anyhow::Result<()> {
     let path = if args.len() > 1 {
         &args[1]
     } else {
-        "/root/.nioxs/models/bison.moe-7b-q4km.gguf"
+        "/root/.nioxs/models/tiger.3b-q4km.gguf"
     };
     let mut file = BufReader::new(File::open(path)?);
     let model = GgufModel::read(&mut file)?;

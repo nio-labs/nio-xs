@@ -19,12 +19,12 @@
                                                      │
         ┌───────────────────────┬────────────────────┴───┬────────────────────────┬─────────────────────┐
         ▼                       ▼                        ▼                        ▼                     ▼
- 🐍 Viper (100M)         🐟 Skate (135M)          🦈 Manta (494M)          🐋 Beluga (1.54B)     🦬 Bison (7.0B MoE)
- Tactical Striker        Ambient Companion        DAG Architect            Lead Architect        Pure-Code Land Titan
- • Sub-20µs Latency      • 33.9–39.3 MiB anon*    • < 235 MB Peak RAM      • < 295 MB Peak RAM   • 16-Expert Sparse MoE
- • < 27 MB Resident      • 23–53 words/sec*       • <manta_plan> DAGs      • Bit-exact <think>   • Invariant Prover
- • Safety Clutch (-x)    • Friendly Banter        • Multi-File Refactor    • Dual CPU/GPU Engine • Pure-Code, 0-Filler
- • POSIX & PowerShell    • Pure Zero-Code         • 45+ w/s GPU Burst      • 20+ w/s GPU Burst   • < 1.5 GB RAM (2.94 GB)
+ 🐍 Viper (100M)         🐟 Skate (135M)          🦈 Manta (494M)          🐋 Beluga (1.54B)     🐅 Tiger (3.0B)
+ Tactical Striker        Ambient Companion        DAG Architect            Lead Architect        Daily Workhorse
+ • Sub-20µs Latency      • 33.9–39.3 MiB anon*    • < 235 MB Peak RAM      • < 295 MB Peak RAM   • 36L / 3.0B Q4_K_M
+ • < 27 MB Resident      • 23–53 words/sec*       • <manta_plan> DAGs      • Bit-exact <think>   • Pure-Code Vibe Coder
+ • Safety Clutch (-x)    • Friendly Banter        • Multi-File Refactor    • Dual CPU/GPU Engine • Compilable Modules
+ • POSIX & PowerShell    • Pure Zero-Code         • 45+ w/s GPU Burst      • 20+ w/s GPU Burst   • < 720 MB Peak RAM
 ```
 
 ---
@@ -48,15 +48,15 @@ nioxs manta "Architect a zero-downtime PostgreSQL schema migration"
 # Sovereign Lead Architect with Chain-of-Thought Reasoning
 nioxs beluga "Compare epoll and io_uring architecture under high concurrency"
 
-# Sovereign Pure-Code Land Titan (Formal Invariant Verification, Zero Filler)
-nioxs bison "Implement an SPSC lock-free bounded ring buffer with zero allocation and cacheline padding"
+# Sovereign Daily Vibe Coder & Systems Workhorse (Zero Filler, Production Code)
+nioxs tiger "Implement an SPSC lock-free bounded ring buffer with zero allocation and cacheline padding"
 
 # Pull verified weights for any model
-nioxs pull bison
+nioxs pull tiger
 
 # Enforce Hardware GPU Acceleration (Intel Arc / NVIDIA CUDA / Metal)
 nioxs beluga --device gpu -n 1024 "Design a distributed raft consensus state machine"
-nioxs bison --device gpu -n 2048 "Implement an io_uring completion queue poller in Rust"
+nioxs tiger --device gpu -n 2048 "Implement an io_uring completion queue poller in Rust"
 
 # Start the OpenAI-Compatible Local Gateway
 nioxs serve
@@ -187,21 +187,19 @@ For reference, a [published SmolLM2-135M-Instruct Q8_0 llama-server example](htt
 
 ---
 
-## 🦬 Bison (7.0B MoE) vs Stock Foundation Coders: Side-by-Side Comparison
+## 🐅 Tiger (3.0B) vs Stock Foundation Coders: Side-by-Side Comparison
 
-| Technical Dimension | Stock Qwen 2.5 Coder 7B<br>*(Standard Ollama / llama.cpp Q4_K_M)* | Bison (7.0B MoE)<br>*(Sovereign Sparse MoE Engine)* |
+| Technical Dimension | Stock Qwen 2.5 Coder 3B<br>*(Standard Ollama / llama.cpp Q4_K_M)* | Tiger (3.0B)<br>*(Sovereign Vibe Coder & Daily Workhorse)* |
 | :--- | :--- | :--- |
-| **Model Parameters** | 7.61 Billion Dense (100% Active / Token) | **5.14B–7.0B Total / 1.9B Active per Token (16 Experts)** |
-| **Specialization & Role** | General conversational code chatbot | **Sovereign Pure-Code Land Titan** (NOT a companion) |
-| **Conversational Filler** | Apologies, pleasantries, preambles, disclaimers | **Zero conversational filler** (immediate `<think>` & code) |
-| **Reasoning Engine** | None / Unconstrained autoregressive text | **Strict Formal Invariant Prover** inside `<think>` (`<= 150` tok) |
-| **Quantization & Format** | `Q4_K_M` (4.7 GB Dense) | `Q4_K_M` Sparse MoE (**2.94 GB** total disk footprint) |
-| **Disk Storage Footprint** | **4.7 GB** | **2.94 GB (3,001.84 MiB)** *(Fits in 4GB/6GB Laptop GPUs)* |
-| **Active Memory Model** | Full 7.6B model pinned in system RAM | **Top-4 of 16 Experts Active per Token** (`mmap` zero-copy) |
-| **Target RAM Envelope (CPU)** | **> 5.8 GB – 6.4 GB RAM** | **< 1.5 GB Peak Resident RAM** on CPU |
-| **GPU Offload (4GB/6GB GPU)** | Does not fit in 4GB VRAM | **48 / 48 Layers offloaded (100% fits in 4GB/6GB VRAM)** |
-| **Decode Throughput** | ~5–7 words/sec (CPU) | **18–25 words/sec (CPU)** / **45–65 words/sec (Laptop GPU)** |
-| **CLI Direct Invocation** | `ollama run qwen2.5-coder:7b` | `nioxs bison "<prompt>"` / `nioxs pull bison` |
+| **Model Parameters** | 3.09 Billion (36 Layers, Dense) | **3.09 Billion (36 Layers, Dense Q4_K_M)** |
+| **Specialization & Role** | General conversational code chatbot | **Sovereign Vibe Coder & Daily Systems Workhorse** (NOT a companion) |
+| **Conversational Filler** | Apologies, pleasantries, preambles, disclaimers | **Zero conversational filler** (immediate compilable code & modules) |
+| **Coding Capability** | Short snippet generation | **Complete production-grade modules, refactors, and tests** |
+| **Disk Storage Footprint** | **2.0 GB** | **1.96 GB (2,007 MiB)** |
+| **Target RAM Envelope (CPU)** | **> 3.2 GB – 4.0 GB RAM** | **< 720 MB Peak Resident RAM** on CPU |
+| **GPU Offload (4GB/6GB GPU)** | Often struggles with KV overhead | **36 / 36 Layers offloaded (100% fits in 4GB/6GB VRAM)** |
+| **Decode Throughput** | ~12–18 words/sec (CPU) | **25–45 words/sec (CPU)** / **75–110 words/sec (Laptop GPU)** |
+| **CLI Direct Invocation** | `ollama run qwen2.5-coder:3b` | `nioxs tiger "<prompt>"` / `nioxs pull tiger` |
 
 ---
 

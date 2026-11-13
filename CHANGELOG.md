@@ -3,7 +3,16 @@
 Notable changes to NioXS / NioNano. The version matches the workspace
 `Cargo.toml`; the git tag is `v<version>`.
 
-## v0.5.5
+## v0.5.6
+
+### Removed
+- **Bison (7.0B MoE)**:
+  - Removed Bison from the active model catalog, release manifest, and contracts.
+  - Removed `nioxs bison` CLI subcommand and internal engine routing.
+  - Updated documentation, tables, and quickstarts.
+
+### Changed
+- Promoted **Tiger (3.0B)** (Sovereign Vibe Coder & Daily Systems Workhorse), **Cheetah (1.5B)** (Sovereign Code Sprinter), and **Fox (3.0B)** (Sovereign Articulate Mentor & Rubber Duck) with full `/v1/chat/completions` routing, system prompt injection, and sampling presets.
 
 ### Added
 - **Bison (7.0B MoE) Sovereign Pure-Code Land Titan (`16-Expert Sparse MoE Pure-Code`)**:
