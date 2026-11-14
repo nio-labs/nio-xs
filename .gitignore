@@ -7,3 +7,6 @@
 __pycache__/
 *.gguf
 models/*.gguf
+bin/nioxs-core
+bin/nioxs
+
