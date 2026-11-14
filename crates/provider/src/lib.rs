@@ -142,6 +142,8 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         "Fin Base — Council Speaker & Router (28L, 1.5B, < 850 MB RAM)",
         "Fin Kernel — Bare-Metal POSIX & Concurrency Specialist (28L, 1.5B, < 850 MB RAM)",
         "Fin SQL — SQL Dialect & Transpilation Specialist (24L, 0.5B, < 350 MB RAM)",
+        "Fin Concurrency — Lock-Free Atomics & Memory Ordering Specialist (28L, 1.5B, < 850 MB RAM)",
+        "Fin Raft — Distributed Consensus & State Machine Specialist (28L, 1.5B, < 850 MB RAM)",
         "Skate — Resident Micro-Guru & Edge Companion (v-µLM Companion, < 50 MB RAM)",
         "NioNano — Intent Reflex & MicroLM (~0.5M, sub-0.1ms)",
         "NioMicro — Contextual Policy Decision Arbiter (5.0M / cluster)",
@@ -269,7 +271,7 @@ async fn microlm_chat_handler(
         "nio-tiger" | "tiger" => nioxs_engine::tiger_system(),
         "nio-fox" | "fox" => nioxs_engine::fox_system(),
         "nio-rabbit" | "rabbit" => nioxs_engine::rabbit_system(),
-        "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" => {
+        "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" | "nio-fin-concurrency" | "fin-concurrency" | "nio-fin-raft" | "fin-raft" => {
             nioxs_engine::fin_system()
         }
         "nio-skate" | "skate" => {
@@ -392,6 +394,8 @@ async fn microlm_chat_handler(
         "nio-fin-base" | "fin-base" => nioxs_contracts::MODEL_FIN_BASE,
         "nio-fin-kernel" | "fin-kernel" => nioxs_contracts::MODEL_FIN_KERNEL,
         "nio-fin-sql" | "fin-sql" => nioxs_contracts::MODEL_FIN_SQL,
+        "nio-fin-concurrency" | "fin-concurrency" => nioxs_contracts::MODEL_FIN_CONCURRENCY,
+        "nio-fin-raft" | "fin-raft" => nioxs_contracts::MODEL_FIN_RAFT,
         "nio-manta" | "manta" | "nio-echo" | "echo" => nioxs_contracts::MODEL_MANTA,
         "nio-skate" | "skate" => nioxs_contracts::MODEL_SKATE,
         "nio-viper" | "viper" => nioxs_contracts::MODEL_VIPER,
@@ -405,7 +409,7 @@ async fn microlm_chat_handler(
         "nio-tiger" | "tiger" => (0.20, 0.85),
         "nio-fox" | "fox" => (0.40, 0.90),
         "nio-rabbit" | "rabbit" => (0.6, 0.95),
-        "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" => (0.20, 0.85),
+        "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" | "nio-fin-concurrency" | "fin-concurrency" | "nio-fin-raft" | "fin-raft" => (0.20, 0.85),
         "nio-beluga" | "beluga" => (0.6, 0.95),
         "nio-manta" | "manta" => (0.3, 0.90),
         "nio-skate" | "skate" => (0.65, 0.90),
@@ -618,7 +622,7 @@ async fn chat(
         "nio-rabbit" | "rabbit" => {
             return microlm_chat_handler("rabbit", request, None).await;
         }
-        "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" => {
+        "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" | "nio-fin-concurrency" | "fin-concurrency" | "nio-fin-raft" | "fin-raft" => {
             return microlm_chat_handler(model_norm, request, None).await;
         }
         "nio-ray" | "ray" => {

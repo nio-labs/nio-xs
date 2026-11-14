@@ -5,9 +5,9 @@
 
 use futures_util::StreamExt;
 use nioxs_contracts::{
-    MODEL_BELUGA, MODEL_BLUE, MODEL_CHEETAH, MODEL_FIN, MODEL_FIN_BASE, MODEL_FIN_KERNEL,
-    MODEL_FIN_SQL, MODEL_FOX, MODEL_MANTA, MODEL_NANO, MODEL_RABBIT, MODEL_SKATE, MODEL_TIGER,
-    MODEL_VIPER,
+    MODEL_BELUGA, MODEL_BLUE, MODEL_CHEETAH, MODEL_FIN, MODEL_FIN_BASE, MODEL_FIN_CONCURRENCY,
+    MODEL_FIN_KERNEL, MODEL_FIN_RAFT, MODEL_FIN_SQL, MODEL_FOX, MODEL_MANTA, MODEL_NANO,
+    MODEL_RABBIT, MODEL_SKATE, MODEL_TIGER, MODEL_VIPER,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -228,6 +228,36 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-sql.q4km.gguf".into(),
             sha256: "a2c1bc36ec8ceef39381a7162cb781f49d1c6127b38a666d7388a620354a5458".into(),
             size_bytes: 397_807_584,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "fin-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
+            }),
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_FIN_CONCURRENCY.into(),
+            brand_name: "Fin Concurrency (Lock-Free Atomics & Memory Ordering Specialist)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Dense)".into(),
+            filename: "fin-concurrency.q4km.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-concurrency.q4km.gguf".into(),
+            sha256: "".into(),
+            size_bytes: 986_048_160,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "fin-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
+            }),
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_FIN_RAFT.into(),
+            brand_name: "Fin Raft (Distributed Consensus & State Machine Specialist)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Dense)".into(),
+            filename: "fin-raft.q4km.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-raft.q4km.gguf".into(),
+            sha256: "".into(),
+            size_bytes: 986_048_160,
             tokenizer: Some(ModelTokenizerArtifact {
                 filename: "fin-tokenizer.json".into(),
                 download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),

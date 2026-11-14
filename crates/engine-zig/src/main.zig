@@ -54,6 +54,8 @@ pub fn main() !void {
     var is_kernel = false;
     var is_sql = false;
     var is_base = false;
+    var is_concurrency = false;
+    var is_raft = false;
     var info_only = false;
     var max_tokens: usize = 512;
 
@@ -66,6 +68,10 @@ pub fn main() !void {
             is_kernel = true;
         } else if (std.mem.eql(u8, arg, "--sql") or std.mem.eql(u8, arg, "fin-sql")) {
             is_sql = true;
+        } else if (std.mem.eql(u8, arg, "--concurrency") or std.mem.eql(u8, arg, "fin-concurrency")) {
+            is_concurrency = true;
+        } else if (std.mem.eql(u8, arg, "--raft") or std.mem.eql(u8, arg, "fin-raft")) {
+            is_raft = true;
         } else if (std.mem.eql(u8, arg, "--base") or std.mem.eql(u8, arg, "fin-base")) {
             is_base = true;
         } else if (std.mem.eql(u8, arg, "fin") or std.mem.eql(u8, arg, "nio-fin")) {
@@ -99,6 +105,10 @@ pub fn main() !void {
             "fin-sql.q4km.gguf"
         else if (is_kernel)
             "fin-kernel.q4km.gguf"
+        else if (is_concurrency)
+            "fin-concurrency.q4km.gguf"
+        else if (is_raft)
+            "fin-raft.q4km.gguf"
         else
             "fin-base.q4km.gguf";
 
@@ -155,7 +165,7 @@ pub fn main() !void {
     try stdout.print("<think>\n", .{});
     try stdout.print("1. Invariant Proof: Active resident window = {d} layers via madvise(MADV_DONTNEED).\n", .{window_layers});
     try stdout.print("2. Memory SLA: Strict < 850 MB VmRSS ceiling maintained.\n", .{});
-    try stdout.print("3. Target Councilor: {s}\n", .{if (is_sql) "fin-sql" else if (is_kernel) "fin-kernel" else "fin-base"});
+    try stdout.print("3. Target Councilor: {s}\n", .{if (is_sql) "fin-sql" else if (is_kernel) "fin-kernel" else if (is_concurrency) "fin-concurrency" else if (is_raft) "fin-raft" else "fin-base"});
     try stdout.print("</think>\n\n", .{});
 
     var layer: u32 = 0;

@@ -656,7 +656,7 @@ impl AstEngine {
         let is_fox = matches!(lowered.as_str(), "fox" | "nio-fox");
         let is_fin = matches!(
             lowered.as_str(),
-            "fin" | "nio-fin" | "fin-base" | "fin-kernel" | "fin-sql"
+            "fin" | "nio-fin" | "fin-base" | "fin-kernel" | "fin-sql" | "fin-concurrency" | "fin-raft"
         ) || model_path.to_string_lossy().contains("fin");
         let is_tiger = (matches!(lowered.as_str(), "tiger" | "nio-tiger")
             || model_path.to_string_lossy().contains("tiger"))
@@ -767,6 +767,8 @@ impl AstEngine {
             "fin-base" | "nio-fin-base" => "fin-base",
             "fin-kernel" | "nio-fin-kernel" => "fin-kernel",
             "fin-sql" | "nio-fin-sql" => "fin-sql",
+            "fin-concurrency" | "nio-fin-concurrency" => "fin-concurrency",
+            "fin-raft" | "nio-fin-raft" => "fin-raft",
             other => other,
         };
 
@@ -830,6 +832,14 @@ impl AstEngine {
             "fin-sql" | "nio-fin-sql" => &[
                 "fin-sql.q4km.gguf",
                 "fin-sql.0.5b-q4km.gguf",
+            ],
+            "fin-concurrency" | "nio-fin-concurrency" => &[
+                "fin-concurrency.q4km.gguf",
+                "fin-concurrency.1.5b-q4km.gguf",
+            ],
+            "fin-raft" | "nio-fin-raft" => &[
+                "fin-raft.q4km.gguf",
+                "fin-raft.1.5b-q4km.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",

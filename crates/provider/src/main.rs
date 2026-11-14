@@ -86,6 +86,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             "fin-base" | "nio-fin-base" => "fin-base",
             "fin-kernel" | "nio-fin-kernel" => "fin-kernel",
             "fin-sql" | "nio-fin-sql" => "fin-sql",
+            "fin-concurrency" | "nio-fin-concurrency" => "fin-concurrency",
+            "fin-raft" | "nio-fin-raft" => "fin-raft",
             other => other,
         };
         let path = nioxs_artifacts::prompt_and_pull_if_needed(normalized, auto_yes)
@@ -710,13 +712,13 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     }
     if matches!(
         arg.as_deref(),
-        Some("fin" | "nio-fin" | "fin-base" | "fin-kernel" | "fin-sql")
+        Some("fin" | "nio-fin" | "fin-base" | "fin-kernel" | "fin-sql" | "fin-concurrency" | "fin-raft")
     ) {
         let cmd = arg.as_deref().unwrap_or("fin");
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
             eprintln!(
-                "Usage: nioxs fin [--kernel|--sql|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+                "Usage: nioxs fin [--kernel|--sql|--concurrency|--raft|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
             );
             return Ok(());
         }
@@ -727,6 +729,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let mut model_target = match cmd {
             "fin-kernel" | "nio-fin-kernel" => "fin-kernel",
             "fin-sql" | "nio-fin-sql" => "fin-sql",
+            "fin-concurrency" | "nio-fin-concurrency" => "fin-concurrency",
+            "fin-raft" | "nio-fin-raft" => "fin-raft",
+            "fin-concurrency" | "nio-fin-concurrency" => "fin-concurrency",
+            "fin-raft" | "nio-fin-raft" => "fin-raft",
             "fin-base" | "nio-fin-base" => "fin-base",
             _ => "fin",
         };
@@ -737,6 +743,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 model_target = "fin-kernel";
             } else if a == "--sql" {
                 model_target = "fin-sql";
+            } else if a == "--concurrency" {
+                model_target = "fin-concurrency";
+            } else if a == "--raft" {
+                model_target = "fin-raft";
             } else if a == "--base" {
                 model_target = "fin-base";
             } else if a == "-n" || a == "--max-tokens" {

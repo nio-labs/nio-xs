@@ -17,6 +17,8 @@ pub const MODEL_FIN: &str = "fin";
 pub const MODEL_FIN_BASE: &str = "fin-base";
 pub const MODEL_FIN_KERNEL: &str = "fin-kernel";
 pub const MODEL_FIN_SQL: &str = "fin-sql";
+pub const MODEL_FIN_CONCURRENCY: &str = "fin-concurrency";
+pub const MODEL_FIN_RAFT: &str = "fin-raft";
 pub const MODEL_NANO: &str = "nio-nano";
 pub const MODEL_MICRO: &str = "nio-micro";
 pub const MODEL_MASK: &str = "nio-mask";
@@ -43,6 +45,8 @@ pub const MODELS: &[&str] = &[
     MODEL_FIN_BASE,
     MODEL_FIN_KERNEL,
     MODEL_FIN_SQL,
+    MODEL_FIN_CONCURRENCY,
+    MODEL_FIN_RAFT,
     MODEL_SKATE,
     MODEL_NANO,
     MODEL_MICRO,
