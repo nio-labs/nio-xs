@@ -4,16 +4,25 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // 1. Standalone Native Executable: nioxs-core
+    // 1. Primary Native Executable: nioxs
     const exe = b.addExecutable(.{
-        .name = "nioxs-core",
+        .name = "nioxs",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
     b.installArtifact(exe);
 
-    // 2. Static C ABI Library: libnioxs_core.a
+    // 2. Standalone Core Alias: nioxs-core
+    const exe_core = b.addExecutable(.{
+        .name = "nioxs-core",
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    b.installArtifact(exe_core);
+
+    // 3. Static C ABI Library: libnioxs_core.a
     const lib = b.addStaticLibrary(.{
         .name = "nioxs_core",
         .root_source_file = b.path("src/c_api.zig"),
