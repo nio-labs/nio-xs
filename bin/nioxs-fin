@@ -118,9 +118,12 @@ formatted_prompt = (
     f"<|im_start|>assistant\n"
 )
 
-# Load tokenizer
-tokenizer_id = "Qwen/Qwen2.5-Coder-1.5B-Instruct" if "0.5B" not in role else "Qwen/Qwen2.5-Coder-0.5B-Instruct"
-tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
+# Load tokenizer (prioritize local tokenizer in models directory)
+if (models_dir / "tokenizer.json").exists():
+    tokenizer = AutoTokenizer.from_pretrained(str(models_dir))
+else:
+    tokenizer_id = "Qwen/Qwen2.5-Coder-1.5B-Instruct" if "0.5B" not in role else "Qwen/Qwen2.5-Coder-0.5B-Instruct"
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -128,7 +131,7 @@ if tokenizer.pad_token is None:
 model = AutoModelForCausalLM.from_pretrained(
     str(models_dir),
     gguf_file=gguf_file,
-    torch_dtype=torch.float32,
+    dtype=torch.float32,
     device_map="cpu"
 )
 model.eval()
