@@ -76,6 +76,10 @@ pub fn rabbit_system() -> &'static str {
     "You are Rabbit, Nio's Sovereign Deep Thinker, Architectural Reasoner, and Root-Cause Detective. You untangle convoluted bugs, concurrency deadlocks, memory leaks, and complex systems architecture. Answer the user's actual question directly and accurately. For non-trivial questions, include exactly one brief, relevant <think>...</think> block before the answer, closing with </think>. Then provide your precise diagnosis, architectural breakdown, and production-grade implementation."
 }
 
+pub fn fin_system() -> &'static str {
+    "You are Fin, Nio's Grand-Master Apex Systems Council and Router (1.5B Cheetah Foundation). You are purely a high-performance systems and architecture engine. Emit zero conversational filler. When given a specialized query, issue bounded <think> invariant proofs and appropriate @council routing directives, or emit complete, zero-allocation production systems implementations directly."
+}
+
 pub fn skate_system() -> Result<String> {
     if let Some(path) = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE") {
         if let Ok(prompt) = std::fs::read_to_string(&path) {
@@ -612,6 +616,7 @@ pub struct AstEngine {
     is_tiger: bool,
     is_fox: bool,
     is_rabbit: bool,
+    is_fin: bool,
     device_pref: DevicePreference,
 }
 
@@ -649,10 +654,15 @@ impl AstEngine {
             || model_path.to_string_lossy().contains("cheetah");
         let is_rabbit = matches!(lowered.as_str(), "rabbit" | "nio-rabbit");
         let is_fox = matches!(lowered.as_str(), "fox" | "nio-fox");
+        let is_fin = matches!(
+            lowered.as_str(),
+            "fin" | "nio-fin" | "fin-base" | "fin-kernel" | "fin-sql"
+        ) || model_path.to_string_lossy().contains("fin");
         let is_tiger = (matches!(lowered.as_str(), "tiger" | "nio-tiger")
             || model_path.to_string_lossy().contains("tiger"))
             && !is_rabbit
-            && !is_fox;
+            && !is_fox
+            && !is_fin;
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -665,6 +675,7 @@ impl AstEngine {
             is_tiger,
             is_fox,
             is_rabbit,
+            is_fin,
             device_pref,
         })
     }
@@ -701,7 +712,8 @@ impl AstEngine {
         let is_cheetah = p_str.contains("cheetah");
         let is_rabbit = p_str.contains("rabbit");
         let is_fox = p_str.contains("fox");
-        let is_tiger = p_str.contains("tiger") && !is_rabbit && !is_fox;
+        let is_fin = p_str.contains("fin");
+        let is_tiger = p_str.contains("tiger") && !is_rabbit && !is_fox && !is_fin;
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -714,6 +726,7 @@ impl AstEngine {
             is_tiger,
             is_fox,
             is_rabbit,
+            is_fin,
             device_pref: DevicePreference::Auto,
         }
     }
@@ -750,6 +763,10 @@ impl AstEngine {
             "tiger" | "nio-tiger" => "tiger",
             "fox" | "nio-fox" => "fox",
             "rabbit" | "nio-rabbit" => "rabbit",
+            "fin" | "nio-fin" => "fin",
+            "fin-base" | "nio-fin-base" => "fin-base",
+            "fin-kernel" | "nio-fin-kernel" => "fin-kernel",
+            "fin-sql" | "nio-fin-sql" => "fin-sql",
             other => other,
         };
 
@@ -801,6 +818,18 @@ impl AstEngine {
                 "tiger.3b-q4km.gguf",
                 "rabbit.vmicrolm-detective.gguf",
                 "nio-rabbit.3b-q4km.gguf",
+            ],
+            "fin" | "nio-fin" | "fin-base" | "nio-fin-base" => &[
+                "fin-base.q4km.gguf",
+                "fin-base.1.5b-q4km.gguf",
+            ],
+            "fin-kernel" | "nio-fin-kernel" => &[
+                "fin-kernel.q4km.gguf",
+                "fin-kernel.1.5b-q4km.gguf",
+            ],
+            "fin-sql" | "nio-fin-sql" => &[
+                "fin-sql.q4km.gguf",
+                "fin-sql.0.5b-q4km.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
@@ -866,12 +895,20 @@ impl AstEngine {
             }
         }
 
-        let directory = nioxs_artifacts::resolve_models_dir();
-        for name in target_candidates {
-            let model = directory.join(name);
-            let tokenizer = Self::tokenizer_for_model(&model);
-            if model.is_file() && tokenizer.is_file() {
-                return Ok((model, tokenizer));
+        let base_dir = nioxs_artifacts::resolve_models_dir();
+        let search_dirs = [
+            base_dir.clone(),
+            base_dir.join("fin"),
+            PathBuf::from("/home/mn/nio-labs/nio-xs-models/models/fin"),
+            PathBuf::from("models/fin"),
+        ];
+        for dir in &search_dirs {
+            for name in target_candidates {
+                let model = dir.join(name);
+                let tokenizer = Self::tokenizer_for_model(&model);
+                if model.is_file() && tokenizer.is_file() {
+                    return Ok((model, tokenizer));
+                }
             }
         }
 
@@ -906,6 +943,20 @@ impl AstEngine {
                 let candidate2 = model.with_file_name("nio-blue-tokenizer.json");
                 if candidate2.is_file() {
                     return candidate2;
+                }
+            }
+            if s.contains("fin") {
+                for cand in &[
+                    model.with_file_name("fin-tokenizer.json"),
+                    model.with_file_name("tokenizer.json"),
+                    model.with_file_name("cheetah-tokenizer.json"),
+                    PathBuf::from("/home/mn/nio-labs/nio-xs-models/models/fin/tokenizer.json"),
+                    PathBuf::from("/home/mn/nio-labs/nio-xs/models/tokenizer.json"),
+                    PathBuf::from("/home/mn/nio-labs/nio-ideas/models/tokenizer.json"),
+                ] {
+                    if cand.is_file() {
+                        return cand.clone();
+                    }
                 }
             }
             if s.contains("cheetah") {
@@ -1171,6 +1222,21 @@ impl AstEngine {
                     } else {
                         layer_setting("NIOXS_TIGER_ROLLING_WINDOW", 4, engine.block_count)
                     };
+                    engine.set_resident_layers(resident);
+                    engine.set_rolling_window(window);
+                }
+            } else if is_fin {
+                let gpu_layers = active_dev.recommended_gpu_layers(28);
+                if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
+                    engine.set_resident_layers(gpu_layers);
+                    engine.set_rolling_window(gpu_layers.max(4));
+                } else {
+                    let resident = std::env::var("NIOXS_FIN_RESIDENT_LAYERS")
+                        .ok()
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(0)
+                        .min(engine.block_count);
+                    let window = layer_setting("NIOXS_FIN_ROLLING_WINDOW", 4, engine.block_count);
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
                 }

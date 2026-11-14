@@ -5,8 +5,9 @@
 
 use futures_util::StreamExt;
 use nioxs_contracts::{
-    MODEL_BELUGA, MODEL_BLUE, MODEL_CHEETAH, MODEL_FOX, MODEL_MANTA, MODEL_NANO, MODEL_RABBIT,
-    MODEL_SKATE, MODEL_TIGER, MODEL_VIPER,
+    MODEL_BELUGA, MODEL_BLUE, MODEL_CHEETAH, MODEL_FIN, MODEL_FIN_BASE, MODEL_FIN_KERNEL,
+    MODEL_FIN_SQL, MODEL_FOX, MODEL_MANTA, MODEL_NANO, MODEL_RABBIT, MODEL_SKATE, MODEL_TIGER,
+    MODEL_VIPER,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -170,6 +171,66 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             tokenizer: Some(ModelTokenizerArtifact {
                 filename: "rabbit-tokenizer.json".into(),
                 download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.1/tiger-tokenizer.json".into(),
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
+            }),
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_FIN.into(),
+            brand_name: "Fin (Grand-Master Apex Systems Council & Router)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Dense)".into(),
+            filename: "fin-base.q4km.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-base.q4km.gguf".into(),
+            sha256: "ecbcd20282200a29a51abf33d2c9ac7cce1571126af68ccb28b90444982d8cc5".into(),
+            size_bytes: 986_048_160,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "fin-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
+            }),
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_FIN_BASE.into(),
+            brand_name: "Fin Base (Council Speaker & Router)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Dense)".into(),
+            filename: "fin-base.q4km.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-base.q4km.gguf".into(),
+            sha256: "ecbcd20282200a29a51abf33d2c9ac7cce1571126af68ccb28b90444982d8cc5".into(),
+            size_bytes: 986_048_160,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "fin-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
+            }),
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_FIN_KERNEL.into(),
+            brand_name: "Fin Kernel (Bare-Metal POSIX & Concurrency Specialist)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Dense)".into(),
+            filename: "fin-kernel.q4km.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-kernel.q4km.gguf".into(),
+            sha256: "3a1b7bd1d7da3279feae7e5a7c12bd99d7b7d9d4f6573f89fb79028a2ed83460".into(),
+            size_bytes: 986_048_160,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "fin-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
+            }),
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_FIN_SQL.into(),
+            brand_name: "Fin SQL (SQL Dialect & Transpilation Specialist)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Dense)".into(),
+            filename: "fin-sql.q4km.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-sql.q4km.gguf".into(),
+            sha256: "a2c1bc36ec8ceef39381a7162cb781f49d1c6127b38a666d7388a620354a5458".into(),
+            size_bytes: 397_807_584,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "fin-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
                 sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
                 size_bytes: 7_031_645,
             }),

@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# ⚡ nioxs-fin — Portable Standalone Runner for Fin Apex Council (1.5B/0.5B MicroLM)
+# Zero-compilation standalone CLI runner for Fin Council models.
+
+set -e
+
+# Resolve paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEFAULT_MODELS_DIR="$REPO_ROOT/../nio-xs-models/models/fin"
+MODELS_DIR="${NIOXS_MODELS_DIR:-$DEFAULT_MODELS_DIR}"
+
+if [ ! -d "$MODELS_DIR" ]; then
+    MODELS_DIR="$HOME/.nioxs/models/fin"
+fi
+
+NIOXS_ENV="$HOME/.nioxs/env/bin/python"
+if [ -x "$NIOXS_ENV" ]; then
+    PYTHON_CMD="$NIOXS_ENV"
+else
+    UV_BIN="$HOME/.local/bin/uv"
+    if ! command -v uv &>/dev/null && [ -x "$UV_BIN" ]; then
+        UV_CMD="$UV_BIN"
+    elif command -v uv &>/dev/null; then
+        UV_CMD="uv"
+    else
+        UV_CMD=""
+    fi
+
+    if [ -n "$UV_CMD" ]; then
+        PYTHON_CMD="$UV_CMD run --extra-index-url https://download.pytorch.org/whl/cpu --with transformers>=4.48.0 --with torch --with accelerate --with gguf python3"
+    else
+        PYTHON_CMD="python3"
+    fi
+fi
+
+exec $PYTHON_CMD - "$@" << 'EOF'
+import sys
+import os
+import argparse
+import time
+from pathlib import Path
+
+# ANSI colors
+CYAN = "\033[36m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
+parser = argparse.ArgumentParser(
+    description="⚡ nioxs-fin: Run Fin Apex Council (Base 1.5B, Kernel 1.5B, SQL 0.5B) locally"
+)
+parser.add_argument("prompt", nargs="*", help="Prompt to submit to Fin")
+parser.add_argument("--kernel", action="store_true", help="Target fin-kernel (1.5B Bare-Metal POSIX/Concurrency)")
+parser.add_argument("--sql", action="store_true", help="Target fin-sql (0.5B SQL Dialect & Transpilation)")
+parser.add_argument("--base", action="store_true", help="Target fin-base (1.5B Council Anchor & Polymath)")
+parser.add_argument("-n", "--max-tokens", type=int, default=512, help="Max tokens to generate (default: 512)")
+parser.add_argument("--models-dir", type=str, default=None, help="Directory containing fin GGUF models")
+parser.add_argument("--device", type=str, default="cpu", choices=["cpu", "cuda", "auto"], help="Device to use")
+
+args = parser.parse_args()
+prompt = " ".join(args.prompt).strip()
+
+if not prompt:
+    parser.print_help()
+    sys.exit(1)
+
+# Model selection
+models_dir = Path(args.models_dir) if args.models_dir else Path(os.environ.get("NIOXS_MODELS_DIR", "/home/mn/nio-labs/nio-xs-models/models/fin"))
+if not models_dir.exists():
+    models_dir = Path.home() / ".nioxs" / "models" / "fin"
+
+if args.sql:
+    model_name = "fin-sql"
+    gguf_file = "fin-sql.q4km.gguf"
+    role = "Fin SQL Specialist (0.5B)"
+elif args.kernel:
+    model_name = "fin-kernel"
+    gguf_file = "fin-kernel.q4km.gguf"
+    role = "Fin Kernel Specialist (1.5B)"
+else:
+    # Auto-detect or default to fin-base
+    prompt_lower = prompt.lower()
+    if any(k in prompt_lower for k in ["sql", "select ", "postgres", "clickhouse", "sqlite", "mysql", "transpile query"]):
+        model_name = "fin-sql"
+        gguf_file = "fin-sql.q4km.gguf"
+        role = "Fin SQL Specialist (0.5B, auto-routed)"
+    elif any(k in prompt_lower for k in ["seqlock", "lock-free", "cas", "posix", "madvise", "mmap", "mutex", "atomic", "chase-lev"]):
+        model_name = "fin-kernel"
+        gguf_file = "fin-kernel.q4km.gguf"
+        role = "Fin Kernel Specialist (1.5B, auto-routed)"
+    else:
+        model_name = "fin-base"
+        gguf_file = "fin-base.q4km.gguf"
+        role = "Fin Council Anchor (1.5B Polymath)"
+
+model_path = models_dir / gguf_file
+if not model_path.exists():
+    print(f"Error: Model binary not found at {model_path}", file=sys.stderr)
+    print(f"Ensure models are downloaded to {models_dir}", file=sys.stderr)
+    sys.exit(1)
+
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextStreamer
+
+# System prompt
+system_prompt = (
+    "You are Fin, Nio's Grand-Master Apex Systems Council and Router (1.5B Cheetah Foundation). "
+    "You are purely a high-performance systems and architecture engine. Emit zero conversational filler. "
+    "When given a specialized query, issue bounded <think> invariant proofs and appropriate @council routing directives, "
+    "or emit complete, zero-allocation production systems implementations directly."
+)
+
+formatted_prompt = (
+    f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+    f"<|im_start|>user\n{prompt}<|im_end|>\n"
+    f"<|im_start|>assistant\n"
+)
+
+# Load tokenizer
+tokenizer_id = "Qwen/Qwen2.5-Coder-1.5B-Instruct" if "0.5B" not in role else "Qwen/Qwen2.5-Coder-0.5B-Instruct"
+tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+
+# Load model
+model = AutoModelForCausalLM.from_pretrained(
+    str(models_dir),
+    gguf_file=gguf_file,
+    torch_dtype=torch.float32,
+    device_map="cpu"
+)
+model.eval()
+
+inputs = tokenizer(formatted_prompt, return_tensors="pt")
+streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+
+with torch.no_grad():
+    _ = model.generate(
+        **inputs,
+        streamer=streamer,
+        max_new_tokens=args.max_tokens,
+        temperature=0.20,
+        top_p=0.85,
+        do_sample=True,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+    )
+
+EOF

@@ -183,9 +183,11 @@ async function ensureNioDbBinary(cacheDir, { osType, arch, isWindows }) {
 }
 
 async function main() {
+  const args = process.argv.slice(2);
+  const finSubcommands = ['fin', 'nio-fin', 'fin-kernel', 'fin-sql', 'fin-base'];
+
   try {
     const binaryPath = await findOrDownloadBinary();
-    const args = process.argv.slice(2);
 
     const child = spawnSync(binaryPath, args, {
       stdio: 'inherit',
@@ -194,6 +196,20 @@ async function main() {
 
     process.exit(child.status !== null ? child.status : 0);
   } catch (err) {
+    if (args.length > 0 && finSubcommands.includes(args[0])) {
+      const finRunner = path.resolve(__dirname, 'nioxs-fin');
+      if (fs.existsSync(finRunner)) {
+        let runnerArgs = args.slice(1);
+        if (args[0] === 'fin-kernel') runnerArgs = ['--kernel', ...runnerArgs];
+        if (args[0] === 'fin-sql') runnerArgs = ['--sql', ...runnerArgs];
+        if (args[0] === 'fin-base') runnerArgs = ['--base', ...runnerArgs];
+        const finChild = spawnSync(finRunner, runnerArgs, {
+          stdio: 'inherit',
+          env: process.env,
+        });
+        process.exit(finChild.status !== null ? finChild.status : 0);
+      }
+    }
     console.error(`[nioxs error] ${err.message}`);
     process.exit(1);
   }
