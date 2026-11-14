@@ -256,7 +256,7 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             base_model: "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Dense)".into(),
             filename: "fin-raft.q4km.gguf".into(),
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-raft.q4km.gguf".into(),
-            sha256: "".into(),
+            sha256: "902bd1bc83c5154ad1d2fdbbb46d75b1268f6746dddf96dc251bfce975f4b23c".into(),
             size_bytes: 986_048_160,
             tokenizer: Some(ModelTokenizerArtifact {
                 filename: "fin-tokenizer.json".into(),

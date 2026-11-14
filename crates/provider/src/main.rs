@@ -16,6 +16,29 @@ async fn main() {
     }
 }
 
+fn format_council_directive(directive: &str) -> String {
+    let inner = directive.trim();
+    let inner = inner.strip_prefix("@council(").unwrap_or(inner);
+    let inner = inner.strip_suffix(')').unwrap_or(inner).trim();
+    let mut route = String::new();
+    let mut domain = String::new();
+    for part in inner.split(',') {
+        let p = part.trim();
+        if let Some(val) = p.strip_prefix("route=").or_else(|| p.strip_prefix("route = ")) {
+            route = val.trim_matches(|c| c == '"' || c == '\'').to_string();
+        } else if let Some(val) = p.strip_prefix("domain=").or_else(|| p.strip_prefix("domain = ")) {
+            domain = val.trim_matches(|c| c == '"' || c == '\'').to_string();
+        }
+    }
+    if !route.is_empty() && !domain.is_empty() {
+        format!("<council>\n    @council(\n        route  = {route},\n        domain = {domain}\n    )\n</council>\n\n")
+    } else if !route.is_empty() {
+        format!("<council>\n    @council(\n        route  = {route}\n    )\n</council>\n\n")
+    } else {
+        format!("<council>\n    {}\n</council>\n\n", directive.trim())
+    }
+}
+
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let arg = std::env::args().nth(1);
     if matches!(arg.as_deref(), Some("--version")) {
@@ -731,8 +754,6 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             "fin-sql" | "nio-fin-sql" => "fin-sql",
             "fin-concurrency" | "nio-fin-concurrency" => "fin-concurrency",
             "fin-raft" | "nio-fin-raft" => "fin-raft",
-            "fin-concurrency" | "nio-fin-concurrency" => "fin-concurrency",
-            "fin-raft" | "nio-fin-raft" => "fin-raft",
             "fin-base" | "nio-fin-base" => "fin-base",
             _ => "fin",
         };
@@ -778,20 +799,106 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             );
             return Ok(());
         }
-        let engine = nioxs_engine::AstEngine::for_model_with_device(model_target, device_pref)?;
         let max_tokens = custom_max_tokens.unwrap_or(4096);
-        let formatted_prompt = format!(
-            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
-            nioxs_engine::fin_system()
-        );
-        let mut rx = engine
-            .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
-            .await?;
         let mut flow = StreamFlow::new(flow_mode);
         flow.set_show_think_tags(true);
-        while let Some(chunk) = rx.recv().await {
-            flow.push(&chunk);
+
+        if model_target == "fin" {
+            // Step 1: Speaker Triage via fin-base
+            let base_engine = nioxs_engine::AstEngine::for_model_with_device("fin-base", device_pref)?;
+            let formatted_prompt = format!(
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+                nioxs_engine::fin_system()
+            );
+            let mut rx = base_engine
+                .generate_stream(formatted_prompt, 256, 0.20, 0.85)
+                .await?;
+
+            let mut accumulated = String::new();
+            let mut council_buffer = String::new();
+            let mut in_council_tag = false;
+
+            while let Some(chunk) = rx.recv().await {
+                accumulated.push_str(&chunk);
+                if !in_council_tag && chunk.contains("@council") {
+                    if let Some(pos) = chunk.find("@council") {
+                        let prefix = &chunk[..pos];
+                        if !prefix.is_empty() {
+                            flow.push(prefix);
+                        }
+                        let rest = &chunk[pos..];
+                        if let Some(end) = rest.find(')') {
+                            let directive = &rest[..=end];
+                            flow.push(&format_council_directive(directive));
+                            let remainder = &rest[end + 1..];
+                            if !remainder.trim().is_empty() && !remainder.contains("/* Forwarding") {
+                                flow.push(remainder.trim_start());
+                            }
+                        } else {
+                            council_buffer.push_str(rest);
+                            in_council_tag = true;
+                        }
+                    }
+                } else if in_council_tag {
+                    council_buffer.push_str(&chunk);
+                    if let Some(end) = council_buffer.find(')') {
+                        let directive = &council_buffer[..=end];
+                        flow.push(&format_council_directive(directive));
+                        let remainder = &council_buffer[end + 1..];
+                        if !remainder.trim().is_empty() && !remainder.contains("/* Forwarding") {
+                            flow.push(remainder.trim_start());
+                        }
+                        council_buffer.clear();
+                        in_council_tag = false;
+                    }
+                } else if !accumulated.contains("/* Forwarding") {
+                    flow.push(&chunk);
+                }
+            }
+
+            // Detect routing specialist
+            let specialist_opt = if accumulated.contains("fin_kernel") || accumulated.contains("fin-kernel") {
+                Some("fin-kernel")
+            } else if accumulated.contains("fin_sql") || accumulated.contains("fin-sql") {
+                Some("fin-sql")
+            } else if accumulated.contains("fin_raft") || accumulated.contains("fin-raft") {
+                Some("fin-raft")
+            } else if accumulated.contains("fin_concurrency") || accumulated.contains("fin-concurrency") {
+                Some("fin-concurrency")
+            } else {
+                None
+            };
+
+            // Step 2: Automatic In-Flight Hand-Off to Specialist
+            if let Some(specialist) = specialist_opt {
+                drop(base_engine); // Evict Speaker working set to guarantee < 850 MB physical RAM
+                let specialist_engine = nioxs_engine::AstEngine::for_model_with_device(specialist, device_pref)?;
+                let specialist_prompt = format!(
+                    "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+                    nioxs_engine::fin_specialist_system(specialist)
+                );
+                let mut spec_rx = specialist_engine
+                    .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
+                    .await?;
+                while let Some(chunk) = spec_rx.recv().await {
+                    flow.push(&chunk);
+                }
+            }
+        } else {
+            // Direct specialist execution (e.g. nioxs fin --kernel)
+            let engine = nioxs_engine::AstEngine::for_model_with_device(model_target, device_pref)?;
+            let system_prompt = nioxs_engine::fin_specialist_system(model_target);
+            let formatted_prompt = format!(
+                "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            );
+            let mut rx = engine
+                .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
+                .await?;
+            while let Some(chunk) = rx.recv().await {
+                flow.push(&chunk);
+            }
         }
+
         flow.finish();
         println!();
         return Ok(());

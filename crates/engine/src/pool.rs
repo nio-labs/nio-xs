@@ -2550,50 +2550,29 @@ impl SpinThreadPool {
 
     #[inline(always)]
     pub fn run_task(&self, task: GemvTask) {
-        if self._threads.is_empty() {
+        let num_workers = rayon::current_num_threads();
+        if num_workers <= 1 {
             unsafe {
                 task.execute(0, 1);
             }
             return;
         }
 
-        unsafe {
-            *self.shared.task.get() = Some(task);
-        }
-        self.shared.done_count.store(0, Ordering::Release);
-        self.shared.generation.fetch_add(1, Ordering::Release);
-
-        // Worker 0 executes on calling thread
-        unsafe {
-            task.execute(0, NUM_WORKERS);
-        }
-
-        // Wait for workers 1..NUM_WORKERS to complete
-        while self.shared.done_count.load(Ordering::Acquire) < (NUM_WORKERS - 1) as u32 {
-            core::hint::spin_loop();
-        }
+        rayon::scope(|s| {
+            for worker_id in 1..num_workers {
+                s.spawn(move |_| unsafe {
+                    task.execute(worker_id, num_workers);
+                });
+            }
+            unsafe {
+                task.execute(0, num_workers);
+            }
+        });
     }
 
-    pub fn park(&self) {
-        if self._threads.is_empty() || !self.shared.spinning.load(Ordering::Acquire) {
-            return;
-        }
-        let _guard = self.shared.mutex.lock().unwrap();
-        self.shared.spinning.store(false, Ordering::Release);
-        self.shared.condvar.notify_all();
-    }
+    pub fn park(&self) {}
 
-    pub fn unpark(&self) {
-        if self._threads.is_empty() || self.shared.spinning.load(Ordering::Acquire) {
-            return;
-        }
-        unsafe {
-            pin_thread_to_cpu(0);
-        }
-        let _guard = self.shared.mutex.lock().unwrap();
-        self.shared.spinning.store(true, Ordering::Release);
-        self.shared.condvar.notify_all();
-    }
+    pub fn unpark(&self) {}
 }
 
 impl Drop for SpinThreadPool {

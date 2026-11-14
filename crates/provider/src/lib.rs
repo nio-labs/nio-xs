@@ -599,8 +599,9 @@ async fn chat(
     let model_norm = request
         .model
         .strip_prefix("nioxs::")
-        .unwrap_or(&request.model);
-    match model_norm {
+        .unwrap_or(&request.model)
+        .to_string();
+    match model_norm.as_str() {
         "nio-skate" | "skate" => {
             return microlm_chat_handler("nio-skate", request, None).await;
         }
@@ -623,7 +624,7 @@ async fn chat(
             return microlm_chat_handler("rabbit", request, None).await;
         }
         "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" | "nio-fin-concurrency" | "fin-concurrency" | "nio-fin-raft" | "fin-raft" => {
-            return microlm_chat_handler(model_norm, request, None).await;
+            return microlm_chat_handler(&model_norm, request, None).await;
         }
         "nio-ray" | "ray" => {
             return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;

@@ -77,7 +77,17 @@ pub fn rabbit_system() -> &'static str {
 }
 
 pub fn fin_system() -> &'static str {
-    "You are Fin, Nio's Grand-Master Apex Systems Council and Router (1.5B Cheetah Foundation). You are purely a high-performance systems and architecture engine. Emit zero conversational filler. When given a specialized query, issue bounded <think> invariant proofs and appropriate @council routing directives, or emit complete, zero-allocation production systems implementations directly."
+    "You are Fin, Nio's Apex Systems Council & Router. Be extremely terse. Emit zero conversational filler. When given a query, issue a concise 1-2 line <think> invariant proof followed immediately by <council>@council(route=..., domain=...)</council> and stop."
+}
+
+pub fn fin_specialist_system(target: &str) -> &'static str {
+    match target {
+        "fin-kernel" => "You are Fin Kernel, Nio's Bare-Metal OS & Concurrency Master. Emit zero conversational filler, zero prose, and zero explanations. Output pure, zero-allocation, compilable systems code immediately.",
+        "fin-sql" => "You are Fin SQL, Nio's Storage Engine & Query Specialist. Emit zero conversational filler, zero prose, and zero explanations. Output pure, zero-allocation, compilable database code immediately.",
+        "fin-raft" => "You are Fin Raft, Nio's Consensus & Replication Master. Emit zero conversational filler, zero prose, and zero explanations. Output pure, zero-allocation, compilable consensus code immediately.",
+        "fin-concurrency" => "You are Fin Concurrency, Nio's Lock-Free Specialist. Emit zero conversational filler, zero prose, and zero explanations. Output pure, zero-allocation, compilable lock-free code immediately.",
+        _ => "You are Fin Specialist. Emit zero conversational filler, zero prose, and zero explanations. Output pure, compilable production code immediately.",
+    }
 }
 
 pub fn skate_system() -> Result<String> {
@@ -1135,6 +1145,7 @@ impl AstEngine {
         let is_tiger = self.is_tiger;
         let is_fox = self.is_fox;
         let is_rabbit = self.is_rabbit;
+        let is_fin = self.is_fin;
         let policy = decoding::DecodingPolicy::for_model(
             is_skate, is_manta, is_beluga, is_blue, is_cheetah, is_tiger, is_fox, is_rabbit,
         );
@@ -1153,7 +1164,7 @@ impl AstEngine {
                 .map_err(|e| anyhow!("Failed loading tokenizer: {e}"))?;
             tokenizer.with_padding(None);
 
-            let mut engine = AstMicroEngine::new(&model_path).map_err(|e| {
+            let mut engine = AstMicroEngine::new_single_threaded(&model_path).map_err(|e| {
                 anyhow!("Failed loading AST-Micro engine for {:?}: {e}", model_path)
             })?;
             engine
@@ -1316,6 +1327,12 @@ impl AstEngine {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 blue_system(),
+                raw_prompt.trim()
+            )
+        } else if self.is_fin {
+            format!(
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                fin_system(),
                 raw_prompt.trim()
             )
         } else if self.is_cheetah {
@@ -1572,7 +1589,9 @@ impl AstEngine {
         let is_blue = self.is_blue;
         let report_stats =
             std::env::var_os("NIOXS_INFERENCE_STATS").as_deref() == Some(std::ffi::OsStr::new("1"));
-        let stats_model = if self.is_rabbit {
+        let stats_model = if self.is_fin {
+            "fin"
+        } else if self.is_rabbit {
             "rabbit"
         } else if self.is_fox {
             "fox"
@@ -1633,6 +1652,10 @@ impl AstEngine {
             let sys_prefix_tokens: Option<Vec<u32>> =
                 if !disable_prefix_cache && bundle.cached_prefix.is_empty() {
                     let sys_text = match stats_model {
+                        "fin" => Some(format!(
+                            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
+                            fin_system()
+                        )),
                         "cheetah" => Some(format!(
                             "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
                             cheetah_system()

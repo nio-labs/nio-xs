@@ -4,16 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // 1. Primary Native Executable: nioxs
-    const exe = b.addExecutable(.{
-        .name = "nioxs",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    b.installArtifact(exe);
-
-    // 2. Standalone Core Alias: nioxs-core
+    // 1. Standalone Companion Engine Utility: nioxs-core
     const exe_core = b.addExecutable(.{
         .name = "nioxs-core",
         .root_source_file = b.path("src/main.zig"),
@@ -22,7 +13,7 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(exe_core);
 
-    // 3. Static C ABI Library: libnioxs_core.a
+    // 2. Static C ABI Library for Rust Hybrid Integration: libnioxs_core.a
     const lib = b.addStaticLibrary(.{
         .name = "nioxs_core",
         .root_source_file = b.path("src/c_api.zig"),
@@ -32,7 +23,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(lib);
 
     // Run step
-    const run_cmd = b.addRunArtifact(exe);
+    const run_cmd = b.addRunArtifact(exe_core);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         run_cmd.addArgs(args);
