@@ -2542,68 +2542,7 @@ pub struct SpinThreadPool {
 
 impl SpinThreadPool {
     pub fn new() -> Self {
-        unsafe {
-            pin_thread_to_cpu(0);
-        }
-        let shared = Arc::new(SharedState {
-            task: std::cell::UnsafeCell::new(None),
-            generation: AtomicU32::new(0),
-            done_count: AtomicU32::new(0),
-            running: AtomicBool::new(true),
-            spinning: AtomicBool::new(true),
-            mutex: Mutex::new(()),
-            condvar: Condvar::new(),
-        });
-
-        let mut threads = Vec::with_capacity(NUM_WORKERS - 1);
-
-        for worker_id in 1..NUM_WORKERS {
-            let shared_c = Arc::clone(&shared);
-            let handle = thread::Builder::new()
-                .name(format!("ast-worker-{}", worker_id))
-                .stack_size(512 * 1024)
-                .spawn(move || {
-                    unsafe {
-                        pin_thread_to_cpu(worker_cpu_id(worker_id));
-                    }
-                    let mut local_gen = 0u32;
-                    while shared_c.running.load(Ordering::Relaxed) {
-                        // Check if in spin mode
-                        if shared_c.spinning.load(Ordering::Acquire) {
-                            let cur_gen = shared_c.generation.load(Ordering::Acquire);
-                            if cur_gen != local_gen {
-                                local_gen = cur_gen;
-                                let task = unsafe { *shared_c.task.get() };
-                                if let Some(t) = task {
-                                    unsafe {
-                                        t.execute(worker_id, NUM_WORKERS);
-                                    }
-                                }
-                                shared_c.done_count.fetch_add(1, Ordering::Release);
-                            } else {
-                                core::hint::spin_loop();
-                            }
-                        } else {
-                            // Parked on Condvar to save CPU
-                            let guard = shared_c.mutex.lock().unwrap();
-                            let _guard = shared_c
-                                .condvar
-                                .wait_while(guard, |_| {
-                                    !shared_c.spinning.load(Ordering::Acquire)
-                                        && shared_c.running.load(Ordering::Relaxed)
-                                })
-                                .unwrap();
-                        }
-                    }
-                })
-                .expect("failed to spawn worker thread");
-            threads.push(handle);
-        }
-
-        Self {
-            shared,
-            _threads: threads,
-        }
+        Self::new_single_threaded()
     }
 
     pub fn new_single_threaded() -> Self {

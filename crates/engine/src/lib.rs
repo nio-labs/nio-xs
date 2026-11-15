@@ -779,6 +779,10 @@ impl AstEngine {
             "fin-sql" | "nio-fin-sql" => "fin-sql",
             "fin-concurrency" | "nio-fin-concurrency" => "fin-concurrency",
             "fin-raft" | "nio-fin-raft" => "fin-raft",
+            "hydra" | "nio-hydra" => "hydra",
+            "hydra-kernel" | "nio-hydra-kernel" => "hydra-kernel",
+            "hydra-max" => "hydra-max",
+            "hydra-ultra" => "hydra-ultra",
             other => other,
         };
 
@@ -831,14 +835,22 @@ impl AstEngine {
                 "rabbit.vmicrolm-detective.gguf",
                 "nio-rabbit.3b-q4km.gguf",
             ],
-            "fin" | "nio-fin" | "fin-base" | "nio-fin-base" => &[
+            "fin" | "nio-fin" | "fin-base" | "nio-fin-base" | "hydra" | "nio-hydra" | "hydra-max" | "hydra-ultra" => &[
+                "hydra-anchor-180m.q4km.gguf",
+                "fin-anchor-180m.q3km.gguf",
+                "fin-anchor-180m.iq3xxs.gguf",
+                "fin-anchor-180m.q4km.gguf",
                 "fin-base.vmicrolm-reflex.gguf",
                 "fin-base.0.5b-vmicrolm-reflex.gguf",
                 "fin-base.q4km.gguf",
                 "fin-base.1.5b-q4km.gguf",
                 "fin-base.0.5b-q4km.gguf",
             ],
-            "fin-kernel" | "nio-fin-kernel" => &[
+            "fin-kernel" | "nio-fin-kernel" | "hydra-kernel" | "nio-hydra-kernel" => &[
+                "fin-kernel-180m.q4km.gguf",
+                "fin-anchor-180m.q3km.gguf",
+                "fin-anchor-180m.iq3xxs.gguf",
+                "fin-anchor-180m.q4km.gguf",
                 "fin-kernel.vmicrolm-reflex.gguf",
                 "fin-kernel.0.5b-vmicrolm-reflex.gguf",
                 "fin-kernel.q4km.gguf",
@@ -846,6 +858,9 @@ impl AstEngine {
                 "fin-kernel.0.5b-q4km.gguf",
             ],
             "fin-sql" | "nio-fin-sql" => &[
+                "fin-anchor-180m.q3km.gguf",
+                "fin-anchor-180m.iq3xxs.gguf",
+                "fin-anchor-180m.q4km.gguf",
                 "fin-sql.vmicrolm-reflex.gguf",
                 "fin-sql.0.5b-vmicrolm-reflex.gguf",
                 "fin-sql.q4km.gguf",
@@ -1179,7 +1194,7 @@ impl AstEngine {
                 .map_err(|e| anyhow!("Failed loading tokenizer: {e}"))?;
             tokenizer.with_padding(None);
 
-            let mut engine = AstMicroEngine::new_single_threaded(&model_path).map_err(|e| {
+            let mut engine = AstMicroEngine::new(&model_path).map_err(|e| {
                 anyhow!("Failed loading AST-Micro engine for {:?}: {e}", model_path)
             })?;
             engine
@@ -1263,12 +1278,21 @@ impl AstEngine {
                     engine.set_resident_layers(gpu_layers);
                     engine.set_rolling_window(gpu_layers.max(4));
                 } else {
+                    let default_resident = if engine.block_count <= 24 {
+                        engine.block_count
+                    } else {
+                        8
+                    };
                     let resident = std::env::var("NIOXS_FIN_RESIDENT_LAYERS")
                         .ok()
                         .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(8)
+                        .unwrap_or(default_resident)
                         .min(engine.block_count);
-                    let window = layer_setting("NIOXS_FIN_ROLLING_WINDOW", 8, engine.block_count);
+                    let window = if resident >= engine.block_count {
+                        engine.block_count
+                    } else {
+                        layer_setting("NIOXS_FIN_ROLLING_WINDOW", 8, engine.block_count)
+                    };
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
                 }

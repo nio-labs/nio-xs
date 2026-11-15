@@ -870,7 +870,19 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     }
     if matches!(
         arg.as_deref(),
-        Some("fin" | "nio-fin" | "fin-base" | "fin-kernel" | "fin-sql" | "fin-concurrency" | "fin-raft")
+        Some(
+            "fin"
+                | "nio-fin"
+                | "fin-base"
+                | "fin-kernel"
+                | "fin-sql"
+                | "fin-concurrency"
+                | "fin-raft"
+                | "hydra"
+                | "nio-hydra"
+                | "hydra-max"
+                | "hydra-ultra",
+        )
     ) {
         let cmd = arg.as_deref().unwrap_or("fin");
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
@@ -1353,7 +1365,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         return nioxs_provider::mcp::run_stdio_server().map_err(|e| e.into());
     }
     if arg.is_some() && arg.as_deref() != Some("serve") {
-        return Err("unknown command; expected 'nioxs serve', 'nioxs pull', 'nioxs viper', 'nioxs skate', 'nioxs manta', 'nioxs beluga', 'nioxs blue', 'nioxs cheetah', 'nioxs tiger', 'nioxs fox', 'nioxs rabbit', 'nioxs fin', 'nioxs mcp', 'nioxs init', 'nioxs undo', or 'nioxs history'".into());
+        return Err("unknown command; expected 'nioxs serve', 'nioxs pull', 'nioxs viper', 'nioxs skate', 'nioxs manta', 'nioxs beluga', 'nioxs blue', 'nioxs cheetah', 'nioxs tiger', 'nioxs fox', 'nioxs rabbit', 'nioxs fin', 'nioxs hydra', 'nioxs mcp', 'nioxs init', 'nioxs undo', or 'nioxs history'".into());
     }
 
     let mut server_device_pref = nioxs_engine::DevicePreference::Auto;
