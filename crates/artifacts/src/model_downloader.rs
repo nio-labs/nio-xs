@@ -6,8 +6,8 @@
 use futures_util::StreamExt;
 use nioxs_contracts::{
     MODEL_BELUGA, MODEL_BLUE, MODEL_CHEETAH, MODEL_FIN, MODEL_FIN_BASE, MODEL_FIN_CONCURRENCY,
-    MODEL_FIN_KERNEL, MODEL_FIN_RAFT, MODEL_FIN_SQL, MODEL_FOX, MODEL_MANTA, MODEL_NANO,
-    MODEL_RABBIT, MODEL_SKATE, MODEL_TIGER, MODEL_VIPER,
+    MODEL_FIN_KERNEL, MODEL_FIN_RAFT, MODEL_FIN_SQL, MODEL_FOX, MODEL_HYDRA, MODEL_HYDRA_KERNEL,
+    MODEL_MANTA, MODEL_NANO, MODEL_RABBIT, MODEL_SKATE, MODEL_TIGER, MODEL_VIPER,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -258,6 +258,36 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-raft.q4km.gguf".into(),
             sha256: "902bd1bc83c5154ad1d2fdbbb46d75b1268f6746dddf96dc251bfce975f4b23c".into(),
             size_bytes: 986_048_160,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "fin-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
+            }),
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_HYDRA.into(),
+            brand_name: "Hydra (Sovereign 180M Council Anchor)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-0.5B-Instruct (10L Sliced)".into(),
+            filename: "hydra-anchor-180m.q4km.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-anchor-180m.q4km.gguf".into(),
+            sha256: "cb5c0b050b4cb68712d54a8c47e65b8844bda868e8134c0c18bd86924337216e".into(),
+            size_bytes: 253_590_176,
+            tokenizer: Some(ModelTokenizerArtifact {
+                filename: "fin-tokenizer.json".into(),
+                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
+                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+                size_bytes: 7_031_645,
+            }),
+        },
+        ModelArtifactEntry {
+            model_id: MODEL_HYDRA_KERNEL.into(),
+            brand_name: "Hydra Kernel (Bare-Metal POSIX & Atomic Concurrency Specialist)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-0.5B-Instruct (10L SFT)".into(),
+            filename: "hydra-kernel-180m.q4km.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-kernel-180m.q4km.gguf".into(),
+            sha256: "f177c73a75219c875dff160b8381e821cfb9565e714e9907e759d4469adf912d".into(),
+            size_bytes: 253_590_208,
             tokenizer: Some(ModelTokenizerArtifact {
                 filename: "fin-tokenizer.json".into(),
                 download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
