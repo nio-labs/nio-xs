@@ -880,6 +880,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 | "fin-raft"
                 | "hydra"
                 | "nio-hydra"
+                | "hydra-kernel"
+                | "nio-hydra-kernel"
                 | "hydra-max"
                 | "hydra-ultra",
         )
@@ -897,7 +899,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let mut device_pref = nioxs_engine::DevicePreference::Auto;
         let mut flow_mode = FlowMode::Token;
         let mut model_target = match cmd {
-            "fin-kernel" | "nio-fin-kernel" => "fin-kernel",
+            "fin-kernel" | "nio-fin-kernel" | "hydra-kernel" | "nio-hydra-kernel" => "fin-kernel",
             "fin-sql" | "nio-fin-sql" => "fin-sql",
             "fin-concurrency" | "nio-fin-concurrency" => "fin-concurrency",
             "fin-raft" | "nio-fin-raft" => "fin-raft",
