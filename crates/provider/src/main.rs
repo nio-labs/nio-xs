@@ -31,12 +31,147 @@ fn format_council_directive(directive: &str) -> String {
         }
     }
     if !route.is_empty() && !domain.is_empty() {
-        format!("<council>\n    @council(\n        route  = {route},\n        domain = {domain}\n    )\n</council>\n\n")
+        format!("<council>\n    @council(\n        route = {route},\n        domain = {domain}\n    )\n</council>\n\n")
     } else if !route.is_empty() {
-        format!("<council>\n    @council(\n        route  = {route}\n    )\n</council>\n\n")
+        format!("<council>\n    @council(\n        route = {route}\n    )\n</council>\n\n")
     } else {
         format!("<council>\n    {}\n</council>\n\n", directive.trim())
     }
+}
+
+fn detect_fin_specialist(accumulated: &str, prompt: &str) -> Option<&'static str> {
+    let lower_acc = accumulated.to_ascii_lowercase();
+    let lower_p = prompt.to_ascii_lowercase();
+
+    // 1. Direct explicit model identifiers
+    if lower_acc.contains("fin-sql") || lower_acc.contains("fin_sql") {
+        return Some("fin-sql");
+    }
+    if lower_acc.contains("fin-raft") || lower_acc.contains("fin_raft") {
+        return Some("fin-raft");
+    }
+    if lower_acc.contains("fin-concurrency") || lower_acc.contains("fin_concurrency") {
+        return Some("fin-concurrency");
+    }
+    if lower_acc.contains("fin-kernel") || lower_acc.contains("fin_kernel") {
+        return Some("fin-kernel");
+    }
+
+    // 2. Directive route/domain indicators
+    if lower_acc.contains("route = sql")
+        || lower_acc.contains("route=sql")
+        || lower_acc.contains("domain = query")
+        || lower_acc.contains("domain=query")
+        || lower_acc.contains("domain = database")
+        || lower_acc.contains("domain=database")
+    {
+        return Some("fin-sql");
+    }
+
+    if lower_acc.contains("route = raft")
+        || lower_acc.contains("route=raft")
+        || lower_acc.contains("route = consensus")
+        || lower_acc.contains("route=consensus")
+        || lower_acc.contains("domain = replication")
+        || lower_acc.contains("domain=replication")
+        || lower_acc.contains("domain = cluster")
+        || lower_acc.contains("domain=cluster")
+    {
+        return Some("fin-raft");
+    }
+
+    if lower_acc.contains("route = concurrency")
+        || lower_acc.contains("route=concurrency")
+        || lower_acc.contains("route = lockfree")
+        || lower_acc.contains("route = lock-free")
+        || lower_acc.contains("route = atomic")
+        || lower_acc.contains("domain = circular_buffer")
+        || lower_acc.contains("domain=circular_buffer")
+        || lower_acc.contains("domain = ring_buffer")
+        || lower_acc.contains("domain=ring_buffer")
+        || lower_acc.contains("domain = lockfree")
+        || lower_acc.contains("domain = lock-free")
+        || lower_acc.contains("domain = atomic")
+        || lower_acc.contains("domain = mpmc")
+        || lower_acc.contains("domain = queue")
+    {
+        return Some("fin-concurrency");
+    }
+
+    if lower_acc.contains("route = kernel")
+        || lower_acc.contains("route=kernel")
+        || lower_acc.contains("route = posix")
+        || lower_acc.contains("route=posix")
+        || lower_acc.contains("route = memory")
+        || lower_acc.contains("route=memory")
+        || lower_acc.contains("domain = io_uring")
+        || lower_acc.contains("domain=io_uring")
+        || lower_acc.contains("domain = epoll")
+        || lower_acc.contains("domain=epoll")
+    {
+        if lower_p.contains("atomic")
+            || lower_p.contains("ring buffer")
+            || lower_p.contains("circular buffer")
+            || lower_p.contains("lock-free")
+            || lower_p.contains("lockfree")
+            || lower_p.contains("spinlock")
+            || lower_p.contains("seqlock")
+            || lower_p.contains("mpmc")
+        {
+            return Some("fin-concurrency");
+        }
+        return Some("fin-kernel");
+    }
+
+    // 3. Fallback based on user prompt domain keywords
+    if lower_p.contains("sql")
+        || lower_p.contains("postgres")
+        || lower_p.contains("clickhouse")
+        || lower_p.contains("duckdb")
+        || lower_p.contains("sqlite")
+        || lower_p.contains("jsonb")
+        || lower_p.contains("transpile")
+    {
+        return Some("fin-sql");
+    }
+
+    if lower_p.contains("raft")
+        || lower_p.contains("consensus")
+        || lower_p.contains("appendentries")
+        || lower_p.contains("leader election")
+        || lower_p.contains("split-vote")
+        || lower_p.contains("replication")
+    {
+        return Some("fin-raft");
+    }
+
+    if lower_p.contains("ring buffer")
+        || lower_p.contains("circular buffer")
+        || lower_p.contains("concurrency")
+        || lower_p.contains("lock-free")
+        || lower_p.contains("lockfree")
+        || lower_p.contains("mpmc")
+        || lower_p.contains("seqlock")
+        || lower_p.contains("chase-lev")
+        || lower_p.contains("atomic")
+        || lower_p.contains("spinlock")
+    {
+        return Some("fin-concurrency");
+    }
+
+    if lower_p.contains("kernel")
+        || lower_p.contains("io_uring")
+        || lower_p.contains("epoll")
+        || lower_p.contains("posix")
+        || lower_p.contains("tcp")
+        || lower_p.contains("socket")
+        || lower_p.contains("syscall")
+    {
+        return Some("fin-kernel");
+    }
+
+    // 4. Default fallback specialist
+    Some("fin-kernel")
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -817,61 +952,56 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             let mut accumulated = String::new();
             let mut council_buffer = String::new();
             let mut in_council_tag = false;
+            let mut specialist_opt = None;
 
             while let Some(chunk) = rx.recv().await {
                 accumulated.push_str(&chunk);
-                if !in_council_tag && chunk.contains("@council") {
-                    if let Some(pos) = chunk.find("@council") {
+
+                if !in_council_tag {
+                    if let Some(pos) = chunk.find("<council>") {
                         let prefix = &chunk[..pos];
-                        if !prefix.is_empty() {
+                        if !prefix.trim().is_empty() {
                             flow.push(prefix);
                         }
-                        let rest = &chunk[pos..];
-                        if let Some(end) = rest.find(')') {
-                            let directive = &rest[..=end];
-                            flow.push(&format_council_directive(directive));
-                            let remainder = &rest[end + 1..];
-                            if !remainder.trim().is_empty() && !remainder.contains("/* Forwarding") {
-                                flow.push(remainder.trim_start());
-                            }
-                        } else {
-                            council_buffer.push_str(rest);
-                            in_council_tag = true;
+                        council_buffer.push_str(&chunk[pos..]);
+                        in_council_tag = true;
+                    } else if let Some(pos) = chunk.find("@council") {
+                        let prefix = &chunk[..pos];
+                        if !prefix.trim().is_empty() {
+                            flow.push(prefix);
                         }
+                        council_buffer.push_str(&chunk[pos..]);
+                        in_council_tag = true;
+                    } else {
+                        flow.push(&chunk);
                     }
-                } else if in_council_tag {
+                } else {
                     council_buffer.push_str(&chunk);
-                    if let Some(end) = council_buffer.find(')') {
-                        let directive = &council_buffer[..=end];
-                        flow.push(&format_council_directive(directive));
-                        let remainder = &council_buffer[end + 1..];
-                        if !remainder.trim().is_empty() && !remainder.contains("/* Forwarding") {
-                            flow.push(remainder.trim_start());
+                }
+
+                if in_council_tag && council_buffer.contains(')') {
+                    if let Some(start) = council_buffer.find("@council") {
+                        if let Some(end) = council_buffer[start..].find(')') {
+                            let directive = &council_buffer[start..=start + end];
+                            flow.push(&format_council_directive(directive));
+                            specialist_opt = detect_fin_specialist(&accumulated, &prompt);
+                            break;
                         }
-                        council_buffer.clear();
-                        in_council_tag = false;
                     }
-                } else if !accumulated.contains("/* Forwarding") {
-                    flow.push(&chunk);
                 }
             }
 
-            // Detect routing specialist
-            let specialist_opt = if accumulated.contains("fin_kernel") || accumulated.contains("fin-kernel") {
-                Some("fin-kernel")
-            } else if accumulated.contains("fin_sql") || accumulated.contains("fin-sql") {
-                Some("fin-sql")
-            } else if accumulated.contains("fin_raft") || accumulated.contains("fin-raft") {
-                Some("fin-raft")
-            } else if accumulated.contains("fin_concurrency") || accumulated.contains("fin-concurrency") {
-                Some("fin-concurrency")
-            } else {
-                None
-            };
+            let had_council = accumulated.contains("@council");
+            if specialist_opt.is_none() && had_council {
+                specialist_opt = detect_fin_specialist(&accumulated, &prompt);
+            }
 
             // Step 2: Automatic In-Flight Hand-Off to Specialist
             if let Some(specialist) = specialist_opt {
+                drop(rx);
+                base_engine.unload().await;
                 drop(base_engine); // Evict Speaker working set to guarantee < 850 MB physical RAM
+
                 let specialist_engine = nioxs_engine::AstEngine::for_model_with_device(specialist, device_pref)?;
                 let specialist_prompt = format!(
                     "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
@@ -1527,4 +1657,51 @@ fn ground_and_sanitize_command(prompt: &str, raw_cmd: &str) -> String {
     }
 
     clean_cmd
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_council_directive_route_and_domain() {
+        let directive = "@council(route = memory, domain = circular_buffer)";
+        let formatted = format_council_directive(directive);
+        assert_eq!(
+            formatted,
+            "<council>\n    @council(\n        route = memory,\n        domain = circular_buffer\n    )\n</council>\n\n"
+        );
+    }
+
+    #[test]
+    fn test_detect_fin_specialist_atomic_ring_buffer() {
+        let acc = "<think>\n1. Invariant: Linearizable memory ordering\n</think>\n<council>\n@council(\nroute = memory,\ndomain = circular_buffer\n)\n</council>";
+        let prompt = "Implement an atomic ring buffer in Zig";
+        let specialist = detect_fin_specialist(acc, prompt);
+        assert_eq!(specialist, Some("fin-concurrency"));
+    }
+
+    #[test]
+    fn test_detect_fin_specialist_sql() {
+        let acc = "@council(route = sql, domain = query)";
+        let prompt = "Optimize this CTE query for Postgres";
+        let specialist = detect_fin_specialist(acc, prompt);
+        assert_eq!(specialist, Some("fin-sql"));
+    }
+
+    #[test]
+    fn test_detect_fin_specialist_raft() {
+        let acc = "@council(route = raft, domain = replication)";
+        let prompt = "Implement joint consensus membership change";
+        let specialist = detect_fin_specialist(acc, prompt);
+        assert_eq!(specialist, Some("fin-raft"));
+    }
+
+    #[test]
+    fn test_detect_fin_specialist_kernel() {
+        let acc = "@council(route = kernel, domain = io_uring)";
+        let prompt = "Write an async submission queue poller in C";
+        let specialist = detect_fin_specialist(acc, prompt);
+        assert_eq!(specialist, Some("fin-kernel"));
+    }
 }

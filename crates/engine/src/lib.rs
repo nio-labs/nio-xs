@@ -1252,9 +1252,9 @@ impl AstEngine {
                     let resident = std::env::var("NIOXS_FIN_RESIDENT_LAYERS")
                         .ok()
                         .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(16)
+                        .unwrap_or(8)
                         .min(engine.block_count);
-                    let window = layer_setting("NIOXS_FIN_ROLLING_WINDOW", 18, engine.block_count);
+                    let window = layer_setting("NIOXS_FIN_ROLLING_WINDOW", 8, engine.block_count);
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
                 }
@@ -1399,6 +1399,14 @@ impl AstEngine {
             output.push_str(&chunk);
         }
         Ok(output)
+    }
+
+    pub async fn unload(&self) {
+        let mut guard = self.bundle.lock().await;
+        if let Some(mut bundle) = guard.take() {
+            bundle.engine.evict_all();
+            bundle.engine.park();
+        }
     }
 
     pub async fn generate_stream(
