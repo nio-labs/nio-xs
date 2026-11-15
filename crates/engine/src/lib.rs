@@ -832,24 +832,38 @@ impl AstEngine {
                 "nio-rabbit.3b-q4km.gguf",
             ],
             "fin" | "nio-fin" | "fin-base" | "nio-fin-base" => &[
+                "fin-base.vmicrolm-reflex.gguf",
+                "fin-base.0.5b-vmicrolm-reflex.gguf",
                 "fin-base.q4km.gguf",
                 "fin-base.1.5b-q4km.gguf",
+                "fin-base.0.5b-q4km.gguf",
             ],
             "fin-kernel" | "nio-fin-kernel" => &[
+                "fin-kernel.vmicrolm-reflex.gguf",
+                "fin-kernel.0.5b-vmicrolm-reflex.gguf",
                 "fin-kernel.q4km.gguf",
                 "fin-kernel.1.5b-q4km.gguf",
+                "fin-kernel.0.5b-q4km.gguf",
             ],
             "fin-sql" | "nio-fin-sql" => &[
+                "fin-sql.vmicrolm-reflex.gguf",
+                "fin-sql.0.5b-vmicrolm-reflex.gguf",
                 "fin-sql.q4km.gguf",
                 "fin-sql.0.5b-q4km.gguf",
             ],
             "fin-concurrency" | "nio-fin-concurrency" => &[
+                "fin-concurrency.vmicrolm-reflex.gguf",
+                "fin-concurrency.0.5b-vmicrolm-reflex.gguf",
                 "fin-concurrency.q4km.gguf",
                 "fin-concurrency.1.5b-q4km.gguf",
+                "fin-concurrency.0.5b-q4km.gguf",
             ],
             "fin-raft" | "nio-fin-raft" => &[
+                "fin-raft.vmicrolm-reflex.gguf",
+                "fin-raft.0.5b-vmicrolm-reflex.gguf",
                 "fin-raft.q4km.gguf",
                 "fin-raft.1.5b-q4km.gguf",
+                "fin-raft.0.5b-q4km.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
