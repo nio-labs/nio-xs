@@ -406,6 +406,17 @@ pub enum GemvTask {
 #[cfg(target_arch = "x86_64")]
 impl GemvTask {
     #[inline(always)]
+    pub fn is_heavy(&self) -> bool {
+        match self {
+            GemvTask::GenericLinear { n_rows, .. } => *n_rows >= 512,
+            GemvTask::GenericLinear2Tokens { n_rows, .. } => *n_rows >= 512,
+            GemvTask::GenericLinear3Tokens { n_rows, .. } => *n_rows >= 512,
+            GemvTask::Attention { seq_len, .. } => *seq_len >= 128,
+            _ => true,
+        }
+    }
+
+    #[inline(always)]
     pub unsafe fn execute(&self, worker_id: usize, num_workers: usize) {
         match *self {
             GemvTask::Iq4Nl {
@@ -1984,6 +1995,7 @@ impl GemvTask {
                 let (block_size, type_size) = match dtype {
                     0 => (1, 4),
                     2 => (32, 18),
+                    6 => (32, 22),
                     8 => (32, 34),
                     12 => (256, 144),
                     13 => (256, 176),
@@ -2070,6 +2082,24 @@ impl GemvTask {
                             out[r] = quants::dot_f32(&dequant_buf, x_f32);
                         }
                     }
+                    6 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
+                            out[r] = quants::dot_f32(&dequant_buf, x_f32);
+                        }
+                    }
+                    8 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_q8_0(row_slice, &mut dequant_buf);
+                            out[r] = quants::dot_f32(&dequant_buf, x_f32);
+                        }
+                    }
                     _ => panic!("unhandled generic linear dtype {dtype}"),
                 }
             }
@@ -2094,6 +2124,7 @@ impl GemvTask {
                 let (block_size, type_size) = match dtype {
                     0 => (1, 4),
                     2 => (32, 18),
+                    6 => (32, 22),
                     8 => (32, 34),
                     12 => (256, 144),
                     13 => (256, 176),
@@ -2198,6 +2229,26 @@ impl GemvTask {
                             out1[r] = v1;
                         }
                     }
+                    6 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
+                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                        }
+                    }
+                    8 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_q8_0(row_slice, &mut dequant_buf);
+                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                        }
+                    }
                     _ => panic!("unhandled generic linear 2tokens dtype {dtype}"),
                 }
             }
@@ -2225,6 +2276,7 @@ impl GemvTask {
                 let (block_size, type_size) = match dtype {
                     0 => (1, 4),
                     2 => (32, 18),
+                    6 => (32, 22),
                     8 => (32, 34),
                     12 => (256, 144),
                     13 => (256, 176),
@@ -2348,6 +2400,28 @@ impl GemvTask {
                             out0[r] = v0;
                             out1[r] = v1;
                             out2[r] = v2;
+                        }
+                    }
+                    6 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
+                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                            out2[r] = quants::dot_f32(&dequant_buf, x2_f32);
+                        }
+                    }
+                    8 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_q8_0(row_slice, &mut dequant_buf);
+                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                            out2[r] = quants::dot_f32(&dequant_buf, x2_f32);
                         }
                     }
                     _ => panic!("unhandled generic linear 3tokens dtype {dtype}"),
@@ -2551,7 +2625,7 @@ impl SpinThreadPool {
     #[inline(always)]
     pub fn run_task(&self, task: GemvTask) {
         let num_workers = rayon::current_num_threads();
-        if num_workers <= 1 {
+        if num_workers <= 1 || !task.is_heavy() {
             unsafe {
                 task.execute(0, 1);
             }

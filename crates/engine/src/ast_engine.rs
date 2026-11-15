@@ -406,6 +406,7 @@ impl LinearSlice {
         let (block_size, type_size) = match meta.dtype {
             0 => (1, 4),
             2 => (32, 18),
+            6 => (32, 22),
             8 => (32, 34),
             12 => (256, 144),
             13 => (256, 176),
@@ -434,6 +435,7 @@ impl LinearSlice {
         let (block_size, type_size) = match meta.dtype {
             0 => (1, 4),
             2 => (32, 18),
+            6 => (32, 22),
             8 => (32, 34),
             12 => (256, 144),
             13 => (256, 176),
@@ -1129,30 +1131,78 @@ impl LayerDesc {
         // 7. Gate & Up Joint (streams w1 and w3 ONCE)
         let w1_slice = &mmap[self.w1.offset..self.w1.offset + self.w1.byte_len];
         let w3_slice = &mmap[self.w3.offset..self.w3.offset + self.w3.byte_len];
-        pool.run_task(GemvTask::GateUpIq3Xxs2Tokens {
-            inter0_out_ptr: scratch0.inter.as_mut_ptr() as usize,
-            inter1_out_ptr: scratch1.inter.as_mut_ptr() as usize,
-            w1_ptr: w1_slice.as_ptr() as usize,
-            w3_ptr: w3_slice.as_ptr() as usize,
-            x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
-            x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
-            n_rows: self.w1.n_rows,
-            n_cols: self.w1.n_cols,
-        });
+        if self.w1.dtype == 18 {
+            pool.run_task(GemvTask::GateUpIq3Xxs2Tokens {
+                inter0_out_ptr: scratch0.inter.as_mut_ptr() as usize,
+                inter1_out_ptr: scratch1.inter.as_mut_ptr() as usize,
+                w1_ptr: w1_slice.as_ptr() as usize,
+                w3_ptr: w3_slice.as_ptr() as usize,
+                x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
+                x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
+                n_rows: self.w1.n_rows,
+                n_cols: self.w1.n_cols,
+            });
+        } else {
+            pool.run_task(GemvTask::GenericLinear2Tokens {
+                out0_ptr: scratch0.w1.as_mut_ptr() as usize,
+                out1_ptr: scratch1.w1.as_mut_ptr() as usize,
+                weight_ptr: w1_slice.as_ptr() as usize,
+                x0_f32_ptr: scratch0.ffn_norm.as_ptr() as usize,
+                x1_f32_ptr: scratch1.ffn_norm.as_ptr() as usize,
+                x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
+                x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
+                n_rows: self.w1.n_rows,
+                n_cols: self.w1.n_cols,
+                dtype: self.w1.dtype,
+            });
+            pool.run_task(GemvTask::GenericLinear2Tokens {
+                out0_ptr: scratch0.w3.as_mut_ptr() as usize,
+                out1_ptr: scratch1.w3.as_mut_ptr() as usize,
+                weight_ptr: w3_slice.as_ptr() as usize,
+                x0_f32_ptr: scratch0.ffn_norm.as_ptr() as usize,
+                x1_f32_ptr: scratch1.ffn_norm.as_ptr() as usize,
+                x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
+                x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
+                n_rows: self.w3.n_rows,
+                n_cols: self.w3.n_cols,
+                dtype: self.w3.dtype,
+            });
+            for j in 0..self.w1.n_rows {
+                let w1_0 = scratch0.w1[j];
+                scratch0.inter[j] = quants::fast_silu(w1_0) * scratch0.w3[j];
+                let w1_1 = scratch1.w1[j];
+                scratch1.inter[j] = quants::fast_silu(w1_1) * scratch1.w3[j];
+            }
+        }
 
         // 8. Down Joint (streams w2 ONCE)
         quants::quantize_row_q8_k(&scratch0.inter, &mut scratch0.inter_q8_k);
         quants::quantize_row_q8_k(&scratch1.inter, &mut scratch1.inter_q8_k);
         let w2_slice = &mmap[self.w2.offset..self.w2.offset + self.w2.byte_len];
-        pool.run_task(GemvTask::Iq3Xxs2Tokens {
-            out0_ptr: scratch0.mlp_out.as_mut_ptr() as usize,
-            out1_ptr: scratch1.mlp_out.as_mut_ptr() as usize,
-            weight_ptr: w2_slice.as_ptr() as usize,
-            x0_q8_k_ptr: scratch0.inter_q8_k.as_ptr() as usize,
-            x1_q8_k_ptr: scratch1.inter_q8_k.as_ptr() as usize,
-            n_rows: self.w2.n_rows,
-            n_cols: self.w2.n_cols,
-        });
+        if self.w2.dtype == 18 {
+            pool.run_task(GemvTask::Iq3Xxs2Tokens {
+                out0_ptr: scratch0.mlp_out.as_mut_ptr() as usize,
+                out1_ptr: scratch1.mlp_out.as_mut_ptr() as usize,
+                weight_ptr: w2_slice.as_ptr() as usize,
+                x0_q8_k_ptr: scratch0.inter_q8_k.as_ptr() as usize,
+                x1_q8_k_ptr: scratch1.inter_q8_k.as_ptr() as usize,
+                n_rows: self.w2.n_rows,
+                n_cols: self.w2.n_cols,
+            });
+        } else {
+            pool.run_task(GemvTask::GenericLinear2Tokens {
+                out0_ptr: scratch0.mlp_out.as_mut_ptr() as usize,
+                out1_ptr: scratch1.mlp_out.as_mut_ptr() as usize,
+                weight_ptr: w2_slice.as_ptr() as usize,
+                x0_f32_ptr: scratch0.inter.as_ptr() as usize,
+                x1_f32_ptr: scratch1.inter.as_ptr() as usize,
+                x0_q8_k_ptr: scratch0.inter_q8_k.as_ptr() as usize,
+                x1_q8_k_ptr: scratch1.inter_q8_k.as_ptr() as usize,
+                n_rows: self.w2.n_rows,
+                n_cols: self.w2.n_cols,
+                dtype: self.w2.dtype,
+            });
+        }
 
         // Residual connection
         for i in 0..scratch0.x.len() {
@@ -1478,35 +1528,94 @@ impl LayerDesc {
         // 7. Gate & Up Joint (streams w1 and w3 ONCE)
         let w1_slice = &mmap[self.w1.offset..self.w1.offset + self.w1.byte_len];
         let w3_slice = &mmap[self.w3.offset..self.w3.offset + self.w3.byte_len];
-        pool.run_task(GemvTask::GateUpIq3Xxs3Tokens {
-            inter0_out_ptr: scratch0.inter.as_mut_ptr() as usize,
-            inter1_out_ptr: scratch1.inter.as_mut_ptr() as usize,
-            inter2_out_ptr: scratch2.inter.as_mut_ptr() as usize,
-            w1_ptr: w1_slice.as_ptr() as usize,
-            w3_ptr: w3_slice.as_ptr() as usize,
-            x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
-            x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
-            x2_q8_k_ptr: scratch2.ffn_q8_k.as_ptr() as usize,
-            n_rows: self.w1.n_rows,
-            n_cols: self.w1.n_cols,
-        });
+        if self.w1.dtype == 18 {
+            pool.run_task(GemvTask::GateUpIq3Xxs3Tokens {
+                inter0_out_ptr: scratch0.inter.as_mut_ptr() as usize,
+                inter1_out_ptr: scratch1.inter.as_mut_ptr() as usize,
+                inter2_out_ptr: scratch2.inter.as_mut_ptr() as usize,
+                w1_ptr: w1_slice.as_ptr() as usize,
+                w3_ptr: w3_slice.as_ptr() as usize,
+                x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
+                x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
+                x2_q8_k_ptr: scratch2.ffn_q8_k.as_ptr() as usize,
+                n_rows: self.w1.n_rows,
+                n_cols: self.w1.n_cols,
+            });
+        } else {
+            pool.run_task(GemvTask::GenericLinear3Tokens {
+                out0_ptr: scratch0.w1.as_mut_ptr() as usize,
+                out1_ptr: scratch1.w1.as_mut_ptr() as usize,
+                out2_ptr: scratch2.w1.as_mut_ptr() as usize,
+                weight_ptr: w1_slice.as_ptr() as usize,
+                x0_f32_ptr: scratch0.ffn_norm.as_ptr() as usize,
+                x1_f32_ptr: scratch1.ffn_norm.as_ptr() as usize,
+                x2_f32_ptr: scratch2.ffn_norm.as_ptr() as usize,
+                x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
+                x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
+                x2_q8_k_ptr: scratch2.ffn_q8_k.as_ptr() as usize,
+                n_rows: self.w1.n_rows,
+                n_cols: self.w1.n_cols,
+                dtype: self.w1.dtype,
+            });
+            pool.run_task(GemvTask::GenericLinear3Tokens {
+                out0_ptr: scratch0.w3.as_mut_ptr() as usize,
+                out1_ptr: scratch1.w3.as_mut_ptr() as usize,
+                out2_ptr: scratch2.w3.as_mut_ptr() as usize,
+                weight_ptr: w3_slice.as_ptr() as usize,
+                x0_f32_ptr: scratch0.ffn_norm.as_ptr() as usize,
+                x1_f32_ptr: scratch1.ffn_norm.as_ptr() as usize,
+                x2_f32_ptr: scratch2.ffn_norm.as_ptr() as usize,
+                x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
+                x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
+                x2_q8_k_ptr: scratch2.ffn_q8_k.as_ptr() as usize,
+                n_rows: self.w3.n_rows,
+                n_cols: self.w3.n_cols,
+                dtype: self.w3.dtype,
+            });
+            for j in 0..self.w1.n_rows {
+                let w1_0 = scratch0.w1[j];
+                scratch0.inter[j] = quants::fast_silu(w1_0) * scratch0.w3[j];
+                let w1_1 = scratch1.w1[j];
+                scratch1.inter[j] = quants::fast_silu(w1_1) * scratch1.w3[j];
+                let w1_2 = scratch2.w1[j];
+                scratch2.inter[j] = quants::fast_silu(w1_2) * scratch2.w3[j];
+            }
+        }
 
         // 8. Down Joint (streams w2 ONCE)
         quants::quantize_row_q8_k(&scratch0.inter, &mut scratch0.inter_q8_k);
         quants::quantize_row_q8_k(&scratch1.inter, &mut scratch1.inter_q8_k);
         quants::quantize_row_q8_k(&scratch2.inter, &mut scratch2.inter_q8_k);
         let w2_slice = &mmap[self.w2.offset..self.w2.offset + self.w2.byte_len];
-        pool.run_task(GemvTask::Iq3Xxs3Tokens {
-            out0_ptr: scratch0.mlp_out.as_mut_ptr() as usize,
-            out1_ptr: scratch1.mlp_out.as_mut_ptr() as usize,
-            out2_ptr: scratch2.mlp_out.as_mut_ptr() as usize,
-            weight_ptr: w2_slice.as_ptr() as usize,
-            x0_q8_k_ptr: scratch0.inter_q8_k.as_ptr() as usize,
-            x1_q8_k_ptr: scratch1.inter_q8_k.as_ptr() as usize,
-            x2_q8_k_ptr: scratch2.inter_q8_k.as_ptr() as usize,
-            n_rows: self.w2.n_rows,
-            n_cols: self.w2.n_cols,
-        });
+        if self.w2.dtype == 18 {
+            pool.run_task(GemvTask::Iq3Xxs3Tokens {
+                out0_ptr: scratch0.mlp_out.as_mut_ptr() as usize,
+                out1_ptr: scratch1.mlp_out.as_mut_ptr() as usize,
+                out2_ptr: scratch2.mlp_out.as_mut_ptr() as usize,
+                weight_ptr: w2_slice.as_ptr() as usize,
+                x0_q8_k_ptr: scratch0.inter_q8_k.as_ptr() as usize,
+                x1_q8_k_ptr: scratch1.inter_q8_k.as_ptr() as usize,
+                x2_q8_k_ptr: scratch2.inter_q8_k.as_ptr() as usize,
+                n_rows: self.w2.n_rows,
+                n_cols: self.w2.n_cols,
+            });
+        } else {
+            pool.run_task(GemvTask::GenericLinear3Tokens {
+                out0_ptr: scratch0.mlp_out.as_mut_ptr() as usize,
+                out1_ptr: scratch1.mlp_out.as_mut_ptr() as usize,
+                out2_ptr: scratch2.mlp_out.as_mut_ptr() as usize,
+                weight_ptr: w2_slice.as_ptr() as usize,
+                x0_f32_ptr: scratch0.inter.as_ptr() as usize,
+                x1_f32_ptr: scratch1.inter.as_ptr() as usize,
+                x2_f32_ptr: scratch2.inter.as_ptr() as usize,
+                x0_q8_k_ptr: scratch0.inter_q8_k.as_ptr() as usize,
+                x1_q8_k_ptr: scratch1.inter_q8_k.as_ptr() as usize,
+                x2_q8_k_ptr: scratch2.inter_q8_k.as_ptr() as usize,
+                n_rows: self.w2.n_rows,
+                n_cols: self.w2.n_cols,
+                dtype: self.w2.dtype,
+            });
+        }
 
         // Residual connection
         for i in 0..scratch0.x.len() {
@@ -1763,20 +1872,11 @@ impl AstMicroEngine {
 
         #[cfg(target_os = "linux")]
         unsafe {
-            use std::os::unix::io::AsRawFd;
-            libc::posix_fadvise(file.as_raw_fd(), 0, 0, libc::POSIX_FADV_WILLNEED);
             libc::madvise(
                 mmap.as_ptr() as *mut libc::c_void,
                 mmap.len(),
                 libc::MADV_HUGEPAGE,
             );
-            if std::env::var_os("NIOXS_LOW_RAM").is_none() {
-                libc::madvise(
-                    mmap.as_ptr() as *mut libc::c_void,
-                    mmap.len(),
-                    libc::MADV_WILLNEED,
-                );
-            }
         }
 
         #[cfg(target_os = "windows")]
@@ -1877,9 +1977,9 @@ impl AstMicroEngine {
                     meta.shape
                 );
             }
-            if !matches!(meta.dtype, 2 | 8 | 12 | 13 | 14 | 20) {
+            if !matches!(meta.dtype, 2 | 6 | 8 | 12 | 13 | 14 | 20) {
                 anyhow::bail!(
-                    "AST-Micro separate output.weight requires Q4_0, Q8_0, Q4_K, Q5_K, Q6_K, or IQ4_NL, found dtype {}",
+                    "AST-Micro separate output.weight requires Q4_0, Q5_0, Q8_0, Q4_K, Q5_K, Q6_K, or IQ4_NL, found dtype {}",
                     meta.dtype
                 );
             }
@@ -1917,7 +2017,7 @@ impl AstMicroEngine {
 
             for meta in [meta_wq, meta_wk, meta_wv, meta_wo] {
                 let is_256 = matches!(meta.dtype, 12 | 13 | 14 | 18 | 21 | 22);
-                let is_32 = matches!(meta.dtype, 2 | 8 | 20);
+                let is_32 = matches!(meta.dtype, 2 | 6 | 8 | 20);
                 if (!is_256 && !is_32)
                     || meta.shape.len() != 2
                     || (is_256 && meta.shape[1] % 256 != 0)
@@ -2031,22 +2131,10 @@ impl AstMicroEngine {
                     .get(&format!("{prefix}.ffn_up.weight"))
                     .ok_or_else(|| anyhow!("missing {prefix}.ffn_up.weight"))?;
 
-                if [
-                    meta_wq, meta_wk, meta_wv, meta_wo, meta_w1, meta_w2, meta_w3,
-                ]
-                .iter()
-                .any(|meta| meta.dtype == 8)
-                    && std::env::var_os("NIOXS_AST_EXPERIMENTAL_Q8").as_deref()
-                        != Some(std::ffi::OsStr::new("1"))
-                {
-                    anyhow::bail!(
-                        "Q8_0 projection support is experimental; set NIOXS_AST_EXPERIMENTAL_Q8=1 to opt in for evaluation"
-                    );
-                }
 
                 for meta in [meta_w1, meta_w3] {
                     let is_256 = matches!(meta.dtype, 12 | 13 | 14 | 18 | 21 | 22);
-                    let is_32 = matches!(meta.dtype, 2 | 8 | 20);
+                    let is_32 = matches!(meta.dtype, 2 | 6 | 8 | 20);
                     if (!is_256 && !is_32)
                         || meta.shape.len() != 2
                         || (is_256 && meta.shape[1] % 256 != 0)
@@ -2061,10 +2149,10 @@ impl AstMicroEngine {
                     }
                 }
                 if meta_w2.shape.len() != 2
-                    || !matches!(meta_w2.dtype, 2 | 8 | 12 | 13 | 14 | 18 | 21 | 22)
+                    || !matches!(meta_w2.dtype, 2 | 6 | 8 | 12 | 13 | 14 | 18 | 21 | 22)
                     || (matches!(meta_w2.dtype, 12 | 13 | 14 | 18 | 21 | 22)
                         && meta_w2.shape[1] % 256 != 0)
-                    || ((meta_w2.dtype == 2 || meta_w2.dtype == 8) && meta_w2.shape[1] % 32 != 0)
+                    || ((meta_w2.dtype == 2 || meta_w2.dtype == 6 || meta_w2.dtype == 8) && meta_w2.shape[1] % 32 != 0)
                 {
                     anyhow::bail!(
                         "unsupported AST-Micro tensor {}: dtype {} shape {:?}",
@@ -2254,9 +2342,7 @@ impl AstMicroEngine {
                 "[AST-Micro] Loaded Beluga Medusa Head (Option 2) for multi-token speculative acceleration."
             );
         }
-        if std::env::var_os("NIOXS_LOW_RAM").is_some() {
-            engine.evict_all();
-        }
+        engine.evict_all();
         #[cfg(target_os = "linux")]
         unsafe {
             libc::malloc_trim(0);
@@ -2382,6 +2468,7 @@ impl AstMicroEngine {
         let (block_size, type_size) = match meta.dtype {
             0 => (1, 4),
             2 => (32, 18),
+            6 => (32, 22),
             8 => (32, 34),
             12 => (256, 144),
             13 => (256, 176),
@@ -2399,6 +2486,7 @@ impl AstMicroEngine {
         match meta.dtype {
             0 => quants::dequantize_row_f32(slice, &mut data),
             2 => quants::dequantize_row_q4_0(slice, &mut data),
+            6 => quants::dequantize_row_q5_0(slice, &mut data),
             8 => quants::dequantize_row_q8_0(slice, &mut data),
             12 => quants::dequantize_row_q4_k(slice, &mut data),
             13 => quants::dequantize_row_q5_k(slice, &mut data),
@@ -2538,7 +2626,7 @@ impl AstMicroEngine {
             let mut step = 0;
 
             while step < n_tokens {
-                if step + 3 <= n_tokens && layer.w1.dtype == 18 {
+                if step + 3 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
                     let pos0 = index_pos + step;
                     let pos1 = pos0 + 1;
                     let pos2 = pos0 + 2;
@@ -2580,7 +2668,7 @@ impl AstMicroEngine {
                     activations[step + 1].copy_from_slice(&self.scratch1.x);
                     activations[step + 2].copy_from_slice(&self.scratch2.x);
                     step += 3;
-                } else if step + 2 <= n_tokens && layer.w1.dtype == 18 {
+                } else if step + 2 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
                     let pos0 = index_pos + step;
                     let pos1 = pos0 + 1;
                     let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];
@@ -2639,9 +2727,9 @@ impl AstMicroEngine {
             }
 
             if let Some(trace) = trace.as_mut() {
-                let scratch = if layer.w1.dtype == 18 && n_tokens % 3 == 0 {
+                let scratch = if (layer.w1.dtype == 18 || layer.w1.dtype == 12) && n_tokens % 3 == 0 {
                     &self.scratch2
-                } else if layer.w1.dtype == 18 && n_tokens % 3 == 2 {
+                } else if (layer.w1.dtype == 18 || layer.w1.dtype == 12) && n_tokens % 3 == 2 {
                     &self.scratch1
                 } else {
                     &self.scratch

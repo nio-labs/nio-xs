@@ -1070,7 +1070,8 @@ impl AstEngine {
         token_at: impl Fn(usize) -> Option<&'a str>,
     ) -> Result<()> {
         // Qwen GGUFs define padded vocab sizes (e.g. 151936) while tokenizer.json has 151665
-        let debug_mode = cfg!(debug_assertions) || std::env::var_os("NIOXS_DEBUG").is_some();
+        let debug_mode =
+            cfg!(debug_assertions) || cfg!(test) || std::env::var_os("NIOXS_DEBUG").is_some();
         if !debug_mode {
             let vocab_size = tokenizer.get_vocab_size(true);
             if vocab_size > token_count {
@@ -1217,13 +1218,9 @@ impl AstEngine {
                     let resident = std::env::var("NIOXS_CHEETAH_RESIDENT_LAYERS")
                         .ok()
                         .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(0)
+                        .unwrap_or(16)
                         .min(engine.block_count);
-                    let window = if resident >= engine.block_count {
-                        engine.block_count
-                    } else {
-                        layer_setting("NIOXS_CHEETAH_ROLLING_WINDOW", 4, engine.block_count)
-                    };
+                    let window = layer_setting("NIOXS_CHEETAH_ROLLING_WINDOW", 18, engine.block_count);
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
                 }
@@ -1255,9 +1252,9 @@ impl AstEngine {
                     let resident = std::env::var("NIOXS_FIN_RESIDENT_LAYERS")
                         .ok()
                         .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(0)
+                        .unwrap_or(16)
                         .min(engine.block_count);
-                    let window = layer_setting("NIOXS_FIN_ROLLING_WINDOW", 4, engine.block_count);
+                    let window = layer_setting("NIOXS_FIN_ROLLING_WINDOW", 18, engine.block_count);
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
                 }
@@ -1411,19 +1408,24 @@ impl AstEngine {
         _temperature: f64,
         _top_p: f64,
     ) -> Result<mpsc::Receiver<String>> {
-        let speculation_mode = if self.is_blue {
-            match std::env::var("NIOXS_BLUE_SPECULATION").as_deref() {
-                Ok("off") => speculation::Mode::Off,
-                Ok("adaptive") => speculation::Mode::Adaptive,
-                Ok("on") | Err(_) => speculation::Mode::On,
-                Ok(value) => {
-                    return Err(anyhow!(
-                        "Invalid NIOXS_BLUE_SPECULATION={value:?}; use on, off, or adaptive"
-                    ));
-                }
-            }
+        let speculation_var = if self.is_blue {
+            "NIOXS_BLUE_SPECULATION"
+        } else if self.is_cheetah {
+            "NIOXS_CHEETAH_SPECULATION"
+        } else if self.is_fin {
+            "NIOXS_FIN_SPECULATION"
         } else {
-            speculation::Mode::On
+            "NIOXS_SPECULATION"
+        };
+        let speculation_mode = match std::env::var(speculation_var).as_deref() {
+            Ok("off") => speculation::Mode::Off,
+            Ok("on") => speculation::Mode::On,
+            Ok("adaptive") | Err(_) => speculation::Mode::Adaptive,
+            Ok(value) => {
+                return Err(anyhow!(
+                    "Invalid {speculation_var}={value:?}; use on, off, or adaptive"
+                ));
+            }
         };
         self.ensure_loaded().await?;
         // Native vocabulary selection is greedy. Use that same policy for the
