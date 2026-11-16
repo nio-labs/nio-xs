@@ -887,9 +887,9 @@ impl AstEngine {
                 "nio-rabbit.3b-q4km.gguf",
             ],
             "fin" | "nio-fin" | "fin-base" | "nio-fin-base" | "hydra" | "nio-hydra" | "hydra-max" | "hydra-ultra" => &[
-                "hydra-anchor-0.5b.q4km.gguf",
-                "hydra-anchor.q4km.gguf",
                 "hydra-anchor-180m.q4km.gguf",
+                "hydra-anchor.q4km.gguf",
+                "hydra-anchor-0.5b.q4km.gguf",
                 "fin-anchor-180m.q3km.gguf",
                 "fin-anchor-180m.iq3xxs.gguf",
                 "fin-anchor-180m.q4km.gguf",

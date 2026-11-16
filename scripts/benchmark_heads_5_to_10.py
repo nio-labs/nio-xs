@@ -134,8 +134,12 @@ def run_case(case):
     stderr = "".join(stderr_chunks)
     total_time = time.monotonic() - start_wall
     
-    # Parse hot-swap time from stderr
+    # Parse hot-swap time and generation telemetry from stderr
     hotswap_ms = None
+    tok_per_sec = None
+    ttft_s = None
+    tok_count = None
+    gen_time_s = None
     for line in stderr.splitlines():
         if "Hot-swapped to Head" in line and "in" in line:
             try:
@@ -144,11 +148,20 @@ def run_case(case):
                 hotswap_ms = float(ms_part)
             except Exception:
                 pass
+        if "Hydra Generation Complete:" in line:
+            try:
+                parts = line.split("Hydra Generation Complete:")[1].strip()
+                tok_count = int(parts.split("tokens")[0].strip())
+                gen_time_s = float(parts.split("in ")[1].split("s ")[0].strip())
+                tok_per_sec = float(parts.split("(")[1].split("tok/s")[0].strip())
+                ttft_s = float(parts.split("TTFT:")[1].split("s")[0].strip())
+            except Exception:
+                pass
 
     # Parse route
     routed_ok = case["expected_badge"] in stdout or f"head = {case['head_id']}" in stdout
     words = len(stdout.split())
-    words_per_sec = words / max(total_time, 0.001)
+    words_per_sec = words / max(gen_time_s if gen_time_s else total_time, 0.001)
 
     # Extract think trace
     think_trace = ""
@@ -161,6 +174,9 @@ def run_case(case):
         "routed_ok": routed_ok,
         "total_time_s": round(total_time, 2),
         "hotswap_ms": hotswap_ms,
+        "tokens": tok_count,
+        "tok_per_sec": tok_per_sec,
+        "ttft_s": ttft_s,
         "peak_rss_mb": round(peak_rss, 1),
         "words": words,
         "words_per_sec": round(words_per_sec, 1),
@@ -184,7 +200,9 @@ def main():
         swap_str = f"{res['hotswap_ms']:.2f}ms" if res["hotswap_ms"] else "N/A"
         print(f"  • Route Status:   {status_badge}")
         print(f"  • Hot-Swap MMAP:  {swap_str} (Target: < 1000ms)")
-        print(f"  • Total Time:     {res['total_time_s']}s ({res['words_per_sec']} w/s)")
+        tok_str = f"{res['tok_per_sec']} tok/s" if res['tok_per_sec'] else f"{res['words_per_sec']} w/s"
+        ttft_str = f" | TTFT: {res['ttft_s']}s" if res['ttft_s'] else ""
+        print(f"  • Total Time:     {res['total_time_s']}s ({tok_str}, {res['words_per_sec']} w/s{ttft_str})")
         print(f"  • Peak RSS:       {res['peak_rss_mb']} MB (Anchor + Head resident)")
         if res["think_trace"]:
             print(f"  • Invariant:      {res['think_trace'].splitlines()[1] if len(res['think_trace'].splitlines()) > 1 else res['think_trace']}")
@@ -192,17 +210,18 @@ def main():
         print("-" * 86)
         results.append(res)
 
-    print("\n" + "=" * 86)
+    print("\n" + "=" * 94)
     print("                      HEADS #005 TO #010 BENCHMARK SUMMARY")
-    print("=" * 86)
-    print(f"{'Head':<10} | {'Domain':<36} | {'HotSwap':<9} | {'RSS (MB)':<8} | {'Speed':<8} | {'Route':<6}")
-    print("-" * 86)
+    print("=" * 94)
+    print(f"{'Head':<10} | {'Domain':<34} | {'HotSwap':<9} | {'RSS (MB)':<8} | {'Decode Rate':<12} | {'Route':<6}")
+    print("-" * 94)
     for r in results:
         swap_str = f"{r['hotswap_ms']:.2f}ms" if r["hotswap_ms"] else "N/A"
+        tok_str = f"{r['tok_per_sec']} tok/s" if r["tok_per_sec"] else f"{r['words_per_sec']} w/s"
         route_str = "PASS" if r["routed_ok"] else "FAIL"
         domain = r['title'].split(': ')[1]
-        print(f"Head #{r['head_id']:<4} | {domain:<36} | {swap_str:<9} | {r['peak_rss_mb']:<8} | {r['words_per_sec']:<4} w/s | {route_str:<6}")
-    print("-" * 86)
+        print(f"Head #{r['head_id']:<4} | {domain:<34} | {swap_str:<9} | {r['peak_rss_mb']:<8} | {tok_str:<12} | {route_str:<6}")
+    print("-" * 94)
 
     out_json = ROOT / "hydra_heads_5_to_10_benchmark.json"
     out_json.write_text(json.dumps(results, indent=2))

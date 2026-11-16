@@ -213,8 +213,12 @@ def run_case(case):
                 routed_head = line.split("head")[1].split("=")[1].split(",")[0].split(")")[0].strip().strip('"').strip("'")
                 break
     
-    # Check hot-swap time in stderr
+    # Check hot-swap time and generation telemetry in stderr
     hotswap_ms = None
+    tok_per_sec = None
+    ttft_s = None
+    tok_count = None
+    gen_time_s = None
     for line in stderr.splitlines():
         if "Hot-swapped to Head" in line and "in" in line:
             try:
@@ -223,10 +227,20 @@ def run_case(case):
                 hotswap_ms = float(ms_part)
             except Exception:
                 pass
+        if "Hydra Generation Complete:" in line:
+            # Format: [DEBUG] Hydra Generation Complete: 104 tokens in 10.85s (9.58 tok/s, TTFT: 1.88s)
+            try:
+                parts = line.split("Hydra Generation Complete:")[1].strip()
+                tok_count = int(parts.split("tokens")[0].strip())
+                gen_time_s = float(parts.split("in ")[1].split("s ")[0].strip())
+                tok_per_sec = float(parts.split("(")[1].split("tok/s")[0].strip())
+                ttft_s = float(parts.split("TTFT:")[1].split("s")[0].strip())
+            except Exception:
+                pass
                 
     # Count generated words
     words = len(stdout.split())
-    words_per_sec = words / max(total_time, 0.001)
+    words_per_sec = words / max(gen_time_s if gen_time_s else total_time, 0.001)
     
     return {
         "case_id": case["id"],
@@ -235,6 +249,9 @@ def run_case(case):
         "total_time_s": round(total_time, 3),
         "peak_rss_mb": round(peak_rss, 1),
         "hotswap_ms": hotswap_ms,
+        "tokens": tok_count,
+        "tok_per_sec": tok_per_sec,
+        "ttft_s": ttft_s,
         "words": words,
         "words_per_sec": round(words_per_sec, 1),
         "has_council_directive": has_council_directive,
@@ -252,7 +269,7 @@ def main():
     print("      HYDRA SOVEREIGN MULTI-HEAD COUNCIL PRODUCTION BENCHMARK")
     print("=" * 80)
     print(f"Binary:       {BINARY}")
-    print(f"Target Anchor: hydra-anchor-0.5b.q4km.gguf (~380 MB)")
+    print(f"Target Anchor: hydra-anchor-180m.q4km.gguf (~242 MB, 10 layers)")
     
     # Check head storage
     heads_dir = Path.home() / ".nioxs" / "heads"
@@ -276,19 +293,23 @@ def main():
         res = run_case(case)
         status = "PASS" if res["routed_head"] == res["expected_head"] or (res["routed_head"] and res["routed_head"] in res["expected_head"]) else "MISMATCH"
         swap_str = f"{res['hotswap_ms']:.2f}ms" if res['hotswap_ms'] else "N/A"
-        print(f"Done in {res['total_time_s']}s ({res['words_per_sec']} words/s, RSS: {res['peak_rss_mb']} MB, Swap: {swap_str}) [{status}]")
+        tok_str = f"{res['tok_per_sec']} tok/s" if res['tok_per_sec'] else f"{res['words_per_sec']} w/s"
+        ttft_str = f"TTFT: {res['ttft_s']}s" if res['ttft_s'] else ""
+        print(f"Done in {res['total_time_s']}s ({tok_str}, {res['words_per_sec']} w/s, {ttft_str}, RSS: {res['peak_rss_mb']} MB, Swap: {swap_str}) [{status}]")
         results.append(res)
         
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 90)
     print("                      BENCHMARK RESULTS SUMMARY")
-    print("=" * 80)
-    print(f"{'Category':<40} | {'Time(s)':<7} | {'Speed(w/s)':<10} | {'HotSwap':<9} | {'Peak RSS':<8} | {'Route':<5}")
-    print("-" * 80)
+    print("=" * 90)
+    print(f"{'Category':<38} | {'Decode':<11} | {'Speed(w/s)':<10} | {'TTFT':<7} | {'HotSwap':<9} | {'Peak RSS':<8} | {'Route':<5}")
+    print("-" * 90)
     for r in results:
         swap_str = f"{r['hotswap_ms']:.2f}ms" if r["hotswap_ms"] else "N/A"
+        tok_str = f"{r['tok_per_sec']} tok/s" if r["tok_per_sec"] else "N/A"
+        ttft_str = f"{r['ttft_s']}s" if r["ttft_s"] else "N/A"
         route_ok = "PASS" if r["routed_head"] == r["expected_head"] or (r["routed_head"] and r["routed_head"] in r["expected_head"]) else "FAIL"
-        print(f"{r['category']:<40} | {r['total_time_s']:<7} | {r['words_per_sec']:<10} | {swap_str:<9} | {r['peak_rss_mb']:<4} MB | {route_ok:<5}")
-    print("-" * 80)
+        print(f"{r['category']:<38} | {tok_str:<11} | {r['words_per_sec']:<10} | {ttft_str:<7} | {swap_str:<9} | {r['peak_rss_mb']:<4} MB | {route_ok:<5}")
+    print("-" * 90)
     
     # Save benchmark report
     out_file = ROOT / "hydra_production_benchmark.json"
