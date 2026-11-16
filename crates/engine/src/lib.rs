@@ -1586,7 +1586,7 @@ impl AstEngine {
             self.is_rabbit,
         );
         let prompt = self.format_prompt_for_engine(&prompt)?;
-        let (prompt_tokens, context_limit, total_layers) = {
+        let (prompt_tokens, context_limit, total_layers, active_lora_id) = {
             let guard = self.bundle.lock().await;
             let bundle = guard
                 .as_ref()
@@ -1601,6 +1601,7 @@ impl AstEngine {
                 tokens,
                 bundle.engine.context_length(),
                 bundle.engine.block_count,
+                bundle.engine.active_lora_id().map(|s| s.to_string()),
             )
         };
         let max_tokens = output_budget(prompt_tokens.len(), context_limit, max_tokens)?;
@@ -1638,6 +1639,15 @@ impl AstEngine {
                         "--no-display-prompt",
                         "--simple-io",
                     ]);
+                    if let Some(ref lora_id) = active_lora_id {
+                        if let Some(head_dir) = crate::lora::resolve_head_path(lora_id) {
+                            let adapter_file = head_dir.join("adapter_model.safetensors");
+                            if adapter_file.is_file() {
+                                cmd.arg("--lora");
+                                cmd.arg(adapter_file.to_str().unwrap_or_default());
+                            }
+                        }
+                    }
                     cmd.args(policy.runner_args());
                     if let Some(lib_dir) = runner_bin.parent().filter(|p| !p.as_os_str().is_empty())
                     {

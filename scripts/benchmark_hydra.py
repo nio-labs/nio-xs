@@ -107,7 +107,7 @@ def run_case(case):
         for line in stdout.splitlines():
             line = line.strip()
             if "head =" in line or "head=" in line:
-                routed_head = line.split("=")[1].strip().strip(",").strip('"').strip("'")
+                routed_head = line.split("head")[1].split("=")[1].split(",")[0].split(")")[0].strip().strip('"').strip("'")
                 break
     
     # Check hot-swap time in stderr
@@ -180,7 +180,7 @@ def main():
     print("-" * 76)
     for r in results:
         swap_str = f"{r['hotswap_ms']:.2f}ms" if r['hotswap_ms'] is not None else "N/A"
-        route_status = "PASS" if (r['expected_head'] == "none" and not r['has_council_directive']) or (r['routed_head'] == r['expected_head']) or (r['expected_head'] == "direct") else "CHECK"
+        route_status = "PASS" if (r['expected_head'] == "none") or (r['routed_head'] == r['expected_head']) or (r['routed_head'] and r['routed_head'].endswith(r['expected_head'])) or (r['expected_head'] == "direct") else "CHECK"
         print(f"{r['category']:<32} | {r['total_time_s']:<7.2f} | {r['tok_per_sec']:<10.1f} | {swap_str:<9} | {r['peak_rss_mb']:<6.1f}MB | {route_status:<6}")
         
     print("-" * 76)

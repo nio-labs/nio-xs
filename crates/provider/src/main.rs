@@ -106,8 +106,31 @@ fn is_greeting_or_meta(prompt: &str) -> bool {
         || p.starts_with("hey ")
 }
 
+fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
+    let (head_label, domain_label) = match head {
+        "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" => {
+            ("Head #001", "Systems & Atomic Concurrency")
+        }
+        "002" | "head-002" | "head-002-backend-axum-tokio" => {
+            ("Head #002", "High-Throughput Axum & Tokio")
+        }
+        other => (other, domain.unwrap_or("Systems Engineering")),
+    };
+    let head_code = match head {
+        "001" | "hydra-kernel" | "head-001" | "head-001-atomic-concurrency" => "001",
+        "002" | "head-002" | "head-002-backend-axum-tokio" => "002",
+        other => other,
+    };
+    let domain_code = domain.unwrap_or(match head_code {
+        "001" => "systems-atomic-concurrency",
+        "002" => "backend-axum-tokio",
+        _ => "systems",
+    });
+    format!("⚡ [Hydra Council → {head_label}: {domain_label}]\n@council(\n    head = {head_code},\n    domain = {domain_code}\n)\n\n")
+}
+
 fn hydra_greeting() -> &'static str {
-    "<think>\n1. Invariant: User greeting & identity inquiry.\n2. Verification: Direct Polymath Sovereign synthesis.\n</think>\n\n<council>\n    @council(directive = direct, mode = polymath)\n</council>\n\nHail Hydra! The Sovereign 180M Council is online and standing by.\n\nActive Council Specialists:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?\n"
+    "⚡ [Hydra Council: Online]\n@council(directive = direct, mode = polymath)\n\nHail Hydra! The Sovereign Council is online and standing by.\n\nActive Council Specialists:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?\n"
 }
 
 fn format_synthetic_deliberation(specialist: &str, is_hydra: bool) -> String {
@@ -1343,23 +1366,20 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             if let Some(specialist) = specialist_opt {
                 drop(rx);
 
-                // Emit clean council deliberation directive
-                let directive_rendered = if accumulated.contains("@council") {
-                    let start = accumulated.find("@council").unwrap();
-                    let end = accumulated[start..].find(')').unwrap_or(accumulated[start..].len() - 1);
-                    let raw_directive = &accumulated[start..=start + end];
-                    let prefix = accumulated[..start].trim();
-                    if !prefix.is_empty() {
-                        format!("{}\n\n{}", prefix, format_council_directive(raw_directive))
-                    } else {
-                        format_council_directive(raw_directive)
-                    }
-                } else {
-                    format_synthetic_deliberation(specialist, is_hydra)
-                };
-                flow.push(&directive_rendered);
-
                 if is_hydra {
+                    // Modern concise Council badge without routing <think> clutter
+                    let raw_domain = if accumulated.contains("domain=") || accumulated.contains("domain =") {
+                        let dom_start = accumulated.find("domain").unwrap();
+                        let rest = &accumulated[dom_start..];
+                        let val = rest.split(|c| c == ',' || c == ')' || c == '\n').next().unwrap_or("");
+                        let clean = val.split('=').nth(1).unwrap_or("").trim().trim_matches(|c| c == '"' || c == '\'' || c == ' ');
+                        if !clean.is_empty() { Some(clean) } else { None }
+                    } else {
+                        None
+                    };
+                    let badge = format_hydra_directive(specialist, raw_domain);
+                    flow.push(&badge);
+
                     // NATIVE IN-PROCESS LORA HEAD HOT-SWAP (< 1ms switch)
                     // The base anchor (0.5B or 180M) stays resident in RAM!
                     let t_swap = std::time::Instant::now();
@@ -1380,6 +1400,21 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         flow.push(&chunk);
                     }
                 } else {
+                    let directive_rendered = if accumulated.contains("@council") {
+                        let start = accumulated.find("@council").unwrap();
+                        let end = accumulated[start..].find(')').unwrap_or(accumulated[start..].len() - 1);
+                        let raw_directive = &accumulated[start..=start + end];
+                        let prefix = accumulated[..start].trim();
+                        if !prefix.is_empty() {
+                            format!("{}\n\n{}", prefix, format_council_directive(raw_directive))
+                        } else {
+                            format_council_directive(raw_directive)
+                        }
+                    } else {
+                        format_synthetic_deliberation(specialist, is_hydra)
+                    };
+                    flow.push(&directive_rendered);
+
                     base_engine.unload().await;
                     drop(base_engine); // Evict Speaker working set to guarantee < 180MB RAM (< 850MB on fin)
                     let specialist_engine = nioxs_engine::AstEngine::for_model_with_device(specialist, device_pref)?;
@@ -1397,7 +1432,24 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             } else {
                 // Direct polymath execution by the base anchor!
                 if !accumulated.is_empty() && !is_degenerate(&accumulated) {
-                    flow.push(&accumulated);
+                    if is_hydra {
+                        flow.push("⚡ [Hydra Polymath: Direct Synthesis]\n@council(directive = direct, mode = polymath)\n\n");
+                        let polymath_content = if let Some(think_end) = accumulated.find("</think>") {
+                            accumulated[think_end + "</think>".len()..].trim_start()
+                        } else {
+                            &accumulated
+                        };
+                        let clean_content = if let Some(c_end) = polymath_content.find("</council>") {
+                            polymath_content[c_end + "</council>".len()..].trim_start()
+                        } else {
+                            polymath_content
+                        };
+                        if !clean_content.is_empty() {
+                            flow.push(clean_content);
+                        }
+                    } else {
+                        flow.push(&accumulated);
+                    }
                     while let Some(chunk) = rx.recv().await {
                         if !is_degenerate(&chunk) {
                             flow.push(&chunk);

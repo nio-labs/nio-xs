@@ -416,6 +416,61 @@ pub struct LoraLinear {
 }
 
 #[inline]
+pub fn vec_dot2_f32_direct(a0: &[f32], a1: &[f32], b: &[f32]) -> (f32, f32) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            return unsafe { vec_dot2_f32_avx2(a0, a1, b) };
+        }
+    }
+    let d0 = a0.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let d1 = a1.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    (d0, d1)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn vec_dot2_f32_avx2(a0: &[f32], a1: &[f32], b: &[f32]) -> (f32, f32) {
+    use core::arch::x86_64::*;
+    let n = a0.len().min(a1.len()).min(b.len());
+    let mut i = 0;
+    unsafe {
+        let mut acc0 = _mm256_setzero_ps();
+        let mut acc1 = _mm256_setzero_ps();
+        while i + 8 <= n {
+            let vb = _mm256_loadu_ps(b.as_ptr().add(i));
+            let va0 = _mm256_loadu_ps(a0.as_ptr().add(i));
+            let va1 = _mm256_loadu_ps(a1.as_ptr().add(i));
+            acc0 = _mm256_fmadd_ps(va0, vb, acc0);
+            acc1 = _mm256_fmadd_ps(va1, vb, acc1);
+            i += 8;
+        }
+        let mut d0 = hsum_float_8_local(acc0);
+        let mut d1 = hsum_float_8_local(acc1);
+        while i < n {
+            d0 += *a0.get_unchecked(i) * *b.get_unchecked(i);
+            d1 += *a1.get_unchecked(i) * *b.get_unchecked(i);
+            i += 1;
+        }
+        (d0, d1)
+    }
+}
+
+#[inline(always)]
+#[cfg(target_arch = "x86_64")]
+unsafe fn hsum_float_8_local(x: core::arch::x86_64::__m256) -> f32 {
+    use core::arch::x86_64::*;
+    unsafe {
+        let mut res = _mm256_extractf128_ps(x, 1);
+        res = _mm_add_ps(res, _mm256_castps256_ps128(x));
+        res = _mm_add_ps(res, _mm_movehl_ps(res, res));
+        let r1 = _mm_shuffle_ps(res, res, 0x55);
+        res = _mm_add_ss(res, r1);
+        _mm_cvtss_f32(res)
+    }
+}
+
+#[inline]
 pub fn vec_add_scaled(y: &mut [f32], x: &[f32], alpha: f32) {
     #[cfg(target_arch = "x86_64")]
     {
@@ -505,7 +560,7 @@ impl LoraLinear {
         let out_dim = self.out_dim;
         let scaling = self.scaling;
 
-        // Step 1: h = x @ A^T, size [r]
+        // Step 1: h = x @ A^T, size [r] (2-way unrolled vector dot products)
         let mut h_buf = [0.0f32; 128];
         let mut h_heap = Vec::new();
         let h: &mut [f32] = if r <= 128 {
@@ -515,9 +570,19 @@ impl LoraLinear {
             &mut h_heap[..r]
         };
 
-        for k in 0..r {
+        let mut k = 0;
+        while k + 2 <= r {
+            let a_row0 = &self.a[k * in_dim..(k + 1) * in_dim];
+            let a_row1 = &self.a[(k + 1) * in_dim..(k + 2) * in_dim];
+            let (d0, d1) = vec_dot2_f32_direct(a_row0, a_row1, x);
+            h[k] = d0 * scaling;
+            h[k + 1] = d1 * scaling;
+            k += 2;
+        }
+        while k < r {
             let a_row = &self.a[k * in_dim..(k + 1) * in_dim];
             h[k] = vec_dot_f32_direct(a_row, x) * scaling;
+            k += 1;
         }
 
         // Step 2: y += B @ h = sum_k (h[k] * B_col[k])
