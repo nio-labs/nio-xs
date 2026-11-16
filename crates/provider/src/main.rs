@@ -39,10 +39,102 @@ fn format_council_directive(directive: &str) -> String {
     }
 }
 
-fn detect_fin_specialist(accumulated: &str, prompt: &str) -> Option<&'static str> {
+fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) -> Option<&'static str> {
     let lower_acc = accumulated.to_ascii_lowercase();
     let lower_p = prompt.to_ascii_lowercase();
 
+    // 1. Direct Explicit Neural Directive emitted by the Anchor (<think> or <council>@council(...)</council>)
+    // If the Anchor explicitly declared @council(direct) or @council(self), it executes directly as Polymath Speaker!
+    if lower_acc.contains("@council(direct)")
+        || lower_acc.contains("@council(polymath)")
+        || lower_acc.contains("@council(self)")
+        || lower_acc.contains("directive: direct")
+        || lower_acc.contains("directive: polymath")
+    {
+        return None;
+    }
+
+    if is_hydra {
+        // --- HYDRA Council Neural Directives ---
+        if lower_acc.contains("head-001")
+            || lower_acc.contains("head_001")
+            || lower_acc.contains("atomic-concurrency")
+            || lower_acc.contains("hydra-kernel")
+            || lower_acc.contains("head=001")
+            || lower_acc.contains("head = 001")
+            || lower_acc.contains("head=atomic")
+            || lower_acc.contains("head = atomic")
+            || lower_acc.contains("domain = atomic")
+            || lower_acc.contains("domain=atomic")
+            || lower_acc.contains("domain = concurrency")
+            || lower_acc.contains("domain=concurrency")
+            || lower_acc.contains("domain = lock-free")
+            || lower_acc.contains("domain = lockfree")
+            || lower_acc.contains("domain = posix")
+            || lower_acc.contains("domain=posix")
+            || lower_acc.contains("domain = kernel")
+            || lower_acc.contains("domain=kernel")
+        {
+            return Some("hydra-kernel");
+        }
+
+        if lower_acc.contains("head-002")
+            || lower_acc.contains("head_002")
+            || lower_acc.contains("backend-axum-tokio")
+            || lower_acc.contains("head=002")
+            || lower_acc.contains("head = 002")
+            || lower_acc.contains("head=axum")
+            || lower_acc.contains("head = axum")
+            || lower_acc.contains("domain = axum")
+            || lower_acc.contains("domain=axum")
+            || lower_acc.contains("domain = tokio")
+            || lower_acc.contains("domain=tokio")
+            || lower_acc.contains("domain = backend")
+            || lower_acc.contains("domain=backend")
+            || lower_acc.contains("domain = microservices")
+            || lower_acc.contains("domain=microservices")
+        {
+            return Some("hydra-kernel");
+        }
+
+        // Cross-council specialized delegations
+        if lower_acc.contains("fin-sql") || lower_acc.contains("domain = sql") || lower_acc.contains("domain=sql") {
+            return Some("fin-sql");
+        }
+        if lower_acc.contains("fin-raft") || lower_acc.contains("domain = raft") || lower_acc.contains("domain=raft") {
+            return Some("fin-raft");
+        }
+
+        // --- HYDRA Fallback Safety Clutch ONLY (if neural speaker failed to emit a directive) ---
+        if lower_p.contains("atomic")
+            || lower_p.contains("lock-free")
+            || lower_p.contains("lockfree")
+            || lower_p.contains("ring buffer")
+            || lower_p.contains("seqlock")
+            || lower_p.contains("spsc")
+            || lower_p.contains("mpmc")
+            || lower_p.contains("posix")
+            || lower_p.contains("io_uring")
+            || lower_p.contains("epoll")
+            || lower_p.contains("axum")
+            || lower_p.contains("tokio")
+            || lower_p.contains("tower")
+        {
+            return Some("hydra-kernel");
+        }
+
+        if lower_p.contains("sql") || lower_p.contains("postgres") || lower_p.contains("clickhouse") {
+            return Some("fin-sql");
+        }
+
+        if lower_p.contains("raft") || lower_p.contains("consensus") {
+            return Some("fin-raft");
+        }
+
+        return None;
+    }
+
+    // --- FIN Council Neural Directives ---
     // 1. Direct explicit model identifiers
     if lower_acc.contains("fin-sql") || lower_acc.contains("fin_sql") {
         return Some("fin-sql");
@@ -123,7 +215,7 @@ fn detect_fin_specialist(accumulated: &str, prompt: &str) -> Option<&'static str
         return Some("fin-kernel");
     }
 
-    // 3. Fallback based on user prompt domain keywords
+    // 3. Fallback based on user prompt domain keywords (Safety Net)
     if lower_p.contains("sql")
         || lower_p.contains("postgres")
         || lower_p.contains("clickhouse")
@@ -174,6 +266,10 @@ fn detect_fin_specialist(accumulated: &str, prompt: &str) -> Option<&'static str
     Some("fin-kernel")
 }
 
+fn detect_fin_specialist(accumulated: &str, prompt: &str) -> Option<&'static str> {
+    detect_council_specialist(accumulated, prompt, false)
+}
+
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let arg = std::env::args().nth(1);
     if matches!(arg.as_deref(), Some("--version")) {
@@ -182,10 +278,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|fin <prompt>|hydra <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|hydra <prompt>|fin <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
-  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, tiger, cheetah, fox, rabbit, fin, fin-kernel, fin-sql, hydra, hydra-kernel, all)\n\
+  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, tiger, cheetah, fox, rabbit, hydra, hydra-kernel, fin, all)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
@@ -196,9 +292,9 @@ Commands:\n\
   cheetah <prompt> Run local in-process Cheetah 1.5B sub-20ms sovereign code sprinter\n\
   fox <prompt>    Run local in-process Fox 3.0B sovereign articulate mentor & interactive rubber duck\n\
   rabbit <prompt> Run local in-process Rabbit 3.0B sovereign deep thinker & root-cause detective (<think> CoT)\n\
-  fin <prompt>    Run local in-process Fin 1.5B Grand-Master Apex Systems Council & Router\n\
-  hydra <prompt>  Run local in-process Hydra Sovereign 180M Council Anchor & hot-swappable heads\n\
+  hydra <prompt>  Run local in-process Hydra Sovereign 180M Council Fleet & hot-swappable heads\n\
   hydra-kernel <prompt> Run local Hydra Bare-Metal POSIX & Atomic Concurrency Specialist\n\
+  fin <prompt>    [Legacy Alias] Directs to Hydra Sovereign Council\n\
   mcp            Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
   init           Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
   undo           Rollback last applied multi-file patch (or specific patch_id)\n\
@@ -961,21 +1057,39 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
-            eprintln!(
-                "Usage: nioxs fin [--kernel|--sql|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
-            );
+            if is_hydra_cmd {
+                eprintln!(
+                    "Usage: nioxs hydra [--kernel|--sql|--concurrency|--raft|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+                );
+            } else {
+                eprintln!(
+                    "Usage: nioxs fin [--kernel|--sql|--concurrency|--raft|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+                );
+            }
             return Ok(());
         }
         let max_tokens = custom_max_tokens.unwrap_or(4096);
         let mut flow = StreamFlow::new(flow_mode);
         flow.set_show_think_tags(true);
 
-        if model_target == "fin" {
-            // Step 1: Speaker Triage via fin-base
-            let base_engine = nioxs_engine::AstEngine::for_model_with_device("fin-base", device_pref)?;
-            let formatted_prompt = format!(
-                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+        let is_council_speaker_session = model_target == "fin"
+            || model_target == "hydra"
+            || model_target == "hydra-max"
+            || model_target == "hydra-ultra";
+
+        if is_council_speaker_session {
+            let is_hydra = model_target != "fin";
+            let speaker_model = if is_hydra { "hydra" } else { "fin-base" };
+            let speaker_system = if is_hydra {
+                nioxs_engine::hydra_system()
+            } else {
                 nioxs_engine::fin_system()
+            };
+
+            // Step 1: Intelligent Speaker Triage Pass via the 0.5B / 180M Base Anchor
+            let base_engine = nioxs_engine::AstEngine::for_model_with_device(speaker_model, device_pref)?;
+            let formatted_prompt = format!(
+                "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
             );
             let mut rx = base_engine
                 .generate_stream(formatted_prompt, 256, 0.20, 0.85)
@@ -1016,7 +1130,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         if let Some(end) = council_buffer[start..].find(')') {
                             let directive = &council_buffer[start..=start + end];
                             flow.push(&format_council_directive(directive));
-                            specialist_opt = detect_fin_specialist(&accumulated, &prompt);
+                            specialist_opt = detect_council_specialist(&accumulated, &prompt, is_hydra);
                             break;
                         }
                     }
@@ -1025,31 +1139,48 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
             let had_council = accumulated.contains("@council");
             if specialist_opt.is_none() && had_council {
-                specialist_opt = detect_fin_specialist(&accumulated, &prompt);
+                specialist_opt = detect_council_specialist(&accumulated, &prompt, is_hydra);
             }
 
-            // Step 2: Automatic In-Flight Hand-Off to Specialist
+            // Step 2: Automatic In-Flight Hand-Off to Specialist (or Direct Polymath Execution)
             if let Some(specialist) = specialist_opt {
                 drop(rx);
                 base_engine.unload().await;
-                drop(base_engine); // Evict Speaker working set to guarantee < 850 MB physical RAM
+                drop(base_engine); // Evict Speaker working set to guarantee < 180MB RAM (< 850MB on fin)
 
                 let specialist_engine = nioxs_engine::AstEngine::for_model_with_device(specialist, device_pref)?;
-                let specialist_prompt = format!(
-                    "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
-                    nioxs_engine::fin_specialist_system(specialist)
-                );
+                let specialist_prompt = if is_hydra {
+                    format!(
+                        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+                        nioxs_engine::hydra_specialist_system(specialist)
+                    )
+                } else {
+                    format!(
+                        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+                        nioxs_engine::fin_specialist_system(specialist)
+                    )
+                };
                 let mut spec_rx = specialist_engine
                     .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
                     .await?;
                 while let Some(chunk) = spec_rx.recv().await {
                     flow.push(&chunk);
                 }
+            } else {
+                // Direct polymath execution by the base anchor!
+                while let Some(chunk) = rx.recv().await {
+                    flow.push(&chunk);
+                }
             }
         } else {
-            // Direct specialist execution (e.g. nioxs fin --kernel)
+            // Direct specialist execution (e.g. nioxs hydra --kernel or nioxs fin --kernel)
+            let is_hydra = matches!(model_target, "hydra-kernel" | "hydra-max" | "hydra-ultra");
             let engine = nioxs_engine::AstEngine::for_model_with_device(model_target, device_pref)?;
-            let system_prompt = nioxs_engine::fin_specialist_system(model_target);
+            let system_prompt = if is_hydra {
+                nioxs_engine::hydra_specialist_system(model_target)
+            } else {
+                nioxs_engine::fin_specialist_system(model_target)
+            };
             let formatted_prompt = format!(
                 "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
             );
@@ -1735,5 +1866,29 @@ mod tests {
         let prompt = "Write an async submission queue poller in C";
         let specialist = detect_fin_specialist(acc, prompt);
         assert_eq!(specialist, Some("fin-kernel"));
+    }
+
+    #[test]
+    fn test_detect_hydra_specialist_head_001() {
+        let acc = "<think>\nInvariant: memory order seq_cst\n</think>\n@council(head-001-atomic-concurrency)";
+        let prompt = "Write a lock-free queue in Zig";
+        let specialist = detect_council_specialist(acc, prompt, true);
+        assert_eq!(specialist, Some("hydra-kernel"));
+    }
+
+    #[test]
+    fn test_detect_hydra_polymath_direct() {
+        let acc = "<think>\nGeneral query, no specialist needed\n</think>\n@council(direct)";
+        let prompt = "Explain the difference between Arc and Rc in Rust";
+        let specialist = detect_council_specialist(acc, prompt, true);
+        assert_eq!(specialist, None);
+    }
+
+    #[test]
+    fn test_detect_hydra_keyword_fallback() {
+        let acc = "<think>\nThinking about kernel primitives...\n</think>";
+        let prompt = "Implement an atomic lock-free ring buffer in Rust";
+        let specialist = detect_council_specialist(acc, prompt, true);
+        assert_eq!(specialist, Some("hydra-kernel"));
     }
 }

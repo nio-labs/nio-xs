@@ -80,6 +80,18 @@ pub fn fin_system() -> &'static str {
     "You are Fin, Nio's Apex Systems Council & Router. Be extremely terse. Emit zero conversational filler. When given a query, issue a concise 1-2 line <think> invariant proof followed immediately by <council>@council(route=..., domain=...)</council> and stop."
 }
 
+pub fn hydra_system() -> &'static str {
+    "You are Hydra, Nio's Sovereign 180M Council Speaker & Arbiter. Be extremely terse. Emit zero conversational filler. When given a coding task, first deliberate concisely in <think>...</think>, then emit your council delegation directive <council>@council(head=..., domain=...)</council> (or @council(direct) for direct Polymath synthesis) and stop."
+}
+
+pub fn hydra_specialist_system(target: &str) -> &'static str {
+    match target {
+        "hydra-kernel" | "head-001" | "head-001-atomic-concurrency" => "You are Hydra Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory Specialist. Emit zero conversational filler, zero prose, and zero explanations. Output pure, zero-allocation, compilable systems code immediately.",
+        "head-002" | "head-002-backend-axum-tokio" => "You are Hydra Head #002: High-Throughput Rust Axum & Tokio Microservices Specialist. Emit zero conversational filler, zero prose, and zero explanations. Output pure, zero-allocation, compilable async microservice code immediately.",
+        _ => "You are Hydra Sovereign Specialist Head. Emit zero conversational filler, zero prose, and zero explanations. Output pure, compilable production code immediately.",
+    }
+}
+
 pub fn fin_specialist_system(target: &str) -> &'static str {
     match target {
         "fin-kernel" => "You are Fin Kernel, Nio's Bare-Metal OS & Concurrency Master. Emit zero conversational filler, zero prose, and zero explanations. Output pure, zero-allocation, compilable systems code immediately.",
@@ -627,6 +639,7 @@ pub struct AstEngine {
     is_fox: bool,
     is_rabbit: bool,
     is_fin: bool,
+    is_hydra: bool,
     device_pref: DevicePreference,
 }
 
@@ -664,6 +677,10 @@ impl AstEngine {
             || model_path.to_string_lossy().contains("cheetah");
         let is_rabbit = matches!(lowered.as_str(), "rabbit" | "nio-rabbit");
         let is_fox = matches!(lowered.as_str(), "fox" | "nio-fox");
+        let is_hydra = matches!(
+            lowered.as_str(),
+            "hydra" | "nio-hydra" | "hydra-kernel" | "nio-hydra-kernel" | "hydra-max" | "hydra-ultra"
+        ) || model_path.to_string_lossy().contains("hydra");
         let is_fin = matches!(
             lowered.as_str(),
             "fin" | "nio-fin" | "fin-base" | "fin-kernel" | "fin-sql" | "fin-concurrency" | "fin-raft"
@@ -672,7 +689,8 @@ impl AstEngine {
             || model_path.to_string_lossy().contains("tiger"))
             && !is_rabbit
             && !is_fox
-            && !is_fin;
+            && !is_fin
+            && !is_hydra;
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -686,6 +704,7 @@ impl AstEngine {
             is_fox,
             is_rabbit,
             is_fin,
+            is_hydra,
             device_pref,
         })
     }
@@ -723,7 +742,8 @@ impl AstEngine {
         let is_rabbit = p_str.contains("rabbit");
         let is_fox = p_str.contains("fox");
         let is_fin = p_str.contains("fin");
-        let is_tiger = p_str.contains("tiger") && !is_rabbit && !is_fox && !is_fin;
+        let is_hydra = p_str.contains("hydra");
+        let is_tiger = p_str.contains("tiger") && !is_rabbit && !is_fox && !is_fin && !is_hydra;
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -737,6 +757,7 @@ impl AstEngine {
             is_fox,
             is_rabbit,
             is_fin,
+            is_hydra,
             device_pref: DevicePreference::Auto,
         }
     }
@@ -1197,6 +1218,7 @@ impl AstEngine {
         let is_fox = self.is_fox;
         let is_rabbit = self.is_rabbit;
         let is_fin = self.is_fin;
+        let is_hydra = self.is_hydra;
         let policy = decoding::DecodingPolicy::for_model(
             is_skate, is_manta, is_beluga, is_blue, is_cheetah, is_tiger, is_fox, is_rabbit,
         );
@@ -1293,6 +1315,10 @@ impl AstEngine {
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
                 }
+            } else if is_hydra {
+                let resident = engine.block_count;
+                engine.set_resident_layers(resident);
+                engine.set_rolling_window(resident);
             } else if is_fin {
                 let gpu_layers = active_dev.recommended_gpu_layers(28);
                 if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
@@ -1383,6 +1409,12 @@ impl AstEngine {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 blue_system(),
+                raw_prompt.trim()
+            )
+        } else if self.is_hydra {
+            format!(
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                hydra_system(),
                 raw_prompt.trim()
             )
         } else if self.is_fin {
@@ -1479,6 +1511,8 @@ impl AstEngine {
             "NIOXS_BLUE_SPECULATION"
         } else if self.is_cheetah {
             "NIOXS_CHEETAH_SPECULATION"
+        } else if self.is_hydra {
+            "NIOXS_HYDRA_SPECULATION"
         } else if self.is_fin {
             "NIOXS_FIN_SPECULATION"
         } else {
@@ -1658,7 +1692,9 @@ impl AstEngine {
         let is_blue = self.is_blue;
         let report_stats =
             std::env::var_os("NIOXS_INFERENCE_STATS").as_deref() == Some(std::ffi::OsStr::new("1"));
-        let stats_model = if self.is_fin {
+        let stats_model = if self.is_hydra {
+            "hydra"
+        } else if self.is_fin {
             "fin"
         } else if self.is_rabbit {
             "rabbit"
@@ -1721,6 +1757,10 @@ impl AstEngine {
             let sys_prefix_tokens: Option<Vec<u32>> =
                 if !disable_prefix_cache && bundle.cached_prefix.is_empty() {
                     let sys_text = match stats_model {
+                        "hydra" => Some(format!(
+                            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
+                            hydra_system()
+                        )),
                         "fin" => Some(format!(
                             "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
                             fin_system()

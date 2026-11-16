@@ -121,9 +121,9 @@ pub fn main() !void {
     }
 
     const is_explicit_specialist = is_sql or is_kernel or is_concurrency or is_raft or is_base;
-    if (!is_explicit_specialist and !is_hydra and model_path == null and !info_only) {
-        // Autonomous in-flight hand-off pipeline (nioxs fin "[prompt]")
-        try runAutonomousHandoff(allocator, prompt, window_layers);
+    if (!is_explicit_specialist and model_path == null and !info_only) {
+        // Autonomous in-flight hand-off pipeline (nioxs hydra "[prompt]" or nioxs fin "[prompt]")
+        try runAutonomousHandoff(allocator, prompt, window_layers, is_hydra);
         return;
     }
 
@@ -270,13 +270,32 @@ fn resolveModelPath(allocator: std.mem.Allocator, filename: []const u8) ?[]const
     return null;
 }
 
-fn detectCouncilTarget(prompt: []const u8) struct { name: []const u8, filename: []const u8 } {
+fn detectCouncilTarget(prompt: []const u8, is_hydra: bool) struct { name: []const u8, filename: []const u8 } {
     var lower_buf: [1024]u8 = undefined;
     const len = @min(prompt.len, lower_buf.len);
     for (prompt[0..len], 0..) |c, idx| {
         lower_buf[idx] = std.ascii.toLower(c);
     }
     const lower = lower_buf[0..len];
+
+    if (is_hydra) {
+        if (std.mem.indexOf(u8, lower, "atomic") != null or
+            std.mem.indexOf(u8, lower, "lock-free") != null or
+            std.mem.indexOf(u8, lower, "ring buffer") != null or
+            std.mem.indexOf(u8, lower, "seqlock") != null or
+            std.mem.indexOf(u8, lower, "spsc") != null or
+            std.mem.indexOf(u8, lower, "mpmc") != null or
+            std.mem.indexOf(u8, lower, "kernel") != null or
+            std.mem.indexOf(u8, lower, "posix") != null or
+            std.mem.indexOf(u8, lower, "io_uring") != null or
+            std.mem.indexOf(u8, lower, "epoll") != null or
+            std.mem.indexOf(u8, lower, "axum") != null or
+            std.mem.indexOf(u8, lower, "tokio") != null)
+        {
+            return .{ .name = "hydra-kernel", .filename = "hydra-kernel-180m.q4km.gguf" };
+        }
+        return .{ .name = "hydra", .filename = "hydra-anchor-180m.q4km.gguf" };
+    }
 
     if (std.mem.indexOf(u8, lower, "sql") != null or
         std.mem.indexOf(u8, lower, "postgres") != null or
@@ -322,16 +341,18 @@ fn detectCouncilTarget(prompt: []const u8) struct { name: []const u8, filename: 
     return .{ .name = "fin-base", .filename = "fin-base.q4km.gguf" };
 }
 
-fn runAutonomousHandoff(allocator: std.mem.Allocator, prompt: []const u8, window_layers: u32) !void {
+fn runAutonomousHandoff(allocator: std.mem.Allocator, prompt: []const u8, window_layers: u32, is_hydra: bool) !void {
     const stdout = std.io.getStdOut().writer();
 
-    try stdout.print("⚡ [nioxs - Fin Apex Council] In-Flight Autonomous Hand-Off Session\n", .{});
+    const council_title = if (is_hydra) "Hydra Sovereign Council" else "Fin Apex Council";
+    try stdout.print("⚡ [nioxs - {s}] In-Flight Autonomous Hand-Off Session\n", .{council_title});
     try stdout.print("=== Prompt: {s} ===\n\n", .{prompt});
 
-    const target = detectCouncilTarget(prompt);
+    const target = detectCouncilTarget(prompt, is_hydra);
+    const anchor_filename = if (is_hydra) "hydra-anchor-180m.q4km.gguf" else "fin-base.q4km.gguf";
 
-    const base_path = resolveModelPath(allocator, "fin-base.q4km.gguf") orelse {
-        try stdout.print("Error: fin-base.q4km.gguf not found.\n", .{});
+    const base_path = resolveModelPath(allocator, anchor_filename) orelse {
+        try stdout.print("Error: {s} not found.\n", .{anchor_filename});
         return;
     };
     defer allocator.free(base_path);
@@ -345,8 +366,7 @@ fn runAutonomousHandoff(allocator: std.mem.Allocator, prompt: []const u8, window
         base_streamer.stepLayer(l);
     }
     const triage_ms = @as(f64, @floatFromInt(triage_timer.read())) / 1_000_000.0;
-    const base_mem = getProcessMemoryMb();
-    _ = base_mem;
+    const mem_ceiling = if (is_hydra) 180.0 else 850.0;
 
     try stdout.print("<think>\n", .{});
     try stdout.print("1. Speaker Triage ({d:.2} ms): Invariant proof validated.\n", .{triage_ms});
@@ -354,7 +374,7 @@ fn runAutonomousHandoff(allocator: std.mem.Allocator, prompt: []const u8, window
     try stdout.print("3. Memory SLA: Active sliding window = {d} layers via madvise(MADV_DONTNEED).\n", .{window_layers});
     try stdout.print("</think>\n\n", .{});
 
-    if (std.mem.eql(u8, target.name, "fin-base")) {
+    if (std.mem.eql(u8, target.name, "fin-base") or std.mem.eql(u8, target.name, "hydra")) {
         // Direct execution by Speaker
         while (l < base_streamer.gguf.metadata.block_count) : (l += 1) {
             base_streamer.stepLayer(l);
@@ -363,11 +383,12 @@ fn runAutonomousHandoff(allocator: std.mem.Allocator, prompt: []const u8, window
         base_streamer.evictAll();
         base_streamer.deinit();
 
-        try stdout.print("✔ Direct Polymath pass completed: 28 transformer layers streamed.\n", .{});
-        try stdout.print("📊 [Model Memory] Working Set (VmRSS): {d:.2} MB | Peak Model RAM (VmHWM): {d:.2} MB (Ceiling < 850 MB: {s})\n", .{
+        try stdout.print("✔ Direct Polymath pass completed: {d} transformer layers streamed.\n", .{base_streamer.gguf.metadata.block_count});
+        try stdout.print("📊 [Model Memory] Working Set (VmRSS): {d:.2} MB | Peak Model RAM (VmHWM): {d:.2} MB (Ceiling < {d:.0} MB: {s})\n", .{
             mem.rss,
             mem.hwm,
-            if (mem.hwm < 850.0) "✅ PASS" else "❌ FAIL",
+            mem_ceiling,
+            if (mem.hwm < mem_ceiling) "✅ PASS" else "❌ FAIL",
         });
         return;
     }
@@ -375,7 +396,7 @@ fn runAutonomousHandoff(allocator: std.mem.Allocator, prompt: []const u8, window
     // 2. In-Flight Hand-Off to Specialist
     const spec_path_opt = resolveModelPath(allocator, target.filename);
     if (spec_path_opt == null) {
-        try stdout.print("⏳ Specialist model artifact ({s}) is awaiting download. Completing on fin-base fallback.\n", .{target.filename});
+        try stdout.print("⏳ Specialist model artifact ({s}) is awaiting download. Completing on base anchor fallback.\n", .{target.filename});
         while (l < base_streamer.gguf.metadata.block_count) : (l += 1) {
             base_streamer.stepLayer(l);
         }
@@ -404,9 +425,10 @@ fn runAutonomousHandoff(allocator: std.mem.Allocator, prompt: []const u8, window
     try stdout.print("   • Hand-Off Switch Latency: {d:.2} ms (zero-copy mmap transition)\n", .{handoff_ms});
     try stdout.print("   • Specialist Layers:       {d} transformer blocks streamed\n", .{spec_streamer.gguf.metadata.block_count});
     try stdout.print("   • Councilor Working Set:   {d:.2} MB\n", .{spec_mem.rss});
-    try stdout.print("   • In-Flight Peak Model RAM:{d:.2} MB (Ceiling < 850 MB: {s})\n", .{
+    try stdout.print("   • In-Flight Peak Model RAM:{d:.2} MB (Ceiling < {d:.0} MB: {s})\n", .{
         spec_mem.hwm,
-        if (spec_mem.hwm < 850.0) "✅ PASS" else "❌ FAIL",
+        mem_ceiling,
+        if (spec_mem.hwm < mem_ceiling) "✅ PASS" else "❌ FAIL",
     });
 
     spec_streamer.evictAll();
@@ -695,18 +717,17 @@ fn printUsage() void {
         \\Usage:
         \\  nioxs [options] <prompt>           Run with native Zig engine (default, ~11ms cold-start)
         \\  nioxs --rs <command> [args...]     Delegate to Rust companion engine
-        \\  nioxs hydra [--kernel] <prompt>    Run Hydra Sovereign 180M Council Fleet
-        \\  nioxs fin [--kernel|--sql] <prompt> Run Fin Apex Systems Council
+        \\  nioxs hydra [--kernel] <prompt>    Run Hydra Sovereign 180M Council Fleet (< 180 MB RAM)
+        \\  nioxs fin [--kernel] <prompt>      [Legacy Alias] Directs to Hydra Sovereign Council
         \\
         \\Commands (delegated to Rust when needed):
         \\  serve                              Start HTTP OpenAI-compatible AI gateway
         \\  mcp                                Start Model Context Protocol stdio server
-        \\  pull <model>                       Download & verify weights (e.g. hydra, fin)
+        \\  pull <model>                       Download & verify weights (e.g. hydra, hydra-kernel)
         \\
         \\Zig Native Engine Options:
-        \\  --kernel                           Target kernel specialist (Hydra or Fin)
-        \\  --sql                              Target fin-sql (0.5B SQL Dialect)
-        \\  --base                             Target base anchor / council speaker
+        \\  --kernel                           Target Hydra Bare-Metal Kernel Specialist
+        \\  --base                             Target Hydra 180M Base Anchor / Council Speaker
         \\  -w, --window <count>               Sliding window resident layers (default: 4, < 850 MB RAM)
         \\  -n, --max-tokens <count>           Max tokens to generate (default: 512)
         \\  -m, --model <path>                 Explicit path to GGUF model binary
