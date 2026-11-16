@@ -1224,7 +1224,7 @@ impl AstEngine {
         let is_fin = self.is_fin;
         let is_hydra = self.is_hydra;
         let policy = decoding::DecodingPolicy::for_model(
-            is_skate, is_manta, is_beluga, is_blue, is_cheetah, is_tiger, is_fox, is_rabbit,
+            is_skate, is_manta, is_beluga, is_blue, is_cheetah, is_tiger, is_fox, is_rabbit, is_hydra,
         );
 
         // The native fallback must use CPU residency settings. Hardware probing
@@ -1548,8 +1548,30 @@ impl AstEngine {
         &self,
         prompt: String,
         max_tokens: usize,
-        _temperature: f64,
-        _top_p: f64,
+        temperature: f64,
+        top_p: f64,
+    ) -> Result<mpsc::Receiver<String>> {
+        self.generate_stream_with_policy(
+            prompt,
+            max_tokens,
+            temperature,
+            top_p,
+            None,
+            None,
+            None,
+        )
+        .await
+    }
+
+    pub async fn generate_stream_with_policy(
+        &self,
+        prompt: String,
+        max_tokens: usize,
+        temperature: f64,
+        top_p: f64,
+        repeat_penalty: Option<f32>,
+        history_window: Option<usize>,
+        suppressed_tokens: Option<Vec<u32>>,
     ) -> Result<mpsc::Receiver<String>> {
         let speculation_var = if self.is_blue {
             "NIOXS_BLUE_SPECULATION"
@@ -1584,6 +1606,7 @@ impl AstEngine {
             self.is_tiger,
             self.is_fox,
             self.is_rabbit,
+            self.is_hydra,
         );
         let prompt = self.format_prompt_for_engine(&prompt)?;
         let (prompt_tokens, context_limit, total_layers, active_lora_id) = {
@@ -1779,11 +1802,21 @@ impl AstEngine {
                 return;
             };
 
-            bundle
-                .engine
-                .set_sampling(0.0, 1.0, policy.repeat_penalty, policy.history_window);
+            let active_repeat_penalty = repeat_penalty.unwrap_or(policy.repeat_penalty);
+            let active_history_window = history_window.unwrap_or(policy.history_window);
+            bundle.engine.set_sampling(
+                temperature as f32,
+                top_p as f32,
+                active_repeat_penalty,
+                active_history_window,
+            );
+            if let Some(ref tokens) = suppressed_tokens {
+                bundle.engine.set_suppressed_tokens(tokens.iter().copied());
+            } else {
+                bundle.engine.set_suppressed_tokens(policy.suppressed.iter().copied());
+            }
             let mut sampling_history =
-                prompt_tokens[prompt_tokens.len().saturating_sub(policy.history_window)..].to_vec();
+                prompt_tokens[prompt_tokens.len().saturating_sub(active_history_window)..].to_vec();
 
             if tx.is_closed() {
                 return;

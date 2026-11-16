@@ -18,9 +18,12 @@ impl DecodingPolicy {
         tiger: bool,
         fox: bool,
         rabbit: bool,
+        hydra: bool,
     ) -> Self {
         Self {
-            repeat_penalty: if cheetah || tiger || fox {
+            repeat_penalty: if hydra {
+                1.25
+            } else if cheetah || tiger || fox {
                 1.10
             } else if beluga || rabbit {
                 1.02
@@ -31,7 +34,7 @@ impl DecodingPolicy {
             } else {
                 1.10
             },
-            history_window: if manta || tiger || fox || rabbit {
+            history_window: if hydra || manta || tiger || fox || rabbit {
                 128
             } else {
                 HISTORY_WINDOW
@@ -132,48 +135,53 @@ mod tests {
     fn runner_policy_preserves_companion_penalties_and_suppressions() {
         for (flags, expected_penalty, expected_biases) in [
             (
-                (true, false, false, false, false, false, false, false),
+                (true, false, false, false, false, false, false, false, false),
                 "1.1",
                 vec!["3725-inf", "47182-inf"],
             ),
             (
-                (false, true, false, false, false, false, false, false),
+                (false, true, false, false, false, false, false, false, false),
                 "1.15",
                 vec!["41233-inf", "54275-inf", "73594-inf"],
             ),
             (
-                (false, false, true, false, false, false, false, false),
+                (false, false, true, false, false, false, false, false, false),
                 "1.02",
                 vec![],
             ),
             (
-                (false, false, false, true, false, false, false, false),
+                (false, false, false, true, false, false, false, false, false),
                 "1.05",
                 vec![],
             ),
             (
-                (false, false, false, false, true, false, false, false),
+                (false, false, false, false, true, false, false, false, false),
                 "1.1",
                 vec![],
             ),
             (
-                (false, false, false, false, false, true, false, false),
+                (false, false, false, false, false, true, false, false, false),
                 "1.1",
                 vec!["95456-inf", "39814-inf"],
             ),
             (
-                (false, false, false, false, false, false, true, false),
+                (false, false, false, false, false, false, true, false, false),
                 "1.1",
                 vec![],
             ),
             (
-                (false, false, false, false, false, false, false, true),
+                (false, false, false, false, false, false, false, true, false),
                 "1.02",
+                vec![],
+            ),
+            (
+                (false, false, false, false, false, false, false, false, true),
+                "1.25",
                 vec![],
             ),
         ] {
             let args = DecodingPolicy::for_model(
-                flags.0, flags.1, flags.2, flags.3, flags.4, flags.5, flags.6, flags.7,
+                flags.0, flags.1, flags.2, flags.3, flags.4, flags.5, flags.6, flags.7, flags.8,
             )
             .runner_args();
             let value = |key| args.windows(2).find(|w| w[0] == key).map(|w| w[1].as_str());

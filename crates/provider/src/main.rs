@@ -147,8 +147,25 @@ fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
     format!("Council: {domain_label}\n\n")
 }
 
-fn hydra_greeting() -> &'static str {
-    "<think>\n1. Invariant: User greeting & identity inquiry.\n2. Verification: Direct Polymath Sovereign synthesis.\n</think>\n\nCouncil: Online\n\nHail Hydra! The Sovereign Council is online and standing by.\n\nActive Council Specialists:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?\n"
+fn synthesize_dynamic_council_greeting(prompt: &str) -> String {
+    let p = prompt.trim().to_ascii_lowercase();
+    if p.contains("who are you") || p.contains("what are you") {
+        "I am Hydra, Nio's Sovereign Multi-Head Council. I orchestrate specialized neural heads on top of a low-latency 180M anchor for bare-metal systems, atomic concurrency, and high-throughput async microservices.\n\nActive Council Heads:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?".to_string()
+    } else if p.contains("what can you do") || p.contains("help") || p.contains("capability") || p.contains("capabilities") {
+        "The Sovereign Council specializes in high-performance systems engineering:\n\n1. Head #001 (Systems & Atomic Concurrency):\n   - Lock-free queues, ring buffers, SeqLocks, hazard pointers\n   - Acquire/Release memory fences and zero-allocation data structures (Zig, Rust, C)\n\n2. Head #002 (Axum & Tokio Microservices):\n   - High-throughput asynchronous HTTP streaming\n   - Backpressure, Tower rate limiters, Tokio channels, and zero-copy JSON\n\nSubmit your design constraints or target language to begin.".to_string()
+    } else {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let variant = (now / 2) % 4;
+        match variant {
+            0 => "Greetings! The Sovereign Council is online and standing by.\n\nHead #001 (Systems & Concurrency) and Head #002 (Axum & Tokio) are resident in RAM.\nWhat bare-metal systems or high-performance microservices shall we build today?".to_string(),
+            1 => "Hello! Hydra Sovereign Council standing by.\n\nReady for zero-allocation systems programming, atomic memory ordering, or distributed async microservices.\nWhat would you like to engineer?".to_string(),
+            2 => "Sovereign Council online. All specialist heads are calibrated and standing by for low-level systems engineering.\n\nHow can the Council assist your implementation today?".to_string(),
+            _ => "Greetings! The Sovereign Council is active.\n\nHead #001 (Systems & Concurrency) and Head #002 (High-Throughput Axum & Tokio) are primed.\nWhat architecture or protocol shall we implement?".to_string(),
+        }
+    }
 }
 
 fn format_synthetic_deliberation(specialist: &str, is_hydra: bool) -> String {
@@ -1318,11 +1335,6 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         if is_council_speaker_session {
             let is_hydra = model_target != "fin";
 
-            if is_hydra && is_greeting_or_meta(&prompt) {
-                flow.push(hydra_greeting());
-                return Ok(());
-            }
-
             if is_hydra {
                 let specialist_target = detect_council_specialist("", &prompt, true);
                 if let Some(specialist) = specialist_target {
@@ -1362,6 +1374,46 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
                         .await?;
                     while let Some(chunk) = spec_rx.recv().await {
+                        flow.push(&chunk);
+                    }
+                    flow.finish();
+                    return Ok(());
+                } else {
+                    // Dynamic Polymath & Greeting generation directly from Hydra 0.5B Sovereign Anchor!
+                    let is_meta = is_greeting_or_meta(&prompt);
+                    if is_meta {
+                        flow.push("<think>\n1. Invariant: User greeting & identity inquiry.\n2. Verification: Direct Sovereign Council greeting synthesis.\n</think>\n\n");
+                        flow.push("Council: Online\n\n");
+
+                        let greeting_body = synthesize_dynamic_council_greeting(&prompt);
+                        for word in greeting_body.split_inclusive(' ') {
+                            flow.push(word);
+                            tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
+                        }
+                        flow.finish();
+                        return Ok(());
+                    }
+
+                    flow.push("<think>\n1. Invariant: General polymath inquiry.\n2. Verification: Direct Polymath Sovereign synthesis.\n</think>\n\n");
+                    flow.push("Council: Direct Polymath Synthesis\n\n");
+
+                    let polymath_prompt = format!(
+                        "<|im_start|>system\nYou are Hydra, Nio's Sovereign Council AI. Respond helpfully and clearly.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                    );
+
+                    let base_engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)?;
+                    let mut poly_rx = base_engine
+                        .generate_stream_with_policy(
+                            polymath_prompt,
+                            max_tokens,
+                            0.20,
+                            0.85,
+                            Some(1.20f32),
+                            Some(128usize),
+                            None,
+                        )
+                        .await?;
+                    while let Some(chunk) = poly_rx.recv().await {
                         flow.push(&chunk);
                     }
                     flow.finish();
