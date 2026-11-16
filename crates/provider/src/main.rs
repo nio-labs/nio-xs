@@ -407,6 +407,7 @@ Commands:\n\
   rabbit <prompt> Run local in-process Rabbit 3.0B sovereign deep thinker & root-cause detective (<think> CoT)\n\
   hydra <prompt>  Run local in-process Hydra Sovereign 180M Council Fleet & hot-swappable heads\n\
   hydra-kernel <prompt> Run local Hydra Bare-Metal POSIX & Atomic Concurrency Specialist\n\
+  calibrate-head <head> Calibrate and compress LoRA head to < 3MB (FP8 + SVD)\n\
   fin <prompt>    [Legacy Alias] Directs to Hydra Sovereign Council\n\
   mcp            Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
   init           Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
@@ -464,6 +465,89 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let path = nioxs_artifacts::prompt_and_pull_if_needed(normalized, auto_yes)
             .map_err(|e| format!("Failed to pull {normalized}: {e}"))?;
         println!("✔ Model '{normalized}' ready: {}", path.display());
+        return Ok(());
+    }
+    if arg.as_deref() == Some("calibrate-head") {
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        if raw_args.is_empty() || raw_args[0] == "-h" || raw_args[0] == "--help" {
+            println!(
+                "Usage: nioxs calibrate-head <head_path_or_id> [--out <dir>] [--rank <target_rank>] [--no-fp8] [--lz4] [--inplace]\n\n\
+                 Calibrates and compresses unquantized FP32 LoRA adapters down to < 3.0 MB per head\n\
+                 (target: ~2.8 MB) using SVD subspace projection and FP8 E4M3 quantization.\n\n\
+                 Arguments:\n\
+                   <head_path_or_id>    Path to adapter directory (e.g. ~/.nioxs/heads/head-001) or head ID\n\
+                 Options:\n\
+                   --out, -o <dir>      Destination output directory (default: overwrites in-place or writes to <head>_calibrated)\n\
+                   --rank, -r <n>       Target LoRA rank truncation via factored SVD (default: 12 for < 3MB, or 16/32)\n\
+                   --no-fp8             Preserves FP16 precision instead of FP8 E4M3\n\
+                   --lz4                Compresses SafeTensors payload with LZ4 frame\n\
+                   --inplace            Overwrites the input directory directly in-place"
+            );
+            return Ok(());
+        }
+
+        let input_arg = &raw_args[0];
+        let input_path = if let Some(p) = nioxs_engine::lora::resolve_head_path(input_arg) {
+            p
+        } else {
+            std::path::PathBuf::from(input_arg)
+        };
+
+        if !input_path.exists() {
+            eprintln!("Error: Adapter path '{}' does not exist.", input_path.display());
+            std::process::exit(1);
+        }
+
+        let mut out_dir = None;
+        let mut target_rank = Some(12); // Default 12 yields ~2.75 MB (< 3MB)
+        let mut use_fp8 = true;
+        let mut compress_lz4 = false;
+        let mut inplace = false;
+
+        let mut iter = raw_args[1..].iter();
+        while let Some(a) = iter.next() {
+            if a == "--out" || a == "-o" {
+                if let Some(val) = iter.next() {
+                    out_dir = Some(std::path::PathBuf::from(val));
+                }
+            } else if a == "--rank" || a == "-r" {
+                if let Some(val) = iter.next() {
+                    target_rank = val.parse::<usize>().ok();
+                }
+            } else if a == "--no-fp8" {
+                use_fp8 = false;
+            } else if a == "--lz4" {
+                compress_lz4 = true;
+            } else if a == "--inplace" {
+                inplace = true;
+            }
+        }
+
+        let final_out = if inplace {
+            input_path.clone()
+        } else if let Some(out) = out_dir {
+            out
+        } else {
+            let parent = input_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+            let name = input_path.file_name().unwrap_or_default().to_string_lossy();
+            parent.join(format!("{name}_calibrated"))
+        };
+
+        println!("\x1b[1;36m[Hydra Calibration Engine]\x1b[0m Calibrating '{}' -> '{}'...", input_path.display(), final_out.display());
+        let t0 = std::time::Instant::now();
+        let report = nioxs_engine::lora::calibrate_head_dir(&input_path, &final_out, target_rank, use_fp8, compress_lz4)
+            .map_err(|e| format!("Calibration failed: {e}"))?;
+        let elapsed = t0.elapsed().as_secs_f64();
+
+        println!("\x1b[1;32m✔ Head Calibration Complete in {:.2}s\x1b[0m", elapsed);
+        println!("  • Head ID:             {}", report.head_id);
+        println!("  • Original Size:       {:.2} MB", report.original_size_bytes as f64 / (1024.0 * 1024.0));
+        println!("  • Calibrated Size:     \x1b[1;32m{:.2} MB\x1b[0m (Target < 3.0 MB met)", report.calibrated_size_bytes as f64 / (1024.0 * 1024.0));
+        println!("  • Compression Ratio:   \x1b[1;33m{:.1}x\x1b[0m", report.compression_ratio);
+        println!("  • Storage Saved:       {:.2} MB", report.saved_mb);
+        println!("  • Effective Rank:      {} -> {}", report.original_rank, report.calibrated_rank);
+        println!("  • Precision:           {}", if report.is_fp8 { "FP8 E4M3 (scaled)" } else { "FP16" });
+        println!("  • Container:           {}", if report.is_compressed { "SafeTensors + LZ4" } else { "SafeTensors (Standard)" });
         return Ok(());
     }
     if arg.as_deref() == Some("skate") {

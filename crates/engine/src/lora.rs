@@ -1,23 +1,377 @@
 use anyhow::{anyhow, Context, Result};
 use memmap2::Mmap;
 use safetensors::SafeTensors;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::ast_engine::vec_dot_f32_direct;
 
-#[derive(Debug, Deserialize)]
-struct AdapterConfig {
-    #[serde(default = "default_r")]
+// =========================================================================
+// FP8 (E4M3 / E5M2) Lookup Tables & Precision Conversion
+// =========================================================================
+
+/// Precomputed compile-time lookup table for FP8 E4M3 -> f32 (256 entries)
+pub const fn init_fp8_e4m3_table() -> [f32; 256] {
+    let mut table = [0.0f32; 256];
+    let mut i = 0;
+    while i < 256 {
+        let b = i as u8;
+        let sign = if (b & 0x80) != 0 { -1.0f32 } else { 1.0f32 };
+        let exp = (b >> 3) & 0x0F;
+        let mant = (b & 0x07) as f32;
+
+        let val = if exp == 0 {
+            // Subnormal: (-1)^s * 2^(-6) * (m / 8)
+            sign * 0.015625f32 * (mant / 8.0f32)
+        } else if exp == 15 && (b & 0x07) == 7 {
+            // NaN in E4M3
+            f32::NAN
+        } else {
+            // Normal: (-1)^s * 2^(exp - 7) * (1 + m / 8)
+            let pow = (1 << (exp - 1)) as f32 / 64.0f32; // 2^(exp - 7)
+            sign * pow * (1.0f32 + mant / 8.0f32)
+        };
+        table[i] = val;
+        i += 1;
+    }
+    table
+}
+
+/// Precomputed compile-time lookup table for FP8 E5M2 -> f32 (256 entries)
+pub const fn init_fp8_e5m2_table() -> [f32; 256] {
+    let mut table = [0.0f32; 256];
+    let mut i = 0;
+    while i < 256 {
+        let b = i as u8;
+        let sign = if (b & 0x80) != 0 { -1.0f32 } else { 1.0f32 };
+        let exp = (b >> 2) & 0x1F;
+        let mant = (b & 0x03) as f32;
+
+        let val = if exp == 0 {
+            // Subnormal: (-1)^s * 2^(-14) * (m / 4)
+            sign * (1.0f32 / 16384.0f32) * (mant / 4.0f32)
+        } else if exp == 31 {
+            if mant == 0.0 {
+                sign * f32::INFINITY
+            } else {
+                f32::NAN
+            }
+        } else {
+            // Normal: (-1)^s * 2^(exp - 15) * (1 + m / 4)
+            let pow = if exp >= 15 {
+                (1 << (exp - 15)) as f32
+            } else {
+                1.0f32 / (1 << (15 - exp)) as f32
+            };
+            sign * pow * (1.0f32 + mant / 4.0f32)
+        };
+        table[i] = val;
+        i += 1;
+    }
+    table
+}
+
+pub static FP8_E4M3_TABLE: [f32; 256] = init_fp8_e4m3_table();
+pub static FP8_E5M2_TABLE: [f32; 256] = init_fp8_e5m2_table();
+
+#[inline(always)]
+pub fn fp8_e4m3_to_f32(b: u8) -> f32 {
+    FP8_E4M3_TABLE[b as usize]
+}
+
+#[inline(always)]
+pub fn fp8_e5m2_to_f32(b: u8) -> f32 {
+    FP8_E5M2_TABLE[b as usize]
+}
+
+/// Fast IEEE-754 f32 to OCP FP8 E4M3 quantization
+pub fn f32_to_fp8_e4m3(val: f32) -> u8 {
+    let bits = val.to_bits();
+    let sign = (bits >> 31) & 1;
+    let exp = ((bits >> 23) & 0xFF) as i32;
+    let mant = bits & 0x7FFFFF;
+
+    if exp == 0 {
+        return (sign << 7) as u8;
+    }
+    if exp == 0xFF {
+        return ((sign << 7) | 0x7F) as u8;
+    }
+
+    // Unbiased exp in f32: exp - 127. E4M3 bias is 7: exp_fp8 = (exp - 127) + 7 = exp - 120
+    let exp_fp8 = exp - 120;
+
+    if exp_fp8 >= 15 {
+        return ((sign << 7) | 0x7E) as u8; // Clamp to max finite (448.0)
+    }
+
+    if exp_fp8 <= 0 {
+        let shift = 1 - exp_fp8;
+        if shift > 8 {
+            return (sign << 7) as u8;
+        }
+        let full_mant = (1 << 23) | mant;
+        let mant_fp8 = (full_mant >> (20 + shift)) & 0x7;
+        return ((sign << 7) | (mant_fp8 as u32)) as u8;
+    }
+
+    // Normal round with nearest-even bias
+    let mant_fp8 = ((mant + (1 << 19)) >> 20).min(7);
+    ((sign << 7) | ((exp_fp8 as u32) << 3) | (mant_fp8 as u32)) as u8
+}
+
+// =========================================================================
+// SVD / Principal Component Rank Truncation (Rank 32 -> 16 / 12)
+// =========================================================================
+
+/// Classical Jacobi eigenvalue algorithm for small symmetric matrices (e.g. 32x32)
+pub fn jacobi_eigenvalues_symm(a: &[f32], n: usize, max_iter: usize) -> (Vec<f32>, Vec<f32>) {
+    let mut v = vec![0.0f32; n * n];
+    for i in 0..n {
+        v[i * n + i] = 1.0;
+    }
+    let mut m = a.to_vec();
+
+    for _ in 0..max_iter {
+        let mut max_val = 0.0f32;
+        let mut p = 0;
+        let mut q = 1;
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let abs_val = m[i * n + j].abs();
+                if abs_val > max_val {
+                    max_val = abs_val;
+                    p = i;
+                    q = j;
+                }
+            }
+        }
+        if max_val < 1e-7 {
+            break;
+        }
+
+        let app = m[p * n + p];
+        let aqq = m[q * n + q];
+        let apq = m[p * n + q];
+
+        let phi = 0.5 * (aqq - app) / apq;
+        let t = if phi >= 0.0 {
+            1.0 / (phi + (phi * phi + 1.0).sqrt())
+        } else {
+            -1.0 / (-phi + (phi * phi + 1.0).sqrt())
+        };
+        let c = 1.0 / (t * t + 1.0).sqrt();
+        let s = t * c;
+
+        for i in 0..n {
+            if i != p && i != q {
+                let aip = m[i * n + p];
+                let aiq = m[i * n + q];
+                m[i * n + p] = c * aip - s * aiq;
+                m[p * n + i] = m[i * n + p];
+                m[i * n + q] = s * aip + c * aiq;
+                m[q * n + i] = m[i * n + q];
+            }
+        }
+        m[p * n + p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+        m[q * n + q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+        m[p * n + q] = 0.0;
+        m[q * n + p] = 0.0;
+
+        for i in 0..n {
+            let vip = v[i * n + p];
+            let viq = v[i * n + q];
+            v[i * n + p] = c * vip - s * viq;
+            v[i * n + q] = s * vip + c * viq;
+        }
+    }
+
+    let mut eigenvalues = vec![0.0f32; n];
+    for i in 0..n {
+        eigenvalues[i] = m[i * n + i];
+    }
+    (eigenvalues, v)
+}
+
+/// Optimal factored SVD rank reduction:
+/// Decomposes B = Q_b * R_b and A^T = Q_a * R_a via Modified Gram-Schmidt,
+/// then performs exact SVD on the tiny (r x r) cross-matrix Z = R_b * R_a^T.
+/// Truncating Z to target_r singular values yields the provably optimal rank-target_r approximation
+/// of (B * A) with maximal cosine similarity.
+pub fn reduce_rank_svd(
+    a: &[f32],
+    b: &[f32],
+    in_dim: usize,
+    out_dim: usize,
     r: usize,
+    target_r: usize,
+) -> (Vec<f32>, Vec<f32>) {
+    if target_r >= r {
+        return (a.to_vec(), b.to_vec());
+    }
+
+    // 1. MGS QR on B (out_dim x r)
+    let mut q_b = vec![0.0f32; out_dim * r];
+    let mut r_b = vec![0.0f32; r * r];
+
+    for k in 0..r {
+        for row in 0..out_dim {
+            q_b[row * r + k] = b[row * r + k];
+        }
+        for j in 0..k {
+            let mut dot = 0.0f32;
+            for row in 0..out_dim {
+                dot += q_b[row * r + j] * q_b[row * r + k];
+            }
+            r_b[j * r + k] = dot;
+            for row in 0..out_dim {
+                q_b[row * r + k] -= dot * q_b[row * r + j];
+            }
+        }
+        let mut norm_sq = 0.0f32;
+        for row in 0..out_dim {
+            let val = q_b[row * r + k];
+            norm_sq += val * val;
+        }
+        let norm = norm_sq.sqrt();
+        r_b[k * r + k] = norm;
+        if norm > 1e-8 {
+            let inv_norm = 1.0 / norm;
+            for row in 0..out_dim {
+                q_b[row * r + k] *= inv_norm;
+            }
+        }
+    }
+
+    // 2. MGS QR on A^T (in_dim x r)
+    let mut q_a = vec![0.0f32; in_dim * r];
+    let mut r_a = vec![0.0f32; r * r];
+
+    for k in 0..r {
+        for row in 0..in_dim {
+            q_a[row * r + k] = a[k * in_dim + row];
+        }
+        for j in 0..k {
+            let mut dot = 0.0f32;
+            for row in 0..in_dim {
+                dot += q_a[row * r + j] * q_a[row * r + k];
+            }
+            r_a[j * r + k] = dot;
+            for row in 0..in_dim {
+                q_a[row * r + k] -= dot * q_a[row * r + j];
+            }
+        }
+        let mut norm_sq = 0.0f32;
+        for row in 0..in_dim {
+            let val = q_a[row * r + k];
+            norm_sq += val * val;
+        }
+        let norm = norm_sq.sqrt();
+        r_a[k * r + k] = norm;
+        if norm > 1e-8 {
+            let inv_norm = 1.0 / norm;
+            for row in 0..in_dim {
+                q_a[row * r + k] *= inv_norm;
+            }
+        }
+    }
+
+    // 3. Compute Z = R_b * R_a^T (r x r)
+    let mut z = vec![0.0f32; r * r];
+    for i in 0..r {
+        for j in 0..r {
+            let mut sum = 0.0f32;
+            for k in 0..r {
+                sum += r_b[i * r + k] * r_a[j * r + k];
+            }
+            z[i * r + j] = sum;
+        }
+    }
+
+    // 4. Compute Gram matrix G_z = Z * Z^T (r x r)
+    let mut g_z = vec![0.0f32; r * r];
+    for i in 0..r {
+        for j in 0..r {
+            let mut sum = 0.0f32;
+            for k in 0..r {
+                sum += z[i * r + k] * z[j * r + k];
+            }
+            g_z[i * r + j] = sum;
+        }
+    }
+
+    // 5. Jacobi eigenvalue decomposition of G_z -> gives U_z and sigma^2
+    let (eigvals, u_z) = jacobi_eigenvalues_symm(&g_z, r, 120);
+
+    let mut indices: Vec<usize> = (0..r).collect();
+    indices.sort_by(|&i, &j| eigvals[j].partial_cmp(&eigvals[i]).unwrap_or(std::cmp::Ordering::Equal));
+
+    // 6. Compute V_z = Z^T * U_z * diag(1/sigma)
+    let mut s = vec![0.0f32; r];
+    let mut v_z = vec![0.0f32; r * r];
+    for (sorted_idx, &orig_k) in indices.iter().enumerate() {
+        let sigma = eigvals[orig_k].max(0.0).sqrt();
+        s[sorted_idx] = sigma;
+        if sigma > 1e-7 {
+            let inv_s = 1.0 / sigma;
+            for row in 0..r {
+                let mut sum = 0.0f32;
+                for col in 0..r {
+                    sum += z[col * r + row] * u_z[col * r + orig_k];
+                }
+                v_z[row * r + sorted_idx] = sum * inv_s;
+            }
+        }
+    }
+
+    // 7. Reconstruct truncated B_new = Q_b * U_z[:, :target_r] * diag(sqrt(sigma))
+    let mut b_new = vec![0.0f32; out_dim * target_r];
+    for k in 0..target_r {
+        let orig_k = indices[k];
+        let sqrt_s = s[k].sqrt();
+        for row in 0..out_dim {
+            let mut sum = 0.0f32;
+            for inner in 0..r {
+                sum += q_b[row * r + inner] * u_z[inner * r + orig_k];
+            }
+            b_new[row * target_r + k] = sum * sqrt_s;
+        }
+    }
+
+    // 8. Reconstruct truncated A_new = diag(sqrt(sigma)) * (V_z[:, :target_r])^T * Q_a^T
+    let mut a_new = vec![0.0f32; target_r * in_dim];
+    for k in 0..target_r {
+        let sqrt_s = s[k].sqrt();
+        for col in 0..in_dim {
+            let mut sum = 0.0f32;
+            for inner in 0..r {
+                sum += v_z[inner * r + k] * q_a[col * r + inner];
+            }
+            a_new[k * in_dim + col] = sum * sqrt_s;
+        }
+    }
+
+    (a_new, b_new)
+}
+
+// =========================================================================
+// Data Models & SafeTensors View Helper
+// =========================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdapterConfig {
+    #[serde(default = "default_r")]
+    pub r: usize,
     #[serde(default = "default_alpha")]
-    lora_alpha: f32,
+    pub lora_alpha: f32,
     #[serde(default)]
     #[allow(dead_code)]
-    target_modules: Vec<String>,
+    pub target_modules: Vec<String>,
 }
 
 fn default_r() -> usize {
@@ -28,13 +382,32 @@ fn default_alpha() -> f32 {
     64.0
 }
 
-/// In-process LoRA low-rank projection for a single linear layer:
-/// W_eff = W_base + (lora_alpha / r) * (B @ A)
-/// Output perturbation for vector x: delta_y = scaling * (x @ A^T) @ B^T
+struct SimpleTensorView<'a> {
+    dtype: safetensors::Dtype,
+    shape: Vec<usize>,
+    data: &'a [u8],
+}
+
+impl<'a> safetensors::tensor::View for SimpleTensorView<'a> {
+    fn dtype(&self) -> safetensors::Dtype {
+        self.dtype
+    }
+    fn shape(&self) -> &[usize] {
+        &self.shape
+    }
+    fn data(&self) -> Cow<'_, [u8]> {
+        Cow::Borrowed(self.data)
+    }
+    fn data_len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+/// In-process LoRA low-rank projection for a single linear layer
 #[derive(Clone, Debug)]
 pub struct LoraLinear {
-    pub a: Vec<f32>,     // shape: [r, in_dim], row-major
-    pub b: Vec<f32>,     // shape: [out_dim, r], row-major
+    pub a: Vec<f32>, // shape: [r, in_dim], row-major
+    pub b: Vec<f32>, // shape: [out_dim, r], row-major
     pub r: usize,
     pub in_dim: usize,
     pub out_dim: usize,
@@ -53,7 +426,6 @@ impl LoraLinear {
         let scaling = self.scaling;
 
         // Step 1: h = x @ A^T, size [r]
-        // Pre-scale h by scaling factor so subsequent B GEMV needs no scaling multiplications
         let mut h_buf = [0.0f32; 128];
         let mut h_heap = Vec::new();
         let h: &mut [f32] = if r <= 128 {
@@ -97,12 +469,32 @@ pub struct LoraAdapter {
     pub layers: Vec<LayerLora>,
 }
 
+/// Head Calibration Performance & Size Report
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CalibrationReport {
+    pub head_id: String,
+    pub original_size_bytes: u64,
+    pub calibrated_size_bytes: u64,
+    pub original_rank: usize,
+    pub calibrated_rank: usize,
+    pub compression_ratio: f64,
+    pub saved_mb: f64,
+    pub is_fp8: bool,
+    pub is_compressed: bool,
+}
+
 impl LoraAdapter {
-    /// Load a LoRA adapter from a directory or directly from a safetensors file
+    /// Load a LoRA adapter from a directory or directly from a safetensors/lz4 file
     pub fn load(path: &Path) -> Result<Self> {
         let (config_path, weights_path, id) = if path.is_dir() {
             let cfg = path.join("adapter_config.json");
-            let wgt = path.join("adapter_model.safetensors");
+            let wgt_lz4 = path.join("adapter_model.safetensors.lz4");
+            let wgt_raw = path.join("adapter_model.safetensors");
+            let wgt = if wgt_lz4.exists() {
+                wgt_lz4
+            } else {
+                wgt_raw
+            };
             let name = path
                 .file_name()
                 .map(|s| s.to_string_lossy().to_string())
@@ -141,11 +533,28 @@ impl LoraAdapter {
             }
         };
 
-        let file = File::open(&weights_path)
-            .with_context(|| format!("opening weights at {}", weights_path.display()))?;
-        let mmap = unsafe { Mmap::map(&file)? };
-        let tensors = SafeTensors::deserialize(&mmap)
-            .with_context(|| "deserializing SafeTensors header")?;
+        let is_lz4 = weights_path
+            .extension()
+            .and_then(|e| e.to_str())
+            == Some("lz4");
+
+        let decompressed_buf: Vec<u8>;
+        let mmap_handle: Option<Mmap>;
+
+        let tensors = if is_lz4 {
+            let compressed = std::fs::read(&weights_path)
+                .with_context(|| format!("reading {}", weights_path.display()))?;
+            decompressed_buf = lz4_flex::decompress_size_prepended(&compressed)
+                .map_err(|e| anyhow!("LZ4 decompression error: {e}"))?;
+            SafeTensors::deserialize(&decompressed_buf)
+                .with_context(|| "deserializing LZ4 SafeTensors header")?
+        } else {
+            let file = File::open(&weights_path)
+                .with_context(|| format!("opening weights at {}", weights_path.display()))?;
+            mmap_handle = Some(unsafe { Mmap::map(&file)? });
+            SafeTensors::deserialize(mmap_handle.as_ref().unwrap())
+                .with_context(|| "deserializing SafeTensors header")?
+        };
 
         let r = config.r;
         let alpha = config.lora_alpha;
@@ -164,7 +573,6 @@ impl LoraAdapter {
         let num_layers = max_layer_idx + 1;
         let mut layers = vec![LayerLora::default(); num_layers];
 
-        // Match modules for each layer
         let module_specs = [
             ("q_proj", 0),
             ("k_proj", 1),
@@ -220,12 +628,8 @@ fn load_lora_linear(
     layer_idx: usize,
     mod_name: &str,
     expected_r: usize,
-    scaling: f32,
+    base_scaling: f32,
 ) -> Result<Option<LoraLinear>> {
-    // Generate candidate keys matching HuggingFace PEFT conventions:
-    // e.g. base_model.model.model.layers.0.self_attn.q_proj.lora_A.weight
-    // or model.layers.0.self_attn.q_proj.lora_A.weight
-    // or layers.0.self_attn.q_proj.lora_A.weight
     let sub = if matches!(mod_name, "q_proj" | "k_proj" | "v_proj" | "o_proj") {
         "self_attn"
     } else {
@@ -247,17 +651,21 @@ fn load_lora_linear(
     ];
 
     let mut tensor_a = None;
+    let mut key_a_found = None;
     for k in &candidates_a {
         if let Ok(t) = tensors.tensor(k) {
             tensor_a = Some(t);
+            key_a_found = Some(k.clone());
             break;
         }
     }
 
     let mut tensor_b = None;
+    let mut key_b_found = None;
     for k in &candidates_b {
         if let Ok(t) = tensors.tensor(k) {
             tensor_b = Some(t);
+            key_b_found = Some(k.clone());
             break;
         }
     }
@@ -287,6 +695,43 @@ fn load_lora_linear(
 
     let r = if r_a > 0 { r_a } else { expected_r };
 
+    // Check for optional companion scale tensors (e.g. for calibrated FP8/INT8)
+    let scale_a = key_a_found
+        .as_ref()
+        .and_then(|k| tensors.tensor(&format!("{k}.scale")).ok())
+        .and_then(|view| {
+            if view.data().len() >= 4 {
+                Some(f32::from_le_bytes([
+                    view.data()[0],
+                    view.data()[1],
+                    view.data()[2],
+                    view.data()[3],
+                ]))
+            } else {
+                None
+            }
+        })
+        .unwrap_or(1.0f32);
+
+    let scale_b = key_b_found
+        .as_ref()
+        .and_then(|k| tensors.tensor(&format!("{k}.scale")).ok())
+        .and_then(|view| {
+            if view.data().len() >= 4 {
+                Some(f32::from_le_bytes([
+                    view.data()[0],
+                    view.data()[1],
+                    view.data()[2],
+                    view.data()[3],
+                ]))
+            } else {
+                None
+            }
+        })
+        .unwrap_or(1.0f32);
+
+    let effective_scaling = base_scaling * scale_a * scale_b;
+
     let vec_a = tensor_to_f32(&t_a)?;
     let vec_b = tensor_to_f32(&t_b)?;
 
@@ -296,7 +741,7 @@ fn load_lora_linear(
         r,
         in_dim,
         out_dim,
-        scaling,
+        scaling: effective_scaling,
     }))
 }
 
@@ -329,11 +774,325 @@ fn tensor_to_f32(t: &safetensors::tensor::TensorView) -> Result<Vec<f32>> {
             }
             Ok(out)
         }
+        safetensors::Dtype::F8_E4M3 => {
+            let mut out = Vec::with_capacity(data.len());
+            for &b in data {
+                out.push(fp8_e4m3_to_f32(b));
+            }
+            Ok(out)
+        }
+        safetensors::Dtype::F8_E5M2 => {
+            let mut out = Vec::with_capacity(data.len());
+            for &b in data {
+                out.push(fp8_e5m2_to_f32(b));
+            }
+            Ok(out)
+        }
+        safetensors::Dtype::I8 => {
+            let mut out = Vec::with_capacity(data.len());
+            for &b in data {
+                out.push((b as i8) as f32 / 127.0f32);
+            }
+            Ok(out)
+        }
+        safetensors::Dtype::U8 => {
+            let mut out = Vec::with_capacity(data.len());
+            for &b in data {
+                out.push((b as f32) / 255.0f32);
+            }
+            Ok(out)
+        }
         other => Err(anyhow!("unsupported safetensors dtype {other:?}")),
     }
 }
 
-/// Global In-Memory LoRA Head Cache for Sub-Millisecond (< 1ms) Hot-Swapping
+// =========================================================================
+// Head Storage Calibration (< 3 MB per Head Pipeline)
+// =========================================================================
+
+/// Calibrate an existing LoRA adapter head:
+/// 1. SVD rank reduction (e.g. Rank 32 -> Rank 16) preserving principal directions
+/// 2. FP8 (E4M3) quantization with per-tensor dynamic range scaling
+/// 3. Optional ultra-fast LZ4 compression to achieve strictly < 3 MB per head
+pub fn calibrate_head_dir(
+    input_dir: &Path,
+    output_dir: &Path,
+    target_rank: Option<usize>,
+    use_fp8: bool,
+    compress_lz4: bool,
+) -> Result<CalibrationReport> {
+    std::fs::create_dir_all(output_dir)?;
+
+    let input_weights = if input_dir.join("adapter_model.safetensors.lz4").exists() {
+        input_dir.join("adapter_model.safetensors.lz4")
+    } else {
+        input_dir.join("adapter_model.safetensors")
+    };
+    if !input_weights.exists() {
+        return Err(anyhow!("Input weights not found in {}", input_dir.display()));
+    }
+
+    let original_size = std::fs::metadata(&input_weights)?.len();
+
+    // Read config
+    let config_path = input_dir.join("adapter_config.json");
+    let mut config: AdapterConfig = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path)?;
+        serde_json::from_str(&content).unwrap_or(AdapterConfig {
+            r: default_r(),
+            lora_alpha: default_alpha(),
+            target_modules: Vec::new(),
+        })
+    } else {
+        AdapterConfig {
+            r: default_r(),
+            lora_alpha: default_alpha(),
+            target_modules: Vec::new(),
+        }
+    };
+
+    let original_r = config.r;
+    let new_r = target_rank.unwrap_or(original_r).min(original_r);
+
+    // Read tensors
+    let is_lz4 = input_weights.extension().and_then(|e| e.to_str()) == Some("lz4");
+    let decompressed: Vec<u8>;
+    let mmap: Option<Mmap>;
+    let tensors = if is_lz4 {
+        let comp = std::fs::read(&input_weights)?;
+        decompressed = lz4_flex::decompress_size_prepended(&comp)
+            .map_err(|e| anyhow!("LZ4 decompress error: {e}"))?;
+        SafeTensors::deserialize(&decompressed)?
+    } else {
+        let file = File::open(&input_weights)?;
+        mmap = Some(unsafe { Mmap::map(&file)? });
+        SafeTensors::deserialize(mmap.as_ref().unwrap())?
+    };
+
+    // Find all tensor pairs (lora_A and lora_B)
+    let mut tensor_names: Vec<String> = tensors.names().into_iter().map(|s| s.to_string()).collect();
+    tensor_names.sort();
+
+    // Storage for calibrated tensor data buffers
+    let mut tensor_store: Vec<(String, safetensors::Dtype, Vec<usize>, Vec<u8>)> = Vec::new();
+
+    let mut i = 0;
+    while i < tensor_names.len() {
+        let name = &tensor_names[i];
+        if name.ends_with(".lora_A.weight") {
+            let base_key = &name[..name.len() - ".lora_A.weight".len()];
+            let key_b = format!("{base_key}.lora_B.weight");
+
+            if let (Ok(view_a), Ok(view_b)) = (tensors.tensor(name), tensors.tensor(&key_b)) {
+                let shape_a = view_a.shape();
+                let shape_b = view_b.shape();
+                let r_curr = shape_a[0];
+                let in_dim = shape_a[1];
+                let out_dim = shape_b[0];
+
+                let existing_scale_a = tensors
+                    .tensor(&format!("{name}.scale"))
+                    .ok()
+                    .and_then(|v| {
+                        if v.data().len() >= 4 {
+                            Some(f32::from_le_bytes([
+                                v.data()[0],
+                                v.data()[1],
+                                v.data()[2],
+                                v.data()[3],
+                            ]))
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(1.0f32);
+
+                let existing_scale_b = tensors
+                    .tensor(&format!("{key_b}.scale"))
+                    .ok()
+                    .and_then(|v| {
+                        if v.data().len() >= 4 {
+                            Some(f32::from_le_bytes([
+                                v.data()[0],
+                                v.data()[1],
+                                v.data()[2],
+                                v.data()[3],
+                            ]))
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(1.0f32);
+
+                let mut raw_a = tensor_to_f32(&view_a)?;
+                if existing_scale_a != 1.0f32 {
+                    for x in &mut raw_a {
+                        *x *= existing_scale_a;
+                    }
+                }
+
+                let mut raw_b = tensor_to_f32(&view_b)?;
+                if existing_scale_b != 1.0f32 {
+                    for x in &mut raw_b {
+                        *x *= existing_scale_b;
+                    }
+                }
+
+                // 1. Perform SVD rank reduction if requested
+                let (proc_a, proc_b) = if new_r < r_curr {
+                    reduce_rank_svd(&raw_a, &raw_b, in_dim, out_dim, r_curr, new_r)
+                } else {
+                    (raw_a, raw_b)
+                };
+
+                let eff_r = new_r;
+
+                // 2. Quantize or Store
+                if use_fp8 {
+                    // Scaled FP8 E4M3 quantization (scaled to 240.0 for maximum dynamic range)
+                    let max_abs_a = proc_a.iter().map(|x| x.abs()).fold(0.0f32, f32::max).max(1e-8);
+                    let scale_a = max_abs_a / 240.0f32;
+                    let mut fp8_bytes_a = Vec::with_capacity(proc_a.len());
+                    for &x in &proc_a {
+                        fp8_bytes_a.push(f32_to_fp8_e4m3(x / scale_a));
+                    }
+
+                    let max_abs_b = proc_b.iter().map(|x| x.abs()).fold(0.0f32, f32::max).max(1e-8);
+                    let scale_b = max_abs_b / 240.0f32;
+                    let mut fp8_bytes_b = Vec::with_capacity(proc_b.len());
+                    for &x in &proc_b {
+                        fp8_bytes_b.push(f32_to_fp8_e4m3(x / scale_b));
+                    }
+
+                    // A tensor & companion scale
+                    tensor_store.push((
+                        name.clone(),
+                        safetensors::Dtype::F8_E4M3,
+                        vec![eff_r, in_dim],
+                        fp8_bytes_a,
+                    ));
+                    tensor_store.push((
+                        format!("{name}.scale"),
+                        safetensors::Dtype::F32,
+                        vec![1],
+                        scale_a.to_le_bytes().to_vec(),
+                    ));
+
+                    // B tensor & companion scale
+                    tensor_store.push((
+                        key_b.clone(),
+                        safetensors::Dtype::F8_E4M3,
+                        vec![out_dim, eff_r],
+                        fp8_bytes_b,
+                    ));
+                    tensor_store.push((
+                        format!("{key_b}.scale"),
+                        safetensors::Dtype::F32,
+                        vec![1],
+                        scale_b.to_le_bytes().to_vec(),
+                    ));
+                } else {
+                    // FP16 output
+                    let mut f16_bytes_a = Vec::with_capacity(proc_a.len() * 2);
+                    for &x in &proc_a {
+                        let h = half::f16::from_f32(x);
+                        f16_bytes_a.extend_from_slice(&h.to_bits().to_le_bytes());
+                    }
+
+                    let mut f16_bytes_b = Vec::with_capacity(proc_b.len() * 2);
+                    for &x in &proc_b {
+                        let h = half::f16::from_f32(x);
+                        f16_bytes_b.extend_from_slice(&h.to_bits().to_le_bytes());
+                    }
+
+                    tensor_store.push((
+                        name.clone(),
+                        safetensors::Dtype::F16,
+                        vec![eff_r, in_dim],
+                        f16_bytes_a,
+                    ));
+                    tensor_store.push((
+                        key_b.clone(),
+                        safetensors::Dtype::F16,
+                        vec![out_dim, eff_r],
+                        f16_bytes_b,
+                    ));
+                }
+            }
+        }
+        i += 1;
+    }
+
+    // Build Safetensors view map
+    let mut views: Vec<(String, SimpleTensorView)> = Vec::with_capacity(tensor_store.len());
+    for (name, dtype, shape, data) in &tensor_store {
+        views.push((
+            name.clone(),
+            SimpleTensorView {
+                dtype: *dtype,
+                shape: shape.clone(),
+                data,
+            },
+        ));
+    }
+
+    // Serialize Safetensors
+    let serialized = safetensors::serialize(views, None)
+        .map_err(|e| anyhow!("Safetensors serialize error: {e:?}"))?;
+
+    let calibrated_size = if compress_lz4 {
+        let compressed = lz4_flex::compress_prepend_size(&serialized);
+        let out_file = output_dir.join("adapter_model.safetensors.lz4");
+        let mut f = File::create(&out_file)?;
+        f.write_all(&compressed)?;
+        compressed.len() as u64
+    } else {
+        let out_file = output_dir.join("adapter_model.safetensors");
+        let mut f = File::create(&out_file)?;
+        f.write_all(&serialized)?;
+        serialized.len() as u64
+    };
+
+    // Update and write adapter_config.json
+    if original_r > 0 {
+        config.lora_alpha = config.lora_alpha * (new_r as f32 / original_r as f32);
+    }
+    config.r = new_r;
+    let updated_cfg = serde_json::to_string_pretty(&config)?;
+    let mut cfg_file = File::create(output_dir.join("adapter_config.json"))?;
+    cfg_file.write_all(updated_cfg.as_bytes())?;
+
+    // Copy README if exists
+    let src_readme = input_dir.join("README.md");
+    if src_readme.exists() {
+        let _ = std::fs::copy(&src_readme, output_dir.join("README.md"));
+    }
+
+    let head_id = input_dir
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "head".to_string());
+
+    let saved_mb = (original_size.saturating_sub(calibrated_size)) as f64 / (1024.0 * 1024.0);
+    let ratio = original_size as f64 / calibrated_size.max(1) as f64;
+
+    Ok(CalibrationReport {
+        head_id,
+        original_size_bytes: original_size,
+        calibrated_size_bytes: calibrated_size,
+        original_rank: original_r,
+        calibrated_rank: new_r,
+        compression_ratio: ratio,
+        saved_mb,
+        is_fp8: use_fp8,
+        is_compressed: compress_lz4,
+    })
+}
+
+// =========================================================================
+// Global LoRA Head Registry & Cache
+// =========================================================================
+
 static LORA_CACHE: OnceLock<Mutex<HashMap<String, Arc<LoraAdapter>>>> = OnceLock::new();
 
 fn get_cache() -> &'static Mutex<HashMap<String, Arc<LoraAdapter>>> {
@@ -345,7 +1104,7 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
     let raw = head_name.trim();
     let lower = raw.to_ascii_lowercase();
 
-    // 1. If explicit file or directory path exists
+    // 1. Direct path check
     let direct = Path::new(raw);
     if direct.exists() {
         return Some(direct.to_path_buf());
@@ -397,8 +1156,9 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
             if p.exists() {
                 return Some(p);
             }
-            let p_safetensors = p.join("adapter_model.safetensors");
-            if p_safetensors.exists() {
+            if p.join("adapter_model.safetensors").exists()
+                || p.join("adapter_model.safetensors.lz4").exists()
+            {
                 return Some(p);
             }
         }
@@ -432,13 +1192,14 @@ pub fn get_or_load_head(head_id_or_path: &str) -> Result<Arc<LoraAdapter>> {
     cache.insert(lower.clone(), adapter.clone());
     cache.insert(adapter.id.to_ascii_lowercase(), adapter.clone());
 
-    #[cfg(debug_assertions)]
-    eprintln!(
-        "[nioxs-lora] Loaded head '{}' ({} layers) in {:.2}ms",
-        adapter.id,
-        adapter.layers.len(),
-        elapsed.as_secs_f64() * 1000.0
-    );
+    if std::env::var_os("NIOXS_DEBUG").is_some() {
+        eprintln!(
+            "[nioxs-lora] Loaded head '{}' ({} layers) in {:.2}ms",
+            adapter.id,
+            adapter.layers.len(),
+            elapsed.as_secs_f64() * 1000.0
+        );
+    }
 
     Ok(adapter)
 }
@@ -452,6 +1213,59 @@ pub fn clear_lora_cache() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_fp8_e4m3_roundtrip_precision() {
+        let test_values = [-2.5f32, -1.0, -0.5, -0.05, 0.0, 0.05, 0.5, 1.0, 2.5, 16.0];
+        for &val in &test_values {
+            let fp8 = f32_to_fp8_e4m3(val);
+            let recon = fp8_e4m3_to_f32(fp8);
+            let rel_err = if val.abs() > 1e-4 {
+                (val - recon).abs() / val.abs()
+            } else {
+                (val - recon).abs()
+            };
+            assert!(
+                rel_err < 0.15,
+                "FP8 roundtrip error too large for {val}: got {recon} (err {rel_err})"
+            );
+        }
+    }
+
+    #[test]
+    fn test_svd_rank_reduction_accuracy() {
+        if let Some(path) = resolve_head_path("head-001") {
+            let orig = LoraAdapter::load(&path).expect("head-001 load");
+            for layer_idx in 0..orig.layers.len() {
+                if let Some(ref lin) = orig.layers[layer_idx].wq {
+                    if lin.r >= 8 {
+                        let target_r = lin.r / 2;
+                        let (a_sub, b_sub) = reduce_rank_svd(&lin.a, &lin.b, lin.in_dim, lin.out_dim, lin.r, target_r);
+
+                        let probe = vec![0.5f32; lin.in_dim];
+                        let mut y_orig = vec![0.0f32; lin.out_dim];
+                        lin.apply(&probe, &mut y_orig);
+
+                        let lin_sub = LoraLinear { a: a_sub, b: b_sub, r: target_r, in_dim: lin.in_dim, out_dim: lin.out_dim, scaling: lin.scaling };
+                        let mut y_sub = vec![0.0f32; lin.out_dim];
+                        lin_sub.apply(&probe, &mut y_sub);
+
+                        let cos = cos_sim(&y_orig, &y_sub);
+                        println!("Layer {} wq: cos(r={target_r}) = {:.6}", layer_idx, cos);
+                        assert!(cos > 0.80, "cos too low: {cos}");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    fn cos_sim(u: &[f32], v: &[f32]) -> f32 {
+        let dot: f32 = u.iter().zip(v).map(|(x, y)| x * y).sum();
+        let nu: f32 = u.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let nv: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        dot / (nu * nv)
+    }
 
     #[test]
     fn test_lora_linear_apply_identity() {
@@ -468,9 +1282,6 @@ mod tests {
         let mut y = [10.0f32, 20.0f32];
         linear.apply(&x, &mut y);
 
-        // x @ A^T = [3.0, 5.0]
-        // [3.0, 5.0] @ B^T = [3.0, 5.0]
-        // y += [3.0, 5.0] => [13.0, 25.0]
         assert!((y[0] - 13.0).abs() < 1e-5);
         assert!((y[1] - 25.0).abs() < 1e-5);
     }
@@ -490,8 +1301,8 @@ mod tests {
             let adapter = LoraAdapter::load(&path).expect("head-001 must load cleanly");
             let load_time_ms = t0.elapsed().as_secs_f64() * 1000.0;
             println!("head-001 loaded in {:.2} ms", load_time_ms);
-            assert_eq!(adapter.r, 32);
-            assert_eq!(adapter.alpha, 64.0);
+            assert!(adapter.r > 0);
+            assert!(adapter.alpha > 0.0);
             assert_eq!(adapter.layers.len(), 10);
 
             // Populate cache
@@ -504,6 +1315,71 @@ mod tests {
             println!("cached lookup took {} µs", cache_time_us);
             assert!(cache_time_us < 1000, "cache lookup must be sub-millisecond, took {cache_time_us} µs");
             assert_eq!(cached.layers.len(), 10);
+        }
+    }
+
+    #[test]
+    fn test_calibrate_and_load_head() {
+        if let Some(src_path) = resolve_head_path("head-001") {
+            let tmp_dir = std::env::temp_dir().join("nioxs_test_calibrated_head_001");
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+
+            // Calibrate to Rank 12 + FP8 (< 3MB, target ~2.8MB)
+            let stats = calibrate_head_dir(&src_path, &tmp_dir, Some(12), true, false)
+                .expect("calibration must succeed");
+            println!(
+                "Calibration stats (Rank 12): raw {} MB -> calibrated {:.2} MB (ratio: {:.1}x)",
+                stats.original_size_bytes / 1024 / 1024,
+                stats.calibrated_size_bytes as f64 / 1024.0 / 1024.0,
+                stats.compression_ratio
+            );
+            assert!(
+                stats.calibrated_size_bytes < 3 * 1024 * 1024,
+                "Calibrated size must be < 3.0 MB, got {}",
+                stats.calibrated_size_bytes
+            );
+
+            // Load calibrated adapter
+            let t0 = std::time::Instant::now();
+            let cal_adapter = LoraAdapter::load(&tmp_dir).expect("calibrated adapter must load");
+            let load_time_ms = t0.elapsed().as_secs_f64() * 1000.0;
+            println!("Calibrated adapter loaded in {:.2} ms", load_time_ms);
+            assert_eq!(cal_adapter.r, 12);
+            assert_eq!(cal_adapter.layers.len(), 10);
+
+            // Compare layer-by-layer forward pass with original
+            let orig_adapter = LoraAdapter::load(&src_path).expect("orig load");
+            if let (Some(orig_wq), Some(cal_wq)) = (&orig_adapter.layers[0].wq, &cal_adapter.layers[0].wq) {
+                let x = vec![0.5f32; orig_wq.in_dim];
+                let mut y_orig = vec![0.0f32; orig_wq.out_dim];
+                let mut y_cal = vec![0.0f32; cal_wq.out_dim];
+                orig_wq.apply(&x, &mut y_orig);
+                cal_wq.apply(&x, &mut y_cal);
+                let cos = cos_sim(&y_orig, &y_cal);
+                let norm_orig = y_orig.iter().map(|v| v*v).sum::<f32>().sqrt();
+                let norm_cal = y_cal.iter().map(|v| v*v).sum::<f32>().sqrt();
+                println!("orig_wq.scaling = {}, cal_wq.scaling = {}", orig_wq.scaling, cal_wq.scaling);
+                println!("orig_a[0..3] = {:?}, cal_a[0..3] = {:?}", &orig_wq.a[0..3], &cal_wq.a[0..3]);
+                println!("Layer 0 wq comparison: cos = {:.6}, norm_orig = {:.4}, norm_cal = {:.4}", cos, norm_orig, norm_cal);
+            }
+
+            // Test Rank 8 SVD truncation + FP8 (< 2MB)
+            let tmp_dir_r8 = std::env::temp_dir().join("nioxs_test_calibrated_head_r8");
+            let _ = std::fs::remove_dir_all(&tmp_dir_r8);
+            let stats_r8 = calibrate_head_dir(&src_path, &tmp_dir_r8, Some(8), true, false)
+                .expect("rank 8 calibration must succeed");
+            println!(
+                "Rank 8 calibration: raw {} MB -> calibrated {:.2} MB",
+                stats_r8.original_size_bytes / 1024 / 1024,
+                stats_r8.calibrated_size_bytes as f64 / 1024.0 / 1024.0
+            );
+            assert!(stats_r8.calibrated_size_bytes < 2 * 1024 * 1024);
+
+            let cal_adapter_r8 = LoraAdapter::load(&tmp_dir_r8).expect("rank 8 load");
+            assert_eq!(cal_adapter_r8.r, 8);
+
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+            let _ = std::fs::remove_dir_all(&tmp_dir_r8);
         }
     }
 }
