@@ -21,9 +21,7 @@ impl DecodingPolicy {
         hydra: bool,
     ) -> Self {
         Self {
-            repeat_penalty: if hydra {
-                1.25
-            } else if cheetah || tiger || fox {
+            repeat_penalty: if cheetah || tiger || fox {
                 1.10
             } else if beluga || rabbit {
                 1.02
@@ -32,9 +30,9 @@ impl DecodingPolicy {
             } else if manta {
                 1.15
             } else {
-                1.10
+                1.00
             },
-            history_window: if hydra || manta || tiger || fox || rabbit {
+            history_window: if manta || tiger || fox || rabbit {
                 128
             } else {
                 HISTORY_WINDOW
@@ -176,7 +174,7 @@ mod tests {
             ),
             (
                 (false, false, false, false, false, false, false, false, true),
-                "1.25",
+                "1",
                 vec![],
             ),
         ] {

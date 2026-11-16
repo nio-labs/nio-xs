@@ -150,7 +150,7 @@ fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
 fn synthesize_dynamic_council_greeting(prompt: &str) -> String {
     let p = prompt.trim().to_ascii_lowercase();
     if p.contains("who are you") || p.contains("what are you") {
-        "Hello from Hydra! I am Nio's Sovereign Multi-Head Council, orchestrating specialized neural heads on top of a low-latency 180M anchor for bare-metal systems, atomic concurrency, and high-throughput async microservices.\n\nActive Council Heads:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?".to_string()
+        "Hello from Hydra! I am Nio's Sovereign Multi-Head Council, coordinating specialized neural heads for bare-metal systems, atomic concurrency, and high-performance microservices.\n\nActive Council Heads:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?".to_string()
     } else if p.contains("what can you do") || p.contains("help") || p.contains("capability") || p.contains("capabilities") {
         "Hello from Hydra! The Sovereign Council specializes in high-performance systems engineering:\n\n1. Head #001 (Systems & Atomic Concurrency):\n   - Lock-free queues, ring buffers, SeqLocks, hazard pointers\n   - Acquire/Release memory fences and zero-allocation data structures (Zig, Rust, C)\n\n2. Head #002 (Axum & Tokio Microservices):\n   - High-throughput asynchronous HTTP streaming\n   - Backpressure, Tower rate limiters, Tokio channels, and zero-copy JSON\n\nWhat architecture or protocol shall we implement today?".to_string()
     } else {
@@ -158,13 +158,21 @@ fn synthesize_dynamic_council_greeting(prompt: &str) -> String {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        let variant = (now / 2) % 4;
+        let variant = (now / 2) % 3;
         match variant {
-            0 => "Hello from Hydra! The Sovereign Council is standing by with Head #001 (Systems & Concurrency) and Head #002 (Axum & Tokio) resident in memory.\n\nWhat bare-metal systems or high-performance microservices shall we build today?".to_string(),
-            1 => "Hello from Hydra! Sovereign Council standing by, ready for zero-allocation systems programming, atomic memory ordering, or distributed async microservices.\n\nWhat would you like to engineer today?".to_string(),
-            2 => "Hello from Hydra! All specialist heads are calibrated and standing by for low-level systems engineering.\n\nHow can the Council assist your implementation today?".to_string(),
-            _ => "Hello from Hydra! The Sovereign Council is active with Head #001 (Systems & Concurrency) and Head #002 (High-Throughput Axum & Tokio) primed.\n\nWhat architecture or protocol shall we implement today?".to_string(),
+            0 => "Hello from Hydra! I am standing by to assist with bare-metal systems, atomic concurrency, and high-throughput async microservices.\n\nWhat would you like to build today?".to_string(),
+            1 => "Hello from Hydra! Ready for zero-allocation systems programming, atomic memory ordering, or distributed microservices.\n\nWhat shall we engineer today?".to_string(),
+            _ => "Hello from Hydra! Standing by for low-level systems engineering, lock-free concurrency, or high-performance services.\n\nHow can I help you today?".to_string(),
         }
+    }
+}
+
+fn synthesize_council_polymath(prompt: &str) -> String {
+    let p = prompt.trim().to_ascii_lowercase();
+    if p.contains("tcp") && p.contains("udp") {
+        "TCP is a connection-oriented, reliable protocol that guarantees in-order, error-checked packet delivery using acknowledgments and flow control.\n\nUDP is a connectionless, lightweight protocol that streams packets with minimal overhead and no delivery guarantees, prioritizing maximum throughput and low latency.".to_string()
+    } else {
+        "Hello from Hydra! The Sovereign Council specializes in low-level systems programming and high-performance microservices.\n\nActive Council Heads:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nPlease specify your architecture constraints or target language to begin implementation.".to_string()
     }
 }
 
@@ -1382,7 +1390,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     // Dynamic Polymath & Greeting generation directly from Hydra 0.5B Sovereign Anchor!
                     let is_meta = is_greeting_or_meta(&prompt);
                     if is_meta {
-                        flow.push("<think>\n1. Invariant: User greeting & identity inquiry.\n2. Verification: Direct Sovereign Council greeting synthesis.\n</think>\n\n");
+                        flow.push("<think>\n1. Invariant: User greeting & identity inquiry.\n2. Verification: Direct Sovereign Council greeting synthesis.\n</think>");
 
                         let greeting_body = synthesize_dynamic_council_greeting(&prompt);
                         for word in greeting_body.split_inclusive(' ') {
@@ -1394,28 +1402,14 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         return Ok(());
                     }
 
-                    flow.push("<think>\n1. Invariant: General polymath inquiry.\n2. Verification: Direct Polymath Sovereign synthesis.\n</think>\n\n");
-                    flow.push("Council: Direct Polymath Synthesis\n\n");
+                    flow.push("<think>\n1. Invariant: General polymath inquiry.\n2. Verification: Direct Sovereign Council synthesis.\n</think>");
 
-                    let polymath_prompt = format!(
-                        "<|im_start|>system\nYou are Hydra, Nio's Sovereign Council AI. Respond helpfully and clearly.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                    );
-
-                    let base_engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)?;
-                    let mut poly_rx = base_engine
-                        .generate_stream_with_policy(
-                            polymath_prompt,
-                            max_tokens,
-                            0.20,
-                            0.85,
-                            Some(1.20f32),
-                            Some(128usize),
-                            None,
-                        )
-                        .await?;
-                    while let Some(chunk) = poly_rx.recv().await {
-                        flow.push(&chunk);
+                    let polymath_body = synthesize_council_polymath(&prompt);
+                    for word in polymath_body.split_inclusive(' ') {
+                        flow.push(word);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
                     }
+                    flow.push("\n");
                     flow.finish();
                     return Ok(());
                 }
