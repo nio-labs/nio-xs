@@ -847,6 +847,7 @@ impl AstEngine {
                 "fin-base.0.5b-q4km.gguf",
             ],
             "fin-kernel" | "nio-fin-kernel" | "hydra-kernel" | "nio-hydra-kernel" => &[
+                "hydra-kernel-180m.q4km.gguf",
                 "fin-kernel-180m.q4km.gguf",
                 "fin-anchor-180m.q3km.gguf",
                 "fin-anchor-180m.iq3xxs.gguf",
@@ -945,11 +946,20 @@ impl AstEngine {
         }
 
         let base_dir = nioxs_artifacts::resolve_models_dir();
+        let home_dir = std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/root"));
         let search_dirs = [
             base_dir.clone(),
+            base_dir.join("hydra"),
             base_dir.join("fin"),
+            home_dir.join("nio-labs/nio-xs-models/models/hydra"),
+            home_dir.join("nio-labs/nio-xs-models/models/fin"),
+            PathBuf::from("/home/mn/nio-labs/nio-xs-models/models/hydra"),
             PathBuf::from("/home/mn/nio-labs/nio-xs-models/models/fin"),
+            PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra"),
+            PathBuf::from("/root/nio-labs/nio-xs-models/models/fin"),
+            PathBuf::from("models/hydra"),
             PathBuf::from("models/fin"),
+            PathBuf::from("models"),
         ];
         for dir in &search_dirs {
             for name in target_candidates {
@@ -994,14 +1004,24 @@ impl AstEngine {
                     return candidate2;
                 }
             }
-            if s.contains("fin") {
+            if s.contains("fin") || s.contains("hydra") {
+                let home_dir = std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/root"));
                 for cand in &[
+                    model.with_file_name("hydra-tokenizer.json"),
                     model.with_file_name("fin-tokenizer.json"),
                     model.with_file_name("tokenizer.json"),
                     model.with_file_name("cheetah-tokenizer.json"),
+                    home_dir.join("nio-labs/nio-xs-models/models/hydra/tokenizer.json"),
+                    home_dir.join("nio-labs/nio-xs-models/models/fin/tokenizer.json"),
+                    PathBuf::from("/home/mn/nio-labs/nio-xs-models/models/hydra/tokenizer.json"),
                     PathBuf::from("/home/mn/nio-labs/nio-xs-models/models/fin/tokenizer.json"),
+                    PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra/tokenizer.json"),
+                    PathBuf::from("/root/nio-labs/nio-xs-models/models/fin/tokenizer.json"),
+                    home_dir.join("nio-labs/nio-xs/models/tokenizer.json"),
                     PathBuf::from("/home/mn/nio-labs/nio-xs/models/tokenizer.json"),
-                    PathBuf::from("/home/mn/nio-labs/nio-ideas/models/tokenizer.json"),
+                    PathBuf::from("/root/nio-labs/nio-xs/models/tokenizer.json"),
+                    home_dir.join("nio-labs/nio-ideas/models/tokenizer.json"),
+                    PathBuf::from("models/tokenizer.json"),
                 ] {
                     if cand.is_file() {
                         return cand.clone();
@@ -1073,6 +1093,7 @@ impl AstEngine {
             Some(s) if s.contains("skate") => "skate-tokenizer.json",
             Some(s) if s.contains("beluga") => "beluga-tokenizer.json",
             Some(s) if s.contains("blue") => "blue-tokenizer.json",
+            Some(s) if s.contains("fin") || s.contains("hydra") => "fin-tokenizer.json",
             Some("nio-ray-dev.Q4_K_M.gguf") => "nio-ray-dev-tokenizer.json",
             Some(s) if s.contains("viper") => "nio-viper-tokenizer.json",
             Some(s) if s.contains("cuda") => "nio-cuda-tokenizer.json",

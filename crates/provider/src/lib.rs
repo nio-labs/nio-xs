@@ -144,6 +144,8 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         "Fin SQL — SQL Dialect & Transpilation Specialist (24L, 0.5B, < 350 MB RAM)",
         "Fin Concurrency — Lock-Free Atomics & Memory Ordering Specialist (28L, 1.5B, < 850 MB RAM)",
         "Fin Raft — Distributed Consensus & State Machine Specialist (28L, 1.5B, < 850 MB RAM)",
+        "Hydra — Sovereign 180M Council Anchor (10L, < 150 MB RAM)",
+        "Hydra Kernel — Bare-Metal POSIX & Atomic Concurrency Specialist (10L, < 150 MB RAM)",
         "Skate — Resident Micro-Guru & Edge Companion (v-µLM Companion, < 50 MB RAM)",
         "NioNano — Intent Reflex & MicroLM (~0.5M, sub-0.1ms)",
         "NioMicro — Contextual Policy Decision Arbiter (5.0M / cluster)",

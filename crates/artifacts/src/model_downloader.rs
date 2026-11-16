@@ -937,7 +937,7 @@ mod tests {
     // `default_manifest()` exactly, not merely look plausible.
     #[test]
     fn test_manifest_pins_real_upstream_artifacts() {
-        let expected: [(&str, &str, u64, &str); 9] = [
+        let expected: [(&str, &str, u64, &str); 17] = [
             (
                 MODEL_VIPER,
                 "58633aa691b80840dc85586cf2cb8616deff480c64ddf406bf848db749ecc3d4",
@@ -991,6 +991,54 @@ mod tests {
                 "724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7",
                 2_104_932_800,
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.1/tiger.3b-q4km.gguf",
+            ),
+            (
+                MODEL_FIN,
+                "ecbcd20282200a29a51abf33d2c9ac7cce1571126af68ccb28b90444982d8cc5",
+                986_048_160,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-base.q4km.gguf",
+            ),
+            (
+                MODEL_FIN_BASE,
+                "ecbcd20282200a29a51abf33d2c9ac7cce1571126af68ccb28b90444982d8cc5",
+                986_048_160,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-base.q4km.gguf",
+            ),
+            (
+                MODEL_FIN_KERNEL,
+                "3a1b7bd1d7da3279feae7e5a7c12bd99d7b7d9d4f6573f89fb79028a2ed83460",
+                986_048_160,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-kernel.q4km.gguf",
+            ),
+            (
+                MODEL_FIN_SQL,
+                "a2c1bc36ec8ceef39381a7162cb781f49d1c6127b38a666d7388a620354a5458",
+                397_807_584,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-sql.q4km.gguf",
+            ),
+            (
+                MODEL_FIN_CONCURRENCY,
+                "",
+                986_048_160,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-concurrency.q4km.gguf",
+            ),
+            (
+                MODEL_FIN_RAFT,
+                "902bd1bc83c5154ad1d2fdbbb46d75b1268f6746dddf96dc251bfce975f4b23c",
+                986_048_160,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/fin-raft.q4km.gguf",
+            ),
+            (
+                MODEL_HYDRA,
+                "cb5c0b050b4cb68712d54a8c47e65b8844bda868e8134c0c18bd86924337216e",
+                253_590_176,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-anchor-180m.q4km.gguf",
+            ),
+            (
+                MODEL_HYDRA_KERNEL,
+                "f177c73a75219c875dff160b8381e821cfb9565e714e9907e759d4469adf912d",
+                253_590_208,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-kernel-180m.q4km.gguf",
             ),
         ];
         let manifest = default_manifest();
@@ -1077,7 +1125,7 @@ mod tests {
     #[test]
     fn test_manifest_contains_all_models() {
         let manifest = default_manifest();
-        assert_eq!(manifest.len(), 9);
+        assert_eq!(manifest.len(), 17);
         for id in [
             MODEL_VIPER,
             MODEL_SKATE,
@@ -1088,6 +1136,14 @@ mod tests {
             MODEL_TIGER,
             MODEL_FOX,
             MODEL_RABBIT,
+            MODEL_FIN,
+            MODEL_FIN_BASE,
+            MODEL_FIN_KERNEL,
+            MODEL_FIN_SQL,
+            MODEL_FIN_CONCURRENCY,
+            MODEL_FIN_RAFT,
+            MODEL_HYDRA,
+            MODEL_HYDRA_KERNEL,
         ] {
             assert!(manifest.iter().any(|e| e.model_id == id));
         }

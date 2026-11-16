@@ -59,6 +59,7 @@ pub fn main() !void {
     defer prompt_parts.deinit();
 
     var window_layers: u32 = 4;
+    var is_hydra = false;
     var is_kernel = false;
     var is_sql = false;
     var is_base = false;
@@ -72,7 +73,7 @@ pub fn main() !void {
         const arg = args[i];
         if (std.mem.eql(u8, arg, "--info")) {
             info_only = true;
-        } else if (std.mem.eql(u8, arg, "--kernel") or std.mem.eql(u8, arg, "fin-kernel")) {
+        } else if (std.mem.eql(u8, arg, "--kernel") or std.mem.eql(u8, arg, "fin-kernel") or std.mem.eql(u8, arg, "hydra-kernel") or std.mem.eql(u8, arg, "nio-hydra-kernel")) {
             is_kernel = true;
         } else if (std.mem.eql(u8, arg, "--sql") or std.mem.eql(u8, arg, "fin-sql")) {
             is_sql = true;
@@ -82,8 +83,14 @@ pub fn main() !void {
             is_raft = true;
         } else if (std.mem.eql(u8, arg, "--base") or std.mem.eql(u8, arg, "fin-base")) {
             is_base = true;
-        } else if (std.mem.eql(u8, arg, "fin") or std.mem.eql(u8, arg, "nio-fin")) {
-            // "fin" command prefix: consume and continue
+        } else if (std.mem.eql(u8, arg, "fin") or std.mem.eql(u8, arg, "nio-fin") or
+            std.mem.eql(u8, arg, "hydra") or std.mem.eql(u8, arg, "nio-hydra") or
+            std.mem.eql(u8, arg, "hydra-max") or std.mem.eql(u8, arg, "hydra-ultra"))
+        {
+            // "fin" or "hydra" command prefix: consume and continue
+            if (std.mem.indexOf(u8, arg, "hydra") != null) {
+                is_hydra = true;
+            }
             continue;
         } else if (std.mem.eql(u8, arg, "--window") or std.mem.eql(u8, arg, "-w")) {
             i += 1;
@@ -114,7 +121,7 @@ pub fn main() !void {
     }
 
     const is_explicit_specialist = is_sql or is_kernel or is_concurrency or is_raft or is_base;
-    if (!is_explicit_specialist and model_path == null and !info_only) {
+    if (!is_explicit_specialist and !is_hydra and model_path == null and !info_only) {
         // Autonomous in-flight hand-off pipeline (nioxs fin "[prompt]")
         try runAutonomousHandoff(allocator, prompt, window_layers);
         return;
@@ -123,8 +130,12 @@ pub fn main() !void {
     // Resolve default model path if an explicit specialist flag was provided
     var default_path_buf: [512]u8 = undefined;
     if (model_path == null) {
-        const home = std.posix.getenv("HOME") orelse "/home/mn";
-        const filename = if (is_sql)
+        const home = std.posix.getenv("HOME") orelse "/root";
+        const filename = if (is_hydra and is_kernel)
+            "hydra-kernel-180m.q4km.gguf"
+        else if (is_hydra)
+            "hydra-anchor-180m.q4km.gguf"
+        else if (is_sql)
             "fin-sql.q4km.gguf"
         else if (is_kernel)
             "fin-kernel.q4km.gguf"
@@ -135,19 +146,22 @@ pub fn main() !void {
         else
             "fin-base.q4km.gguf";
 
-        // Try nio-xs-models first
-        const p1 = std.fmt.bufPrint(&default_path_buf, "{s}/nio-labs/nio-xs-models/models/fin/{s}", .{ home, filename }) catch null;
-        if (p1) |p| {
-            if (fileExists(p)) {
-                model_path = p;
-            }
-        }
+        const sub = if (is_hydra) "hydra" else "fin";
 
-        if (model_path == null) {
-            const p2 = std.fmt.bufPrint(&default_path_buf, "{s}/.nioxs/models/fin/{s}", .{ home, filename }) catch null;
-            if (p2) |p| {
-                model_path = p;
-            }
+        if (checkCandidate(&default_path_buf, "{s}/nio-labs/nio-xs-models/models/{s}/{s}", .{ home, sub, filename })) |p| {
+            model_path = p;
+        } else if (checkCandidate(&default_path_buf, "{s}/.nioxs/models/{s}/{s}", .{ home, sub, filename })) |p| {
+            model_path = p;
+        } else if (checkCandidate(&default_path_buf, "{s}/.nioxs/models/{s}", .{ home, filename })) |p| {
+            model_path = p;
+        } else if (checkCandidate(&default_path_buf, "/root/nio-labs/nio-xs-models/models/{s}/{s}", .{ sub, filename })) |p| {
+            model_path = p;
+        } else if (checkCandidate(&default_path_buf, "/home/mn/nio-labs/nio-xs-models/models/{s}/{s}", .{ sub, filename })) |p| {
+            model_path = p;
+        } else if (checkCandidate(&default_path_buf, "models/{s}/{s}", .{ sub, filename })) |p| {
+            model_path = p;
+        } else if (checkCandidate(&default_path_buf, "models/{s}", .{ filename })) |p| {
+            model_path = p;
         }
     }
 
@@ -228,15 +242,30 @@ fn parseKbToMb(line: []const u8) f64 {
     return 0.0;
 }
 
-fn resolveModelPath(allocator: std.mem.Allocator, filename: []const u8) ?[]const u8 {
-    const home = std.posix.getenv("HOME") orelse "/home/mn";
-    const p1 = std.fmt.allocPrint(allocator, "{s}/nio-labs/nio-xs-models/models/fin/{s}", .{ home, filename }) catch return null;
-    if (fileExists(p1)) return p1;
-    allocator.free(p1);
+fn checkCandidate(buf: *[512]u8, comptime fmt: []const u8, args: anytype) ?[]const u8 {
+    const p = std.fmt.bufPrint(buf, fmt, args) catch return null;
+    if (fileExists(p)) return p;
+    return null;
+}
 
-    const p2 = std.fmt.allocPrint(allocator, "{s}/.nioxs/models/fin/{s}", .{ home, filename }) catch return null;
-    if (fileExists(p2)) return p2;
-    allocator.free(p2);
+fn tryCandidateAlloc(allocator: std.mem.Allocator, comptime fmt: []const u8, args: anytype) ?[]const u8 {
+    const p = std.fmt.allocPrint(allocator, fmt, args) catch return null;
+    if (fileExists(p)) return p;
+    allocator.free(p);
+    return null;
+}
+
+fn resolveModelPath(allocator: std.mem.Allocator, filename: []const u8) ?[]const u8 {
+    const home = std.posix.getenv("HOME") orelse "/root";
+    const sub = if (std.mem.indexOf(u8, filename, "hydra") != null) "hydra" else "fin";
+
+    if (tryCandidateAlloc(allocator, "{s}/nio-labs/nio-xs-models/models/{s}/{s}", .{ home, sub, filename })) |p| return p;
+    if (tryCandidateAlloc(allocator, "{s}/.nioxs/models/{s}/{s}", .{ home, sub, filename })) |p| return p;
+    if (tryCandidateAlloc(allocator, "{s}/.nioxs/models/{s}", .{ home, filename })) |p| return p;
+    if (tryCandidateAlloc(allocator, "/root/nio-labs/nio-xs-models/models/{s}/{s}", .{ sub, filename })) |p| return p;
+    if (tryCandidateAlloc(allocator, "/home/mn/nio-labs/nio-xs-models/models/{s}/{s}", .{ sub, filename })) |p| return p;
+    if (tryCandidateAlloc(allocator, "models/{s}/{s}", .{ sub, filename })) |p| return p;
+    if (tryCandidateAlloc(allocator, "models/{s}", .{ filename })) |p| return p;
 
     return null;
 }
@@ -666,17 +695,18 @@ fn printUsage() void {
         \\Usage:
         \\  nioxs [options] <prompt>           Run with native Zig engine (default, ~11ms cold-start)
         \\  nioxs --rs <command> [args...]     Delegate to Rust companion engine
+        \\  nioxs hydra [--kernel] <prompt>    Run Hydra Sovereign 180M Council Fleet
         \\  nioxs fin [--kernel|--sql] <prompt> Run Fin Apex Systems Council
         \\
         \\Commands (delegated to Rust when needed):
         \\  serve                              Start HTTP OpenAI-compatible AI gateway
         \\  mcp                                Start Model Context Protocol stdio server
-        \\  pull <model>                       Download & verify weights
+        \\  pull <model>                       Download & verify weights (e.g. hydra, fin)
         \\
         \\Zig Native Engine Options:
-        \\  --kernel                           Target fin-kernel (1.5B POSIX/Concurrency)
+        \\  --kernel                           Target kernel specialist (Hydra or Fin)
         \\  --sql                              Target fin-sql (0.5B SQL Dialect)
-        \\  --base                             Target fin-base (1.5B Council Speaker)
+        \\  --base                             Target base anchor / council speaker
         \\  -w, --window <count>               Sliding window resident layers (default: 4, < 850 MB RAM)
         \\  -n, --max-tokens <count>           Max tokens to generate (default: 512)
         \\  -m, --model <path>                 Explicit path to GGUF model binary
