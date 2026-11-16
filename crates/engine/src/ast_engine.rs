@@ -6,7 +6,7 @@ use std::fs::File;
 use std::path::Path;
 
 use crate::gguf;
-use crate::pool::{self, GemvTask, SpinThreadPool};
+use crate::pool::{GemvTask, SpinThreadPool};
 use crate::quants;
 
 pub fn memory_mb() -> (f64, f64) {
@@ -499,6 +499,7 @@ impl LayerDesc {
         head_dim: usize,
         eps: f32,
         kv_cache: &mut LayerKvCache,
+        lora: Option<&crate::lora::LayerLora>,
     ) {
         // 1. Attention Norm
         rms_norm_slice(&scratch.x, &self.attn_norm_weight, eps, &mut scratch.x_norm);
@@ -590,6 +591,18 @@ impl LayerDesc {
                 n_cols: self.wv.n_cols,
                 dtype: self.wv.dtype,
             });
+        }
+
+        if let Some(l) = lora {
+            if let Some(ref l_q) = l.wq {
+                l_q.apply(&scratch.x_norm, &mut scratch.q);
+            }
+            if let Some(ref l_k) = l.wk {
+                l_k.apply(&scratch.x_norm, &mut scratch.k);
+            }
+            if let Some(ref l_v) = l.wv {
+                l_v.apply(&scratch.x_norm, &mut scratch.v);
+            }
         }
 
         if !self.q_bias.is_empty() {
@@ -685,6 +698,12 @@ impl LayerDesc {
                 n_cols: self.wo.n_cols,
                 dtype: self.wo.dtype,
             });
+        }
+
+        if let Some(l) = lora {
+            if let Some(ref l_o) = l.wo {
+                l_o.apply(&scratch.attn_out, &mut scratch.wo_out);
+            }
         }
 
         // 7. Residual connection (x = x + wo_out)
@@ -849,6 +868,22 @@ impl LayerDesc {
             }
         }
 
+        if let Some(l) = lora {
+            if l.w1.is_some() || l.w3.is_some() {
+                if let Some(ref l_1) = l.w1 {
+                    l_1.apply(&scratch.ffn_norm, &mut scratch.w1);
+                }
+                if let Some(ref l_3) = l.w3 {
+                    l_3.apply(&scratch.ffn_norm, &mut scratch.w3);
+                }
+                for j in 0..self.w1.n_rows {
+                    let w1_val = scratch.w1[j];
+                    let silu = w1_val / (1.0 + (-w1_val).exp());
+                    scratch.inter[j] = silu * scratch.w3[j];
+                }
+            }
+        }
+
         // 11. Quantize inter to Q8_K and Down Projection (w2)
         if matches!(self.w2.dtype, 12 | 13 | 14 | 18 | 21 | 22) && scratch.inter.len() % 256 == 0 {
             quants::quantize_row_q8_k(&scratch.inter, &mut scratch.inter_q8_k);
@@ -880,6 +915,12 @@ impl LayerDesc {
                 n_cols: self.w2.n_cols,
                 dtype: self.w2.dtype,
             });
+        }
+
+        if let Some(l) = lora {
+            if let Some(ref l_2) = l.w2 {
+                l_2.apply(&scratch.inter, &mut scratch.mlp_out);
+            }
         }
 
         // 12. Residual connection (x = x + mlp_out)
@@ -1673,7 +1714,7 @@ impl LayerDesc {
         kv_cache: &mut LayerKvCache,
     ) {
         self.forward_token(
-            mmap, scratch, pool, pos, cos, sin, neox, n_head, n_kv_head, head_dim, eps, kv_cache,
+            mmap, scratch, pool, pos, cos, sin, neox, n_head, n_kv_head, head_dim, eps, kv_cache, None,
         );
     }
 }
@@ -1824,9 +1865,22 @@ pub struct AstMicroEngine {
     pub resident_layers: usize,
     pub rolling_window: usize,
     pub medusa_head: Option<MedusaHead>,
+    pub active_lora: Option<std::sync::Arc<crate::lora::LoraAdapter>>,
 }
 
 impl AstMicroEngine {
+    pub fn attach_lora(&mut self, lora: std::sync::Arc<crate::lora::LoraAdapter>) {
+        self.active_lora = Some(lora);
+    }
+
+    pub fn detach_lora(&mut self) {
+        self.active_lora = None;
+    }
+
+    pub fn active_lora_id(&self) -> Option<&str> {
+        self.active_lora.as_ref().map(|l| l.id.as_str())
+    }
+
     pub fn context_length(&self) -> usize {
         self.cos_table.len() / (self.head_dim / 2)
     }
@@ -2336,6 +2390,7 @@ impl AstMicroEngine {
                     }
                 }
             },
+            active_lora: None,
         };
         if engine.medusa_head.is_some() && std::env::var_os("NIOXS_DEBUG").is_some() {
             eprintln!(
@@ -2623,10 +2678,11 @@ impl AstMicroEngine {
                 self.layers[layer_idx + 1].prefetch_layer(&self.mmap);
             }
             let layer = &self.layers[layer_idx];
+            let lora = self.active_lora.as_ref().and_then(|a| a.layers.get(layer_idx));
             let mut step = 0;
 
             while step < n_tokens {
-                if step + 3 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
+                if self.active_lora.is_none() && step + 3 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
                     let pos0 = index_pos + step;
                     let pos1 = pos0 + 1;
                     let pos2 = pos0 + 2;
@@ -2668,7 +2724,7 @@ impl AstMicroEngine {
                     activations[step + 1].copy_from_slice(&self.scratch1.x);
                     activations[step + 2].copy_from_slice(&self.scratch2.x);
                     step += 3;
-                } else if step + 2 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
+                } else if self.active_lora.is_none() && step + 2 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
                     let pos0 = index_pos + step;
                     let pos1 = pos0 + 1;
                     let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];
@@ -2720,6 +2776,7 @@ impl AstMicroEngine {
                         self.head_dim,
                         self.rms_norm_eps as f32,
                         &mut self.kv_caches[layer_idx],
+                        lora,
                     );
                     activations[step].copy_from_slice(&self.scratch.x);
                     step += 1;

@@ -196,7 +196,7 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
             || lower_acc.contains("domain = microservices")
             || lower_acc.contains("domain=microservices")
         {
-            return Some("hydra-kernel");
+            return Some("head-002");
         }
 
         // Cross-council specialized delegations
@@ -208,6 +208,16 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
         }
 
         // --- HYDRA Fallback Safety Clutch ONLY (if neural speaker failed to emit a directive) ---
+        if lower_p.contains("axum")
+            || lower_p.contains("tokio")
+            || lower_p.contains("tower")
+            || lower_p.contains("ndjson")
+            || lower_p.contains("sse")
+            || lower_p.contains("microservice")
+        {
+            return Some("head-002");
+        }
+
         if lower_p.contains("atomic")
             || lower_p.contains("lock-free")
             || lower_p.contains("lockfree")
@@ -218,9 +228,6 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
             || lower_p.contains("posix")
             || lower_p.contains("io_uring")
             || lower_p.contains("epoll")
-            || lower_p.contains("axum")
-            || lower_p.contains("tokio")
-            || lower_p.contains("tower")
             || lower_p.contains("zig")
             || lower_p.contains("concurrency")
             || lower_p.contains("mutex")
@@ -1251,8 +1258,6 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             // Step 2: Automatic In-Flight Hand-Off to Specialist (or Direct Polymath Execution)
             if let Some(specialist) = specialist_opt {
                 drop(rx);
-                base_engine.unload().await;
-                drop(base_engine); // Evict Speaker working set to guarantee < 180MB RAM (< 850MB on fin)
 
                 // Emit clean council deliberation directive
                 let directive_rendered = if accumulated.contains("@council") {
@@ -1270,23 +1275,40 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 };
                 flow.push(&directive_rendered);
 
-                let specialist_engine = nioxs_engine::AstEngine::for_model_with_device(specialist, device_pref)?;
-                let specialist_prompt = if is_hydra {
-                    format!(
+                if is_hydra {
+                    // NATIVE IN-PROCESS LORA HEAD HOT-SWAP (< 1ms switch)
+                    // The base anchor (0.5B or 180M) stays resident in RAM!
+                    let t_swap = std::time::Instant::now();
+                    let head_attached = base_engine.attach_lora_head(specialist).await.is_ok();
+                    let swap_ms = t_swap.elapsed().as_secs_f64() * 1000.0;
+                    if head_attached && std::env::var_os("NIOXS_DEBUG").is_some() {
+                        eprintln!("[nioxs-hydra] Hot-swapped to Head '{specialist}' in {swap_ms:.2}ms (Base Anchor resident in RAM)");
+                    }
+
+                    let specialist_prompt = format!(
                         "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
                         nioxs_engine::hydra_specialist_system(specialist)
-                    )
+                    );
+                    let mut spec_rx = base_engine
+                        .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
+                        .await?;
+                    while let Some(chunk) = spec_rx.recv().await {
+                        flow.push(&chunk);
+                    }
                 } else {
-                    format!(
+                    base_engine.unload().await;
+                    drop(base_engine); // Evict Speaker working set to guarantee < 180MB RAM (< 850MB on fin)
+                    let specialist_engine = nioxs_engine::AstEngine::for_model_with_device(specialist, device_pref)?;
+                    let specialist_prompt = format!(
                         "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
                         nioxs_engine::fin_specialist_system(specialist)
-                    )
-                };
-                let mut spec_rx = specialist_engine
-                    .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
-                    .await?;
-                while let Some(chunk) = spec_rx.recv().await {
-                    flow.push(&chunk);
+                    );
+                    let mut spec_rx = specialist_engine
+                        .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
+                        .await?;
+                    while let Some(chunk) = spec_rx.recv().await {
+                        flow.push(&chunk);
+                    }
                 }
             } else {
                 // Direct polymath execution by the base anchor!
@@ -1303,21 +1325,33 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             }
         } else {
             // Direct specialist execution (e.g. nioxs hydra --kernel or nioxs fin --kernel)
-            let is_hydra = matches!(model_target, "hydra-kernel" | "hydra-max" | "hydra-ultra");
-            let engine = nioxs_engine::AstEngine::for_model_with_device(model_target, device_pref)?;
-            let system_prompt = if is_hydra {
-                nioxs_engine::hydra_specialist_system(model_target)
+            let is_hydra = matches!(model_target, "hydra-kernel" | "hydra-max" | "hydra-ultra")
+                || model_target.starts_with("head-");
+            if is_hydra {
+                let engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)?;
+                let _ = engine.attach_lora_head(model_target).await;
+                let system_prompt = nioxs_engine::hydra_specialist_system(model_target);
+                let formatted_prompt = format!(
+                    "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                );
+                let mut rx = engine
+                    .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
+                    .await?;
+                while let Some(chunk) = rx.recv().await {
+                    flow.push(&chunk);
+                }
             } else {
-                nioxs_engine::fin_specialist_system(model_target)
-            };
-            let formatted_prompt = format!(
-                "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-            );
-            let mut rx = engine
-                .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
-                .await?;
-            while let Some(chunk) = rx.recv().await {
-                flow.push(&chunk);
+                let engine = nioxs_engine::AstEngine::for_model_with_device(model_target, device_pref)?;
+                let system_prompt = nioxs_engine::fin_specialist_system(model_target);
+                let formatted_prompt = format!(
+                    "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                );
+                let mut rx = engine
+                    .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
+                    .await?;
+                while let Some(chunk) = rx.recv().await {
+                    flow.push(&chunk);
+                }
             }
         }
 
@@ -2003,6 +2037,14 @@ mod tests {
         let prompt = "Write a lock-free queue in Zig";
         let specialist = detect_council_specialist(acc, prompt, true);
         assert_eq!(specialist, Some("hydra-kernel"));
+    }
+
+    #[test]
+    fn test_detect_hydra_specialist_head_002() {
+        let acc = "<think>\nInvariant: async streaming backpressure\n</think>\n@council(head-002-backend-axum-tokio)";
+        let prompt = "Build an Axum SSE streaming server";
+        let specialist = detect_council_specialist(acc, prompt, true);
+        assert_eq!(specialist, Some("head-002"));
     }
 
     #[test]

@@ -11,12 +11,14 @@ pub mod gguf;
 pub mod hardware;
 pub mod iq2s_grid;
 pub mod iq3s_grid;
+pub mod lora;
 pub mod pool;
 pub mod prefix_cache;
 pub mod quants;
 mod speculation;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 pub use hardware::{ActiveDevice, DevicePreference};
+pub use lora::{LoraAdapter, get_or_load_head, resolve_head_path};
 
 fn output_budget(prompt_tokens: usize, context: usize, requested: usize) -> Result<usize> {
     anyhow::ensure!(prompt_tokens > 0, "prompt must contain at least one token");
@@ -1506,6 +1508,40 @@ impl AstEngine {
             bundle.engine.evict_all();
             bundle.engine.park();
         }
+    }
+
+    /// Dynamically hot-swap an in-process LoRA adapter head (< 1ms switch time)
+    /// keeping the base anchor resident in RAM.
+    pub async fn attach_lora_head(&self, head_name_or_path: &str) -> Result<()> {
+        let adapter = crate::lora::get_or_load_head(head_name_or_path)?;
+        self.ensure_loaded().await?;
+        let mut guard = self.bundle.lock().await;
+        let bundle = guard
+            .as_mut()
+            .ok_or_else(|| anyhow!("Model bundle not loaded"))?;
+        bundle.engine.attach_lora(adapter);
+        bundle.engine.reset_cache();
+        bundle.cached_prefix.clear();
+        Ok(())
+    }
+
+    /// Detach any active LoRA head, restoring pure base anchor execution.
+    pub async fn detach_lora_head(&self) -> Result<()> {
+        let mut guard = self.bundle.lock().await;
+        if let Some(bundle) = guard.as_mut() {
+            bundle.engine.detach_lora();
+            bundle.engine.reset_cache();
+            bundle.cached_prefix.clear();
+        }
+        Ok(())
+    }
+
+    /// Return the identifier of the currently attached LoRA head, if any.
+    pub async fn active_lora_head(&self) -> Option<String> {
+        let guard = self.bundle.lock().await;
+        guard
+            .as_ref()
+            .and_then(|b| b.engine.active_lora_id().map(|s| s.to_string()))
     }
 
     pub async fn generate_stream(

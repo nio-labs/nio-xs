@@ -4,7 +4,7 @@
 use crate::quants::{self, BlockQ8_0, BlockQ8_K};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
 
 pub const NUM_WORKERS: usize = 14;
 
