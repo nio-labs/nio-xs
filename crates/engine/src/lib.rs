@@ -857,6 +857,8 @@ impl AstEngine {
                 "nio-rabbit.3b-q4km.gguf",
             ],
             "fin" | "nio-fin" | "fin-base" | "nio-fin-base" | "hydra" | "nio-hydra" | "hydra-max" | "hydra-ultra" => &[
+                "hydra-anchor-0.5b.q4km.gguf",
+                "hydra-anchor.q4km.gguf",
                 "hydra-anchor-180m.q4km.gguf",
                 "fin-anchor-180m.q3km.gguf",
                 "fin-anchor-180m.iq3xxs.gguf",
@@ -1316,9 +1318,15 @@ impl AstEngine {
                     engine.set_rolling_window(window);
                 }
             } else if is_hydra {
-                let resident = engine.block_count;
-                engine.set_resident_layers(resident);
-                engine.set_rolling_window(resident);
+                let gpu_layers = active_dev.recommended_gpu_layers(engine.block_count);
+                if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
+                    engine.set_resident_layers(gpu_layers);
+                    engine.set_rolling_window(gpu_layers.max(4));
+                } else {
+                    let resident = engine.block_count;
+                    engine.set_resident_layers(resident);
+                    engine.set_rolling_window(resident);
+                }
             } else if is_fin {
                 let gpu_layers = active_dev.recommended_gpu_layers(28);
                 if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
