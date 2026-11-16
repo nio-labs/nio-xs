@@ -933,6 +933,51 @@ pub unsafe fn vec_dot_q8_0_28blocks_avx2(
     hsum_float_8(_mm256_add_ps(acc0, acc1))
 }
 
+#[cfg(target_arch = "x86_64")]
+pub const Q5_0_QH_LUT: [u64; 256] = {
+    let mut lut = [0u64; 256];
+    let mut b = 0;
+    while b < 256 {
+        let mut v = 0u64;
+        let mut i = 0;
+        while i < 8 {
+            if (b & (1 << i)) != 0 {
+                v |= 16u64 << (i * 8);
+            }
+            i += 1;
+        }
+        lut[b] = v;
+        b += 1;
+    }
+    lut
+};
+
+#[inline]
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+pub unsafe fn unpack_q5_0_block_avx2(qh: u32, qs_ptr: *const u8) -> core::arch::x86_64::__m256i {
+    use core::arch::x86_64::*;
+    let b0 = (qh & 0xFF) as usize;
+    let b1 = ((qh >> 8) & 0xFF) as usize;
+    let b2 = ((qh >> 16) & 0xFF) as usize;
+    let b3 = ((qh >> 24) & 0xFF) as usize;
+
+    let v_qh = _mm256_set_epi64x(
+        Q5_0_QH_LUT[b3] as i64,
+        Q5_0_QH_LUT[b2] as i64,
+        Q5_0_QH_LUT[b1] as i64,
+        Q5_0_QH_LUT[b0] as i64,
+    );
+
+    let raw_qs = _mm_loadu_si128(qs_ptr as *const __m128i);
+    let low_nibbles = _mm_and_si128(raw_qs, _mm_set1_epi8(0x0F));
+    let high_nibbles = _mm_and_si128(_mm_srli_epi16(raw_qs, 4), _mm_set1_epi8(0x0F));
+
+    let v_qs = _mm256_set_m128i(high_nibbles, low_nibbles);
+    let v_combined = _mm256_or_si256(v_qs, v_qh);
+    _mm256_sub_epi8(v_combined, _mm256_set1_epi8(16))
+}
+
 #[inline]
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
@@ -953,11 +998,6 @@ pub unsafe fn vec_dot_q5_0_q8_0_2rows_avx2(
     let mut r1_acc0 = _mm256_setzero_ps();
     let mut r1_acc1 = _mm256_setzero_ps();
 
-    let mut r0_w_i8_0 = [0i8; 32];
-    let mut r0_w_i8_1 = [0i8; 32];
-    let mut r1_w_i8_0 = [0i8; 32];
-    let mut r1_w_i8_1 = [0i8; 32];
-
     let mut ib = 0;
     while ib + 1 < nb {
         let r0_b0 = r0_ptr.add(ib * 22);
@@ -969,49 +1009,25 @@ pub unsafe fn vec_dot_q5_0_q8_0_2rows_avx2(
         let r0_d0_raw = (r0_b0 as *const u16).read_unaligned();
         let r0_qh0 = (r0_b0.add(2) as *const u32).read_unaligned();
         let r0_qs0 = r0_b0.add(6);
-        for j in 0..16 {
-            let xh0 = (((r0_qh0 >> j) & 1) << 4) as i32;
-            let xh1 = (((r0_qh0 >> (j + 16)) & 1) << 4) as i32;
-            let q = *r0_qs0.add(j);
-            r0_w_i8_0[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
-            r0_w_i8_0[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
-        }
+        let r0_qx0 = unpack_q5_0_block_avx2(r0_qh0, r0_qs0);
 
         // Row 0 block 1
         let r0_d1_raw = (r0_b1 as *const u16).read_unaligned();
         let r0_qh1 = (r0_b1.add(2) as *const u32).read_unaligned();
         let r0_qs1 = r0_b1.add(6);
-        for j in 0..16 {
-            let xh0 = (((r0_qh1 >> j) & 1) << 4) as i32;
-            let xh1 = (((r0_qh1 >> (j + 16)) & 1) << 4) as i32;
-            let q = *r0_qs1.add(j);
-            r0_w_i8_1[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
-            r0_w_i8_1[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
-        }
+        let r0_qx1 = unpack_q5_0_block_avx2(r0_qh1, r0_qs1);
 
         // Row 1 block 0
         let r1_d0_raw = (r1_b0 as *const u16).read_unaligned();
         let r1_qh0 = (r1_b0.add(2) as *const u32).read_unaligned();
         let r1_qs0 = r1_b0.add(6);
-        for j in 0..16 {
-            let xh0 = (((r1_qh0 >> j) & 1) << 4) as i32;
-            let xh1 = (((r1_qh0 >> (j + 16)) & 1) << 4) as i32;
-            let q = *r1_qs0.add(j);
-            r1_w_i8_0[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
-            r1_w_i8_0[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
-        }
+        let r1_qx0 = unpack_q5_0_block_avx2(r1_qh0, r1_qs0);
 
         // Row 1 block 1
         let r1_d1_raw = (r1_b1 as *const u16).read_unaligned();
         let r1_qh1 = (r1_b1.add(2) as *const u32).read_unaligned();
         let r1_qs1 = r1_b1.add(6);
-        for j in 0..16 {
-            let xh0 = (((r1_qh1 >> j) & 1) << 4) as i32;
-            let xh1 = (((r1_qh1 >> (j + 16)) & 1) << 4) as i32;
-            let q = *r1_qs1.add(j);
-            r1_w_i8_1[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
-            r1_w_i8_1[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
-        }
+        let r1_qx1 = unpack_q5_0_block_avx2(r1_qh1, r1_qs1);
 
         let act_d0 = x_blocks[ib].d;
         let act_d1 = x_blocks[ib + 1].d;
@@ -1022,11 +1038,6 @@ pub unsafe fn vec_dot_q5_0_q8_0_2rows_avx2(
         let r0_d1 = _mm256_set1_ps(f16_to_f32_hw(r0_d1_raw) * act_d1);
         let r1_d0 = _mm256_set1_ps(f16_to_f32_hw(r1_d0_raw) * act_d0);
         let r1_d1 = _mm256_set1_ps(f16_to_f32_hw(r1_d1_raw) * act_d1);
-
-        let r0_qx0 = _mm256_loadu_si256(r0_w_i8_0.as_ptr() as *const __m256i);
-        let r0_qx1 = _mm256_loadu_si256(r0_w_i8_1.as_ptr() as *const __m256i);
-        let r1_qx0 = _mm256_loadu_si256(r1_w_i8_0.as_ptr() as *const __m256i);
-        let r1_qx1 = _mm256_loadu_si256(r1_w_i8_1.as_ptr() as *const __m256i);
 
         let r0_q0 = mul_sum_i8_pairs_float(r0_qx0, act_qy0);
         let r0_q1 = mul_sum_i8_pairs_float(r0_qx1, act_qy1);
@@ -1062,9 +1073,6 @@ pub unsafe fn vec_dot_q5_0_q8_0_avx2(
     let mut acc0 = _mm256_setzero_ps();
     let mut acc1 = _mm256_setzero_ps();
 
-    let mut w_i8_0 = [0i8; 32];
-    let mut w_i8_1 = [0i8; 32];
-
     let mut ib = 0;
     while ib + 1 < nb {
         let b0_ptr = weight_ptr.add(ib * 22);
@@ -1073,30 +1081,15 @@ pub unsafe fn vec_dot_q5_0_q8_0_avx2(
         let d0_raw = (b0_ptr as *const u16).read_unaligned();
         let qh0 = (b0_ptr.add(2) as *const u32).read_unaligned();
         let qs0 = b0_ptr.add(6);
-        for j in 0..16 {
-            let xh0 = (((qh0 >> j) & 1) << 4) as i32;
-            let xh1 = (((qh0 >> (j + 16)) & 1) << 4) as i32;
-            let q = *qs0.add(j);
-            w_i8_0[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
-            w_i8_0[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
-        }
+        let qx0 = unpack_q5_0_block_avx2(qh0, qs0);
 
         let d1_raw = (b1_ptr as *const u16).read_unaligned();
         let qh1 = (b1_ptr.add(2) as *const u32).read_unaligned();
         let qs1 = b1_ptr.add(6);
-        for j in 0..16 {
-            let xh0 = (((qh1 >> j) & 1) << 4) as i32;
-            let xh1 = (((qh1 >> (j + 16)) & 1) << 4) as i32;
-            let q = *qs1.add(j);
-            w_i8_1[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
-            w_i8_1[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
-        }
+        let qx1 = unpack_q5_0_block_avx2(qh1, qs1);
 
         let d0 = _mm256_set1_ps(f16_to_f32_hw(d0_raw) * x_blocks[ib].d);
         let d1 = _mm256_set1_ps(f16_to_f32_hw(d1_raw) * x_blocks[ib + 1].d);
-
-        let qx0 = _mm256_loadu_si256(w_i8_0.as_ptr() as *const __m256i);
-        let qx1 = _mm256_loadu_si256(w_i8_1.as_ptr() as *const __m256i);
 
         let qy0 = _mm256_loadu_si256(x_blocks[ib].qs.as_ptr() as *const __m256i);
         let qy1 = _mm256_loadu_si256(x_blocks[ib + 1].qs.as_ptr() as *const __m256i);
@@ -1132,9 +1125,6 @@ pub unsafe fn vec_dot_q5_0_q8_0_2tokens_avx2(
     let mut t1_acc0 = _mm256_setzero_ps();
     let mut t1_acc1 = _mm256_setzero_ps();
 
-    let mut w_i8_0 = [0i8; 32];
-    let mut w_i8_1 = [0i8; 32];
-
     let mut ib = 0;
     while ib + 1 < nb {
         let b0_ptr = weight_ptr.add(ib * 22);
@@ -1143,24 +1133,12 @@ pub unsafe fn vec_dot_q5_0_q8_0_2tokens_avx2(
         let d0_raw = (b0_ptr as *const u16).read_unaligned();
         let qh0 = (b0_ptr.add(2) as *const u32).read_unaligned();
         let qs0 = b0_ptr.add(6);
-        for j in 0..16 {
-            let xh0 = (((qh0 >> j) & 1) << 4) as i32;
-            let xh1 = (((qh0 >> (j + 16)) & 1) << 4) as i32;
-            let q = *qs0.add(j);
-            w_i8_0[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
-            w_i8_0[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
-        }
+        let qx0 = unpack_q5_0_block_avx2(qh0, qs0);
 
         let d1_raw = (b1_ptr as *const u16).read_unaligned();
         let qh1 = (b1_ptr.add(2) as *const u32).read_unaligned();
         let qs1 = b1_ptr.add(6);
-        for j in 0..16 {
-            let xh0 = (((qh1 >> j) & 1) << 4) as i32;
-            let xh1 = (((qh1 >> (j + 16)) & 1) << 4) as i32;
-            let q = *qs1.add(j);
-            w_i8_1[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
-            w_i8_1[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
-        }
+        let qx1 = unpack_q5_0_block_avx2(qh1, qs1);
 
         let w_d0 = f16_to_f32_hw(d0_raw);
         let w_d1 = f16_to_f32_hw(d1_raw);
@@ -1169,9 +1147,6 @@ pub unsafe fn vec_dot_q5_0_q8_0_2tokens_avx2(
         let t0_d1 = _mm256_set1_ps(w_d1 * x0_blocks[ib + 1].d);
         let t1_d0 = _mm256_set1_ps(w_d0 * x1_blocks[ib].d);
         let t1_d1 = _mm256_set1_ps(w_d1 * x1_blocks[ib + 1].d);
-
-        let qx0 = _mm256_loadu_si256(w_i8_0.as_ptr() as *const __m256i);
-        let qx1 = _mm256_loadu_si256(w_i8_1.as_ptr() as *const __m256i);
 
         let t0_qy0 = _mm256_loadu_si256(x0_blocks[ib].qs.as_ptr() as *const __m256i);
         let t0_qy1 = _mm256_loadu_si256(x0_blocks[ib + 1].qs.as_ptr() as *const __m256i);
@@ -1218,9 +1193,6 @@ pub unsafe fn vec_dot_q5_0_q8_0_3tokens_avx2(
     let mut t2_acc0 = _mm256_setzero_ps();
     let mut t2_acc1 = _mm256_setzero_ps();
 
-    let mut w_i8_0 = [0i8; 32];
-    let mut w_i8_1 = [0i8; 32];
-
     let mut ib = 0;
     while ib + 1 < nb {
         let b0_ptr = weight_ptr.add(ib * 22);
@@ -1229,24 +1201,12 @@ pub unsafe fn vec_dot_q5_0_q8_0_3tokens_avx2(
         let d0_raw = (b0_ptr as *const u16).read_unaligned();
         let qh0 = (b0_ptr.add(2) as *const u32).read_unaligned();
         let qs0 = b0_ptr.add(6);
-        for j in 0..16 {
-            let xh0 = (((qh0 >> j) & 1) << 4) as i32;
-            let xh1 = (((qh0 >> (j + 16)) & 1) << 4) as i32;
-            let q = *qs0.add(j);
-            w_i8_0[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
-            w_i8_0[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
-        }
+        let qx0 = unpack_q5_0_block_avx2(qh0, qs0);
 
         let d1_raw = (b1_ptr as *const u16).read_unaligned();
         let qh1 = (b1_ptr.add(2) as *const u32).read_unaligned();
         let qs1 = b1_ptr.add(6);
-        for j in 0..16 {
-            let xh0 = (((qh1 >> j) & 1) << 4) as i32;
-            let xh1 = (((qh1 >> (j + 16)) & 1) << 4) as i32;
-            let q = *qs1.add(j);
-            w_i8_1[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
-            w_i8_1[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
-        }
+        let qx1 = unpack_q5_0_block_avx2(qh1, qs1);
 
         let w_d0 = f16_to_f32_hw(d0_raw);
         let w_d1 = f16_to_f32_hw(d1_raw);
@@ -1257,9 +1217,6 @@ pub unsafe fn vec_dot_q5_0_q8_0_3tokens_avx2(
         let t1_d1 = _mm256_set1_ps(w_d1 * x1_blocks[ib + 1].d);
         let t2_d0 = _mm256_set1_ps(w_d0 * x2_blocks[ib].d);
         let t2_d1 = _mm256_set1_ps(w_d1 * x2_blocks[ib + 1].d);
-
-        let qx0 = _mm256_loadu_si256(w_i8_0.as_ptr() as *const __m256i);
-        let qx1 = _mm256_loadu_si256(w_i8_1.as_ptr() as *const __m256i);
 
         let t0_qy0 = _mm256_loadu_si256(x0_blocks[ib].qs.as_ptr() as *const __m256i);
         let t0_qy1 = _mm256_loadu_si256(x0_blocks[ib + 1].qs.as_ptr() as *const __m256i);
@@ -3888,6 +3845,46 @@ mod tests {
             (simd0 - single0).abs() < 1e-4,
             "Blue Q8_0 dual vs single mismatch: {simd0} vs {single0}"
         );
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_q5_0_unpack_avx2_parity() {
+        if !std::is_x86_feature_detected!("avx2") {
+            return;
+        }
+        for seed in [1337u32, 42, 99999, 0xDEADBEEF, 0x12345678] {
+            let qh = seed;
+            let mut qs = [0u8; 16];
+            for j in 0..16 {
+                qs[j] = ((seed.wrapping_mul(j as u32 + 1) >> 3) & 0xFF) as u8;
+            }
+
+            // Scalar reference unpack
+            let mut scalar_w = [0i8; 32];
+            for j in 0..16 {
+                let xh0 = (((qh >> j) & 1) << 4) as i32;
+                let xh1 = (((qh >> (j + 16)) & 1) << 4) as i32;
+                let q = qs[j];
+                scalar_w[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
+                scalar_w[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
+            }
+
+            // SIMD register unpack
+            let mut simd_w = [0i8; 32];
+            unsafe {
+                let v = unpack_q5_0_block_avx2(qh, qs.as_ptr());
+                core::arch::x86_64::_mm256_storeu_si256(
+                    simd_w.as_mut_ptr() as *mut core::arch::x86_64::__m256i,
+                    v,
+                );
+            }
+
+            assert_eq!(
+                scalar_w, simd_w,
+                "Q5_0 unpack parity failed for qh={qh:#x}, qs={qs:?}"
+            );
+        }
     }
 }
 

@@ -23,7 +23,7 @@ impl DecodingPolicy {
         Self {
             repeat_penalty: if hydra {
                 1.15
-            } else if cheetah || tiger || fox {
+            } else if skate || cheetah || tiger || fox {
                 1.10
             } else if beluga || rabbit {
                 1.02
@@ -176,7 +176,7 @@ mod tests {
             ),
             (
                 (false, false, false, false, false, false, false, false, true),
-                "1",
+                "1.15",
                 vec![],
             ),
         ] {
@@ -188,7 +188,7 @@ mod tests {
             assert_eq!(value("--repeat-penalty"), Some(expected_penalty));
             assert_eq!(
                 value("--repeat-last-n"),
-                Some(if flags.1 || flags.5 || flags.6 || flags.7 {
+                Some(if flags.1 || flags.5 || flags.6 || flags.7 || flags.8 {
                     "128"
                 } else {
                     "64"

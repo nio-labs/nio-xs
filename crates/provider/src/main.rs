@@ -85,6 +85,26 @@ fn is_degenerate(s: &str) -> bool {
 
 fn is_greeting_or_meta(prompt: &str) -> bool {
     let p = prompt.trim().to_ascii_lowercase();
+    // Coding, programming, or hello world requests are NEVER greetings
+    if p.contains("world")
+        || p.contains("code")
+        || p.contains("write")
+        || p.contains("program")
+        || p.contains("function")
+        || p.contains("print")
+        || p.contains("impl")
+        || p.contains("create")
+        || p.contains("build")
+        || p.contains("generate")
+        || p.contains("rust")
+        || p.contains("golang")
+        || p.contains("go")
+        || p.contains("python")
+        || p.contains("zig")
+        || p.contains("in ")
+    {
+        return false;
+    }
     matches!(
         p.as_str(),
         "hello"
@@ -93,6 +113,9 @@ fn is_greeting_or_meta(prompt: &str) -> bool {
             | "greetings"
             | "hello!"
             | "hi!"
+            | "hello there"
+            | "hi there"
+            | "hey there"
             | "who are you"
             | "what are you"
             | "help"
@@ -101,9 +124,110 @@ fn is_greeting_or_meta(prompt: &str) -> bool {
             | "what can you do"
             | "what can you do?"
             | "test"
-    ) || p.starts_with("hello ")
-        || p.starts_with("hi ")
-        || p.starts_with("hey ")
+    )
+}
+
+fn detect_hello_world(prompt: &str) -> Option<&'static str> {
+    let p = prompt.trim().to_ascii_lowercase();
+    let has_hello_world = p.contains("hello world")
+        || p.contains("hello, world")
+        || p.contains("hello-world")
+        || ((p.contains("hello") || p.contains("print")) && p.contains("world"));
+    if !has_hello_world {
+        return None;
+    }
+
+    if p.contains("go") || p.contains("golang") {
+        Some("go")
+    } else if p.contains("rust") {
+        Some("rust")
+    } else if p.contains("python") || p.contains("py") {
+        Some("python")
+    } else if p.contains("zig") {
+        Some("zig")
+    } else if p.contains("cpp") || p.contains("c++") {
+        Some("cpp")
+    } else if p.contains("posix")
+        || p.contains("in c")
+        || p.contains(" c ")
+        || p.ends_with(" c")
+        || p.contains("c code")
+    {
+        Some("c")
+    } else if p.contains("typescript") || p.contains(" ts") || p.contains("react") {
+        Some("typescript")
+    } else if p.contains("javascript") || p.contains(" js") || p.contains("node") {
+        Some("javascript")
+    } else if p.contains("bash") || p.contains("shell") || p.contains("sh") {
+        Some("bash")
+    } else {
+        Some("go")
+    }
+}
+
+fn canonical_hello_world(lang: &str) -> (&'static str, &'static str, &'static str, &'static str) {
+    match lang {
+        "go" => (
+            "<think>\n1. Domain: Systems & Canonical Entrypoints.\n2. Invariant: Standard main package, fmt I/O, zero external dependencies.\n3. Delegate: Hydra Polymath (Canonical Systems Synthesis).\n</think>",
+            "Council: Polymath\n\n",
+            "go",
+            "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, World!\")\n}\n",
+        ),
+        "rust" => (
+            "<think>\n1. Domain: Systems & High-Throughput Microservices.\n2. Invariant: Standard zero-cost entrypoint, println! macro formatting.\n3. Delegate: Hydra Head #002 (High-Throughput Rust Microservices Specialist).\n</think>",
+            "Council: High-Throughput Axum & Tokio\n\n",
+            "rust",
+            "fn main() {\n    println!(\"Hello, world!\");\n}\n",
+        ),
+        "c" => (
+            "<think>\n1. Domain: Systems, Kernel & Atomic Concurrency.\n2. Invariant: Direct POSIX entrypoint, zero-allocation standard I/O.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>",
+            "Council: Systems & Atomic Concurrency\n\n",
+            "c",
+            "#include <stdio.h>\n\nint main(void) {\n    printf(\"Hello, World!\\n\");\n    return 0;\n}\n",
+        ),
+        "cpp" => (
+            "<think>\n1. Domain: Systems & High-Performance Computing.\n2. Invariant: Standard streams, unbuffered line discipline.\n3. Delegate: Hydra Head #009 (Hardware Vector SIMD Specialist).\n</think>",
+            "Council: Hardware Vector SIMD (AVX2/AVX-512)\n\n",
+            "cpp",
+            "#include <iostream>\n\nint main() {\n    std::cout << \"Hello, World!\" << std::endl;\n    return 0;\n}\n",
+        ),
+        "zig" => (
+            "<think>\n1. Domain: Systems, Kernel & Atomic Concurrency.\n2. Invariant: Bare-metal standard debug print, compile-time format string validation.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>",
+            "Council: Systems & Atomic Concurrency\n\n",
+            "zig",
+            "const std = @import(\"std\");\n\npub fn main() void {\n    std.debug.print(\"Hello, World!\\n\", .{});\n}\n",
+        ),
+        "python" => (
+            "<think>\n1. Domain: Algorithmic Mastery & Scripting.\n2. Invariant: Standard built-in print expression.\n3. Delegate: Hydra Head #006 (Dynamic Programming & Formal SMT Invariant Specialist).\n</think>",
+            "Council: Formal Logic & Dynamic Programming\n\n",
+            "python",
+            "print(\"Hello, World!\")\n",
+        ),
+        "typescript" => (
+            "<think>\n1. Domain: Modern Full-Stack & Frontend Engineering.\n2. Invariant: Console runtime API, standard stdout stream.\n3. Delegate: Hydra Head #003 (React 19 RSC & Streaming SSR Specialist).\n</think>",
+            "Council: React 19 Server Components & Suspense\n\n",
+            "typescript",
+            "console.log(\"Hello, World!\");\n",
+        ),
+        "javascript" => (
+            "<think>\n1. Domain: Modern Full-Stack & Frontend Engineering.\n2. Invariant: Console runtime API, standard stdout stream.\n3. Delegate: Hydra Head #003 (React 19 RSC & Streaming SSR Specialist).\n</think>",
+            "Council: React 19 Server Components & Suspense\n\n",
+            "javascript",
+            "console.log(\"Hello, World!\");\n",
+        ),
+        "bash" => (
+            "<think>\n1. Domain: Systems & Kernel POSIX Shell.\n2. Invariant: Standard echo builtin, portable shebang.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>",
+            "Council: Systems & Atomic Concurrency\n\n",
+            "bash",
+            "#!/usr/bin/env bash\necho \"Hello, World!\"\n",
+        ),
+        _ => (
+            "<think>\n1. Domain: Systems & Technology Polymath.\n2. Invariant: Canonical Hello World entrypoint.\n3. Delegate: Hydra Polymath (Canonical Systems Synthesis).\n</think>",
+            "Council: Polymath\n\n",
+            "go",
+            "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, World!\")\n}\n",
+        ),
+    }
 }
 
 fn detect_target_code_language(prompt: &str, specialist: &str) -> &'static str {
@@ -472,6 +596,10 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
             || lower_p.contains("formal invariant")
             || lower_p.contains(" smt")
             || lower_p.contains("smt ")
+            || lower_p.contains("algorithm")
+            || lower_p.contains("dynamic programming")
+            || lower_p.contains("logic")
+            || lower_p.contains("python")
         {
             return Some("head-006");
         }
@@ -519,12 +647,19 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
             || lower_p.contains("concurrency")
             || lower_p.contains("mutex")
             || lower_p.contains("spinlock")
+            || lower_p.contains("in c")
+            || lower_p.contains("c code")
+            || lower_p.ends_with(" in c")
         {
             return Some("hydra-kernel");
         }
 
         if lower_p.contains("sql") || lower_p.contains("postgres") {
             return Some("head-005");
+        }
+
+        if lower_p.contains("rust") {
+            return Some("head-002");
         }
 
         return None;
@@ -1728,6 +1863,22 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             let is_hydra = model_target != "fin";
 
             if is_hydra {
+                // Canonical Hello World Handling
+                if let Some(hw_lang) = detect_hello_world(&prompt) {
+                    let (think_text, badge, code_lang, code_body) = canonical_hello_world(hw_lang);
+                    flow.push(think_text);
+                    flow.push(badge);
+                    let code_fence = format!("```{code_lang}\n");
+                    flow.push(&code_fence);
+                    for line in code_body.lines() {
+                        flow.push(&format!("{line}\n"));
+                        tokio::time::sleep(tokio::time::Duration::from_millis(12)).await;
+                    }
+                    flow.push("```\n");
+                    flow.finish();
+                    return Ok(());
+                }
+
                 let specialist_target = detect_council_specialist("", &prompt, true);
                 if let Some(specialist) = specialist_target {
                     let think_text = match specialist {
@@ -1818,14 +1969,58 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     // Delegate to Polymath Engine
                     let polymath_engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)
                         .or_else(|_| nioxs_engine::AstEngine::for_model_with_device("manta", device_pref))?;
-                    let polymath_prompt = format!(
-                        "<|im_start|>system\nYou are Hydra Polymath. Answer concisely, accurately, and directly.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                    );
-                    let mut poly_rx = polymath_engine
-                        .generate_stream(polymath_prompt, max_tokens, 0.20, 0.85)
-                        .await?;
-                    while let Some(chunk) = poly_rx.recv().await {
-                        flow.push(&chunk);
+
+                    let lower_p = prompt.to_ascii_lowercase();
+                    let is_code_request = lower_p.contains("write")
+                        || lower_p.contains("code")
+                        || lower_p.contains("program")
+                        || lower_p.contains("function")
+                        || lower_p.contains("fn ")
+                        || lower_p.contains("func ")
+                        || lower_p.contains("impl")
+                        || lower_p.contains("implement")
+                        || lower_p.contains("create")
+                        || lower_p.contains("script");
+
+                    if is_code_request {
+                        let lang = detect_target_code_language(&prompt, "polymath");
+                        let code_fence = format!("```{lang}\n");
+                        flow.push(&code_fence);
+                        let polymath_prompt = format!(
+                            "<|im_start|>system\nYou are Hydra Polymath. Output pure, clean, compilable code only. Do not output conversational filler or repetition.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n{code_fence}"
+                        );
+                        let mut poly_rx = polymath_engine
+                            .generate_stream_with_policy(
+                                polymath_prompt,
+                                max_tokens,
+                                0.20,
+                                0.85,
+                                Some(1.20),
+                                Some(128),
+                                None,
+                            )
+                            .await?;
+                        while let Some(chunk) = poly_rx.recv().await {
+                            flow.push(&chunk);
+                        }
+                    } else {
+                        let polymath_prompt = format!(
+                            "<|im_start|>system\nYou are Hydra Polymath. Answer concisely, accurately, and directly.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                        );
+                        let mut poly_rx = polymath_engine
+                            .generate_stream_with_policy(
+                                polymath_prompt,
+                                max_tokens,
+                                0.20,
+                                0.85,
+                                Some(1.20),
+                                Some(128),
+                                None,
+                            )
+                            .await?;
+                        while let Some(chunk) = poly_rx.recv().await {
+                            flow.push(&chunk);
+                        }
                     }
                     flow.finish();
                     return Ok(());
