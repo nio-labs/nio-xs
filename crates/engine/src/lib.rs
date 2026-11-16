@@ -1377,8 +1377,6 @@ impl AstEngine {
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(resident);
                 }
-                // Preload all 10 council heads into RAM cache (< 27MB total footprint)
-                crate::lora::preload_all_council_heads();
             } else if is_fin {
                 let gpu_layers = active_dev.recommended_gpu_layers(28);
                 if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {

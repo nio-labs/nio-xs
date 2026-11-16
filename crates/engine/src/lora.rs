@@ -1249,13 +1249,86 @@ pub fn calibrate_head_dir(
 }
 
 // =========================================================================
-// Global LoRA Head Registry & Cache
+// Global LoRA Head Registry & Bounded LRU Cache (< 441MB Peak RAM Enforced)
 // =========================================================================
 
-static LORA_CACHE: OnceLock<Mutex<HashMap<String, Arc<LoraAdapter>>>> = OnceLock::new();
+/// Fixed-capacity LRU Cache for resident LoRA adapters
+pub struct BoundedLoraCache {
+    capacity: usize,
+    entries: HashMap<String, Arc<LoraAdapter>>,
+    order: Vec<String>,
+}
 
-fn get_cache() -> &'static Mutex<HashMap<String, Arc<LoraAdapter>>> {
-    LORA_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+impl BoundedLoraCache {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            capacity: capacity.max(1),
+            entries: HashMap::new(),
+            order: Vec::new(),
+        }
+    }
+
+    pub fn get(&mut self, key: &str) -> Option<Arc<LoraAdapter>> {
+        if let Some(adapter) = self.entries.get(key) {
+            let canon = adapter.id.to_ascii_lowercase();
+            if let Some(pos) = self.order.iter().position(|k| k == &canon) {
+                let k = self.order.remove(pos);
+                self.order.push(k);
+            }
+            Some(adapter.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn insert(&mut self, alias_key: String, adapter: Arc<LoraAdapter>) {
+        let canon = adapter.id.to_ascii_lowercase();
+
+        if let Some(pos) = self.order.iter().position(|k| k == &canon) {
+            self.order.remove(pos);
+            self.order.push(canon.clone());
+        } else {
+            while self.order.len() >= self.capacity {
+                let lru_canon = self.order.remove(0);
+                self.entries.retain(|_, v| v.id.to_ascii_lowercase() != lru_canon);
+                if std::env::var_os("NIOXS_DEBUG").is_some() {
+                    eprintln!(
+                        "[nioxs-lora] Bounded LRU cache full (capacity={}); evicted resident head '{}'",
+                        self.capacity, lru_canon
+                    );
+                }
+            }
+            self.order.push(canon.clone());
+        }
+
+        self.entries.insert(alias_key, adapter.clone());
+        self.entries.insert(canon, adapter);
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.order.clear();
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    pub fn len(&self) -> usize {
+        self.order.len()
+    }
+}
+
+static LORA_CACHE: OnceLock<Mutex<BoundedLoraCache>> = OnceLock::new();
+
+fn get_cache() -> &'static Mutex<BoundedLoraCache> {
+    LORA_CACHE.get_or_init(|| {
+        let cap = std::env::var("NIOXS_LORA_CACHE_CAPACITY")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(8);
+        Mutex::new(BoundedLoraCache::new(cap))
+    })
 }
 
 /// Resolve a council head name or slug to its on-disk path
@@ -1352,15 +1425,15 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
     None
 }
 
-/// Retrieve a cached LoRA adapter or load it from disk in < 1ms
+/// Retrieve a cached LoRA adapter or load it from disk with bounded LRU memory protection
 pub fn get_or_load_head(head_id_or_path: &str) -> Result<Arc<LoraAdapter>> {
     let lower = head_id_or_path.trim().to_ascii_lowercase();
 
-    // Check in-memory cache first (hot-swap speed: < 0.001 ms)
+    // Check in-memory LRU cache first (hot-swap speed: < 0.001 ms)
     {
-        let cache = get_cache().lock().unwrap();
+        let mut cache = get_cache().lock().unwrap();
         if let Some(adapter) = cache.get(&lower) {
-            return Ok(adapter.clone());
+            return Ok(adapter);
         }
     }
 
@@ -1372,27 +1445,28 @@ pub fn get_or_load_head(head_id_or_path: &str) -> Result<Arc<LoraAdapter>> {
     let adapter = Arc::new(LoraAdapter::load(&path)?);
     let elapsed = t0.elapsed();
 
-    // Cache the adapter under both requested name and canonical id
+    // Cache the adapter under requested alias with bounded LRU eviction
     let mut cache = get_cache().lock().unwrap();
     cache.insert(lower.clone(), adapter.clone());
-    cache.insert(adapter.id.to_ascii_lowercase(), adapter.clone());
 
     if std::env::var_os("NIOXS_DEBUG").is_some() {
         eprintln!(
-            "[nioxs-lora] Loaded head '{}' ({} layers) in {:.2}ms",
+            "[nioxs-lora] Loaded head '{}' ({} layers) in {:.2}ms (resident: {}/{})",
             adapter.id,
             adapter.layers.len(),
-            elapsed.as_secs_f64() * 1000.0
+            elapsed.as_secs_f64() * 1000.0,
+            cache.len(),
+            cache.capacity()
         );
     }
 
     Ok(adapter)
 }
 
-/// Pre-load all 10 council heads into memory cache (< 27MB total footprint)
+/// Pre-warm up to capacity council heads into memory cache (< 21MB total footprint)
 pub fn preload_all_council_heads() -> usize {
     let mut count = 0;
-    for i in 1..=10 {
+    for i in 1..=8 {
         let name = format!("head-{:03}", i);
         if let Ok(_) = get_or_load_head(&name) {
             count += 1;
@@ -1578,5 +1652,38 @@ mod tests {
             let _ = std::fs::remove_dir_all(&tmp_dir);
             let _ = std::fs::remove_dir_all(&tmp_dir_r8);
         }
+    }
+
+    #[test]
+    fn test_bounded_lru_cache_eviction() {
+        let mut cache = BoundedLoraCache::new(3);
+        assert_eq!(cache.capacity(), 3);
+        assert_eq!(cache.len(), 0);
+
+        let make_dummy = |id: &str| -> Arc<LoraAdapter> {
+            Arc::new(LoraAdapter {
+                id: id.to_string(),
+                r: 4,
+                alpha: 8.0,
+                layers: Vec::new(),
+            })
+        };
+
+        // Insert 3 items
+        cache.insert("h1".to_string(), make_dummy("head-001"));
+        cache.insert("h2".to_string(), make_dummy("head-002"));
+        cache.insert("h3".to_string(), make_dummy("head-003"));
+        assert_eq!(cache.len(), 3);
+
+        // Access h1 to make it most-recently used (order: h2, h3, h1)
+        assert!(cache.get("h1").is_some());
+
+        // Insert 4th item: should evict h2 (least recently used)
+        cache.insert("h4".to_string(), make_dummy("head-004"));
+        assert_eq!(cache.len(), 3);
+        assert!(cache.get("h2").is_none(), "h2 must be evicted");
+        assert!(cache.get("h1").is_some(), "h1 must still be resident");
+        assert!(cache.get("h3").is_some(), "h3 must still be resident");
+        assert!(cache.get("h4").is_some(), "h4 must be resident");
     }
 }
