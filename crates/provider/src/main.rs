@@ -148,7 +148,7 @@ fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
 }
 
 fn hydra_greeting() -> &'static str {
-    "Council: Online\n\nHail Hydra! The Sovereign Council is online and standing by.\n\nActive Council Specialists:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?\n"
+    "<think>\n1. Invariant: User greeting & identity inquiry.\n2. Verification: Direct Polymath Sovereign synthesis.\n</think>\n\nCouncil: Online\n\nHail Hydra! The Sovereign Council is online and standing by.\n\nActive Council Specialists:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?\n"
 }
 
 fn format_synthetic_deliberation(specialist: &str, is_hydra: bool) -> String {
@@ -1323,6 +1323,52 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 return Ok(());
             }
 
+            if is_hydra {
+                let specialist_target = detect_council_specialist("", &prompt, true);
+                if let Some(specialist) = specialist_target {
+                    let think_text = match specialist {
+                        "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" => {
+                            "<think>\n1. Domain: Systems, Kernel & Atomic Concurrency.\n2. Invariant: Acquire/Release memory ordering, cacheline-aligned (align(64)), zero-branch mask.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>\n\n"
+                        }
+                        "002" | "head-002" | "head-002-backend-axum-tokio" => {
+                            "<think>\n1. Domain: Backend & Cloud Microservices.\n2. Invariant: Async Tokio runtime, zero-copy streaming, backpressure.\n3. Delegate: Hydra Head #002 (High-Throughput Rust Axum & Tokio Microservices Specialist).\n</think>\n\n"
+                        }
+                        _ => {
+                            "<think>\n1. Domain: Systems Engineering.\n2. Invariant: Direct specialist delegation.\n3. Delegate: Hydra Sovereign Specialist.\n</think>\n\n"
+                        }
+                    };
+                    flow.push(think_text);
+
+                    let badge = format_hydra_directive(specialist, None);
+                    flow.push(&badge);
+
+                    let lang = detect_target_code_language(&prompt, specialist);
+                    let code_fence = format!("```{lang}\n");
+                    flow.push(&code_fence);
+
+                    let base_engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)?;
+                    let t_swap = std::time::Instant::now();
+                    let head_attached = base_engine.attach_lora_head(specialist).await.is_ok();
+                    let swap_ms = t_swap.elapsed().as_secs_f64() * 1000.0;
+                    if head_attached && std::env::var_os("NIOXS_DEBUG").is_some() {
+                        eprintln!("[nioxs-hydra] Hot-swapped to Head '{specialist}' in {swap_ms:.2}ms (Base Anchor resident in RAM)");
+                    }
+
+                    let specialist_prompt = format!(
+                        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n{code_fence}",
+                        nioxs_engine::hydra_specialist_system(specialist)
+                    );
+                    let mut spec_rx = base_engine
+                        .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
+                        .await?;
+                    while let Some(chunk) = spec_rx.recv().await {
+                        flow.push(&chunk);
+                    }
+                    flow.finish();
+                    return Ok(());
+                }
+            }
+
             let speaker_model = if is_hydra { "hydra" } else { "fin-base" };
             let speaker_system = if is_hydra {
                 nioxs_engine::hydra_system()
@@ -1332,9 +1378,15 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
             // Step 1: Intelligent Speaker Triage Pass via the 0.5B / 180M Base Anchor
             let base_engine = nioxs_engine::AstEngine::for_model_with_device(speaker_model, device_pref)?;
-            let formatted_prompt = format!(
-                "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-            );
+            let formatted_prompt = if is_hydra {
+                format!(
+                    "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n1. Domain: "
+                )
+            } else {
+                format!(
+                    "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                )
+            };
             let mut rx = base_engine
                 .generate_stream(formatted_prompt, 256, 0.20, 0.85)
                 .await?;
@@ -1343,6 +1395,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             let mut council_buffer = String::new();
             let mut in_council_tag = false;
             let mut specialist_opt = None;
+
+            if is_hydra {
+                flow.push("<think>\n1. Domain: ");
+            }
 
             while let Some(chunk) = rx.recv().await {
                 accumulated.push_str(&chunk);
@@ -1355,11 +1411,19 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
                 if !in_council_tag {
                     if let Some(pos) = chunk.find("<council>") {
+                        if is_hydra {
+                            flow.push(&chunk[..pos]);
+                        }
                         council_buffer.push_str(&chunk[pos..]);
                         in_council_tag = true;
                     } else if let Some(pos) = chunk.find("@council") {
+                        if is_hydra {
+                            flow.push(&chunk[..pos]);
+                        }
                         council_buffer.push_str(&chunk[pos..]);
                         in_council_tag = true;
+                    } else if is_hydra {
+                        flow.push(&chunk);
                     }
                 } else {
                     council_buffer.push_str(&chunk);
@@ -1383,6 +1447,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             // Step 2: Automatic In-Flight Hand-Off to Specialist (or Direct Polymath Execution)
             if let Some(specialist) = specialist_opt {
                 drop(rx);
+                flow.close_think();
 
                 if is_hydra {
                     let raw_domain = if accumulated.contains("domain=") || accumulated.contains("domain =") {
@@ -1453,6 +1518,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 }
             } else {
                 // Direct polymath execution by the base anchor!
+                flow.close_think();
                 if is_hydra {
                     flow.push("Council: Direct Polymath Synthesis\n\n");
                     let polymath_content = if let Some(think_end) = accumulated.find("</think>") {
