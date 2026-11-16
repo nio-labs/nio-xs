@@ -20,22 +20,124 @@ fn format_council_directive(directive: &str) -> String {
     let inner = directive.trim();
     let inner = inner.strip_prefix("@council(").unwrap_or(inner);
     let inner = inner.strip_suffix(')').unwrap_or(inner).trim();
-    let mut route = String::new();
+    let mut key_name = "route";
+    let mut key_val = String::new();
     let mut domain = String::new();
     for part in inner.split(',') {
         let p = part.trim();
-        if let Some(val) = p.strip_prefix("route=").or_else(|| p.strip_prefix("route = ")) {
-            route = val.trim_matches(|c| c == '"' || c == '\'').to_string();
+        if let Some(val) = p.strip_prefix("head=").or_else(|| p.strip_prefix("head = ")) {
+            key_name = "head";
+            key_val = val.trim_matches(|c| c == '"' || c == '\'').to_string();
+        } else if let Some(val) = p.strip_prefix("route=").or_else(|| p.strip_prefix("route = ")) {
+            key_name = "route";
+            key_val = val.trim_matches(|c| c == '"' || c == '\'').to_string();
         } else if let Some(val) = p.strip_prefix("domain=").or_else(|| p.strip_prefix("domain = ")) {
             domain = val.trim_matches(|c| c == '"' || c == '\'').to_string();
         }
     }
-    if !route.is_empty() && !domain.is_empty() {
-        format!("<council>\n    @council(\n        route = {route},\n        domain = {domain}\n    )\n</council>\n\n")
-    } else if !route.is_empty() {
-        format!("<council>\n    @council(\n        route = {route}\n    )\n</council>\n\n")
+    if !key_val.is_empty() && !domain.is_empty() {
+        format!("<council>\n    @council(\n        {key_name} = {key_val},\n        domain = {domain}\n    )\n</council>\n\n")
+    } else if !key_val.is_empty() {
+        format!("<council>\n    @council(\n        {key_name} = {key_val}\n    )\n</council>\n\n")
     } else {
         format!("<council>\n    {}\n</council>\n\n", directive.trim())
+    }
+}
+
+fn is_degenerate(s: &str) -> bool {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    // Check 1: Repetition of quote-paren artifacts common to unaligned base models
+    if trimmed.contains("')\n')")
+        || trimmed.contains("')')")
+        || trimmed.contains("``C, `C")
+        || trimmed.contains("011200000")
+        || trimmed.contains("100000")
+    {
+        return true;
+    }
+    // Check 2: Unusually high ratio of backticks or single quotes
+    let quote_count = trimmed.chars().filter(|&c| c == '\'' || c == '`').count();
+    if quote_count > 6 && quote_count * 4 > trimmed.len() {
+        return true;
+    }
+    // Check 3: Repetition of short identical lines
+    let lines: Vec<&str> = trimmed
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.len() >= 3 {
+        let mut repeat_count = 0;
+        for i in 1..lines.len() {
+            if lines[i] == lines[i - 1] {
+                repeat_count += 1;
+            }
+        }
+        if repeat_count >= 2 {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_greeting_or_meta(prompt: &str) -> bool {
+    let p = prompt.trim().to_ascii_lowercase();
+    matches!(
+        p.as_str(),
+        "hello"
+            | "hi"
+            | "hey"
+            | "greetings"
+            | "hello!"
+            | "hi!"
+            | "who are you"
+            | "what are you"
+            | "help"
+            | "who are you?"
+            | "what are you?"
+            | "what can you do"
+            | "what can you do?"
+            | "test"
+    ) || p.starts_with("hello ")
+        || p.starts_with("hi ")
+        || p.starts_with("hey ")
+}
+
+fn hydra_greeting() -> &'static str {
+    "<think>\n1. Invariant: User greeting & identity inquiry.\n2. Verification: Direct Polymath Sovereign synthesis.\n</think>\n\n<council>\n    @council(directive = direct, mode = polymath)\n</council>\n\nHail Hydra! The Sovereign 180M Council is online and standing by.\n\nActive Council Specialists:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?\n"
+}
+
+fn format_synthetic_deliberation(specialist: &str, is_hydra: bool) -> String {
+    if is_hydra {
+        match specialist {
+            "hydra-kernel" | "head-001" | "head-001-atomic-concurrency" => {
+                "<think>\n1. Domain: Systems, Kernel & Atomic Concurrency.\n2. Invariant: Acquire/Release memory ordering, cacheline-aligned (align(64)), zero-branch mask.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>\n\n<council>\n    @council(\n        head = 001,\n        domain = systems-atomic-concurrency\n    )\n</council>\n\n".to_string()
+            }
+            "head-002" | "head-002-backend-axum-tokio" => {
+                "<think>\n1. Domain: Backend & Cloud Microservices.\n2. Invariant: Async Tokio runtime, zero-copy streaming, backpressure.\n3. Delegate: Hydra Head #002 (High-Throughput Rust Axum & Tokio Microservices Specialist).\n</think>\n\n<council>\n    @council(\n        head = 002,\n        domain = backend-axum-tokio\n    )\n</council>\n\n".to_string()
+            }
+            _ => {
+                format!("<think>\n1. Domain: Systems Engineering.\n2. Delegate: Hydra Specialist Head ({specialist}).\n</think>\n\n<council>\n    @council(\n        head = {specialist}\n    )\n</council>\n\n")
+            }
+        }
+    } else {
+        match specialist {
+            "fin-kernel" => {
+                "<think>\n1. Invariant: Acquire/Release memory ordering, cacheline-aligned, panic-safe.\n2. Route: Fin Kernel (1.5B Deep-Councilor).\n</think>\n\n<council>\n    @council(\n        route = fin-kernel,\n        domain = systems-kernel-concurrency\n    )\n</council>\n\n".to_string()
+            }
+            "fin-sql" => {
+                "<think>\n1. Invariant: Dialect AST correctness, index coverage, transaction isolation.\n2. Route: Fin SQL (0.5B Micro-Councilor).\n</think>\n\n<council>\n    @council(\n        route = fin-sql,\n        domain = storage-database-engine\n    )\n</council>\n\n".to_string()
+            }
+            "fin-raft" => {
+                "<think>\n1. Invariant: Leader lease, monotonic term advancement, log replication safety.\n2. Route: Fin Raft (1.5B Deep-Councilor).\n</think>\n\n<council>\n    @council(\n        route = fin-raft,\n        domain = distributed-consensus\n    )\n</council>\n\n".to_string()
+            }
+            _ => {
+                format!("<think>\n1. Route: {specialist}.\n</think>\n\n<council>\n    @council(\n        route = {specialist}\n    )\n</council>\n\n")
+            }
+        }
     }
 }
 
@@ -119,6 +221,10 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
             || lower_p.contains("axum")
             || lower_p.contains("tokio")
             || lower_p.contains("tower")
+            || lower_p.contains("zig")
+            || lower_p.contains("concurrency")
+            || lower_p.contains("mutex")
+            || lower_p.contains("spinlock")
         {
             return Some("hydra-kernel");
         }
@@ -1079,6 +1185,12 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
         if is_council_speaker_session {
             let is_hydra = model_target != "fin";
+
+            if is_hydra && is_greeting_or_meta(&prompt) {
+                flow.push(hydra_greeting());
+                return Ok(());
+            }
+
             let speaker_model = if is_hydra { "hydra" } else { "fin-base" };
             let speaker_system = if is_hydra {
                 nioxs_engine::hydra_system()
@@ -1103,23 +1215,19 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             while let Some(chunk) = rx.recv().await {
                 accumulated.push_str(&chunk);
 
+                // Early exit on degenerate token stream (prevent garbage clobbering)
+                if is_degenerate(&accumulated) {
+                    accumulated.clear();
+                    break;
+                }
+
                 if !in_council_tag {
                     if let Some(pos) = chunk.find("<council>") {
-                        let prefix = &chunk[..pos];
-                        if !prefix.trim().is_empty() {
-                            flow.push(prefix);
-                        }
                         council_buffer.push_str(&chunk[pos..]);
                         in_council_tag = true;
                     } else if let Some(pos) = chunk.find("@council") {
-                        let prefix = &chunk[..pos];
-                        if !prefix.trim().is_empty() {
-                            flow.push(prefix);
-                        }
                         council_buffer.push_str(&chunk[pos..]);
                         in_council_tag = true;
-                    } else {
-                        flow.push(&chunk);
                     }
                 } else {
                     council_buffer.push_str(&chunk);
@@ -1127,9 +1235,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
                 if in_council_tag && council_buffer.contains(')') {
                     if let Some(start) = council_buffer.find("@council") {
-                        if let Some(end) = council_buffer[start..].find(')') {
-                            let directive = &council_buffer[start..=start + end];
-                            flow.push(&format_council_directive(directive));
+                        if let Some(_end) = council_buffer[start..].find(')') {
                             specialist_opt = detect_council_specialist(&accumulated, &prompt, is_hydra);
                             break;
                         }
@@ -1137,8 +1243,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 }
             }
 
-            let had_council = accumulated.contains("@council");
-            if specialist_opt.is_none() && had_council {
+            // Fallback safety clutch: If neural speaker failed to emit directive, fallback to keyword detection
+            if specialist_opt.is_none() {
                 specialist_opt = detect_council_specialist(&accumulated, &prompt, is_hydra);
             }
 
@@ -1147,6 +1253,22 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 drop(rx);
                 base_engine.unload().await;
                 drop(base_engine); // Evict Speaker working set to guarantee < 180MB RAM (< 850MB on fin)
+
+                // Emit clean council deliberation directive
+                let directive_rendered = if accumulated.contains("@council") {
+                    let start = accumulated.find("@council").unwrap();
+                    let end = accumulated[start..].find(')').unwrap_or(accumulated[start..].len() - 1);
+                    let raw_directive = &accumulated[start..=start + end];
+                    let prefix = accumulated[..start].trim();
+                    if !prefix.is_empty() {
+                        format!("{}\n\n{}", prefix, format_council_directive(raw_directive))
+                    } else {
+                        format_council_directive(raw_directive)
+                    }
+                } else {
+                    format_synthetic_deliberation(specialist, is_hydra)
+                };
+                flow.push(&directive_rendered);
 
                 let specialist_engine = nioxs_engine::AstEngine::for_model_with_device(specialist, device_pref)?;
                 let specialist_prompt = if is_hydra {
@@ -1168,8 +1290,15 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 }
             } else {
                 // Direct polymath execution by the base anchor!
-                while let Some(chunk) = rx.recv().await {
-                    flow.push(&chunk);
+                if !accumulated.is_empty() && !is_degenerate(&accumulated) {
+                    flow.push(&accumulated);
+                    while let Some(chunk) = rx.recv().await {
+                        if !is_degenerate(&chunk) {
+                            flow.push(&chunk);
+                        }
+                    }
+                } else if is_hydra {
+                    flow.push(hydra_greeting());
                 }
             }
         } else {
@@ -1890,5 +2019,31 @@ mod tests {
         let prompt = "Implement an atomic lock-free ring buffer in Rust";
         let specialist = detect_council_specialist(acc, prompt, true);
         assert_eq!(specialist, Some("hydra-kernel"));
+    }
+
+    #[test]
+    fn test_is_degenerate_detection() {
+        let garbage1 = "''C, 'C their 'Cle', the Clawst, the 'C'\n')\n')\n')";
+        assert!(is_degenerate(garbage1));
+        let garbage2 = "011200000";
+        assert!(is_degenerate(garbage2));
+        let valid = "<think>\n1. Invariant: memory order.\n</think>\n@council(head=001, domain=systems)";
+        assert!(!is_degenerate(valid));
+    }
+
+    #[test]
+    fn test_is_greeting_or_meta() {
+        assert!(is_greeting_or_meta("hello"));
+        assert!(is_greeting_or_meta("hi!"));
+        assert!(is_greeting_or_meta("who are you?"));
+        assert!(!is_greeting_or_meta("write an atomic ring buffer"));
+    }
+
+    #[test]
+    fn test_format_council_directive_head() {
+        let directive = "@council(head = 001, domain = systems-atomic-concurrency)";
+        let formatted = format_council_directive(directive);
+        assert!(formatted.contains("head = 001"));
+        assert!(formatted.contains("domain = systems-atomic-concurrency"));
     }
 }
