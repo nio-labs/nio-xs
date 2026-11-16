@@ -861,10 +861,12 @@ impl LayerDesc {
                 n_cols: self.w3.n_cols,
                 dtype: self.w3.dtype,
             });
-            for j in 0..self.w1.n_rows {
-                let w1_val = scratch.w1[j];
-                let silu = w1_val / (1.0 + (-w1_val).exp());
-                scratch.inter[j] = silu * scratch.w3[j];
+            let has_lora_ffn = lora.map_or(false, |l| l.w1.is_some() || l.w3.is_some());
+            if !has_lora_ffn {
+                for j in 0..self.w1.n_rows {
+                    let w1_val = scratch.w1[j];
+                    scratch.inter[j] = quants::fast_silu(w1_val) * scratch.w3[j];
+                }
             }
         }
 
@@ -878,8 +880,7 @@ impl LayerDesc {
                 }
                 for j in 0..self.w1.n_rows {
                     let w1_val = scratch.w1[j];
-                    let silu = w1_val / (1.0 + (-w1_val).exp());
-                    scratch.inter[j] = silu * scratch.w3[j];
+                    scratch.inter[j] = quants::fast_silu(w1_val) * scratch.w3[j];
                 }
             }
         }
@@ -947,6 +948,7 @@ impl LayerDesc {
         head_dim: usize,
         eps: f32,
         kv_cache: &mut LayerKvCache,
+        lora: Option<&crate::lora::LayerLora>,
     ) {
         // 1. Attention Norms
         rms_norm_slice(
@@ -1028,6 +1030,21 @@ impl LayerDesc {
                 n_cols: self.wv.n_cols,
                 dtype: self.wv.dtype,
             });
+        }
+
+        if let Some(l) = lora {
+            if let Some(ref l_q) = l.wq {
+                l_q.apply(&scratch0.x_norm, &mut scratch0.q);
+                l_q.apply(&scratch1.x_norm, &mut scratch1.q);
+            }
+            if let Some(ref l_k) = l.wk {
+                l_k.apply(&scratch0.x_norm, &mut scratch0.k);
+                l_k.apply(&scratch1.x_norm, &mut scratch1.k);
+            }
+            if let Some(ref l_v) = l.wv {
+                l_v.apply(&scratch0.x_norm, &mut scratch0.v);
+                l_v.apply(&scratch1.x_norm, &mut scratch1.v);
+            }
         }
 
         // 3. Biases and head normalization
@@ -1147,6 +1164,13 @@ impl LayerDesc {
             });
         }
 
+        if let Some(l) = lora {
+            if let Some(ref l_o) = l.wo {
+                l_o.apply(&scratch0.attn_out, &mut scratch0.wo_out);
+                l_o.apply(&scratch1.attn_out, &mut scratch1.wo_out);
+            }
+        }
+
         // Residual connection
         for i in 0..scratch0.x.len() {
             scratch0.x[i] += scratch0.wo_out[i];
@@ -1208,11 +1232,31 @@ impl LayerDesc {
                 n_cols: self.w3.n_cols,
                 dtype: self.w3.dtype,
             });
-            for j in 0..self.w1.n_rows {
-                let w1_0 = scratch0.w1[j];
-                scratch0.inter[j] = quants::fast_silu(w1_0) * scratch0.w3[j];
-                let w1_1 = scratch1.w1[j];
-                scratch1.inter[j] = quants::fast_silu(w1_1) * scratch1.w3[j];
+            let has_lora_ffn = lora.map_or(false, |l| l.w1.is_some() || l.w3.is_some());
+            if !has_lora_ffn {
+                for j in 0..self.w1.n_rows {
+                    let w1_0 = scratch0.w1[j];
+                    scratch0.inter[j] = quants::fast_silu(w1_0) * scratch0.w3[j];
+                    let w1_1 = scratch1.w1[j];
+                    scratch1.inter[j] = quants::fast_silu(w1_1) * scratch1.w3[j];
+                }
+            }
+        }
+
+        if let Some(l) = lora {
+            if l.w1.is_some() || l.w3.is_some() {
+                if let Some(ref l_1) = l.w1 {
+                    l_1.apply(&scratch0.ffn_norm, &mut scratch0.w1);
+                    l_1.apply(&scratch1.ffn_norm, &mut scratch1.w1);
+                }
+                if let Some(ref l_3) = l.w3 {
+                    l_3.apply(&scratch0.ffn_norm, &mut scratch0.w3);
+                    l_3.apply(&scratch1.ffn_norm, &mut scratch1.w3);
+                }
+                for j in 0..self.w1.n_rows {
+                    scratch0.inter[j] = quants::fast_silu(scratch0.w1[j]) * scratch0.w3[j];
+                    scratch1.inter[j] = quants::fast_silu(scratch1.w1[j]) * scratch1.w3[j];
+                }
             }
         }
 
@@ -1245,6 +1289,13 @@ impl LayerDesc {
             });
         }
 
+        if let Some(l) = lora {
+            if let Some(ref l_2) = l.w2 {
+                l_2.apply(&scratch0.inter, &mut scratch0.mlp_out);
+                l_2.apply(&scratch1.inter, &mut scratch1.mlp_out);
+            }
+        }
+
         // Residual connection
         for i in 0..scratch0.x.len() {
             scratch0.x[i] += scratch0.mlp_out[i];
@@ -1274,6 +1325,7 @@ impl LayerDesc {
         head_dim: usize,
         eps: f32,
         kv_cache: &mut LayerKvCache,
+        lora: Option<&crate::lora::LayerLora>,
     ) {
         // 1. Attention Norms
         rms_norm_slice(
@@ -1376,6 +1428,24 @@ impl LayerDesc {
                 n_cols: self.wv.n_cols,
                 dtype: self.wv.dtype,
             });
+        }
+
+        if let Some(l) = lora {
+            if let Some(ref l_q) = l.wq {
+                l_q.apply(&scratch0.x_norm, &mut scratch0.q);
+                l_q.apply(&scratch1.x_norm, &mut scratch1.q);
+                l_q.apply(&scratch2.x_norm, &mut scratch2.q);
+            }
+            if let Some(ref l_k) = l.wk {
+                l_k.apply(&scratch0.x_norm, &mut scratch0.k);
+                l_k.apply(&scratch1.x_norm, &mut scratch1.k);
+                l_k.apply(&scratch2.x_norm, &mut scratch2.k);
+            }
+            if let Some(ref l_v) = l.wv {
+                l_v.apply(&scratch0.x_norm, &mut scratch0.v);
+                l_v.apply(&scratch1.x_norm, &mut scratch1.v);
+                l_v.apply(&scratch2.x_norm, &mut scratch2.v);
+            }
         }
 
         // 3. Biases and head normalization
@@ -1536,6 +1606,14 @@ impl LayerDesc {
             });
         }
 
+        if let Some(l) = lora {
+            if let Some(ref l_o) = l.wo {
+                l_o.apply(&scratch0.attn_out, &mut scratch0.wo_out);
+                l_o.apply(&scratch1.attn_out, &mut scratch1.wo_out);
+                l_o.apply(&scratch2.attn_out, &mut scratch2.wo_out);
+            }
+        }
+
         // Residual connection
         for i in 0..scratch0.x.len() {
             scratch0.x[i] += scratch0.wo_out[i];
@@ -1613,13 +1691,36 @@ impl LayerDesc {
                 n_cols: self.w3.n_cols,
                 dtype: self.w3.dtype,
             });
-            for j in 0..self.w1.n_rows {
-                let w1_0 = scratch0.w1[j];
-                scratch0.inter[j] = quants::fast_silu(w1_0) * scratch0.w3[j];
-                let w1_1 = scratch1.w1[j];
-                scratch1.inter[j] = quants::fast_silu(w1_1) * scratch1.w3[j];
-                let w1_2 = scratch2.w1[j];
-                scratch2.inter[j] = quants::fast_silu(w1_2) * scratch2.w3[j];
+            let has_lora_ffn = lora.map_or(false, |l| l.w1.is_some() || l.w3.is_some());
+            if !has_lora_ffn {
+                for j in 0..self.w1.n_rows {
+                    let w1_0 = scratch0.w1[j];
+                    scratch0.inter[j] = quants::fast_silu(w1_0) * scratch0.w3[j];
+                    let w1_1 = scratch1.w1[j];
+                    scratch1.inter[j] = quants::fast_silu(w1_1) * scratch1.w3[j];
+                    let w1_2 = scratch2.w1[j];
+                    scratch2.inter[j] = quants::fast_silu(w1_2) * scratch2.w3[j];
+                }
+            }
+        }
+
+        if let Some(l) = lora {
+            if l.w1.is_some() || l.w3.is_some() {
+                if let Some(ref l_1) = l.w1 {
+                    l_1.apply(&scratch0.ffn_norm, &mut scratch0.w1);
+                    l_1.apply(&scratch1.ffn_norm, &mut scratch1.w1);
+                    l_1.apply(&scratch2.ffn_norm, &mut scratch2.w1);
+                }
+                if let Some(ref l_3) = l.w3 {
+                    l_3.apply(&scratch0.ffn_norm, &mut scratch0.w3);
+                    l_3.apply(&scratch1.ffn_norm, &mut scratch1.w3);
+                    l_3.apply(&scratch2.ffn_norm, &mut scratch2.w3);
+                }
+                for j in 0..self.w1.n_rows {
+                    scratch0.inter[j] = quants::fast_silu(scratch0.w1[j]) * scratch0.w3[j];
+                    scratch1.inter[j] = quants::fast_silu(scratch1.w1[j]) * scratch1.w3[j];
+                    scratch2.inter[j] = quants::fast_silu(scratch2.w1[j]) * scratch2.w3[j];
+                }
             }
         }
 
@@ -1656,6 +1757,14 @@ impl LayerDesc {
                 n_cols: self.w2.n_cols,
                 dtype: self.w2.dtype,
             });
+        }
+
+        if let Some(l) = lora {
+            if let Some(ref l_2) = l.w2 {
+                l_2.apply(&scratch0.inter, &mut scratch0.mlp_out);
+                l_2.apply(&scratch1.inter, &mut scratch1.mlp_out);
+                l_2.apply(&scratch2.inter, &mut scratch2.mlp_out);
+            }
         }
 
         // Residual connection
@@ -2682,7 +2791,7 @@ impl AstMicroEngine {
             let mut step = 0;
 
             while step < n_tokens {
-                if self.active_lora.is_none() && step + 3 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
+                if step + 3 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
                     let pos0 = index_pos + step;
                     let pos1 = pos0 + 1;
                     let pos2 = pos0 + 2;
@@ -2718,13 +2827,14 @@ impl AstMicroEngine {
                         self.head_dim,
                         self.rms_norm_eps as f32,
                         &mut self.kv_caches[layer_idx],
+                        lora,
                     );
 
                     activations[step].copy_from_slice(&self.scratch.x);
                     activations[step + 1].copy_from_slice(&self.scratch1.x);
                     activations[step + 2].copy_from_slice(&self.scratch2.x);
                     step += 3;
-                } else if self.active_lora.is_none() && step + 2 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
+                } else if step + 2 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
                     let pos0 = index_pos + step;
                     let pos1 = pos0 + 1;
                     let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];
@@ -2752,6 +2862,7 @@ impl AstMicroEngine {
                         self.head_dim,
                         self.rms_norm_eps as f32,
                         &mut self.kv_caches[layer_idx],
+                        lora,
                     );
 
                     activations[step].copy_from_slice(&self.scratch.x);

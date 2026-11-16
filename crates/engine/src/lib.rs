@@ -1785,8 +1785,13 @@ impl AstEngine {
             let disable_prefix_cache = std::env::var_os("NIOXS_DISABLE_PREFIX_CACHE").is_some();
 
             // Try loading persisted prefix cache from disk if memory cache is empty
+            let prefix_key = if let Some(head_id) = bundle.engine.active_lora_id() {
+                format!("{stats_model}_{head_id}")
+            } else {
+                stats_model.to_string()
+            };
             let cache_path =
-                prefix_cache::resolve_cache_dir().join(format!("prefix_{stats_model}.bin"));
+                prefix_cache::resolve_cache_dir().join(format!("prefix_{prefix_key}.bin"));
             if !disable_prefix_cache && bundle.cached_prefix.is_empty() {
                 if let Ok(Some(cached)) = prefix_cache::try_load_prefix_cache(
                     &cache_path,
@@ -1800,7 +1805,14 @@ impl AstEngine {
             // Identify invariant system prompt prefix if available for auto-caching
             let sys_prefix_tokens: Option<Vec<u32>> =
                 if !disable_prefix_cache && bundle.cached_prefix.is_empty() {
-                    let sys_text = match stats_model {
+                    let extracted = if let Some(idx) = prompt.find("<|im_end|>\n<|im_start|>user\n") {
+                        Some(&prompt[..idx + "<|im_end|>\n<|im_start|>user\n".len()])
+                    } else if let Some(idx) = prompt.find("<|end|>\n<|user|>\n") {
+                        Some(&prompt[..idx + "<|end|>\n<|user|>\n".len()])
+                    } else {
+                        None
+                    };
+                    let sys_text = extracted.map(|s| s.to_string()).or_else(|| match stats_model {
                         "hydra" => Some(format!(
                             "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
                             hydra_system()
@@ -1827,7 +1839,7 @@ impl AstEngine {
                         )),
                         "blue" => Some(format!("<|system|>\n{}<|end|>\n<|user|>\n", blue_system())),
                         _ => None,
-                    };
+                    });
                     sys_text.and_then(|text| {
                         bundle
                             .tokenizer

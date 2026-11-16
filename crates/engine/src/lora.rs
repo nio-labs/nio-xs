@@ -404,17 +404,97 @@ impl<'a> safetensors::tensor::View for SimpleTensorView<'a> {
 }
 
 /// In-process LoRA low-rank projection for a single linear layer
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct LoraLinear {
     pub a: Vec<f32>, // shape: [r, in_dim], row-major
     pub b: Vec<f32>, // shape: [out_dim, r], row-major
+    pub b_t: Vec<f32>, // shape: [r, out_dim], pre-transposed for AVX2 vectorization
     pub r: usize,
     pub in_dim: usize,
     pub out_dim: usize,
     pub scaling: f32,
 }
 
+#[inline]
+pub fn vec_add_scaled(y: &mut [f32], x: &[f32], alpha: f32) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            unsafe {
+                vec_add_scaled_avx2(y, x, alpha);
+            }
+            return;
+        }
+    }
+    let n = y.len().min(x.len());
+    for i in 0..n {
+        y[i] += alpha * x[i];
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn vec_add_scaled_avx2(y: &mut [f32], x: &[f32], alpha: f32) {
+    use core::arch::x86_64::*;
+    let n = y.len().min(x.len());
+    let mut i = 0;
+    unsafe {
+        let valpha = _mm256_set1_ps(alpha);
+        while i + 32 <= n {
+            let vy0 = _mm256_loadu_ps(y.as_ptr().add(i));
+            let vx0 = _mm256_loadu_ps(x.as_ptr().add(i));
+            let vy1 = _mm256_loadu_ps(y.as_ptr().add(i + 8));
+            let vx1 = _mm256_loadu_ps(x.as_ptr().add(i + 8));
+            let vy2 = _mm256_loadu_ps(y.as_ptr().add(i + 16));
+            let vx2 = _mm256_loadu_ps(x.as_ptr().add(i + 16));
+            let vy3 = _mm256_loadu_ps(y.as_ptr().add(i + 24));
+            let vx3 = _mm256_loadu_ps(x.as_ptr().add(i + 24));
+
+            _mm256_storeu_ps(y.as_mut_ptr().add(i), _mm256_fmadd_ps(valpha, vx0, vy0));
+            _mm256_storeu_ps(y.as_mut_ptr().add(i + 8), _mm256_fmadd_ps(valpha, vx1, vy1));
+            _mm256_storeu_ps(y.as_mut_ptr().add(i + 16), _mm256_fmadd_ps(valpha, vx2, vy2));
+            _mm256_storeu_ps(y.as_mut_ptr().add(i + 24), _mm256_fmadd_ps(valpha, vx3, vy3));
+            i += 32;
+        }
+        while i + 8 <= n {
+            let vy = _mm256_loadu_ps(y.as_ptr().add(i));
+            let vx = _mm256_loadu_ps(x.as_ptr().add(i));
+            _mm256_storeu_ps(y.as_mut_ptr().add(i), _mm256_fmadd_ps(valpha, vx, vy));
+            i += 8;
+        }
+        while i < n {
+            *y.get_unchecked_mut(i) += alpha * *x.get_unchecked(i);
+            i += 1;
+        }
+    }
+}
+
 impl LoraLinear {
+    pub fn new(
+        a: Vec<f32>,
+        b: Vec<f32>,
+        r: usize,
+        in_dim: usize,
+        out_dim: usize,
+        scaling: f32,
+    ) -> Self {
+        let mut b_t = vec![0.0f32; r * out_dim];
+        for i in 0..out_dim {
+            for k in 0..r {
+                b_t[k * out_dim + i] = b[i * r + k];
+            }
+        }
+        Self {
+            a,
+            b,
+            b_t,
+            r,
+            in_dim,
+            out_dim,
+            scaling,
+        }
+    }
+
     #[inline(always)]
     pub fn apply(&self, x: &[f32], y: &mut [f32]) {
         if self.r == 0 || self.a.is_empty() || self.b.is_empty() {
@@ -440,10 +520,24 @@ impl LoraLinear {
             h[k] = vec_dot_f32_direct(a_row, x) * scaling;
         }
 
-        // Step 2: y += h @ B^T, size [out_dim]
-        for i in 0..out_dim {
-            let b_row = &self.b[i * r..(i + 1) * r];
-            y[i] += vec_dot_f32_direct(b_row, h);
+        // Step 2: y += B @ h = sum_k (h[k] * B_col[k])
+        if !self.b_t.is_empty() {
+            for k in 0..r {
+                let hk = h[k];
+                if hk != 0.0 {
+                    let b_col = &self.b_t[k * out_dim..(k + 1) * out_dim];
+                    vec_add_scaled(y, b_col, hk);
+                }
+            }
+        } else {
+            for i in 0..out_dim {
+                let b_row = &self.b[i * r..(i + 1) * r];
+                let mut sum = 0.0f32;
+                for k in 0..r {
+                    sum += b_row[k] * h[k];
+                }
+                y[i] += sum;
+            }
         }
     }
 }
@@ -735,14 +829,14 @@ fn load_lora_linear(
     let vec_a = tensor_to_f32(&t_a)?;
     let vec_b = tensor_to_f32(&t_b)?;
 
-    Ok(Some(LoraLinear {
-        a: vec_a,
-        b: vec_b,
+    Ok(Some(LoraLinear::new(
+        vec_a,
+        vec_b,
         r,
         in_dim,
         out_dim,
-        scaling: effective_scaling,
-    }))
+        effective_scaling,
+    )))
 }
 
 fn tensor_to_f32(t: &safetensors::tensor::TensorView) -> Result<Vec<f32>> {
@@ -1246,7 +1340,7 @@ mod tests {
                         let mut y_orig = vec![0.0f32; lin.out_dim];
                         lin.apply(&probe, &mut y_orig);
 
-                        let lin_sub = LoraLinear { a: a_sub, b: b_sub, r: target_r, in_dim: lin.in_dim, out_dim: lin.out_dim, scaling: lin.scaling };
+                        let lin_sub = LoraLinear::new(a_sub, b_sub, target_r, lin.in_dim, lin.out_dim, lin.scaling);
                         let mut y_sub = vec![0.0f32; lin.out_dim];
                         lin_sub.apply(&probe, &mut y_sub);
 
@@ -1269,14 +1363,14 @@ mod tests {
 
     #[test]
     fn test_lora_linear_apply_identity() {
-        let linear = LoraLinear {
-            a: vec![1.0, 0.0, 0.0, 1.0], // [2, 2]
-            b: vec![1.0, 0.0, 0.0, 1.0], // [2, 2]
-            r: 2,
-            in_dim: 2,
-            out_dim: 2,
-            scaling: 1.0,
-        };
+        let linear = LoraLinear::new(
+            vec![1.0, 0.0, 0.0, 1.0], // [2, 2]
+            vec![1.0, 0.0, 0.0, 1.0], // [2, 2]
+            2,
+            2,
+            2,
+            1.0,
+        );
 
         let x = [3.0f32, 5.0f32];
         let mut y = [10.0f32, 20.0f32];
