@@ -363,8 +363,28 @@ impl ZwCache {
                     best_tok = tok;
                 }
             }
-            if total_cnt >= 4 && best_cnt * 20 >= total_cnt * 17 {
+            if total_cnt >= 4 && best_cnt * 10 >= total_cnt * 9 {
                 return Some(best_tok);
+            }
+        }
+
+        if let Some(p2) = prev2 {
+            // High-confidence Trigram context lookup in generated tokens (PLD)
+            if gen_tokens.len() >= 3 {
+                for i in (0..gen_tokens.len() - 2).rev() {
+                    if gen_tokens[i] == p2 && gen_tokens[i + 1] == prev1 {
+                        return Some(gen_tokens[i + 2]);
+                    }
+                }
+            }
+
+            // High-confidence Trigram context lookup in prompt tokens (PLD)
+            if self.prompt_tokens.len() >= 3 {
+                for i in (0..self.prompt_tokens.len() - 2).rev() {
+                    if self.prompt_tokens[i] == p2 && self.prompt_tokens[i + 1] == prev1 {
+                        return Some(self.prompt_tokens[i + 2]);
+                    }
+                }
             }
         }
 
@@ -1357,6 +1377,8 @@ impl AstEngine {
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(resident);
                 }
+                // Preload all 10 council heads into RAM cache (< 27MB total footprint)
+                crate::lora::preload_all_council_heads();
             } else if is_fin {
                 let gpu_layers = active_dev.recommended_gpu_layers(28);
                 if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
@@ -1547,9 +1569,12 @@ impl AstEngine {
         let bundle = guard
             .as_mut()
             .ok_or_else(|| anyhow!("Model bundle not loaded"))?;
-        bundle.engine.attach_lora(adapter);
-        bundle.engine.reset_cache();
-        bundle.cached_prefix.clear();
+        let is_same = bundle.engine.active_lora_id() == Some(adapter.id.as_str());
+        if !is_same {
+            bundle.engine.attach_lora(adapter);
+            bundle.engine.reset_cache();
+            bundle.cached_prefix.clear();
+        }
         Ok(())
     }
 
@@ -1615,7 +1640,12 @@ impl AstEngine {
         let speculation_mode = match std::env::var(speculation_var).as_deref() {
             Ok("off") => speculation::Mode::Off,
             Ok("on") => speculation::Mode::On,
-            Ok("adaptive") | Err(_) => speculation::Mode::Adaptive,
+            Ok("adaptive") => speculation::Mode::Adaptive,
+            Err(_) => if self.is_hydra {
+                speculation::Mode::On
+            } else {
+                speculation::Mode::Adaptive
+            },
             Ok(value) => {
                 return Err(anyhow!(
                     "Invalid {speculation_var}={value:?}; use on, off, or adaptive"

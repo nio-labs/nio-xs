@@ -354,6 +354,7 @@ pub enum GemvTask {
         weight_ptr: usize,
         x_f32_ptr: usize,
         x_q8_k_ptr: usize,
+        x_q8_0_ptr: usize,
         n_rows: usize,
         n_cols: usize,
         dtype: u32,
@@ -366,6 +367,8 @@ pub enum GemvTask {
         x1_f32_ptr: usize,
         x0_q8_k_ptr: usize,
         x1_q8_k_ptr: usize,
+        x0_q8_0_ptr: usize,
+        x1_q8_0_ptr: usize,
         n_rows: usize,
         n_cols: usize,
         dtype: u32,
@@ -381,6 +384,9 @@ pub enum GemvTask {
         x0_q8_k_ptr: usize,
         x1_q8_k_ptr: usize,
         x2_q8_k_ptr: usize,
+        x0_q8_0_ptr: usize,
+        x1_q8_0_ptr: usize,
+        x2_q8_0_ptr: usize,
         n_rows: usize,
         n_cols: usize,
         dtype: u32,
@@ -1982,6 +1988,7 @@ impl GemvTask {
                 weight_ptr,
                 x_f32_ptr,
                 x_q8_k_ptr,
+                x_q8_0_ptr,
                 n_rows,
                 n_cols,
                 dtype,
@@ -2083,12 +2090,43 @@ impl GemvTask {
                         }
                     }
                     6 => {
-                        let mut dequant_buf = vec![0.0f32; n_cols];
-                        for r in start_r..end_r {
-                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
-                            quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
-                            out[r] = quants::dot_f32(&dequant_buf, x_f32);
+                        #[cfg(target_arch = "x86_64")]
+                        if x_q8_0_ptr != 0 {
+                            let x_q8_0 = std::slice::from_raw_parts(
+                                x_q8_0_ptr as *const quants::BlockQ8_0,
+                                n_cols / 32,
+                            );
+                            let mut r = start_r;
+                            while r + 1 < end_r {
+                                let r0_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                let r1_ptr = (weight_ptr as *const u8).add((r + 1) * row_bytes);
+                                let (v0, v1) = quants::vec_dot_q5_0_q8_0_2rows_avx2(r0_ptr, r1_ptr, x_q8_0);
+                                out[r] = v0;
+                                out[r + 1] = v1;
+                                r += 2;
+                            }
+                            if r < end_r {
+                                let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                out[r] = quants::vec_dot_q5_0_q8_0_avx2(r_ptr, x_q8_0);
+                            }
+                        } else {
+                            let mut dequant_buf = vec![0.0f32; n_cols];
+                            for r in start_r..end_r {
+                                let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                                quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
+                                out[r] = quants::dot_f32(&dequant_buf, x_f32);
+                            }
+                        }
+                        #[cfg(not(target_arch = "x86_64"))]
+                        {
+                            let mut dequant_buf = vec![0.0f32; n_cols];
+                            for r in start_r..end_r {
+                                let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                                quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
+                                out[r] = quants::dot_f32(&dequant_buf, x_f32);
+                            }
                         }
                     }
                     8 => {
@@ -2111,6 +2149,8 @@ impl GemvTask {
                 x1_f32_ptr,
                 x0_q8_k_ptr,
                 x1_q8_k_ptr,
+                x0_q8_0_ptr,
+                x1_q8_0_ptr,
                 n_rows,
                 n_cols,
                 dtype,
@@ -2230,13 +2270,42 @@ impl GemvTask {
                         }
                     }
                     6 => {
-                        let mut dequant_buf = vec![0.0f32; n_cols];
-                        for r in start_r..end_r {
-                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
-                            quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
-                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
-                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                        #[cfg(target_arch = "x86_64")]
+                        if x0_q8_0_ptr != 0 && x1_q8_0_ptr != 0 {
+                            let x0_q8_0 = std::slice::from_raw_parts(
+                                x0_q8_0_ptr as *const quants::BlockQ8_0,
+                                n_cols / 32,
+                            );
+                            let x1_q8_0 = std::slice::from_raw_parts(
+                                x1_q8_0_ptr as *const quants::BlockQ8_0,
+                                n_cols / 32,
+                            );
+                            for r in start_r..end_r {
+                                let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                let (v0, v1) = quants::vec_dot_q5_0_q8_0_2tokens_avx2(r_ptr, x0_q8_0, x1_q8_0);
+                                out0[r] = v0;
+                                out1[r] = v1;
+                            }
+                        } else {
+                            let mut dequant_buf = vec![0.0f32; n_cols];
+                            for r in start_r..end_r {
+                                let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                                quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
+                                out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                                out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                            }
+                        }
+                        #[cfg(not(target_arch = "x86_64"))]
+                        {
+                            let mut dequant_buf = vec![0.0f32; n_cols];
+                            for r in start_r..end_r {
+                                let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                                quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
+                                out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                                out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                            }
                         }
                     }
                     8 => {
@@ -2263,6 +2332,9 @@ impl GemvTask {
                 x0_q8_k_ptr,
                 x1_q8_k_ptr,
                 x2_q8_k_ptr,
+                x0_q8_0_ptr,
+                x1_q8_0_ptr,
+                x2_q8_0_ptr,
                 n_rows,
                 n_cols,
                 dtype,
@@ -2403,14 +2475,49 @@ impl GemvTask {
                         }
                     }
                     6 => {
-                        let mut dequant_buf = vec![0.0f32; n_cols];
-                        for r in start_r..end_r {
-                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
-                            quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
-                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
-                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
-                            out2[r] = quants::dot_f32(&dequant_buf, x2_f32);
+                        #[cfg(target_arch = "x86_64")]
+                        if x0_q8_0_ptr != 0 && x1_q8_0_ptr != 0 && x2_q8_0_ptr != 0 {
+                            let x0_q8_0 = std::slice::from_raw_parts(
+                                x0_q8_0_ptr as *const quants::BlockQ8_0,
+                                n_cols / 32,
+                            );
+                            let x1_q8_0 = std::slice::from_raw_parts(
+                                x1_q8_0_ptr as *const quants::BlockQ8_0,
+                                n_cols / 32,
+                            );
+                            let x2_q8_0 = std::slice::from_raw_parts(
+                                x2_q8_0_ptr as *const quants::BlockQ8_0,
+                                n_cols / 32,
+                            );
+                            for r in start_r..end_r {
+                                let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                let (v0, v1, v2) = quants::vec_dot_q5_0_q8_0_3tokens_avx2(r_ptr, x0_q8_0, x1_q8_0, x2_q8_0);
+                                out0[r] = v0;
+                                out1[r] = v1;
+                                out2[r] = v2;
+                            }
+                        } else {
+                            let mut dequant_buf = vec![0.0f32; n_cols];
+                            for r in start_r..end_r {
+                                let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                                quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
+                                out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                                out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                                out2[r] = quants::dot_f32(&dequant_buf, x2_f32);
+                            }
+                        }
+                        #[cfg(not(target_arch = "x86_64"))]
+                        {
+                            let mut dequant_buf = vec![0.0f32; n_cols];
+                            for r in start_r..end_r {
+                                let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                                quants::dequantize_row_q5_0(row_slice, &mut dequant_buf);
+                                out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                                out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                                out2[r] = quants::dot_f32(&dequant_buf, x2_f32);
+                            }
                         }
                     }
                     8 => {

@@ -936,6 +936,364 @@ pub unsafe fn vec_dot_q8_0_28blocks_avx2(
 #[inline]
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn vec_dot_q5_0_q8_0_2rows_avx2(
+    r0_ptr: *const u8,
+    r1_ptr: *const u8,
+    x_blocks: &[BlockQ8_0],
+) -> (f32, f32) {
+    use core::arch::x86_64::*;
+    let nb = x_blocks.len();
+    let row_bytes = nb * 22;
+
+    _mm_prefetch(r0_ptr.add(row_bytes) as *const i8, _MM_HINT_T0);
+    _mm_prefetch(r1_ptr.add(row_bytes) as *const i8, _MM_HINT_T0);
+
+    let mut r0_acc0 = _mm256_setzero_ps();
+    let mut r0_acc1 = _mm256_setzero_ps();
+    let mut r1_acc0 = _mm256_setzero_ps();
+    let mut r1_acc1 = _mm256_setzero_ps();
+
+    let mut r0_w_i8_0 = [0i8; 32];
+    let mut r0_w_i8_1 = [0i8; 32];
+    let mut r1_w_i8_0 = [0i8; 32];
+    let mut r1_w_i8_1 = [0i8; 32];
+
+    let mut ib = 0;
+    while ib + 1 < nb {
+        let r0_b0 = r0_ptr.add(ib * 22);
+        let r0_b1 = r0_ptr.add((ib + 1) * 22);
+        let r1_b0 = r1_ptr.add(ib * 22);
+        let r1_b1 = r1_ptr.add((ib + 1) * 22);
+
+        // Row 0 block 0
+        let r0_d0_raw = (r0_b0 as *const u16).read_unaligned();
+        let r0_qh0 = (r0_b0.add(2) as *const u32).read_unaligned();
+        let r0_qs0 = r0_b0.add(6);
+        for j in 0..16 {
+            let xh0 = (((r0_qh0 >> j) & 1) << 4) as i32;
+            let xh1 = (((r0_qh0 >> (j + 16)) & 1) << 4) as i32;
+            let q = *r0_qs0.add(j);
+            r0_w_i8_0[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
+            r0_w_i8_0[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
+        }
+
+        // Row 0 block 1
+        let r0_d1_raw = (r0_b1 as *const u16).read_unaligned();
+        let r0_qh1 = (r0_b1.add(2) as *const u32).read_unaligned();
+        let r0_qs1 = r0_b1.add(6);
+        for j in 0..16 {
+            let xh0 = (((r0_qh1 >> j) & 1) << 4) as i32;
+            let xh1 = (((r0_qh1 >> (j + 16)) & 1) << 4) as i32;
+            let q = *r0_qs1.add(j);
+            r0_w_i8_1[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
+            r0_w_i8_1[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
+        }
+
+        // Row 1 block 0
+        let r1_d0_raw = (r1_b0 as *const u16).read_unaligned();
+        let r1_qh0 = (r1_b0.add(2) as *const u32).read_unaligned();
+        let r1_qs0 = r1_b0.add(6);
+        for j in 0..16 {
+            let xh0 = (((r1_qh0 >> j) & 1) << 4) as i32;
+            let xh1 = (((r1_qh0 >> (j + 16)) & 1) << 4) as i32;
+            let q = *r1_qs0.add(j);
+            r1_w_i8_0[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
+            r1_w_i8_0[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
+        }
+
+        // Row 1 block 1
+        let r1_d1_raw = (r1_b1 as *const u16).read_unaligned();
+        let r1_qh1 = (r1_b1.add(2) as *const u32).read_unaligned();
+        let r1_qs1 = r1_b1.add(6);
+        for j in 0..16 {
+            let xh0 = (((r1_qh1 >> j) & 1) << 4) as i32;
+            let xh1 = (((r1_qh1 >> (j + 16)) & 1) << 4) as i32;
+            let q = *r1_qs1.add(j);
+            r1_w_i8_1[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
+            r1_w_i8_1[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
+        }
+
+        let act_d0 = x_blocks[ib].d;
+        let act_d1 = x_blocks[ib + 1].d;
+        let act_qy0 = _mm256_loadu_si256(x_blocks[ib].qs.as_ptr() as *const __m256i);
+        let act_qy1 = _mm256_loadu_si256(x_blocks[ib + 1].qs.as_ptr() as *const __m256i);
+
+        let r0_d0 = _mm256_set1_ps(f16_to_f32_hw(r0_d0_raw) * act_d0);
+        let r0_d1 = _mm256_set1_ps(f16_to_f32_hw(r0_d1_raw) * act_d1);
+        let r1_d0 = _mm256_set1_ps(f16_to_f32_hw(r1_d0_raw) * act_d0);
+        let r1_d1 = _mm256_set1_ps(f16_to_f32_hw(r1_d1_raw) * act_d1);
+
+        let r0_qx0 = _mm256_loadu_si256(r0_w_i8_0.as_ptr() as *const __m256i);
+        let r0_qx1 = _mm256_loadu_si256(r0_w_i8_1.as_ptr() as *const __m256i);
+        let r1_qx0 = _mm256_loadu_si256(r1_w_i8_0.as_ptr() as *const __m256i);
+        let r1_qx1 = _mm256_loadu_si256(r1_w_i8_1.as_ptr() as *const __m256i);
+
+        let r0_q0 = mul_sum_i8_pairs_float(r0_qx0, act_qy0);
+        let r0_q1 = mul_sum_i8_pairs_float(r0_qx1, act_qy1);
+        let r1_q0 = mul_sum_i8_pairs_float(r1_qx0, act_qy0);
+        let r1_q1 = mul_sum_i8_pairs_float(r1_qx1, act_qy1);
+
+        r0_acc0 = _mm256_fmadd_ps(r0_d0, r0_q0, r0_acc0);
+        r0_acc1 = _mm256_fmadd_ps(r0_d1, r0_q1, r0_acc1);
+        r1_acc0 = _mm256_fmadd_ps(r1_d0, r1_q0, r1_acc0);
+        r1_acc1 = _mm256_fmadd_ps(r1_d1, r1_q1, r1_acc1);
+
+        ib += 2;
+    }
+
+    let val0 = hsum_float_8(_mm256_add_ps(r0_acc0, r0_acc1));
+    let val1 = hsum_float_8(_mm256_add_ps(r1_acc0, r1_acc1));
+    (val0, val1)
+}
+
+#[inline]
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn vec_dot_q5_0_q8_0_avx2(
+    weight_ptr: *const u8,
+    x_blocks: &[BlockQ8_0],
+) -> f32 {
+    use core::arch::x86_64::*;
+    let nb = x_blocks.len();
+    let row_bytes = nb * 22;
+
+    _mm_prefetch(weight_ptr.add(row_bytes) as *const i8, _MM_HINT_T0);
+
+    let mut acc0 = _mm256_setzero_ps();
+    let mut acc1 = _mm256_setzero_ps();
+
+    let mut w_i8_0 = [0i8; 32];
+    let mut w_i8_1 = [0i8; 32];
+
+    let mut ib = 0;
+    while ib + 1 < nb {
+        let b0_ptr = weight_ptr.add(ib * 22);
+        let b1_ptr = weight_ptr.add((ib + 1) * 22);
+
+        let d0_raw = (b0_ptr as *const u16).read_unaligned();
+        let qh0 = (b0_ptr.add(2) as *const u32).read_unaligned();
+        let qs0 = b0_ptr.add(6);
+        for j in 0..16 {
+            let xh0 = (((qh0 >> j) & 1) << 4) as i32;
+            let xh1 = (((qh0 >> (j + 16)) & 1) << 4) as i32;
+            let q = *qs0.add(j);
+            w_i8_0[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
+            w_i8_0[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
+        }
+
+        let d1_raw = (b1_ptr as *const u16).read_unaligned();
+        let qh1 = (b1_ptr.add(2) as *const u32).read_unaligned();
+        let qs1 = b1_ptr.add(6);
+        for j in 0..16 {
+            let xh0 = (((qh1 >> j) & 1) << 4) as i32;
+            let xh1 = (((qh1 >> (j + 16)) & 1) << 4) as i32;
+            let q = *qs1.add(j);
+            w_i8_1[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
+            w_i8_1[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
+        }
+
+        let d0 = _mm256_set1_ps(f16_to_f32_hw(d0_raw) * x_blocks[ib].d);
+        let d1 = _mm256_set1_ps(f16_to_f32_hw(d1_raw) * x_blocks[ib + 1].d);
+
+        let qx0 = _mm256_loadu_si256(w_i8_0.as_ptr() as *const __m256i);
+        let qx1 = _mm256_loadu_si256(w_i8_1.as_ptr() as *const __m256i);
+
+        let qy0 = _mm256_loadu_si256(x_blocks[ib].qs.as_ptr() as *const __m256i);
+        let qy1 = _mm256_loadu_si256(x_blocks[ib + 1].qs.as_ptr() as *const __m256i);
+
+        let q0 = mul_sum_i8_pairs_float(qx0, qy0);
+        let q1 = mul_sum_i8_pairs_float(qx1, qy1);
+
+        acc0 = _mm256_fmadd_ps(d0, q0, acc0);
+        acc1 = _mm256_fmadd_ps(d1, q1, acc1);
+
+        ib += 2;
+    }
+
+    hsum_float_8(_mm256_add_ps(acc0, acc1))
+}
+
+#[inline]
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn vec_dot_q5_0_q8_0_2tokens_avx2(
+    weight_ptr: *const u8,
+    x0_blocks: &[BlockQ8_0],
+    x1_blocks: &[BlockQ8_0],
+) -> (f32, f32) {
+    use core::arch::x86_64::*;
+    let nb = x0_blocks.len();
+    let row_bytes = nb * 22;
+
+    _mm_prefetch(weight_ptr.add(row_bytes) as *const i8, _MM_HINT_T0);
+
+    let mut t0_acc0 = _mm256_setzero_ps();
+    let mut t0_acc1 = _mm256_setzero_ps();
+    let mut t1_acc0 = _mm256_setzero_ps();
+    let mut t1_acc1 = _mm256_setzero_ps();
+
+    let mut w_i8_0 = [0i8; 32];
+    let mut w_i8_1 = [0i8; 32];
+
+    let mut ib = 0;
+    while ib + 1 < nb {
+        let b0_ptr = weight_ptr.add(ib * 22);
+        let b1_ptr = weight_ptr.add((ib + 1) * 22);
+
+        let d0_raw = (b0_ptr as *const u16).read_unaligned();
+        let qh0 = (b0_ptr.add(2) as *const u32).read_unaligned();
+        let qs0 = b0_ptr.add(6);
+        for j in 0..16 {
+            let xh0 = (((qh0 >> j) & 1) << 4) as i32;
+            let xh1 = (((qh0 >> (j + 16)) & 1) << 4) as i32;
+            let q = *qs0.add(j);
+            w_i8_0[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
+            w_i8_0[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
+        }
+
+        let d1_raw = (b1_ptr as *const u16).read_unaligned();
+        let qh1 = (b1_ptr.add(2) as *const u32).read_unaligned();
+        let qs1 = b1_ptr.add(6);
+        for j in 0..16 {
+            let xh0 = (((qh1 >> j) & 1) << 4) as i32;
+            let xh1 = (((qh1 >> (j + 16)) & 1) << 4) as i32;
+            let q = *qs1.add(j);
+            w_i8_1[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
+            w_i8_1[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
+        }
+
+        let w_d0 = f16_to_f32_hw(d0_raw);
+        let w_d1 = f16_to_f32_hw(d1_raw);
+
+        let t0_d0 = _mm256_set1_ps(w_d0 * x0_blocks[ib].d);
+        let t0_d1 = _mm256_set1_ps(w_d1 * x0_blocks[ib + 1].d);
+        let t1_d0 = _mm256_set1_ps(w_d0 * x1_blocks[ib].d);
+        let t1_d1 = _mm256_set1_ps(w_d1 * x1_blocks[ib + 1].d);
+
+        let qx0 = _mm256_loadu_si256(w_i8_0.as_ptr() as *const __m256i);
+        let qx1 = _mm256_loadu_si256(w_i8_1.as_ptr() as *const __m256i);
+
+        let t0_qy0 = _mm256_loadu_si256(x0_blocks[ib].qs.as_ptr() as *const __m256i);
+        let t0_qy1 = _mm256_loadu_si256(x0_blocks[ib + 1].qs.as_ptr() as *const __m256i);
+        let t1_qy0 = _mm256_loadu_si256(x1_blocks[ib].qs.as_ptr() as *const __m256i);
+        let t1_qy1 = _mm256_loadu_si256(x1_blocks[ib + 1].qs.as_ptr() as *const __m256i);
+
+        let t0_q0 = mul_sum_i8_pairs_float(qx0, t0_qy0);
+        let t0_q1 = mul_sum_i8_pairs_float(qx1, t0_qy1);
+        let t1_q0 = mul_sum_i8_pairs_float(qx0, t1_qy0);
+        let t1_q1 = mul_sum_i8_pairs_float(qx1, t1_qy1);
+
+        t0_acc0 = _mm256_fmadd_ps(t0_d0, t0_q0, t0_acc0);
+        t0_acc1 = _mm256_fmadd_ps(t0_d1, t0_q1, t0_acc1);
+        t1_acc0 = _mm256_fmadd_ps(t1_d0, t1_q0, t1_acc0);
+        t1_acc1 = _mm256_fmadd_ps(t1_d1, t1_q1, t1_acc1);
+
+        ib += 2;
+    }
+
+    let val0 = hsum_float_8(_mm256_add_ps(t0_acc0, t0_acc1));
+    let val1 = hsum_float_8(_mm256_add_ps(t1_acc0, t1_acc1));
+    (val0, val1)
+}
+
+#[inline]
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn vec_dot_q5_0_q8_0_3tokens_avx2(
+    weight_ptr: *const u8,
+    x0_blocks: &[BlockQ8_0],
+    x1_blocks: &[BlockQ8_0],
+    x2_blocks: &[BlockQ8_0],
+) -> (f32, f32, f32) {
+    use core::arch::x86_64::*;
+    let nb = x0_blocks.len();
+    let row_bytes = nb * 22;
+
+    _mm_prefetch(weight_ptr.add(row_bytes) as *const i8, _MM_HINT_T0);
+
+    let mut t0_acc0 = _mm256_setzero_ps();
+    let mut t0_acc1 = _mm256_setzero_ps();
+    let mut t1_acc0 = _mm256_setzero_ps();
+    let mut t1_acc1 = _mm256_setzero_ps();
+    let mut t2_acc0 = _mm256_setzero_ps();
+    let mut t2_acc1 = _mm256_setzero_ps();
+
+    let mut w_i8_0 = [0i8; 32];
+    let mut w_i8_1 = [0i8; 32];
+
+    let mut ib = 0;
+    while ib + 1 < nb {
+        let b0_ptr = weight_ptr.add(ib * 22);
+        let b1_ptr = weight_ptr.add((ib + 1) * 22);
+
+        let d0_raw = (b0_ptr as *const u16).read_unaligned();
+        let qh0 = (b0_ptr.add(2) as *const u32).read_unaligned();
+        let qs0 = b0_ptr.add(6);
+        for j in 0..16 {
+            let xh0 = (((qh0 >> j) & 1) << 4) as i32;
+            let xh1 = (((qh0 >> (j + 16)) & 1) << 4) as i32;
+            let q = *qs0.add(j);
+            w_i8_0[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
+            w_i8_0[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
+        }
+
+        let d1_raw = (b1_ptr as *const u16).read_unaligned();
+        let qh1 = (b1_ptr.add(2) as *const u32).read_unaligned();
+        let qs1 = b1_ptr.add(6);
+        for j in 0..16 {
+            let xh0 = (((qh1 >> j) & 1) << 4) as i32;
+            let xh1 = (((qh1 >> (j + 16)) & 1) << 4) as i32;
+            let q = *qs1.add(j);
+            w_i8_1[j] = (((q & 0x0F) as i32 | xh0) - 16) as i8;
+            w_i8_1[j + 16] = (((q >> 4) as i32 | xh1) - 16) as i8;
+        }
+
+        let w_d0 = f16_to_f32_hw(d0_raw);
+        let w_d1 = f16_to_f32_hw(d1_raw);
+
+        let t0_d0 = _mm256_set1_ps(w_d0 * x0_blocks[ib].d);
+        let t0_d1 = _mm256_set1_ps(w_d1 * x0_blocks[ib + 1].d);
+        let t1_d0 = _mm256_set1_ps(w_d0 * x1_blocks[ib].d);
+        let t1_d1 = _mm256_set1_ps(w_d1 * x1_blocks[ib + 1].d);
+        let t2_d0 = _mm256_set1_ps(w_d0 * x2_blocks[ib].d);
+        let t2_d1 = _mm256_set1_ps(w_d1 * x2_blocks[ib + 1].d);
+
+        let qx0 = _mm256_loadu_si256(w_i8_0.as_ptr() as *const __m256i);
+        let qx1 = _mm256_loadu_si256(w_i8_1.as_ptr() as *const __m256i);
+
+        let t0_qy0 = _mm256_loadu_si256(x0_blocks[ib].qs.as_ptr() as *const __m256i);
+        let t0_qy1 = _mm256_loadu_si256(x0_blocks[ib + 1].qs.as_ptr() as *const __m256i);
+        let t1_qy0 = _mm256_loadu_si256(x1_blocks[ib].qs.as_ptr() as *const __m256i);
+        let t1_qy1 = _mm256_loadu_si256(x1_blocks[ib + 1].qs.as_ptr() as *const __m256i);
+        let t2_qy0 = _mm256_loadu_si256(x2_blocks[ib].qs.as_ptr() as *const __m256i);
+        let t2_qy1 = _mm256_loadu_si256(x2_blocks[ib + 1].qs.as_ptr() as *const __m256i);
+
+        let t0_q0 = mul_sum_i8_pairs_float(qx0, t0_qy0);
+        let t0_q1 = mul_sum_i8_pairs_float(qx1, t0_qy1);
+        let t1_q0 = mul_sum_i8_pairs_float(qx0, t1_qy0);
+        let t1_q1 = mul_sum_i8_pairs_float(qx1, t1_qy1);
+        let t2_q0 = mul_sum_i8_pairs_float(qx0, t2_qy0);
+        let t2_q1 = mul_sum_i8_pairs_float(qx1, t2_qy1);
+
+        t0_acc0 = _mm256_fmadd_ps(t0_d0, t0_q0, t0_acc0);
+        t0_acc1 = _mm256_fmadd_ps(t0_d1, t0_q1, t0_acc1);
+        t1_acc0 = _mm256_fmadd_ps(t1_d0, t1_q0, t1_acc0);
+        t1_acc1 = _mm256_fmadd_ps(t1_d1, t1_q1, t1_acc1);
+        t2_acc0 = _mm256_fmadd_ps(t2_d0, t2_q0, t2_acc0);
+        t2_acc1 = _mm256_fmadd_ps(t2_d1, t2_q1, t2_acc1);
+
+        ib += 2;
+    }
+
+    let val0 = hsum_float_8(_mm256_add_ps(t0_acc0, t0_acc1));
+    let val1 = hsum_float_8(_mm256_add_ps(t1_acc0, t1_acc1));
+    let val2 = hsum_float_8(_mm256_add_ps(t2_acc0, t2_acc1));
+    (val0, val1, val2)
+}
+
+#[inline]
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn vec_dot_q8_0_48blocks_2rows_avx2(
     r0_ptr: *const u8,
     r1_ptr: *const u8,

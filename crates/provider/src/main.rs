@@ -1775,6 +1775,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     flow.push(&code_fence);
 
                     let base_engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)?;
+                    base_engine.ensure_loaded().await?;
                     let t_swap = std::time::Instant::now();
                     let head_attached = base_engine.attach_lora_head(specialist).await.is_ok();
                     let swap_ms = t_swap.elapsed().as_secs_f64() * 1000.0;

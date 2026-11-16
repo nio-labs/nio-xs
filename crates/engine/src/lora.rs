@@ -1389,6 +1389,18 @@ pub fn get_or_load_head(head_id_or_path: &str) -> Result<Arc<LoraAdapter>> {
     Ok(adapter)
 }
 
+/// Pre-load all 10 council heads into memory cache (< 27MB total footprint)
+pub fn preload_all_council_heads() -> usize {
+    let mut count = 0;
+    for i in 1..=10 {
+        let name = format!("head-{:03}", i);
+        if let Ok(_) = get_or_load_head(&name) {
+            count += 1;
+        }
+    }
+    count
+}
+
 /// Evict all resident LoRA adapters from in-memory cache
 pub fn clear_lora_cache() {
     let mut cache = get_cache().lock().unwrap();

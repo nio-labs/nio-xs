@@ -503,9 +503,10 @@ impl LayerDesc {
     ) {
         // 1. Attention Norm
         rms_norm_slice(&scratch.x, &self.attn_norm_weight, eps, &mut scratch.x_norm);
-        if self.wq.dtype == 8 || self.wq.dtype == 20 {
+        if self.wq.dtype == 8 || self.wq.dtype == 20 || self.wq.dtype == 6 {
             quants::quantize_row_q8_0(&scratch.x_norm, &mut scratch.x_q8_0);
-        } else if scratch.x_norm.len() % 256 == 0 {
+        }
+        if scratch.x_norm.len() % 256 == 0 {
             quants::quantize_row_q8_k(&scratch.x_norm, &mut scratch.x_q8_k);
         }
 
@@ -569,6 +570,7 @@ impl LayerDesc {
                 weight_ptr: wq_slice.as_ptr() as usize,
                 x_f32_ptr: scratch.x_norm.as_ptr() as usize,
                 x_q8_k_ptr: scratch.x_q8_k.as_ptr() as usize,
+                x_q8_0_ptr: scratch.x_q8_0.as_ptr() as usize,
                 n_rows: self.wq.n_rows,
                 n_cols: self.wq.n_cols,
                 dtype: self.wq.dtype,
@@ -578,6 +580,7 @@ impl LayerDesc {
                 weight_ptr: wk_slice.as_ptr() as usize,
                 x_f32_ptr: scratch.x_norm.as_ptr() as usize,
                 x_q8_k_ptr: scratch.x_q8_k.as_ptr() as usize,
+                x_q8_0_ptr: scratch.x_q8_0.as_ptr() as usize,
                 n_rows: self.wk.n_rows,
                 n_cols: self.wk.n_cols,
                 dtype: self.wk.dtype,
@@ -587,6 +590,7 @@ impl LayerDesc {
                 weight_ptr: wv_slice.as_ptr() as usize,
                 x_f32_ptr: scratch.x_norm.as_ptr() as usize,
                 x_q8_k_ptr: scratch.x_q8_k.as_ptr() as usize,
+                x_q8_0_ptr: scratch.x_q8_0.as_ptr() as usize,
                 n_rows: self.wv.n_rows,
                 n_cols: self.wv.n_cols,
                 dtype: self.wv.dtype,
@@ -688,12 +692,17 @@ impl LayerDesc {
                 n_cols: self.wo.n_cols,
             });
         } else {
-            quants::quantize_row_q8_k(&scratch.attn_out, &mut scratch.attn_q8_k);
+            if self.wo.dtype == 6 {
+                quants::quantize_row_q8_0(&scratch.attn_out, &mut scratch.attn_q8_0);
+            } else {
+                quants::quantize_row_q8_k(&scratch.attn_out, &mut scratch.attn_q8_k);
+            }
             pool.run_task(GemvTask::GenericLinear {
                 out_ptr: scratch.wo_out.as_mut_ptr() as usize,
                 weight_ptr: wo_slice.as_ptr() as usize,
                 x_f32_ptr: scratch.attn_out.as_ptr() as usize,
                 x_q8_k_ptr: scratch.attn_q8_k.as_ptr() as usize,
+                x_q8_0_ptr: scratch.attn_q8_0.as_ptr() as usize,
                 n_rows: self.wo.n_rows,
                 n_cols: self.wo.n_cols,
                 dtype: self.wo.dtype,
@@ -755,6 +764,7 @@ impl LayerDesc {
                     weight_ptr: w1_slice.as_ptr() as usize,
                     x_f32_ptr: scratch.ffn_norm.as_ptr() as usize,
                     x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
+                    x_q8_0_ptr: scratch.ffn_q8_0.as_ptr() as usize,
                     n_rows: w1_exp.n_rows,
                     n_cols: w1_exp.n_cols,
                     dtype: w1_exp.dtype,
@@ -764,6 +774,7 @@ impl LayerDesc {
                     weight_ptr: w3_slice.as_ptr() as usize,
                     x_f32_ptr: scratch.ffn_norm.as_ptr() as usize,
                     x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
+                    x_q8_0_ptr: scratch.ffn_q8_0.as_ptr() as usize,
                     n_rows: w3_exp.n_rows,
                     n_cols: w3_exp.n_cols,
                     dtype: w3_exp.dtype,
@@ -782,6 +793,7 @@ impl LayerDesc {
                     weight_ptr: w2_slice.as_ptr() as usize,
                     x_f32_ptr: scratch.inter.as_ptr() as usize,
                     x_q8_k_ptr: scratch.inter_q8_k.as_ptr() as usize,
+                    x_q8_0_ptr: 0,
                     n_rows: w2_exp.n_rows,
                     n_cols: w2_exp.n_cols,
                     dtype: w2_exp.dtype,
@@ -848,6 +860,7 @@ impl LayerDesc {
                 weight_ptr: w1_slice.as_ptr() as usize,
                 x_f32_ptr: scratch.ffn_norm.as_ptr() as usize,
                 x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
+                x_q8_0_ptr: scratch.ffn_q8_0.as_ptr() as usize,
                 n_rows: self.w1.n_rows,
                 n_cols: self.w1.n_cols,
                 dtype: self.w1.dtype,
@@ -857,6 +870,7 @@ impl LayerDesc {
                 weight_ptr: w3_slice.as_ptr() as usize,
                 x_f32_ptr: scratch.ffn_norm.as_ptr() as usize,
                 x_q8_k_ptr: scratch.ffn_q8_k.as_ptr() as usize,
+                x_q8_0_ptr: scratch.ffn_q8_0.as_ptr() as usize,
                 n_rows: self.w3.n_rows,
                 n_cols: self.w3.n_cols,
                 dtype: self.w3.dtype,
@@ -912,6 +926,7 @@ impl LayerDesc {
                 weight_ptr: w2_slice.as_ptr() as usize,
                 x_f32_ptr: scratch.inter.as_ptr() as usize,
                 x_q8_k_ptr: scratch.inter_q8_k.as_ptr() as usize,
+                x_q8_0_ptr: 0,
                 n_rows: self.w2.n_rows,
                 n_cols: self.w2.n_cols,
                 dtype: self.w2.dtype,
@@ -963,10 +978,11 @@ impl LayerDesc {
             eps,
             &mut scratch1.x_norm,
         );
-        if self.wq.dtype == 8 || self.wq.dtype == 20 {
+        if self.wq.dtype == 8 || self.wq.dtype == 20 || self.wq.dtype == 6 {
             quants::quantize_row_q8_0(&scratch0.x_norm, &mut scratch0.x_q8_0);
             quants::quantize_row_q8_0(&scratch1.x_norm, &mut scratch1.x_q8_0);
-        } else if scratch0.x_norm.len() % 256 == 0 {
+        }
+        if scratch0.x_norm.len() % 256 == 0 {
             quants::quantize_row_q8_k(&scratch0.x_norm, &mut scratch0.x_q8_k);
             quants::quantize_row_q8_k(&scratch1.x_norm, &mut scratch1.x_q8_k);
         }
@@ -1002,6 +1018,8 @@ impl LayerDesc {
                 x1_f32_ptr: scratch1.x_norm.as_ptr() as usize,
                 x0_q8_k_ptr: scratch0.x_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.x_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.x_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.x_q8_0.as_ptr() as usize,
                 n_rows: self.wq.n_rows,
                 n_cols: self.wq.n_cols,
                 dtype: self.wq.dtype,
@@ -1014,6 +1032,8 @@ impl LayerDesc {
                 x1_f32_ptr: scratch1.x_norm.as_ptr() as usize,
                 x0_q8_k_ptr: scratch0.x_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.x_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.x_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.x_q8_0.as_ptr() as usize,
                 n_rows: self.wk.n_rows,
                 n_cols: self.wk.n_cols,
                 dtype: self.wk.dtype,
@@ -1026,6 +1046,8 @@ impl LayerDesc {
                 x1_f32_ptr: scratch1.x_norm.as_ptr() as usize,
                 x0_q8_k_ptr: scratch0.x_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.x_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.x_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.x_q8_0.as_ptr() as usize,
                 n_rows: self.wv.n_rows,
                 n_cols: self.wv.n_cols,
                 dtype: self.wv.dtype,
@@ -1137,8 +1159,13 @@ impl LayerDesc {
 
         // 5. Output Projection (wo) Joint (streams wo ONCE)
         let wo_slice = &mmap[self.wo.offset..self.wo.offset + self.wo.byte_len];
-        quants::quantize_row_q8_k(&scratch0.attn_out, &mut scratch0.attn_q8_k);
-        quants::quantize_row_q8_k(&scratch1.attn_out, &mut scratch1.attn_q8_k);
+        if self.wo.dtype == 6 {
+            quants::quantize_row_q8_0(&scratch0.attn_out, &mut scratch0.attn_q8_0);
+            quants::quantize_row_q8_0(&scratch1.attn_out, &mut scratch1.attn_q8_0);
+        } else {
+            quants::quantize_row_q8_k(&scratch0.attn_out, &mut scratch0.attn_q8_k);
+            quants::quantize_row_q8_k(&scratch1.attn_out, &mut scratch1.attn_q8_k);
+        }
         if self.wo.dtype == 18 {
             pool.run_task(GemvTask::Iq3Xxs2Tokens {
                 out0_ptr: scratch0.wo_out.as_mut_ptr() as usize,
@@ -1158,6 +1185,8 @@ impl LayerDesc {
                 x1_f32_ptr: scratch1.attn_out.as_ptr() as usize,
                 x0_q8_k_ptr: scratch0.attn_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.attn_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.attn_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.attn_q8_0.as_ptr() as usize,
                 n_rows: self.wo.n_rows,
                 n_cols: self.wo.n_cols,
                 dtype: self.wo.dtype,
@@ -1190,8 +1219,13 @@ impl LayerDesc {
             eps,
             &mut scratch1.ffn_norm,
         );
-        quants::quantize_row_q8_k(&scratch0.ffn_norm, &mut scratch0.ffn_q8_k);
-        quants::quantize_row_q8_k(&scratch1.ffn_norm, &mut scratch1.ffn_q8_k);
+        if matches!(self.w1.dtype, 12 | 13 | 14 | 18 | 21 | 22) {
+            quants::quantize_row_q8_k(&scratch0.ffn_norm, &mut scratch0.ffn_q8_k);
+            quants::quantize_row_q8_k(&scratch1.ffn_norm, &mut scratch1.ffn_q8_k);
+        } else {
+            quants::quantize_row_q8_0(&scratch0.ffn_norm, &mut scratch0.ffn_q8_0);
+            quants::quantize_row_q8_0(&scratch1.ffn_norm, &mut scratch1.ffn_q8_0);
+        }
 
         // 7. Gate & Up Joint (streams w1 and w3 ONCE)
         let w1_slice = &mmap[self.w1.offset..self.w1.offset + self.w1.byte_len];
@@ -1216,6 +1250,8 @@ impl LayerDesc {
                 x1_f32_ptr: scratch1.ffn_norm.as_ptr() as usize,
                 x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.ffn_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.ffn_q8_0.as_ptr() as usize,
                 n_rows: self.w1.n_rows,
                 n_cols: self.w1.n_cols,
                 dtype: self.w1.dtype,
@@ -1228,6 +1264,8 @@ impl LayerDesc {
                 x1_f32_ptr: scratch1.ffn_norm.as_ptr() as usize,
                 x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.ffn_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.ffn_q8_0.as_ptr() as usize,
                 n_rows: self.w3.n_rows,
                 n_cols: self.w3.n_cols,
                 dtype: self.w3.dtype,
@@ -1283,6 +1321,8 @@ impl LayerDesc {
                 x1_f32_ptr: scratch1.inter.as_ptr() as usize,
                 x0_q8_k_ptr: scratch0.inter_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.inter_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: 0,
+                x1_q8_0_ptr: 0,
                 n_rows: self.w2.n_rows,
                 n_cols: self.w2.n_cols,
                 dtype: self.w2.dtype,
@@ -1346,11 +1386,12 @@ impl LayerDesc {
             eps,
             &mut scratch2.x_norm,
         );
-        if self.wq.dtype == 8 || self.wq.dtype == 20 {
+        if self.wq.dtype == 8 || self.wq.dtype == 20 || self.wq.dtype == 6 {
             quants::quantize_row_q8_0(&scratch0.x_norm, &mut scratch0.x_q8_0);
             quants::quantize_row_q8_0(&scratch1.x_norm, &mut scratch1.x_q8_0);
             quants::quantize_row_q8_0(&scratch2.x_norm, &mut scratch2.x_q8_0);
-        } else if scratch0.x_norm.len() % 256 == 0 {
+        }
+        if scratch0.x_norm.len() % 256 == 0 {
             quants::quantize_row_q8_k(&scratch0.x_norm, &mut scratch0.x_q8_k);
             quants::quantize_row_q8_k(&scratch1.x_norm, &mut scratch1.x_q8_k);
             quants::quantize_row_q8_k(&scratch2.x_norm, &mut scratch2.x_q8_k);
@@ -1394,6 +1435,9 @@ impl LayerDesc {
                 x0_q8_k_ptr: scratch0.x_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.x_q8_k.as_ptr() as usize,
                 x2_q8_k_ptr: scratch2.x_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.x_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.x_q8_0.as_ptr() as usize,
+                x2_q8_0_ptr: scratch2.x_q8_0.as_ptr() as usize,
                 n_rows: self.wq.n_rows,
                 n_cols: self.wq.n_cols,
                 dtype: self.wq.dtype,
@@ -1409,6 +1453,9 @@ impl LayerDesc {
                 x0_q8_k_ptr: scratch0.x_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.x_q8_k.as_ptr() as usize,
                 x2_q8_k_ptr: scratch2.x_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.x_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.x_q8_0.as_ptr() as usize,
+                x2_q8_0_ptr: scratch2.x_q8_0.as_ptr() as usize,
                 n_rows: self.wk.n_rows,
                 n_cols: self.wk.n_cols,
                 dtype: self.wk.dtype,
@@ -1424,6 +1471,9 @@ impl LayerDesc {
                 x0_q8_k_ptr: scratch0.x_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.x_q8_k.as_ptr() as usize,
                 x2_q8_k_ptr: scratch2.x_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.x_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.x_q8_0.as_ptr() as usize,
+                x2_q8_0_ptr: scratch2.x_q8_0.as_ptr() as usize,
                 n_rows: self.wv.n_rows,
                 n_cols: self.wv.n_cols,
                 dtype: self.wv.dtype,
@@ -1573,9 +1623,15 @@ impl LayerDesc {
 
         // 5. Output Projection (wo) Joint (streams wo ONCE)
         let wo_slice = &mmap[self.wo.offset..self.wo.offset + self.wo.byte_len];
-        quants::quantize_row_q8_k(&scratch0.attn_out, &mut scratch0.attn_q8_k);
-        quants::quantize_row_q8_k(&scratch1.attn_out, &mut scratch1.attn_q8_k);
-        quants::quantize_row_q8_k(&scratch2.attn_out, &mut scratch2.attn_q8_k);
+        if self.wo.dtype == 6 {
+            quants::quantize_row_q8_0(&scratch0.attn_out, &mut scratch0.attn_q8_0);
+            quants::quantize_row_q8_0(&scratch1.attn_out, &mut scratch1.attn_q8_0);
+            quants::quantize_row_q8_0(&scratch2.attn_out, &mut scratch2.attn_q8_0);
+        } else {
+            quants::quantize_row_q8_k(&scratch0.attn_out, &mut scratch0.attn_q8_k);
+            quants::quantize_row_q8_k(&scratch1.attn_out, &mut scratch1.attn_q8_k);
+            quants::quantize_row_q8_k(&scratch2.attn_out, &mut scratch2.attn_q8_k);
+        }
         if self.wo.dtype == 18 {
             pool.run_task(GemvTask::Iq3Xxs3Tokens {
                 out0_ptr: scratch0.wo_out.as_mut_ptr() as usize,
@@ -1600,6 +1656,9 @@ impl LayerDesc {
                 x0_q8_k_ptr: scratch0.attn_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.attn_q8_k.as_ptr() as usize,
                 x2_q8_k_ptr: scratch2.attn_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.attn_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.attn_q8_0.as_ptr() as usize,
+                x2_q8_0_ptr: scratch2.attn_q8_0.as_ptr() as usize,
                 n_rows: self.wo.n_rows,
                 n_cols: self.wo.n_cols,
                 dtype: self.wo.dtype,
@@ -1640,9 +1699,15 @@ impl LayerDesc {
             eps,
             &mut scratch2.ffn_norm,
         );
-        quants::quantize_row_q8_k(&scratch0.ffn_norm, &mut scratch0.ffn_q8_k);
-        quants::quantize_row_q8_k(&scratch1.ffn_norm, &mut scratch1.ffn_q8_k);
-        quants::quantize_row_q8_k(&scratch2.ffn_norm, &mut scratch2.ffn_q8_k);
+        if matches!(self.w1.dtype, 12 | 13 | 14 | 18 | 21 | 22) {
+            quants::quantize_row_q8_k(&scratch0.ffn_norm, &mut scratch0.ffn_q8_k);
+            quants::quantize_row_q8_k(&scratch1.ffn_norm, &mut scratch1.ffn_q8_k);
+            quants::quantize_row_q8_k(&scratch2.ffn_norm, &mut scratch2.ffn_q8_k);
+        } else {
+            quants::quantize_row_q8_0(&scratch0.ffn_norm, &mut scratch0.ffn_q8_0);
+            quants::quantize_row_q8_0(&scratch1.ffn_norm, &mut scratch1.ffn_q8_0);
+            quants::quantize_row_q8_0(&scratch2.ffn_norm, &mut scratch2.ffn_q8_0);
+        }
 
         // 7. Gate & Up Joint (streams w1 and w3 ONCE)
         let w1_slice = &mmap[self.w1.offset..self.w1.offset + self.w1.byte_len];
@@ -1672,6 +1737,9 @@ impl LayerDesc {
                 x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
                 x2_q8_k_ptr: scratch2.ffn_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.ffn_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.ffn_q8_0.as_ptr() as usize,
+                x2_q8_0_ptr: scratch2.ffn_q8_0.as_ptr() as usize,
                 n_rows: self.w1.n_rows,
                 n_cols: self.w1.n_cols,
                 dtype: self.w1.dtype,
@@ -1687,6 +1755,9 @@ impl LayerDesc {
                 x0_q8_k_ptr: scratch0.ffn_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.ffn_q8_k.as_ptr() as usize,
                 x2_q8_k_ptr: scratch2.ffn_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: scratch0.ffn_q8_0.as_ptr() as usize,
+                x1_q8_0_ptr: scratch1.ffn_q8_0.as_ptr() as usize,
+                x2_q8_0_ptr: scratch2.ffn_q8_0.as_ptr() as usize,
                 n_rows: self.w3.n_rows,
                 n_cols: self.w3.n_cols,
                 dtype: self.w3.dtype,
@@ -1753,6 +1824,9 @@ impl LayerDesc {
                 x0_q8_k_ptr: scratch0.inter_q8_k.as_ptr() as usize,
                 x1_q8_k_ptr: scratch1.inter_q8_k.as_ptr() as usize,
                 x2_q8_k_ptr: scratch2.inter_q8_k.as_ptr() as usize,
+                x0_q8_0_ptr: 0,
+                x1_q8_0_ptr: 0,
+                x2_q8_0_ptr: 0,
                 n_rows: self.w2.n_rows,
                 n_cols: self.w2.n_cols,
                 dtype: self.w2.dtype,
@@ -2791,7 +2865,7 @@ impl AstMicroEngine {
             let mut step = 0;
 
             while step < n_tokens {
-                if step + 3 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
+                if step + 3 <= n_tokens && matches!(layer.w1.dtype, 2 | 6 | 8 | 12 | 13 | 14 | 18 | 20 | 21 | 22) {
                     let pos0 = index_pos + step;
                     let pos1 = pos0 + 1;
                     let pos2 = pos0 + 2;
@@ -2834,7 +2908,7 @@ impl AstMicroEngine {
                     activations[step + 1].copy_from_slice(&self.scratch1.x);
                     activations[step + 2].copy_from_slice(&self.scratch2.x);
                     step += 3;
-                } else if step + 2 <= n_tokens && (layer.w1.dtype == 18 || layer.w1.dtype == 12) {
+                } else if step + 2 <= n_tokens && matches!(layer.w1.dtype, 2 | 6 | 8 | 12 | 13 | 14 | 18 | 20 | 21 | 22) {
                     let pos0 = index_pos + step;
                     let pos1 = pos0 + 1;
                     let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];

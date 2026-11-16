@@ -52,7 +52,7 @@ impl Schedule {
             self.misses += 1;
             if self.misses >= 2 {
                 self.misses = 0;
-                self.cooldown = 8;
+                self.cooldown = 2;
             }
         }
     }
