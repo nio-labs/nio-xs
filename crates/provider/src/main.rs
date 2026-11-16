@@ -127,8 +127,16 @@ fn detect_target_code_language(prompt: &str, specialist: &str) -> &'static str {
         "go"
     } else {
         match specialist {
-            "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" => "zig",
+            "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" | "head-001-systems-atomic-concurrency" => "zig",
             "002" | "head-002" | "head-002-backend-axum-tokio" => "rust",
+            "003" | "head-003" | "head-003-frontend-react19-rsc" => "tsx",
+            "004" | "head-004" | "head-004-kernel-ebpf-xdp" => "rust",
+            "005" | "head-005" | "head-005-data-clickhouse-mergetree" => "sql",
+            "006" | "head-006" | "head-006-algorithms-formal-logic" => "rust",
+            "007" | "head-007" | "head-007-devops-k8s-controller" => "rust",
+            "008" | "head-008" | "head-008-consensus-raft-paxos" => "rust",
+            "009" | "head-009" | "head-009-vector-simd-avx512" => "rust",
+            "010" | "head-010" | "head-010-wasm-wasi-sandboxing" => "rust",
             _ => "rust",
         }
     }
@@ -136,11 +144,35 @@ fn detect_target_code_language(prompt: &str, specialist: &str) -> &'static str {
 
 fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
     let domain_label = match head {
-        "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" => {
+        "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" | "head-001-systems-atomic-concurrency" => {
             "Systems & Atomic Concurrency"
         }
         "002" | "head-002" | "head-002-backend-axum-tokio" => {
             "High-Throughput Axum & Tokio"
+        }
+        "003" | "head-003" | "head-003-frontend-react19-rsc" => {
+            "React 19 Server Components & Suspense"
+        }
+        "004" | "head-004" | "head-004-kernel-ebpf-xdp" => {
+            "Linux Kernel eBPF & XDP Network Bypass"
+        }
+        "005" | "head-005" | "head-005-data-clickhouse-mergetree" => {
+            "ClickHouse MergeTree Analytics"
+        }
+        "006" | "head-006" | "head-006-algorithms-formal-logic" => {
+            "Formal Logic & Dynamic Programming"
+        }
+        "007" | "head-007" | "head-007-devops-k8s-controller" => {
+            "Kubernetes CRD & Kube-rs Controller"
+        }
+        "008" | "head-008" | "head-008-consensus-raft-paxos" => {
+            "Distributed Consensus & Raft State Machine"
+        }
+        "009" | "head-009" | "head-009-vector-simd-avx512" => {
+            "Hardware Vector SIMD (AVX2/AVX-512)"
+        }
+        "010" | "head-010" | "head-010-wasm-wasi-sandboxing" => {
+            "WASM Component Model & WASI 0.2 Sandbox"
         }
         other => domain.unwrap_or(other),
     };
@@ -150,9 +182,9 @@ fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
 fn synthesize_dynamic_council_greeting(prompt: &str) -> String {
     let p = prompt.trim().to_ascii_lowercase();
     if p.contains("who are you") || p.contains("what are you") {
-        "Hello from Hydra! I am Nio's Sovereign Multi-Head Council, coordinating specialized neural heads for bare-metal systems, atomic concurrency, and high-performance microservices.\n\nActive Council Heads:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?".to_string()
+        "Hello from Hydra! I am Nio's Sovereign Multi-Head Council, coordinating 10 specialized neural heads across Systems, Backend, Frontend, Data, Consensus, and Cloud Native.\n\nActive Council Heads:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust)\n  • Head #003: React 19 RSC, Suspense & Streaming SSR (TypeScript)\n  • Head #004: Linux Kernel eBPF & XDP Bypass (Rust, C)\n  • Head #005: ClickHouse MergeTree & Analytics (SQL, Vectorized)\n  • Head #006: Dynamic Programming & SMT Invariants (Rust, Z3)\n  • Head #007: Kubernetes CRD & Kube-rs Controllers (Rust, K8s)\n  • Head #008: Distributed Consensus & Raft Quorum (Rust)\n  • Head #009: Hardware Vector SIMD AVX2/AVX-512 (Rust Intrinsics)\n  • Head #010: WebAssembly Component Model & WASI 0.2 (Rust, Wasmtime)\n\nWhat systems, protocols, or architecture shall we engineer today?".to_string()
     } else if p.contains("what can you do") || p.contains("help") || p.contains("capability") || p.contains("capabilities") {
-        "Hello from Hydra! The Sovereign Council specializes in high-performance systems engineering:\n\n1. Head #001 (Systems & Atomic Concurrency):\n   - Lock-free queues, ring buffers, SeqLocks, hazard pointers\n   - Acquire/Release memory fences and zero-allocation data structures (Zig, Rust, C)\n\n2. Head #002 (Axum & Tokio Microservices):\n   - High-throughput asynchronous HTTP streaming\n   - Backpressure, Tower rate limiters, Tokio channels, and zero-copy JSON\n\nWhat architecture or protocol shall we implement today?".to_string()
+        "Hello from Hydra! The Sovereign Council specializes in high-performance engineering across 6 Pillars:\n\n1. Systems & Kernel (#001, #004, #009): Lock-free atomics, eBPF XDP network bypass, AVX2 SIMD.\n2. Backend & Microservices (#002): Tokio async channels, Axum streaming, Tower backpressure.\n3. Frontend Engineering (#003): React 19 Server Components, Actions, Suspense streaming.\n4. Data & Analytics (#005): ClickHouse ReplacingMergeTree, zero-copy rollups.\n5. Formal Logic & Consensus (#006, #008): Z3 SMT invariant verification, Raft leader lease linearization.\n6. Cloud Native & Security (#007, #010): Kube-rs CRD reconcilers, WASI 0.2 fuel-limited sandboxes.\n\nWhat architecture or protocol shall we implement today?".to_string()
     } else {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -160,8 +192,8 @@ fn synthesize_dynamic_council_greeting(prompt: &str) -> String {
             .unwrap_or(0);
         let variant = (now / 2) % 3;
         match variant {
-            0 => "Hello from Hydra! I am standing by to assist with bare-metal systems, atomic concurrency, and high-throughput async microservices.\n\nWhat would you like to build today?".to_string(),
-            1 => "Hello from Hydra! Ready for zero-allocation systems programming, atomic memory ordering, or distributed microservices.\n\nWhat shall we engineer today?".to_string(),
+            0 => "Hello from Hydra! I am standing by with 10 specialized neural heads for bare-metal systems, atomic concurrency, and cloud architectures.\n\nWhat would you like to build today?".to_string(),
+            1 => "Hello from Hydra! Ready for zero-allocation systems programming, formal verification, or distributed consensus.\n\nWhat shall we engineer today?".to_string(),
             _ => "Hello from Hydra! Standing by for low-level systems engineering, lock-free concurrency, or high-performance services.\n\nHow can I help you today?".to_string(),
         }
     }
@@ -170,11 +202,35 @@ fn synthesize_dynamic_council_greeting(prompt: &str) -> String {
 fn format_synthetic_deliberation(specialist: &str, is_hydra: bool) -> String {
     if is_hydra {
         match specialist {
-            "hydra-kernel" | "head-001" | "head-001-atomic-concurrency" => {
+            "hydra-kernel" | "head-001" | "001" | "head-001-atomic-concurrency" | "head-001-systems-atomic-concurrency" => {
                 "<think>\n1. Domain: Systems, Kernel & Atomic Concurrency.\n2. Invariant: Acquire/Release memory ordering, cacheline-aligned (align(64)), zero-branch mask.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>\n\n<council>\n    @council(\n        head = 001,\n        domain = systems-atomic-concurrency\n    )\n</council>\n\n".to_string()
             }
-            "head-002" | "head-002-backend-axum-tokio" => {
+            "head-002" | "002" | "head-002-backend-axum-tokio" => {
                 "<think>\n1. Domain: Backend & Cloud Microservices.\n2. Invariant: Async Tokio runtime, zero-copy streaming, backpressure.\n3. Delegate: Hydra Head #002 (High-Throughput Rust Axum & Tokio Microservices Specialist).\n</think>\n\n<council>\n    @council(\n        head = 002,\n        domain = backend-axum-tokio\n    )\n</council>\n\n".to_string()
+            }
+            "head-003" | "003" | "head-003-frontend-react19-rsc" => {
+                "<think>\n1. Domain: Full-Stack Web & Modern Frontend.\n2. Invariant: React 19 RSC streaming, useOptimistic rollback safety, Suspense boundary isolation.\n3. Delegate: Hydra Head #003 (React 19 RSC & Streaming SSR Specialist).\n</think>\n\n<council>\n    @council(\n        head = 003,\n        domain = frontend-react19-rsc\n    )\n</council>\n\n".to_string()
+            }
+            "head-004" | "004" | "head-004-kernel-ebpf-xdp" => {
+                "<think>\n1. Domain: Systems, Kernel & Concurrency.\n2. Invariant: eBPF verifier bounds proof, zero-copy packet cursor (data..data_end), XDP line-rate filtering.\n3. Delegate: Hydra Head #004 (Linux Kernel eBPF & XDP Network Bypass Specialist).\n</think>\n\n<council>\n    @council(\n        head = 004,\n        domain = kernel-ebpf-xdp\n    )\n</council>\n\n".to_string()
+            }
+            "head-005" | "005" | "head-005-data-clickhouse-mergetree" => {
+                "<think>\n1. Domain: Data Engineering & Columnar Analytics.\n2. Invariant: ReplacingMergeTree deduplication versioning, zero-copy materialized view projection, index granularity 8192.\n3. Delegate: Hydra Head #005 (ClickHouse MergeTree Analytics Specialist).\n</think>\n\n<council>\n    @council(\n        head = 005,\n        domain = data-clickhouse-mergetree\n    )\n</council>\n\n".to_string()
+            }
+            "head-006" | "006" | "head-006-algorithms-formal-logic" => {
+                "<think>\n1. Domain: Algorithmic Mastery & Formal Logic.\n2. Invariant: Lazy segment tree pushdown idempotence, Z3 SMT inductive inductive safety proof.\n3. Delegate: Hydra Head #006 (Dynamic Programming & Formal SMT Invariant Specialist).\n</think>\n\n<council>\n    @council(\n        head = 006,\n        domain = algorithms-formal-logic\n    )\n</council>\n\n".to_string()
+            }
+            "head-007" | "007" | "head-007-devops-k8s-controller" => {
+                "<think>\n1. Domain: DevOps, SRE & Cloud Native.\n2. Invariant: Kube-rs level-triggered reconciliation, finalizer cleanup guarantee, JSON 6902 admission mutate patch.\n3. Delegate: Hydra Head #007 (Kubernetes CRD Operator & Kube-rs Controller Specialist).\n</think>\n\n<council>\n    @council(\n        head = 007,\n        domain = devops-k8s-controller\n    )\n</council>\n\n".to_string()
+            }
+            "head-008" | "008" | "head-008-consensus-raft-paxos" => {
+                "<think>\n1. Domain: Distributed Systems & Consensus.\n2. Invariant: Raft AppendEntries monotonic index advance, leader lease monotonic clock bound, split-brain immunity.\n3. Delegate: Hydra Head #008 (Distributed Consensus & Raft State Machine Specialist).\n</think>\n\n<council>\n    @council(\n        head = 008,\n        domain = consensus-raft-paxos\n    )\n</council>\n\n".to_string()
+            }
+            "head-009" | "009" | "head-009-vector-simd-avx512" => {
+                "<think>\n1. Domain: High-Performance Vector SIMD Acceleration.\n2. Invariant: Unrolled 8-way _mm256_fmadd_ps vector dot kernel, 32-byte alignment, FP8 LUT gather throughput.\n3. Delegate: Hydra Head #009 (Hardware Vector SIMD AVX2/AVX-512 Specialist).\n</think>\n\n<council>\n    @council(\n        head = 009,\n        domain = vector-simd-avx512\n    )\n</council>\n\n".to_string()
+            }
+            "head-010" | "010" | "head-010-wasm-wasi-sandboxing" => {
+                "<think>\n1. Domain: Zero-Trust WebAssembly & Sandboxing.\n2. Invariant: WASI 0.2 WIT component contract, Wasmtime epoch fuel limiter, 64MB memory strict boundary.\n3. Delegate: Hydra Head #010 (WebAssembly Component Model & WASI 0.2 Sandbox Specialist).\n</think>\n\n<council>\n    @council(\n        head = 010,\n        domain = wasm-wasi-sandboxing\n    )\n</council>\n\n".to_string()
             }
             _ => {
                 format!("<think>\n1. Domain: Systems Engineering.\n2. Delegate: Hydra Specialist Head ({specialist}).\n</think>\n\n<council>\n    @council(\n        head = {specialist}\n    )\n</council>\n\n")
@@ -256,12 +312,108 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
             return Some("head-002");
         }
 
-        // Cross-council specialized delegations
-        if lower_acc.contains("fin-sql") || lower_acc.contains("domain = sql") || lower_acc.contains("domain=sql") {
-            return Some("fin-sql");
+        if lower_acc.contains("head-003")
+            || lower_acc.contains("head_003")
+            || lower_acc.contains("frontend-react19-rsc")
+            || lower_acc.contains("head=003")
+            || lower_acc.contains("head = 003")
+            || lower_acc.contains("domain = frontend")
+            || lower_acc.contains("domain=frontend")
+            || lower_acc.contains("domain = react")
+            || lower_acc.contains("domain=react")
+        {
+            return Some("head-003");
         }
-        if lower_acc.contains("fin-raft") || lower_acc.contains("domain = raft") || lower_acc.contains("domain=raft") {
-            return Some("fin-raft");
+
+        if lower_acc.contains("head-004")
+            || lower_acc.contains("head_004")
+            || lower_acc.contains("kernel-ebpf-xdp")
+            || lower_acc.contains("head=004")
+            || lower_acc.contains("head = 004")
+            || lower_acc.contains("domain = ebpf")
+            || lower_acc.contains("domain=ebpf")
+            || lower_acc.contains("domain = xdp")
+            || lower_acc.contains("domain=xdp")
+        {
+            return Some("head-004");
+        }
+
+        if lower_acc.contains("head-005")
+            || lower_acc.contains("head_005")
+            || lower_acc.contains("data-clickhouse-mergetree")
+            || lower_acc.contains("head=005")
+            || lower_acc.contains("head = 005")
+            || lower_acc.contains("domain = clickhouse")
+            || lower_acc.contains("domain=clickhouse")
+            || lower_acc.contains("domain = mergetree")
+            || lower_acc.contains("domain=mergetree")
+        {
+            return Some("head-005");
+        }
+
+        if lower_acc.contains("head-006")
+            || lower_acc.contains("head_006")
+            || lower_acc.contains("algorithms-formal-logic")
+            || lower_acc.contains("head=006")
+            || lower_acc.contains("head = 006")
+            || lower_acc.contains("domain = formal-logic")
+            || lower_acc.contains("domain=formal-logic")
+            || lower_acc.contains("domain = smt")
+            || lower_acc.contains("domain=smt")
+        {
+            return Some("head-006");
+        }
+
+        if lower_acc.contains("head-007")
+            || lower_acc.contains("head_007")
+            || lower_acc.contains("devops-k8s-controller")
+            || lower_acc.contains("head=007")
+            || lower_acc.contains("head = 007")
+            || lower_acc.contains("domain = k8s")
+            || lower_acc.contains("domain=k8s")
+            || lower_acc.contains("domain = controller")
+            || lower_acc.contains("domain=controller")
+        {
+            return Some("head-007");
+        }
+
+        if lower_acc.contains("head-008")
+            || lower_acc.contains("head_008")
+            || lower_acc.contains("consensus-raft-paxos")
+            || lower_acc.contains("head=008")
+            || lower_acc.contains("head = 008")
+            || lower_acc.contains("domain = consensus")
+            || lower_acc.contains("domain=consensus")
+            || lower_acc.contains("domain = raft")
+            || lower_acc.contains("domain=raft")
+        {
+            return Some("head-008");
+        }
+
+        if lower_acc.contains("head-009")
+            || lower_acc.contains("head_009")
+            || lower_acc.contains("vector-simd-avx512")
+            || lower_acc.contains("head=009")
+            || lower_acc.contains("head = 009")
+            || lower_acc.contains("domain = simd")
+            || lower_acc.contains("domain=simd")
+            || lower_acc.contains("domain = avx")
+            || lower_acc.contains("domain=avx")
+        {
+            return Some("head-009");
+        }
+
+        if lower_acc.contains("head-010")
+            || lower_acc.contains("head_010")
+            || lower_acc.contains("wasm-wasi-sandboxing")
+            || lower_acc.contains("head=010")
+            || lower_acc.contains("head = 010")
+            || lower_acc.contains("domain = wasm")
+            || lower_acc.contains("domain=wasm")
+            || lower_acc.contains("domain = wasi")
+            || lower_acc.contains("domain=wasi")
+        {
+            return Some("head-010");
         }
 
         // --- HYDRA Fallback Safety Clutch ONLY (if neural speaker failed to emit a directive) ---
@@ -273,6 +425,84 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
             || lower_p.contains("microservice")
         {
             return Some("head-002");
+        }
+
+        if lower_p.contains("react")
+            || lower_p.contains("server component")
+            || lower_p.contains("rsc")
+            || lower_p.contains("useoptimistic")
+            || lower_p.contains("useactionstate")
+            || lower_p.contains("suspense")
+        {
+            return Some("head-003");
+        }
+
+        if lower_p.contains("ebpf")
+            || lower_p.contains("xdp")
+            || lower_p.contains("aya")
+            || lower_p.contains("aya-bpf")
+            || lower_p.contains("kprobe")
+            || lower_p.contains("kretprobe")
+            || lower_p.contains("bpf")
+        {
+            return Some("head-004");
+        }
+
+        if lower_p.contains("clickhouse")
+            || lower_p.contains("mergetree")
+            || lower_p.contains("replacingmergetree")
+            || lower_p.contains("aggregatingmergetree")
+            || lower_p.contains("columnar")
+        {
+            return Some("head-005");
+        }
+
+        if lower_p.contains("wasi")
+            || lower_p.contains("wasmtime")
+            || lower_p.contains("wasm")
+            || lower_p.contains("wit_bindgen")
+            || lower_p.contains("component model")
+        {
+            return Some("head-010");
+        }
+
+        if lower_p.contains("segment tree")
+            || lower_p.contains("lazy propagation")
+            || lower_p.contains("z3")
+            || lower_p.contains("formal invariant")
+            || lower_p.contains(" smt")
+            || lower_p.contains("smt ")
+        {
+            return Some("head-006");
+        }
+
+        if lower_p.contains("kubernetes")
+            || lower_p.contains("k8s")
+            || lower_p.contains("kube-rs")
+            || lower_p.contains("crd operator")
+            || lower_p.contains("admission review")
+            || lower_p.contains("admission webhook")
+        {
+            return Some("head-007");
+        }
+
+        if lower_p.contains("raft")
+            || lower_p.contains("paxos")
+            || lower_p.contains("appendentries")
+            || lower_p.contains("leader lease")
+            || lower_p.contains("quorum")
+        {
+            return Some("head-008");
+        }
+
+        if lower_p.contains("avx2")
+            || lower_p.contains("avx-512")
+            || lower_p.contains("avx512")
+            || lower_p.contains("simd")
+            || lower_p.contains("_mm256")
+            || lower_p.contains("fma")
+        {
+            return Some("head-009");
         }
 
         if lower_p.contains("atomic")
@@ -293,12 +523,8 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
             return Some("hydra-kernel");
         }
 
-        if lower_p.contains("sql") || lower_p.contains("postgres") || lower_p.contains("clickhouse") {
-            return Some("fin-sql");
-        }
-
-        if lower_p.contains("raft") || lower_p.contains("consensus") {
-            return Some("fin-raft");
+        if lower_p.contains("sql") || lower_p.contains("postgres") {
+            return Some("head-005");
         }
 
         return None;
@@ -1338,11 +1564,35 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 let specialist_target = detect_council_specialist("", &prompt, true);
                 if let Some(specialist) = specialist_target {
                     let think_text = match specialist {
-                        "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" => {
+                        "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" | "head-001-systems-atomic-concurrency" => {
                             "<think>\n1. Domain: Systems, Kernel & Atomic Concurrency.\n2. Invariant: Acquire/Release memory ordering, cacheline-aligned (align(64)), zero-branch mask.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>\n\n"
                         }
                         "002" | "head-002" | "head-002-backend-axum-tokio" => {
                             "<think>\n1. Domain: Backend & Cloud Microservices.\n2. Invariant: Async Tokio runtime, zero-copy streaming, backpressure.\n3. Delegate: Hydra Head #002 (High-Throughput Rust Axum & Tokio Microservices Specialist).\n</think>\n\n"
+                        }
+                        "003" | "head-003" | "head-003-frontend-react19-rsc" => {
+                            "<think>\n1. Domain: Full-Stack Web & Modern Frontend.\n2. Invariant: React 19 RSC streaming, useOptimistic rollback safety, Suspense boundary isolation.\n3. Delegate: Hydra Head #003 (React 19 RSC & Streaming SSR Specialist).\n</think>\n\n"
+                        }
+                        "004" | "head-004" | "head-004-kernel-ebpf-xdp" => {
+                            "<think>\n1. Domain: Systems, Kernel & Concurrency.\n2. Invariant: eBPF verifier bounds proof, zero-copy packet cursor (data..data_end), XDP line-rate filtering.\n3. Delegate: Hydra Head #004 (Linux Kernel eBPF & XDP Network Bypass Specialist).\n</think>\n\n"
+                        }
+                        "005" | "head-005" | "head-005-data-clickhouse-mergetree" => {
+                            "<think>\n1. Domain: Data Engineering & Columnar Analytics.\n2. Invariant: ReplacingMergeTree deduplication versioning, zero-copy materialized view projection.\n3. Delegate: Hydra Head #005 (ClickHouse MergeTree Analytics Specialist).\n</think>\n\n"
+                        }
+                        "006" | "head-006" | "head-006-algorithms-formal-logic" => {
+                            "<think>\n1. Domain: Algorithmic Mastery & Formal Logic.\n2. Invariant: Lazy segment tree pushdown idempotence, Z3 SMT inductive safety proof.\n3. Delegate: Hydra Head #006 (Dynamic Programming & Formal SMT Invariant Specialist).\n</think>\n\n"
+                        }
+                        "007" | "head-007" | "head-007-devops-k8s-controller" => {
+                            "<think>\n1. Domain: DevOps, SRE & Cloud Native.\n2. Invariant: Kube-rs level-triggered reconciliation, finalizer cleanup guarantee, JSON 6902 admission mutate patch.\n3. Delegate: Hydra Head #007 (Kubernetes CRD Operator & Kube-rs Controller Specialist).\n</think>\n\n"
+                        }
+                        "008" | "head-008" | "head-008-consensus-raft-paxos" => {
+                            "<think>\n1. Domain: Distributed Systems & Consensus.\n2. Invariant: Raft AppendEntries monotonic index advance, leader lease monotonic clock bound, split-brain immunity.\n3. Delegate: Hydra Head #008 (Distributed Consensus & Raft State Machine Specialist).\n</think>\n\n"
+                        }
+                        "009" | "head-009" | "head-009-vector-simd-avx512" => {
+                            "<think>\n1. Domain: High-Performance Vector SIMD Acceleration.\n2. Invariant: Unrolled 8-way _mm256_fmadd_ps vector dot kernel, 32-byte alignment, FP8 LUT gather throughput.\n3. Delegate: Hydra Head #009 (Hardware Vector SIMD AVX2/AVX-512 Specialist).\n</think>\n\n"
+                        }
+                        "010" | "head-010" | "head-010-wasm-wasi-sandboxing" => {
+                            "<think>\n1. Domain: Zero-Trust WebAssembly & Sandboxing.\n2. Invariant: WASI 0.2 WIT component contract, Wasmtime epoch fuel limiter, 64MB memory strict boundary.\n3. Delegate: Hydra Head #010 (WebAssembly Component Model & WASI 0.2 Sandbox Specialist).\n</think>\n\n"
                         }
                         _ => {
                             "<think>\n1. Domain: Systems Engineering.\n2. Invariant: Direct specialist delegation.\n3. Delegate: Hydra Sovereign Specialist.\n</think>\n\n"
@@ -2310,6 +2560,18 @@ mod tests {
         let prompt = "Build an Axum SSE streaming server";
         let specialist = detect_council_specialist(acc, prompt, true);
         assert_eq!(specialist, Some("head-002"));
+    }
+
+    #[test]
+    fn test_detect_hydra_specialist_all_heads() {
+        assert_eq!(detect_council_specialist("", "Build a React 19 RSC component with Suspense", true), Some("head-003"));
+        assert_eq!(detect_council_specialist("", "Write an eBPF XDP packet filter in Rust aya", true), Some("head-004"));
+        assert_eq!(detect_council_specialist("", "Create ClickHouse ReplacingMergeTree schema", true), Some("head-005"));
+        assert_eq!(detect_council_specialist("", "Implement lazy propagation segment tree in Rust", true), Some("head-006"));
+        assert_eq!(detect_council_specialist("", "Write a Kubernetes CRD reconciler in kube-rs", true), Some("head-007"));
+        assert_eq!(detect_council_specialist("", "Implement Raft consensus AppendEntries state machine", true), Some("head-008"));
+        assert_eq!(detect_council_specialist("", "Vectorize dot product using AVX2 SIMD intrinsics", true), Some("head-009"));
+        assert_eq!(detect_council_specialist("", "Run WASI 0.2 sandbox in Wasmtime host", true), Some("head-010"));
     }
 
     #[test]

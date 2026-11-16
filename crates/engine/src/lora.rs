@@ -1274,6 +1274,7 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
     let mut search_dirs = Vec::new();
     if let Some(ref h) = home {
         search_dirs.push(h.join(".nioxs").join("heads"));
+        search_dirs.push(h.join("nio-labs").join("nio-xs-models").join("models").join("hydra").join("heads"));
     }
     search_dirs.push(PathBuf::from("/root/.nioxs/heads"));
     search_dirs.push(PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra/heads"));
@@ -1285,6 +1286,7 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
     if lower == "001" || lower == "head-001" || lower == "hydra-kernel" || lower.contains("atomic") {
         candidates.push("head-001".to_string());
         candidates.push("head-001-atomic-concurrency".to_string());
+        candidates.push("head-001-systems-atomic-concurrency".to_string());
         candidates.push("001".to_string());
     }
     if lower == "002" || lower == "head-002" || lower.contains("axum") || lower.contains("backend") {
@@ -1295,18 +1297,42 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
     if lower == "003" || lower == "head-003" || lower.contains("react") || lower.contains("rsc") {
         candidates.push("head-003".to_string());
         candidates.push("head-003-frontend-react19-rsc".to_string());
+        candidates.push("003".to_string());
     }
     if lower == "004" || lower == "head-004" || lower.contains("ebpf") || lower.contains("xdp") {
         candidates.push("head-004".to_string());
         candidates.push("head-004-kernel-ebpf-xdp".to_string());
+        candidates.push("004".to_string());
     }
-    if lower == "005" || lower == "head-005" || lower.contains("clickhouse") {
+    if lower == "005" || lower == "head-005" || lower.contains("clickhouse") || lower.contains("mergetree") {
         candidates.push("head-005".to_string());
         candidates.push("head-005-data-clickhouse-mergetree".to_string());
+        candidates.push("005".to_string());
     }
     if lower == "006" || lower == "head-006" || lower.contains("logic") || lower.contains("algorithm") {
         candidates.push("head-006".to_string());
         candidates.push("head-006-algorithms-formal-logic".to_string());
+        candidates.push("006".to_string());
+    }
+    if lower == "007" || lower == "head-007" || lower.contains("k8s") || lower.contains("kubernetes") {
+        candidates.push("head-007".to_string());
+        candidates.push("head-007-devops-k8s-controller".to_string());
+        candidates.push("007".to_string());
+    }
+    if lower == "008" || lower == "head-008" || lower.contains("raft") || lower.contains("paxos") || lower.contains("consensus") {
+        candidates.push("head-008".to_string());
+        candidates.push("head-008-consensus-raft-paxos".to_string());
+        candidates.push("008".to_string());
+    }
+    if lower == "009" || lower == "head-009" || lower.contains("simd") || lower.contains("avx") {
+        candidates.push("head-009".to_string());
+        candidates.push("head-009-vector-simd-avx512".to_string());
+        candidates.push("009".to_string());
+    }
+    if lower == "010" || lower == "head-010" || lower.contains("wasm") || lower.contains("wasi") {
+        candidates.push("head-010".to_string());
+        candidates.push("head-010-wasm-wasi-sandboxing".to_string());
+        candidates.push("010".to_string());
     }
 
     for dir in &search_dirs {

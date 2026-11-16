@@ -3,7 +3,7 @@
 benchmark_hydra.py - Comprehensive Production Benchmark for Hydra Multi-Head Council
 
 Measures:
-1. Routing Decision & Council Deliberation Accuracy
+1. Routing Decision & Council Deliberation Accuracy (All 10 Founding Heads + Polymath + Meta)
 2. In-Process LoRA Hot-Swap Latency (< 1ms target)
 3. Generation Throughput (tokens/sec) & Time-to-First-Token (TTFT)
 4. Memory Footprint (Resident RSS in MB)
@@ -14,6 +14,7 @@ import os
 import sys
 import time
 import json
+import threading
 import subprocess
 from pathlib import Path
 
@@ -39,6 +40,70 @@ BENCHMARK_CASES = [
     },
     {
         "id": "CASE-3",
+        "category": "Head #003 (React 19 RSC & Suspense)",
+        "prompt": "Create a React 19 Server Action with useOptimistic and Suspense streaming.",
+        "expected_head": "003",
+        "expected_domain": "frontend-react19-rsc",
+        "max_tokens": 120,
+    },
+    {
+        "id": "CASE-4",
+        "category": "Head #004 (Kernel eBPF & XDP Bypass)",
+        "prompt": "Write an XDP drop filter in Rust using aya-bpf to block subnets.",
+        "expected_head": "004",
+        "expected_domain": "kernel-ebpf-xdp",
+        "max_tokens": 120,
+    },
+    {
+        "id": "CASE-5",
+        "category": "Head #005 (ClickHouse MergeTree Analytics)",
+        "prompt": "Design a ClickHouse ReplacingMergeTree table schema with versioning.",
+        "expected_head": "005",
+        "expected_domain": "data-clickhouse-mergetree",
+        "max_tokens": 120,
+    },
+    {
+        "id": "CASE-6",
+        "category": "Head #006 (Formal Logic & Dynamic Programming)",
+        "prompt": "Implement a lazy propagation segment tree in Rust.",
+        "expected_head": "006",
+        "expected_domain": "algorithms-formal-logic",
+        "max_tokens": 120,
+    },
+    {
+        "id": "CASE-7",
+        "category": "Head #007 (Kubernetes CRD Operator)",
+        "prompt": "Write an asynchronous Kubernetes operator reconcile function in Rust using kube-rs.",
+        "expected_head": "007",
+        "expected_domain": "devops-k8s-controller",
+        "max_tokens": 120,
+    },
+    {
+        "id": "CASE-8",
+        "category": "Head #008 (Distributed Consensus & Raft)",
+        "prompt": "Implement AppendEntries log replication handler for Raft consensus.",
+        "expected_head": "008",
+        "expected_domain": "consensus-raft-paxos",
+        "max_tokens": 120,
+    },
+    {
+        "id": "CASE-9",
+        "category": "Head #009 (Hardware Vector SIMD)",
+        "prompt": "Write an unrolled 8-way AVX2 FMA dot product kernel in Rust.",
+        "expected_head": "009",
+        "expected_domain": "vector-simd-avx512",
+        "max_tokens": 120,
+    },
+    {
+        "id": "CASE-10",
+        "category": "Head #010 (WASM Component Model & WASI 0.2)",
+        "prompt": "Configure a Wasmtime host in Rust enforcing memory limits and fuel.",
+        "expected_head": "010",
+        "expected_domain": "wasm-wasi-sandboxing",
+        "max_tokens": 120,
+    },
+    {
+        "id": "CASE-11",
         "category": "Anchor Polymath (Direct Execution)",
         "prompt": "Explain the difference between TCP and UDP in two concise sentences.",
         "expected_head": "direct",
@@ -46,7 +111,7 @@ BENCHMARK_CASES = [
         "max_tokens": 80,
     },
     {
-        "id": "CASE-4",
+        "id": "CASE-12",
         "category": "Zero-Overhead Meta Greeting",
         "prompt": "Hello!",
         "expected_head": "none",
@@ -90,7 +155,6 @@ def run_case(case):
         text=True,
     )
     
-    import threading
     stdout_chunks = []
     stderr_chunks = []
     
@@ -124,8 +188,24 @@ def run_case(case):
         routed_head = "001"
     elif "Council: High-Throughput Axum" in stdout:
         routed_head = "002"
-    elif "Council: Direct Polymath" in stdout or "Council: Polymath" in stdout or "Council: Online" in stdout or "Hello from Hydra" in stdout:
-        routed_head = "none"
+    elif "Council: React 19 Server Components" in stdout:
+        routed_head = "003"
+    elif "Council: Linux Kernel eBPF" in stdout:
+        routed_head = "004"
+    elif "Council: ClickHouse MergeTree" in stdout:
+        routed_head = "005"
+    elif "Council: Formal Logic" in stdout:
+        routed_head = "006"
+    elif "Council: Kubernetes CRD" in stdout:
+        routed_head = "007"
+    elif "Council: Distributed Consensus" in stdout:
+        routed_head = "008"
+    elif "Council: Hardware Vector SIMD" in stdout:
+        routed_head = "009"
+    elif "Council: WASM Component Model" in stdout:
+        routed_head = "010"
+    elif "Council: Direct Polymath" in stdout or "Council: Polymath" in stdout or "Hello from Hydra" in stdout:
+        routed_head = "direct" if "Polymath" in stdout else "none"
     elif "@council" in stdout:
         for line in stdout.splitlines():
             line = line.strip()
@@ -168,9 +248,9 @@ def main():
         print(f"Error: binary {BINARY} does not exist. Run cargo build --release first.", file=sys.stderr)
         sys.exit(1)
         
-    print("=" * 76)
+    print("=" * 80)
     print("      HYDRA SOVEREIGN MULTI-HEAD COUNCIL PRODUCTION BENCHMARK")
-    print("=" * 76)
+    print("=" * 80)
     print(f"Binary:       {BINARY}")
     print(f"Target Anchor: hydra-anchor-0.5b.q4km.gguf (~380 MB)")
     
@@ -180,46 +260,40 @@ def main():
         fallback_heads = ROOT.parent / "nio-xs-models" / "models" / "hydra" / "heads"
         if fallback_heads.exists():
             heads_dir = fallback_heads
-    print("\n[Disk Storage Footprint]")
+            
+    print("\n[Disk Storage Footprint (< 3.0 MB SLA)]")
     if heads_dir.exists():
-        for head in sorted(heads_dir.iterdir()):
-            if head.is_dir():
-                st = head / "adapter_model.safetensors"
-                if st.exists():
-                    size_mb = st.stat().st_size / (1024 * 1024)
-                    print(f"  • {head.name:15}: {size_mb:.2f} MB  (Constraint < 3.0 MB: {'PASS' if size_mb < 3.0 else 'FAIL'})")
+        for d in sorted(heads_dir.iterdir()):
+            if d.is_dir() and (d.name.startswith("head-") or d.name.isdigit()):
+                size_mb = sum(f.stat().st_size for f in d.glob("*") if f.is_file()) / (1024 * 1024)
+                status = "PASS" if size_mb < 3.0 else "EXCEEDED"
+                print(f"  • {d.name}: {size_mb:.2f} MB  (Constraint < 3.0 MB: {status})")
     
-    print("\n[Running Workload Evaluation...]")
+    print("\n[Running Workload Evaluation Across All Council Heads...]")
     results = []
     for case in BENCHMARK_CASES:
-        sys.stdout.write(f"  -> Testing {case['category']} ... ")
-        sys.stdout.flush()
+        print(f"  -> Testing {case['category']} ... ", end="", flush=True)
         res = run_case(case)
-        print(f"Done in {res['total_time_s']:.2f}s ({res['words_per_sec']} words/s, RSS: {res['peak_rss_mb']} MB)")
+        status = "PASS" if res["routed_head"] == res["expected_head"] or (res["routed_head"] and res["routed_head"] in res["expected_head"]) else "MISMATCH"
+        swap_str = f"{res['hotswap_ms']:.2f}ms" if res['hotswap_ms'] else "N/A"
+        print(f"Done in {res['total_time_s']}s ({res['words_per_sec']} words/s, RSS: {res['peak_rss_mb']} MB, Swap: {swap_str}) [{status}]")
         results.append(res)
         
-    print("\n" + "=" * 76)
+    print("\n" + "=" * 80)
     print("                      BENCHMARK RESULTS SUMMARY")
-    print("=" * 76)
-    
-    print(f"{'Category':<32} | {'Time(s)':<7} | {'Speed(w/s)':<10} | {'HotSwap':<9} | {'Peak RSS':<8} | {'Route':<6}")
-    print("-" * 76)
+    print("=" * 80)
+    print(f"{'Category':<40} | {'Time(s)':<7} | {'Speed(w/s)':<10} | {'HotSwap':<9} | {'Peak RSS':<8} | {'Route':<5}")
+    print("-" * 80)
     for r in results:
-        swap_str = f"{r['hotswap_ms']:.2f}ms" if r['hotswap_ms'] is not None else "N/A"
-        route_status = "PASS" if (r['expected_head'] == "none") or (r['routed_head'] == r['expected_head']) or (r['routed_head'] and r['routed_head'].endswith(r['expected_head'])) or (r['expected_head'] == "direct") else "CHECK"
-        print(f"{r['category']:<32} | {r['total_time_s']:<7.2f} | {r['words_per_sec']:<10.1f} | {swap_str:<9} | {r['peak_rss_mb']:<6.1f}MB | {route_status:<6}")
-        
-    print("-" * 76)
+        swap_str = f"{r['hotswap_ms']:.2f}ms" if r["hotswap_ms"] else "N/A"
+        route_ok = "PASS" if r["routed_head"] == r["expected_head"] or (r["routed_head"] and r["routed_head"] in r["expected_head"]) else "FAIL"
+        print(f"{r['category']:<40} | {r['total_time_s']:<7} | {r['words_per_sec']:<10} | {swap_str:<9} | {r['peak_rss_mb']:<4} MB | {route_ok:<5}")
+    print("-" * 80)
     
-    # Save benchmark report artifact
-    report_file = ROOT / "hydra_production_benchmark.json"
-    with open(report_file, "w") as f:
-        json.dump({
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "model": "hydra-anchor-0.5b.q4km",
-            "results": results
-        }, f, indent=2)
-    print(f"\nSaved detailed benchmark JSON to: {report_file}")
+    # Save benchmark report
+    out_file = ROOT / "hydra_production_benchmark.json"
+    out_file.write_text(json.dumps(results, indent=2))
+    print(f"\nSaved detailed benchmark JSON to: {out_file}")
 
 if __name__ == "__main__":
     main()
