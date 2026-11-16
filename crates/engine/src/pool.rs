@@ -2562,6 +2562,11 @@ impl SpinThreadPool {
     }
 
     #[inline(always)]
+    pub fn num_workers(&self) -> usize {
+        rayon::current_num_threads()
+    }
+
+    #[inline(always)]
     pub fn run_task(&self, task: GemvTask) {
         let num_workers = rayon::current_num_threads();
         if num_workers <= 1 || !task.is_heavy() {

@@ -3059,8 +3059,9 @@ impl AstMicroEngine {
                 };
 
             let suppressed_vec: Vec<u32> = self.suppressed_tokens.iter().copied().collect();
-            let mut top_toks = [0u32; pool::NUM_WORKERS];
-            let mut top_scores = [f32::NEG_INFINITY; pool::NUM_WORKERS];
+            let num_workers = self.pool.num_workers();
+            let mut top_toks = vec![0u32; num_workers];
+            let mut top_scores = vec![f32::NEG_INFINITY; num_workers];
 
             if out_dtype == 20 {
                 self.pool.run_task(GemvTask::VocabIq4Nl {
@@ -3115,7 +3116,7 @@ impl AstMicroEngine {
 
             let mut best_token = 0u32;
             let mut max_score = f32::NEG_INFINITY;
-            for i in 0..pool::NUM_WORKERS {
+            for i in 0..num_workers {
                 if top_scores[i] > max_score {
                     max_score = top_scores[i];
                     best_token = top_toks[i];
