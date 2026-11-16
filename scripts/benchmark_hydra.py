@@ -90,6 +90,20 @@ def run_case(case):
         text=True,
     )
     
+    import threading
+    stdout_chunks = []
+    stderr_chunks = []
+    
+    def read_pipe(stream, chunks):
+        for line in iter(stream.readline, ''):
+            chunks.append(line)
+        stream.close()
+
+    t_out = threading.Thread(target=read_pipe, args=(proc.stdout, stdout_chunks))
+    t_err = threading.Thread(target=read_pipe, args=(proc.stderr, stderr_chunks))
+    t_out.start()
+    t_err.start()
+
     peak_rss = 0.0
     while proc.poll() is None:
         rss = get_process_rss_mb(proc.pid)
@@ -97,7 +111,10 @@ def run_case(case):
             peak_rss = rss
         time.sleep(0.01)
         
-    stdout, stderr = proc.communicate()
+    t_out.join()
+    t_err.join()
+    stdout = "".join(stdout_chunks)
+    stderr = "".join(stderr_chunks)
     total_time = time.monotonic() - start_wall
     
     # Parse output
@@ -158,7 +175,11 @@ def main():
     print(f"Target Anchor: hydra-anchor-0.5b.q4km.gguf (~380 MB)")
     
     # Check head storage
-    heads_dir = Path("/root/.nioxs/heads")
+    heads_dir = Path.home() / ".nioxs" / "heads"
+    if not heads_dir.exists():
+        fallback_heads = ROOT.parent / "nio-xs-models" / "models" / "hydra" / "heads"
+        if fallback_heads.exists():
+            heads_dir = fallback_heads
     print("\n[Disk Storage Footprint]")
     if heads_dir.exists():
         for head in sorted(heads_dir.iterdir()):

@@ -1398,8 +1398,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     flow.push("Council: Polymath\n\n");
 
                     // Delegate to Polymath Engine
-                    let polymath_engine = nioxs_engine::AstEngine::for_model_with_device("manta", device_pref)
-                        .or_else(|_| nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref))?;
+                    let polymath_engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)
+                        .or_else(|_| nioxs_engine::AstEngine::for_model_with_device("manta", device_pref))?;
                     let polymath_prompt = format!(
                         "<|im_start|>system\nYou are Hydra Polymath. Answer concisely, accurately, and directly.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
                     );
