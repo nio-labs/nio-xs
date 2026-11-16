@@ -280,6 +280,22 @@ impl StreamFlow {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn close_think(&mut self) {
+        if self.in_think {
+            if self.show_think_tags {
+                self.emit_raw("</think>");
+            }
+            if self.is_tty {
+                self.emit_raw("\x1b[0m\r\n\r\n");
+            } else {
+                self.emit_raw("\n\n");
+            }
+            self.in_think = false;
+            self.think_completed = true;
+        }
+    }
+
     pub fn finish(&mut self) {
         if self.in_think {
             if self.show_think_tags {

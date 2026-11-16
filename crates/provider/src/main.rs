@@ -106,6 +106,20 @@ fn is_greeting_or_meta(prompt: &str) -> bool {
         || p.starts_with("hey ")
 }
 
+fn format_hydra_think(specialist: &str) -> &'static str {
+    match specialist {
+        "hydra-kernel" | "head-001" | "head-001-atomic-concurrency" => {
+            "<think>\n1. Domain: Systems, Kernel & Atomic Concurrency.\n2. Invariant: Acquire/Release memory ordering, cacheline-aligned (align(64)), zero-branch mask.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>\n\n"
+        }
+        "head-002" | "head-002-backend-axum-tokio" => {
+            "<think>\n1. Domain: Backend & Cloud Microservices.\n2. Invariant: Async Tokio runtime, zero-copy streaming, backpressure.\n3. Delegate: Hydra Head #002 (High-Throughput Rust Axum & Tokio Microservices Specialist).\n</think>\n\n"
+        }
+        _ => {
+            "<think>\n1. Domain: Systems Engineering.\n2. Invariant: Direct specialist delegation.\n</think>\n\n"
+        }
+    }
+}
+
 fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
     let (head_label, domain_label) = match head {
         "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" => {
@@ -130,7 +144,7 @@ fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
 }
 
 fn hydra_greeting() -> &'static str {
-    "⚡ [Hydra Council: Online]\n@council(directive = direct, mode = polymath)\n\nHail Hydra! The Sovereign Council is online and standing by.\n\nActive Council Specialists:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?\n"
+    "<think>\n1. Invariant: User greeting & identity inquiry.\n2. Verification: Direct Polymath Sovereign synthesis.\n</think>\n\n⚡ [Hydra Council: Online]\n@council(directive = direct, mode = polymath)\n\nHail Hydra! The Sovereign Council is online and standing by.\n\nActive Council Specialists:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?\n"
 }
 
 fn format_synthetic_deliberation(specialist: &str, is_hydra: bool) -> String {
@@ -1367,7 +1381,20 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 drop(rx);
 
                 if is_hydra {
-                    // Modern concise Council badge without routing <think> clutter
+                    // Option 2: Always emit clean <think> block
+                    let think_rendered = if let (Some(t_start), Some(t_end)) = (accumulated.find("<think>"), accumulated.find("</think>")) {
+                        let inner = accumulated[t_start..=t_end + "</think>".len() - 1].trim();
+                        if !is_degenerate(inner) && inner.len() > 15 {
+                            format!("{inner}\n\n")
+                        } else {
+                            format_hydra_think(specialist).to_string()
+                        }
+                    } else {
+                        format_hydra_think(specialist).to_string()
+                    };
+                    flow.push(&think_rendered);
+
+                    // Modern concise Council badge
                     let raw_domain = if accumulated.contains("domain=") || accumulated.contains("domain =") {
                         let dom_start = accumulated.find("domain").unwrap();
                         let rest = &accumulated[dom_start..];
@@ -1431,32 +1458,39 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 }
             } else {
                 // Direct polymath execution by the base anchor!
-                if !accumulated.is_empty() && !is_degenerate(&accumulated) {
-                    if is_hydra {
-                        flow.push("⚡ [Hydra Polymath: Direct Synthesis]\n@council(directive = direct, mode = polymath)\n\n");
-                        let polymath_content = if let Some(think_end) = accumulated.find("</think>") {
-                            accumulated[think_end + "</think>".len()..].trim_start()
+                if is_hydra {
+                    let think_rendered = if let (Some(t_start), Some(t_end)) = (accumulated.find("<think>"), accumulated.find("</think>")) {
+                        let inner = accumulated[t_start..=t_end + "</think>".len() - 1].trim();
+                        if !is_degenerate(inner) && inner.len() > 15 {
+                            format!("{inner}\n\n")
                         } else {
-                            &accumulated
-                        };
-                        let clean_content = if let Some(c_end) = polymath_content.find("</council>") {
-                            polymath_content[c_end + "</council>".len()..].trim_start()
-                        } else {
-                            polymath_content
-                        };
-                        if !clean_content.is_empty() {
-                            flow.push(clean_content);
+                            "<think>\n1. Invariant: General polymath query.\n2. Verification: Direct Polymath Sovereign synthesis.\n</think>\n\n".to_string()
                         }
                     } else {
-                        flow.push(&accumulated);
+                        "<think>\n1. Invariant: General polymath query.\n2. Verification: Direct Polymath Sovereign synthesis.\n</think>\n\n".to_string()
+                    };
+                    flow.push(&think_rendered);
+                    flow.push("⚡ [Hydra Polymath: Direct Synthesis]\n@council(directive = direct, mode = polymath)\n\n");
+                    let polymath_content = if let Some(think_end) = accumulated.find("</think>") {
+                        accumulated[think_end + "</think>".len()..].trim_start()
+                    } else {
+                        &accumulated
+                    };
+                    let clean_content = if let Some(c_end) = polymath_content.find("</council>") {
+                        polymath_content[c_end + "</council>".len()..].trim_start()
+                    } else {
+                        polymath_content
+                    };
+                    if !clean_content.is_empty() {
+                        flow.push(clean_content);
                     }
-                    while let Some(chunk) = rx.recv().await {
-                        if !is_degenerate(&chunk) {
-                            flow.push(&chunk);
-                        }
+                } else if !accumulated.is_empty() && !is_degenerate(&accumulated) {
+                    flow.push(&accumulated);
+                }
+                while let Some(chunk) = rx.recv().await {
+                    if !is_degenerate(&chunk) {
+                        flow.push(&chunk);
                     }
-                } else if is_hydra {
-                    flow.push(hydra_greeting());
                 }
             }
         } else {
