@@ -167,15 +167,6 @@ fn synthesize_dynamic_council_greeting(prompt: &str) -> String {
     }
 }
 
-fn synthesize_council_polymath(prompt: &str) -> String {
-    let p = prompt.trim().to_ascii_lowercase();
-    if p.contains("tcp") && p.contains("udp") {
-        "TCP is a connection-oriented, reliable protocol that guarantees in-order, error-checked packet delivery using acknowledgments and flow control.\n\nUDP is a connectionless, lightweight protocol that streams packets with minimal overhead and no delivery guarantees, prioritizing maximum throughput and low latency.".to_string()
-    } else {
-        "Hello from Hydra! The Sovereign Council specializes in low-level systems programming and high-performance microservices.\n\nActive Council Heads:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nPlease specify your architecture constraints or target language to begin implementation.".to_string()
-    }
-}
-
 fn format_synthetic_deliberation(specialist: &str, is_hydra: bool) -> String {
     if is_hydra {
         match specialist {
@@ -1402,14 +1393,22 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         return Ok(());
                     }
 
-                    flow.push("<think>\n1. Invariant: General polymath inquiry.\n2. Verification: Direct Sovereign Council synthesis.\n</think>");
+                    // Polymath / General Technical Inquiry
+                    flow.push("<think>\n1. Domain: Systems & Technology Polymath.\n2. Invariant: Neural polymath answer synthesis.\n</think>\n\n");
+                    flow.push("Council: Polymath\n\n");
 
-                    let polymath_body = synthesize_council_polymath(&prompt);
-                    for word in polymath_body.split_inclusive(' ') {
-                        flow.push(word);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
+                    // Delegate to Polymath Engine
+                    let polymath_engine = nioxs_engine::AstEngine::for_model_with_device("manta", device_pref)
+                        .or_else(|_| nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref))?;
+                    let polymath_prompt = format!(
+                        "<|im_start|>system\nYou are Hydra Polymath. Answer concisely, accurately, and directly.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                    );
+                    let mut poly_rx = polymath_engine
+                        .generate_stream(polymath_prompt, max_tokens, 0.20, 0.85)
+                        .await?;
+                    while let Some(chunk) = poly_rx.recv().await {
+                        flow.push(&chunk);
                     }
-                    flow.push("\n");
                     flow.finish();
                     return Ok(());
                 }

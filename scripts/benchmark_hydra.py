@@ -107,7 +107,7 @@ def run_case(case):
         routed_head = "001"
     elif "Council: High-Throughput Axum" in stdout:
         routed_head = "002"
-    elif "Council: Direct Polymath" in stdout or "Council: Online" in stdout or "Hello from Hydra" in stdout:
+    elif "Council: Direct Polymath" in stdout or "Council: Polymath" in stdout or "Council: Online" in stdout or "Hello from Hydra" in stdout:
         routed_head = "none"
     elif "@council" in stdout:
         for line in stdout.splitlines():
