@@ -150,9 +150,9 @@ fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
 fn synthesize_dynamic_council_greeting(prompt: &str) -> String {
     let p = prompt.trim().to_ascii_lowercase();
     if p.contains("who are you") || p.contains("what are you") {
-        "I am Hydra, Nio's Sovereign Multi-Head Council. I orchestrate specialized neural heads on top of a low-latency 180M anchor for bare-metal systems, atomic concurrency, and high-throughput async microservices.\n\nActive Council Heads:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?".to_string()
+        "Hello from Hydra! I am Nio's Sovereign Multi-Head Council, orchestrating specialized neural heads on top of a low-latency 180M anchor for bare-metal systems, atomic concurrency, and high-throughput async microservices.\n\nActive Council Heads:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microservices shall we engineer today?".to_string()
     } else if p.contains("what can you do") || p.contains("help") || p.contains("capability") || p.contains("capabilities") {
-        "The Sovereign Council specializes in high-performance systems engineering:\n\n1. Head #001 (Systems & Atomic Concurrency):\n   - Lock-free queues, ring buffers, SeqLocks, hazard pointers\n   - Acquire/Release memory fences and zero-allocation data structures (Zig, Rust, C)\n\n2. Head #002 (Axum & Tokio Microservices):\n   - High-throughput asynchronous HTTP streaming\n   - Backpressure, Tower rate limiters, Tokio channels, and zero-copy JSON\n\nSubmit your design constraints or target language to begin.".to_string()
+        "Hello from Hydra! The Sovereign Council specializes in high-performance systems engineering:\n\n1. Head #001 (Systems & Atomic Concurrency):\n   - Lock-free queues, ring buffers, SeqLocks, hazard pointers\n   - Acquire/Release memory fences and zero-allocation data structures (Zig, Rust, C)\n\n2. Head #002 (Axum & Tokio Microservices):\n   - High-throughput asynchronous HTTP streaming\n   - Backpressure, Tower rate limiters, Tokio channels, and zero-copy JSON\n\nWhat architecture or protocol shall we implement today?".to_string()
     } else {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -160,10 +160,10 @@ fn synthesize_dynamic_council_greeting(prompt: &str) -> String {
             .unwrap_or(0);
         let variant = (now / 2) % 4;
         match variant {
-            0 => "Greetings! The Sovereign Council is online and standing by.\n\nHead #001 (Systems & Concurrency) and Head #002 (Axum & Tokio) are resident in RAM.\nWhat bare-metal systems or high-performance microservices shall we build today?".to_string(),
-            1 => "Hello! Hydra Sovereign Council standing by.\n\nReady for zero-allocation systems programming, atomic memory ordering, or distributed async microservices.\nWhat would you like to engineer?".to_string(),
-            2 => "Sovereign Council online. All specialist heads are calibrated and standing by for low-level systems engineering.\n\nHow can the Council assist your implementation today?".to_string(),
-            _ => "Greetings! The Sovereign Council is active.\n\nHead #001 (Systems & Concurrency) and Head #002 (High-Throughput Axum & Tokio) are primed.\nWhat architecture or protocol shall we implement?".to_string(),
+            0 => "Hello from Hydra! The Sovereign Council is standing by with Head #001 (Systems & Concurrency) and Head #002 (Axum & Tokio) resident in memory.\n\nWhat bare-metal systems or high-performance microservices shall we build today?".to_string(),
+            1 => "Hello from Hydra! Sovereign Council standing by, ready for zero-allocation systems programming, atomic memory ordering, or distributed async microservices.\n\nWhat would you like to engineer today?".to_string(),
+            2 => "Hello from Hydra! All specialist heads are calibrated and standing by for low-level systems engineering.\n\nHow can the Council assist your implementation today?".to_string(),
+            _ => "Hello from Hydra! The Sovereign Council is active with Head #001 (Systems & Concurrency) and Head #002 (High-Throughput Axum & Tokio) primed.\n\nWhat architecture or protocol shall we implement today?".to_string(),
         }
     }
 }
@@ -1383,13 +1383,13 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     let is_meta = is_greeting_or_meta(&prompt);
                     if is_meta {
                         flow.push("<think>\n1. Invariant: User greeting & identity inquiry.\n2. Verification: Direct Sovereign Council greeting synthesis.\n</think>\n\n");
-                        flow.push("Council: Online\n\n");
 
                         let greeting_body = synthesize_dynamic_council_greeting(&prompt);
                         for word in greeting_body.split_inclusive(' ') {
                             flow.push(word);
                             tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
                         }
+                        flow.push("\n");
                         flow.finish();
                         return Ok(());
                     }
