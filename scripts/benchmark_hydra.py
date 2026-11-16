@@ -127,10 +127,9 @@ def run_case(case):
             except Exception:
                 pass
                 
-    # Approximate tokens generated (words * 1.33)
+    # Count generated words
     words = len(stdout.split())
-    approx_tokens = int(words * 1.33)
-    tok_per_sec = approx_tokens / max(total_time, 0.001)
+    words_per_sec = words / max(total_time, 0.001)
     
     return {
         "case_id": case["id"],
@@ -139,8 +138,8 @@ def run_case(case):
         "total_time_s": round(total_time, 3),
         "peak_rss_mb": round(peak_rss, 1),
         "hotswap_ms": hotswap_ms,
-        "approx_tokens": approx_tokens,
-        "tok_per_sec": round(tok_per_sec, 1),
+        "words": words,
+        "words_per_sec": round(words_per_sec, 1),
         "has_council_directive": has_council_directive,
         "routed_head": routed_head,
         "expected_head": case["expected_head"],
@@ -175,19 +174,19 @@ def main():
         sys.stdout.write(f"  -> Testing {case['category']} ... ")
         sys.stdout.flush()
         res = run_case(case)
-        print(f"Done in {res['total_time_s']:.2f}s ({res['tok_per_sec']} tok/s, RSS: {res['peak_rss_mb']} MB)")
+        print(f"Done in {res['total_time_s']:.2f}s ({res['words_per_sec']} words/s, RSS: {res['peak_rss_mb']} MB)")
         results.append(res)
         
     print("\n" + "=" * 76)
     print("                      BENCHMARK RESULTS SUMMARY")
     print("=" * 76)
     
-    print(f"{'Category':<32} | {'Time(s)':<7} | {'Speed(t/s)':<10} | {'HotSwap':<9} | {'Peak RSS':<8} | {'Route':<6}")
+    print(f"{'Category':<32} | {'Time(s)':<7} | {'Speed(w/s)':<10} | {'HotSwap':<9} | {'Peak RSS':<8} | {'Route':<6}")
     print("-" * 76)
     for r in results:
         swap_str = f"{r['hotswap_ms']:.2f}ms" if r['hotswap_ms'] is not None else "N/A"
         route_status = "PASS" if (r['expected_head'] == "none") or (r['routed_head'] == r['expected_head']) or (r['routed_head'] and r['routed_head'].endswith(r['expected_head'])) or (r['expected_head'] == "direct") else "CHECK"
-        print(f"{r['category']:<32} | {r['total_time_s']:<7.2f} | {r['tok_per_sec']:<10.1f} | {swap_str:<9} | {r['peak_rss_mb']:<6.1f}MB | {route_status:<6}")
+        print(f"{r['category']:<32} | {r['total_time_s']:<7.2f} | {r['words_per_sec']:<10.1f} | {swap_str:<9} | {r['peak_rss_mb']:<6.1f}MB | {route_status:<6}")
         
     print("-" * 76)
     
