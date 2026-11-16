@@ -101,9 +101,15 @@ def run_case(case):
     total_time = time.monotonic() - start_wall
     
     # Parse output
-    has_council_directive = "@council(" in stdout
+    has_council_directive = "Council:" in stdout or "@council(" in stdout
     routed_head = None
-    if "@council" in stdout:
+    if "Council: Systems & Atomic Concurrency" in stdout:
+        routed_head = "001"
+    elif "Council: High-Throughput Axum" in stdout:
+        routed_head = "002"
+    elif "Council: Direct Polymath" in stdout or "Council: Online" in stdout:
+        routed_head = "none"
+    elif "@council" in stdout:
         for line in stdout.splitlines():
             line = line.strip()
             if "head =" in line or "head=" in line:

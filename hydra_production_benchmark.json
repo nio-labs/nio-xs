@@ -1,62 +1,62 @@
 {
-  "timestamp": "2026-11-16T14:28:50Z",
+  "timestamp": "2026-11-16T14:47:56Z",
   "model": "hydra-anchor-0.5b.q4km",
   "results": [
     {
       "case_id": "CASE-1",
       "category": "Head #001 (Atomic Concurrency)",
       "prompt": "Write an atomic lock-free ring buffer in Zig using Acquire/Release semantics.",
-      "total_time_s": 35.531,
-      "peak_rss_mb": 354.8,
-      "hotswap_ms": 13.94,
-      "approx_tokens": 114,
-      "tok_per_sec": 3.2,
+      "total_time_s": 25.548,
+      "peak_rss_mb": 354.4,
+      "hotswap_ms": 14.19,
+      "approx_tokens": 93,
+      "tok_per_sec": 3.6,
       "has_council_directive": true,
       "routed_head": "001",
       "expected_head": "001",
-      "stdout_snippet": "\u26a1 [Hydra Council \u2192 Head #001: Systems & Atomic Concurrency]\n@council(\n    head = 001,\n    domain = systems-atomic-concurrency\n)\n\n\n1. Memory Invariant: Acquire/Release ordering on atomic read/write indices; Verify counter odd/even state, write Release fence, and read Acquire re-ch"
+      "stdout_snippet": "Council: Systems & Atomic Concurrency\n\n```zig\nconst std = @import(\"std\");\nconst Atomic = std.atomic.Value;\n\npub fn AtomicRingBuffer(comptime T: type, comptime capacity: usize) type {\n    comk: [capacity]T = undefined;\n        const Self = @This();\n        const mask = capacity -"
     },
     {
       "case_id": "CASE-2",
       "category": "Head #002 (Axum / Tokio Microservices)",
       "prompt": "Build a high-throughput Rust Axum HTTP service with Tokio mpsc streaming channel.",
-      "total_time_s": 13.797,
-      "peak_rss_mb": 355.2,
-      "hotswap_ms": 77.56,
-      "approx_tokens": 87,
-      "tok_per_sec": 6.3,
+      "total_time_s": 7.753,
+      "peak_rss_mb": 352.9,
+      "hotswap_ms": 71.38,
+      "approx_tokens": 15,
+      "tok_per_sec": 1.9,
       "has_council_directive": true,
       "routed_head": "002",
       "expected_head": "002",
-      "stdout_snippet": "\u26a1 [Hydra Council \u2192 Head #002: High-Throughput Axum & Tokio]\n@council(\n    head = 002,\n    domain = backend-axum-tokio\n)\n\n\n1. Invariant: Panic-safe zero-allocation pattern.\n2. Verification: Panic and more often, into correctly on top of the service.\n\n```\nuse axum::{routing::get, R"
+      "stdout_snippet": "Council: High-Throughput Axum & Tokio\n\n```rust\nasync fn stream`    );\n'.\n``"
     },
     {
       "case_id": "CASE-3",
       "category": "Anchor Polymath (Direct Execution)",
       "prompt": "Explain the difference between TCP and UDP in two concise sentences.",
-      "total_time_s": 2.692,
+      "total_time_s": 2.463,
       "peak_rss_mb": 336.3,
       "hotswap_ms": null,
-      "approx_tokens": 70,
-      "tok_per_sec": 26.0,
+      "approx_tokens": 5,
+      "tok_per_sec": 2.0,
       "has_council_directive": true,
-      "routed_head": null,
+      "routed_head": "none",
       "expected_head": "direct",
-      "stdout_snippet": "\u26a1 [Hydra Council: Online]\n@council(directive = direct, mode = polymath)\n\nHail Hydra! The Sovereign Council is online and standing by.\n\nActive Council Specialists:\n  \u2022 Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  \u2022 Head #002: High-Throughput Axum & Tok"
+      "stdout_snippet": "Council: Direct Polymath Synthesis"
     },
     {
       "case_id": "CASE-4",
       "category": "Zero-Overhead Meta Greeting",
       "prompt": "Hello!",
-      "total_time_s": 0.011,
-      "peak_rss_mb": 0.3,
+      "total_time_s": 0.013,
+      "peak_rss_mb": 0.2,
       "hotswap_ms": null,
-      "approx_tokens": 70,
-      "tok_per_sec": 6398.8,
+      "approx_tokens": 59,
+      "tok_per_sec": 4544.3,
       "has_council_directive": true,
-      "routed_head": null,
+      "routed_head": "none",
       "expected_head": "none",
-      "stdout_snippet": "\u26a1 [Hydra Council: Online]\n@council(directive = direct, mode = polymath)\n\nHail Hydra! The Sovereign Council is online and standing by.\n\nActive Council Specialists:\n  \u2022 Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  \u2022 Head #002: High-Throughput Axum & Tok"
+      "stdout_snippet": "Council: Online\n\nHail Hydra! The Sovereign Council is online and standing by.\n\nActive Council Specialists:\n  \u2022 Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  \u2022 Head #002: High-Throughput Axum & Tokio Microservices (Rust, Async)\n\nWhat systems or microser"
     }
   ]
 }
