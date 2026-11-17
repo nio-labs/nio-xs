@@ -890,8 +890,9 @@ impl AstEngine {
                 "nio-rabbit.3b-q4km.gguf",
             ],
             "hydra" | "nio-hydra" | "hydra-max" | "hydra-ultra" => &[
-                "hydra-anchor-0.5b.q4km.gguf",
+                "anchor-base.180m.q4km.gguf",
                 "hydra-anchor-180m.q4km.gguf",
+                "hydra-anchor-0.5b.q4km.gguf",
                 "hydra-anchor.q4km.gguf",
             ],
             "hydra-kernel" | "nio-hydra-kernel" => &[
@@ -965,6 +966,9 @@ impl AstEngine {
         let home_dir = std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/root"));
         let search_dirs = [
             base_dir.clone(),
+            base_dir.join("anchors"),
+            home_dir.join(".nioxs/anchors"),
+            PathBuf::from("/root/.nioxs/anchors"),
             base_dir.join("hydra"),
             base_dir.join("fin"),
             home_dir.join("nio-labs/nio-xs-models/models/hydra"),
