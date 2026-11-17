@@ -22,7 +22,7 @@ impl DecodingPolicy {
     ) -> Self {
         Self {
             repeat_penalty: if hydra {
-                1.05
+                1.18
             } else if skate || cheetah || tiger || fox {
                 1.10
             } else if beluga || rabbit {
@@ -34,9 +34,7 @@ impl DecodingPolicy {
             } else {
                 1.00
             },
-            history_window: if hydra {
-                64
-            } else if manta || tiger || fox || rabbit {
+            history_window: if hydra || manta || tiger || fox || rabbit {
                 128
             } else {
                 HISTORY_WINDOW
