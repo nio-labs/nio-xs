@@ -892,7 +892,6 @@ impl AstEngine {
             "hydra" | "nio-hydra" | "hydra-max" | "hydra-ultra" => &[
                 "anchor-base.180m.q4km.gguf",
                 "hydra-anchor-180m.q4km.gguf",
-                "hydra-anchor-0.5b.q4km.gguf",
                 "hydra-anchor.q4km.gguf",
             ],
             "hydra-kernel" | "nio-hydra-kernel" => &[
