@@ -238,6 +238,31 @@ fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
     format!("Council {num}: {label}\n\n")
 }
 
+fn detect_hydra_domain_anchor(specialist: &str, prompt: &str) -> &'static str {
+    let lower = prompt.to_ascii_lowercase();
+    match specialist {
+        "head-001" | "001" => {
+            if lower.contains("zig") {
+                "anchor-001-zig-comptime"
+            } else if lower.contains("posix") || lower.contains(" c ") || lower.ends_with(" c") {
+                "anchor-003-c-posix"
+            } else {
+                "anchor-004-atomics-lockfree"
+            }
+        }
+        "head-002" | "002" => "anchor-009-rust-axum-tokio",
+        "head-003" | "003" => "anchor-021-react19-rsc",
+        "head-004" | "004" => "anchor-005-ebpf-xdp",
+        "head-005" | "005" => "anchor-027-clickhouse",
+        "head-006" | "006" => "anchor-040-dp-graphs",
+        "head-007" | "007" => "anchor-036-k8s-operator",
+        "head-008" | "008" => "anchor-012-rust-distributed",
+        "head-009" | "009" => "anchor-006-simd-avx",
+        "head-010" | "010" => "anchor-013-wasm-wasi",
+        _ => "anchor-000-chair",
+    }
+}
+
 fn detect_council_specialist(accumulated: &str, prompt: &str, _is_hydra: bool) -> Option<&'static str> {
     let lower_acc = format!("{accumulated} {prompt}").to_ascii_lowercase();
 
@@ -1641,16 +1666,23 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     } else {
                         None
                     };
+                    let domain_anchor = detect_hydra_domain_anchor(specialist, &prompt);
                     let badge = format_hydra_directive(specialist, raw_domain);
                     flow.push(&badge);
 
-                    // NATIVE IN-PROCESS LORA HEAD HOT-SWAP (< 1ms switch)
-                    // The base anchor (0.5B or 180M) stays resident in RAM!
+                    // TWO-TIER IN-PROCESS LORA HOT-SWAP (< 1ms switch)
+                    // Tier 1: Hot-swap Domain Anchor LoRA into Slot 1 (if present on disk)
+                    if domain_anchor != "anchor-000-chair" {
+                        let _ = base_engine.attach_lora_head(domain_anchor).await;
+                    }
+
+                    // Tier 2: Hot-swap Specialist Micro-Head LoRA into Slot 2 (< 1ms switch)
+                    // The base anchor (180M) stays resident in RAM!
                     let t_swap = std::time::Instant::now();
                     let head_attached = base_engine.attach_lora_head(specialist).await.is_ok();
                     let swap_ms = t_swap.elapsed().as_secs_f64() * 1000.0;
                     if head_attached && std::env::var_os("NIOXS_DEBUG").is_some() {
-                        eprintln!("[nioxs-hydra] Hot-swapped to Head '{specialist}' in {swap_ms:.2}ms (Base Anchor resident in RAM)");
+                        eprintln!("[nioxs-hydra] Hot-swapped to Head '{specialist}' (Anchor: '{domain_anchor}') in {swap_ms:.2}ms (Base Anchor resident in RAM)");
                     }
 
                     let code_fence = if !is_code_request(&prompt) {
