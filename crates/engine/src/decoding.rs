@@ -22,7 +22,7 @@ impl DecodingPolicy {
     ) -> Self {
         Self {
             repeat_penalty: if hydra {
-                1.15
+                1.05
             } else if skate || cheetah || tiger || fox {
                 1.10
             } else if beluga || rabbit {
@@ -34,7 +34,9 @@ impl DecodingPolicy {
             } else {
                 1.00
             },
-            history_window: if hydra || manta || tiger || fox || rabbit {
+            history_window: if hydra {
+                64
+            } else if manta || tiger || fox || rabbit {
                 128
             } else {
                 HISTORY_WINDOW
@@ -176,7 +178,7 @@ mod tests {
             ),
             (
                 (false, false, false, false, false, false, false, false, true),
-                "1.15",
+                "1.05",
                 vec![],
             ),
         ] {
@@ -188,7 +190,9 @@ mod tests {
             assert_eq!(value("--repeat-penalty"), Some(expected_penalty));
             assert_eq!(
                 value("--repeat-last-n"),
-                Some(if flags.1 || flags.5 || flags.6 || flags.7 || flags.8 {
+                Some(if flags.8 {
+                    "64"
+                } else if flags.1 || flags.5 || flags.6 || flags.7 {
                     "128"
                 } else {
                     "64"

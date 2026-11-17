@@ -273,8 +273,8 @@ async fn microlm_chat_handler(
         "nio-tiger" | "tiger" => nioxs_engine::tiger_system(),
         "nio-fox" | "fox" => nioxs_engine::fox_system(),
         "nio-rabbit" | "rabbit" => nioxs_engine::rabbit_system(),
-        "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" | "nio-fin-concurrency" | "fin-concurrency" | "nio-fin-raft" | "fin-raft" => {
-            nioxs_engine::fin_system()
+        "nio-hydra" | "hydra" | "hydra-kernel" | "nio-hydra-kernel" | "hydra-max" | "hydra-ultra" => {
+            nioxs_engine::hydra_system()
         }
         "nio-skate" | "skate" => {
             "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and helpful. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Beluga. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."

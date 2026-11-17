@@ -2182,15 +2182,16 @@ impl AstMicroEngine {
             .ok_or_else(|| anyhow!("missing token_embd.weight"))?;
         let token_embd_offset = gguf.tensor_data_offset + embd_info.offset as usize;
         let token_embd_dtype = embd_info.dtype;
-        if !matches!(token_embd_dtype, 2 | 8 | 12 | 13 | 14 | 20 | 21) {
+        if !matches!(token_embd_dtype, 2 | 6 | 8 | 12 | 13 | 14 | 20 | 21) {
             anyhow::bail!(
-                "AST-Micro requires Q4_0, Q8_0, Q4_K, Q5_K, Q6_K, IQ4_NL, or IQ3_S token embeddings, found dtype {token_embd_dtype}"
+                "AST-Micro requires Q4_0, Q5_0, Q8_0, Q4_K, Q5_K, Q6_K, IQ4_NL, or IQ3_S token embeddings, found dtype {token_embd_dtype}"
             );
         }
 
         let (block_size, type_size) = match token_embd_dtype {
             0 => (1, 4),
             2 => (32, 18),
+            6 => (32, 22),
             8 => (32, 34),
             12 => (256, 144),
             13 => (256, 176),
@@ -2770,6 +2771,7 @@ impl AstMicroEngine {
             13 => quants::dequantize_row_q5_k(slice, out),
             12 => quants::dequantize_row_q4_k(slice, out),
             8 => quants::dequantize_row_q8_0(slice, out),
+            6 => quants::dequantize_row_q5_0(slice, out),
             2 => quants::dequantize_row_q4_0(slice, out),
             0 => quants::dequantize_row_f32(slice, out),
             other => anyhow::bail!("unsupported token_embd dtype {other}"),

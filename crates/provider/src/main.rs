@@ -63,11 +63,23 @@ fn is_degenerate(s: &str) -> bool {
     if quote_count > 6 && quote_count * 4 > trimmed.len() {
         return true;
     }
+    // Check 3: Repetition of long digit sequences (> 15 consecutive digits)
+    let mut consecutive_digits = 0;
+    for c in trimmed.chars() {
+        if c.is_ascii_digit() {
+            consecutive_digits += 1;
+            if consecutive_digits >= 15 {
+                return true;
+            }
+        } else {
+            consecutive_digits = 0;
+        }
+    }
     // Check 3: Repetition of short identical lines
     let lines: Vec<&str> = trimmed
         .lines()
         .map(|l| l.trim())
-        .filter(|l| !l.is_empty())
+        .filter(|l| !l.is_empty() && *l != "}" && *l != "};" && *l != "]" && *l != "];" && *l != ")")
         .collect();
     if lines.len() >= 3 {
         let mut repeat_count = 0;
@@ -83,151 +95,61 @@ fn is_degenerate(s: &str) -> bool {
     false
 }
 
-fn is_greeting_or_meta(prompt: &str) -> bool {
-    let p = prompt.trim().to_ascii_lowercase();
-    // Coding, programming, or hello world requests are NEVER greetings
-    if p.contains("world")
-        || p.contains("code")
-        || p.contains("write")
-        || p.contains("program")
-        || p.contains("function")
-        || p.contains("print")
-        || p.contains("impl")
-        || p.contains("create")
-        || p.contains("build")
-        || p.contains("generate")
-        || p.contains("rust")
-        || p.contains("golang")
-        || p.contains("go")
-        || p.contains("python")
-        || p.contains("zig")
-        || p.contains("in ")
-    {
-        return false;
-    }
-    matches!(
-        p.as_str(),
-        "hello"
-            | "hi"
-            | "hey"
-            | "greetings"
-            | "hello!"
-            | "hi!"
-            | "hello there"
-            | "hi there"
-            | "hey there"
-            | "who are you"
-            | "what are you"
-            | "help"
-            | "who are you?"
-            | "what are you?"
-            | "what can you do"
-            | "what can you do?"
-            | "test"
-    )
-}
-
-fn detect_hello_world(prompt: &str) -> Option<&'static str> {
-    let p = prompt.trim().to_ascii_lowercase();
-    let has_hello_world = p.contains("hello world")
-        || p.contains("hello, world")
-        || p.contains("hello-world")
-        || ((p.contains("hello") || p.contains("print")) && p.contains("world"));
-    if !has_hello_world {
-        return None;
-    }
-
-    if p.contains("go") || p.contains("golang") {
-        Some("go")
-    } else if p.contains("rust") {
-        Some("rust")
-    } else if p.contains("python") || p.contains("py") {
-        Some("python")
-    } else if p.contains("zig") {
-        Some("zig")
-    } else if p.contains("cpp") || p.contains("c++") {
-        Some("cpp")
-    } else if p.contains("posix")
-        || p.contains("in c")
-        || p.contains(" c ")
-        || p.ends_with(" c")
-        || p.contains("c code")
-    {
-        Some("c")
-    } else if p.contains("typescript") || p.contains(" ts") || p.contains("react") {
-        Some("typescript")
-    } else if p.contains("javascript") || p.contains(" js") || p.contains("node") {
-        Some("javascript")
-    } else if p.contains("bash") || p.contains("shell") || p.contains("sh") {
-        Some("bash")
+async fn fallback_to_cheetah_or_rabbit(
+    prompt: &str,
+    max_tokens: usize,
+    device_pref: nioxs_engine::DevicePreference,
+    flow: &mut StreamFlow,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fallback_model = if std::path::Path::new("/root/.nioxs/models/cheetah.1.5b-q4km.gguf").exists() {
+        "cheetah"
     } else {
-        Some("go")
+        "rabbit"
+    };
+    flow.push(&format!("\n\n[Fallback Sovereign Sprinter: {fallback_model}]\n\n"));
+    let engine = nioxs_engine::AstEngine::for_model_with_device(fallback_model, device_pref)?;
+    let system_prompt = if fallback_model == "cheetah" {
+        nioxs_engine::cheetah_system()
+    } else {
+        "You are Rabbit, Nio's Sovereign Code Synthesis Engine. Output accurate, robust code and architecture."
+    };
+    let formatted_prompt = format!(
+        "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+    );
+    let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.20, 0.85).await?;
+    while let Some(chunk) = rx.recv().await {
+        flow.push(&chunk);
     }
+    Ok(())
 }
 
-fn canonical_hello_world(lang: &str) -> (&'static str, &'static str, &'static str, &'static str) {
-    match lang {
-        "go" => (
-            "<think>\n1. Domain: Systems & Canonical Entrypoints.\n2. Invariant: Standard main package, fmt I/O, zero external dependencies.\n3. Delegate: Hydra Polymath (Canonical Systems Synthesis).\n</think>",
-            "Council: Polymath\n\n",
-            "go",
-            "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, World!\")\n}\n",
-        ),
-        "rust" => (
-            "<think>\n1. Domain: Systems & High-Throughput Microservices.\n2. Invariant: Standard zero-cost entrypoint, println! macro formatting.\n3. Delegate: Hydra Head #002 (High-Throughput Rust Microservices Specialist).\n</think>",
-            "Council: High-Throughput Axum & Tokio\n\n",
-            "rust",
-            "fn main() {\n    println!(\"Hello, world!\");\n}\n",
-        ),
-        "c" => (
-            "<think>\n1. Domain: Systems, Kernel & Atomic Concurrency.\n2. Invariant: Direct POSIX entrypoint, zero-allocation standard I/O.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>",
-            "Council: Systems & Atomic Concurrency\n\n",
-            "c",
-            "#include <stdio.h>\n\nint main(void) {\n    printf(\"Hello, World!\\n\");\n    return 0;\n}\n",
-        ),
-        "cpp" => (
-            "<think>\n1. Domain: Systems & High-Performance Computing.\n2. Invariant: Standard streams, unbuffered line discipline.\n3. Delegate: Hydra Head #009 (Hardware Vector SIMD Specialist).\n</think>",
-            "Council: Hardware Vector SIMD (AVX2/AVX-512)\n\n",
-            "cpp",
-            "#include <iostream>\n\nint main() {\n    std::cout << \"Hello, World!\" << std::endl;\n    return 0;\n}\n",
-        ),
-        "zig" => (
-            "<think>\n1. Domain: Systems, Kernel & Atomic Concurrency.\n2. Invariant: Bare-metal standard debug print, compile-time format string validation.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>",
-            "Council: Systems & Atomic Concurrency\n\n",
-            "zig",
-            "const std = @import(\"std\");\n\npub fn main() void {\n    std.debug.print(\"Hello, World!\\n\", .{});\n}\n",
-        ),
-        "python" => (
-            "<think>\n1. Domain: Algorithmic Mastery & Scripting.\n2. Invariant: Standard built-in print expression.\n3. Delegate: Hydra Head #006 (Dynamic Programming & Formal SMT Invariant Specialist).\n</think>",
-            "Council: Formal Logic & Dynamic Programming\n\n",
-            "python",
-            "print(\"Hello, World!\")\n",
-        ),
-        "typescript" => (
-            "<think>\n1. Domain: Modern Full-Stack & Frontend Engineering.\n2. Invariant: Console runtime API, standard stdout stream.\n3. Delegate: Hydra Head #003 (React 19 RSC & Streaming SSR Specialist).\n</think>",
-            "Council: React 19 Server Components & Suspense\n\n",
-            "typescript",
-            "console.log(\"Hello, World!\");\n",
-        ),
-        "javascript" => (
-            "<think>\n1. Domain: Modern Full-Stack & Frontend Engineering.\n2. Invariant: Console runtime API, standard stdout stream.\n3. Delegate: Hydra Head #003 (React 19 RSC & Streaming SSR Specialist).\n</think>",
-            "Council: React 19 Server Components & Suspense\n\n",
-            "javascript",
-            "console.log(\"Hello, World!\");\n",
-        ),
-        "bash" => (
-            "<think>\n1. Domain: Systems & Kernel POSIX Shell.\n2. Invariant: Standard echo builtin, portable shebang.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>",
-            "Council: Systems & Atomic Concurrency\n\n",
-            "bash",
-            "#!/usr/bin/env bash\necho \"Hello, World!\"\n",
-        ),
-        _ => (
-            "<think>\n1. Domain: Systems & Technology Polymath.\n2. Invariant: Canonical Hello World entrypoint.\n3. Delegate: Hydra Polymath (Canonical Systems Synthesis).\n</think>",
-            "Council: Polymath\n\n",
-            "go",
-            "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, World!\")\n}\n",
-        ),
-    }
+fn is_code_request(prompt: &str) -> bool {
+    let lower = prompt.to_ascii_lowercase();
+    let has_code_verb = lower.contains("write")
+        || lower.contains("implement")
+        || lower.contains("code")
+        || lower.contains("create")
+        || lower.contains("build")
+        || lower.contains("construct")
+        || lower.contains("develop")
+        || lower.contains("engineer")
+        || lower.contains("function")
+        || lower.contains("struct")
+        || lower.contains("class")
+        || lower.contains("fn ")
+        || lower.contains("def ")
+        || lower.contains("snippet");
+    let has_lang = lower.contains("in rust")
+        || lower.contains("in zig")
+        || lower.contains("in c")
+        || lower.contains("in cpp")
+        || lower.contains("in c++")
+        || lower.contains("in python")
+        || lower.contains("in go")
+        || lower.contains("in typescript")
+        || lower.contains("in tsx")
+        || lower.contains("in sql");
+    has_code_verb || has_lang
 }
 
 fn detect_target_code_language(prompt: &str, specialist: &str) -> &'static str {
@@ -267,120 +189,57 @@ fn detect_target_code_language(prompt: &str, specialist: &str) -> &'static str {
 }
 
 fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
-    let domain_label = match head {
+    let (num, label) = match head {
+        "000" | "head-000" | "head-000-sovereign-chair" | "chair" => {
+            ("000", "The Sovereign Chair (Triage & Invariant Arbiter)")
+        }
         "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" | "head-001-systems-atomic-concurrency" => {
-            "Systems & Atomic Concurrency"
+            ("001", "Systems & Atomic Concurrency")
         }
         "002" | "head-002" | "head-002-backend-axum-tokio" => {
-            "High-Throughput Axum & Tokio"
+            ("002", "High-Throughput Axum & Tokio")
         }
         "003" | "head-003" | "head-003-frontend-react19-rsc" => {
-            "React 19 Server Components & Suspense"
+            ("003", "React 19 Server Components & Suspense")
         }
         "004" | "head-004" | "head-004-kernel-ebpf-xdp" => {
-            "Linux Kernel eBPF & XDP Network Bypass"
+            ("004", "Linux Kernel eBPF & XDP Network Bypass")
         }
         "005" | "head-005" | "head-005-data-clickhouse-mergetree" => {
-            "ClickHouse MergeTree Analytics"
+            ("005", "ClickHouse MergeTree Analytics")
         }
         "006" | "head-006" | "head-006-algorithms-formal-logic" => {
-            "Formal Logic & Dynamic Programming"
+            ("006", "Formal Logic & Dynamic Programming")
         }
         "007" | "head-007" | "head-007-devops-k8s-controller" => {
-            "Kubernetes CRD & Kube-rs Controller"
+            ("007", "Kubernetes CRD & Kube-rs Controller")
         }
         "008" | "head-008" | "head-008-consensus-raft-paxos" => {
-            "Distributed Consensus & Raft State Machine"
+            ("008", "Distributed Consensus & Raft State Machine")
         }
         "009" | "head-009" | "head-009-vector-simd-avx512" => {
-            "Hardware Vector SIMD (AVX2/AVX-512)"
+            ("009", "Hardware Vector SIMD (AVX2/AVX-512)")
         }
         "010" | "head-010" | "head-010-wasm-wasi-sandboxing" => {
-            "WASM Component Model & WASI 0.2 Sandbox"
+            ("010", "WASM Component Model & WASI 0.2 Sandbox")
         }
-        other => domain.unwrap_or(other),
+        "direct" | "head-direct" | "polymath" | "head-direct-systems-technology-polymath" => {
+            ("Direct", "Polymath Synthesis")
+        }
+        other => {
+            let n = if let Some(stripped) = other.strip_prefix("head-") {
+                stripped
+            } else {
+                other
+            };
+            (n, domain.unwrap_or(other))
+        }
     };
-    format!("Council: {domain_label}\n\n")
+    format!("Council {num}: {label}\n\n")
 }
 
-fn synthesize_dynamic_council_greeting(prompt: &str) -> String {
-    let p = prompt.trim().to_ascii_lowercase();
-    if p.contains("who are you") || p.contains("what are you") {
-        "Hello from Hydra! I am Nio's Sovereign Multi-Head Council, coordinating 10 specialized neural heads across Systems, Backend, Frontend, Data, Consensus, and Cloud Native.\n\nActive Council Heads:\n  • Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory (Zig, Rust, C)\n  • Head #002: High-Throughput Axum & Tokio Microservices (Rust)\n  • Head #003: React 19 RSC, Suspense & Streaming SSR (TypeScript)\n  • Head #004: Linux Kernel eBPF & XDP Bypass (Rust, C)\n  • Head #005: ClickHouse MergeTree & Analytics (SQL, Vectorized)\n  • Head #006: Dynamic Programming & SMT Invariants (Rust, Z3)\n  • Head #007: Kubernetes CRD & Kube-rs Controllers (Rust, K8s)\n  • Head #008: Distributed Consensus & Raft Quorum (Rust)\n  • Head #009: Hardware Vector SIMD AVX2/AVX-512 (Rust Intrinsics)\n  • Head #010: WebAssembly Component Model & WASI 0.2 (Rust, Wasmtime)\n\nWhat systems, protocols, or architecture shall we engineer today?".to_string()
-    } else if p.contains("what can you do") || p.contains("help") || p.contains("capability") || p.contains("capabilities") {
-        "Hello from Hydra! The Sovereign Council specializes in high-performance engineering across 6 Pillars:\n\n1. Systems & Kernel (#001, #004, #009): Lock-free atomics, eBPF XDP network bypass, AVX2 SIMD.\n2. Backend & Microservices (#002): Tokio async channels, Axum streaming, Tower backpressure.\n3. Frontend Engineering (#003): React 19 Server Components, Actions, Suspense streaming.\n4. Data & Analytics (#005): ClickHouse ReplacingMergeTree, zero-copy rollups.\n5. Formal Logic & Consensus (#006, #008): Z3 SMT invariant verification, Raft leader lease linearization.\n6. Cloud Native & Security (#007, #010): Kube-rs CRD reconcilers, WASI 0.2 fuel-limited sandboxes.\n\nWhat architecture or protocol shall we implement today?".to_string()
-    } else {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let variant = (now / 2) % 3;
-        match variant {
-            0 => "Hello from Hydra! I am standing by with 10 specialized neural heads for bare-metal systems, atomic concurrency, and cloud architectures.\n\nWhat would you like to build today?".to_string(),
-            1 => "Hello from Hydra! Ready for zero-allocation systems programming, formal verification, or distributed consensus.\n\nWhat shall we engineer today?".to_string(),
-            _ => "Hello from Hydra! Standing by for low-level systems engineering, lock-free concurrency, or high-performance services.\n\nHow can I help you today?".to_string(),
-        }
-    }
-}
-
-fn format_synthetic_deliberation(specialist: &str, is_hydra: bool) -> String {
-    if is_hydra {
-        match specialist {
-            "hydra-kernel" | "head-001" | "001" | "head-001-atomic-concurrency" | "head-001-systems-atomic-concurrency" => {
-                "<think>\n1. Domain: Systems, Kernel & Atomic Concurrency.\n2. Invariant: Acquire/Release memory ordering, cacheline-aligned (align(64)), zero-branch mask.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>\n\n<council>\n    @council(\n        head = 001,\n        domain = systems-atomic-concurrency\n    )\n</council>\n\n".to_string()
-            }
-            "head-002" | "002" | "head-002-backend-axum-tokio" => {
-                "<think>\n1. Domain: Backend & Cloud Microservices.\n2. Invariant: Async Tokio runtime, zero-copy streaming, backpressure.\n3. Delegate: Hydra Head #002 (High-Throughput Rust Axum & Tokio Microservices Specialist).\n</think>\n\n<council>\n    @council(\n        head = 002,\n        domain = backend-axum-tokio\n    )\n</council>\n\n".to_string()
-            }
-            "head-003" | "003" | "head-003-frontend-react19-rsc" => {
-                "<think>\n1. Domain: Full-Stack Web & Modern Frontend.\n2. Invariant: React 19 RSC streaming, useOptimistic rollback safety, Suspense boundary isolation.\n3. Delegate: Hydra Head #003 (React 19 RSC & Streaming SSR Specialist).\n</think>\n\n<council>\n    @council(\n        head = 003,\n        domain = frontend-react19-rsc\n    )\n</council>\n\n".to_string()
-            }
-            "head-004" | "004" | "head-004-kernel-ebpf-xdp" => {
-                "<think>\n1. Domain: Systems, Kernel & Concurrency.\n2. Invariant: eBPF verifier bounds proof, zero-copy packet cursor (data..data_end), XDP line-rate filtering.\n3. Delegate: Hydra Head #004 (Linux Kernel eBPF & XDP Network Bypass Specialist).\n</think>\n\n<council>\n    @council(\n        head = 004,\n        domain = kernel-ebpf-xdp\n    )\n</council>\n\n".to_string()
-            }
-            "head-005" | "005" | "head-005-data-clickhouse-mergetree" => {
-                "<think>\n1. Domain: Data Engineering & Columnar Analytics.\n2. Invariant: ReplacingMergeTree deduplication versioning, zero-copy materialized view projection, index granularity 8192.\n3. Delegate: Hydra Head #005 (ClickHouse MergeTree Analytics Specialist).\n</think>\n\n<council>\n    @council(\n        head = 005,\n        domain = data-clickhouse-mergetree\n    )\n</council>\n\n".to_string()
-            }
-            "head-006" | "006" | "head-006-algorithms-formal-logic" => {
-                "<think>\n1. Domain: Algorithmic Mastery & Formal Logic.\n2. Invariant: Lazy segment tree pushdown idempotence, Z3 SMT inductive inductive safety proof.\n3. Delegate: Hydra Head #006 (Dynamic Programming & Formal SMT Invariant Specialist).\n</think>\n\n<council>\n    @council(\n        head = 006,\n        domain = algorithms-formal-logic\n    )\n</council>\n\n".to_string()
-            }
-            "head-007" | "007" | "head-007-devops-k8s-controller" => {
-                "<think>\n1. Domain: DevOps, SRE & Cloud Native.\n2. Invariant: Kube-rs level-triggered reconciliation, finalizer cleanup guarantee, JSON 6902 admission mutate patch.\n3. Delegate: Hydra Head #007 (Kubernetes CRD Operator & Kube-rs Controller Specialist).\n</think>\n\n<council>\n    @council(\n        head = 007,\n        domain = devops-k8s-controller\n    )\n</council>\n\n".to_string()
-            }
-            "head-008" | "008" | "head-008-consensus-raft-paxos" => {
-                "<think>\n1. Domain: Distributed Systems & Consensus.\n2. Invariant: Raft AppendEntries monotonic index advance, leader lease monotonic clock bound, split-brain immunity.\n3. Delegate: Hydra Head #008 (Distributed Consensus & Raft State Machine Specialist).\n</think>\n\n<council>\n    @council(\n        head = 008,\n        domain = consensus-raft-paxos\n    )\n</council>\n\n".to_string()
-            }
-            "head-009" | "009" | "head-009-vector-simd-avx512" => {
-                "<think>\n1. Domain: High-Performance Vector SIMD Acceleration.\n2. Invariant: Unrolled 8-way _mm256_fmadd_ps vector dot kernel, 32-byte alignment, FP8 LUT gather throughput.\n3. Delegate: Hydra Head #009 (Hardware Vector SIMD AVX2/AVX-512 Specialist).\n</think>\n\n<council>\n    @council(\n        head = 009,\n        domain = vector-simd-avx512\n    )\n</council>\n\n".to_string()
-            }
-            "head-010" | "010" | "head-010-wasm-wasi-sandboxing" => {
-                "<think>\n1. Domain: Zero-Trust WebAssembly & Sandboxing.\n2. Invariant: WASI 0.2 WIT component contract, Wasmtime epoch fuel limiter, 64MB memory strict boundary.\n3. Delegate: Hydra Head #010 (WebAssembly Component Model & WASI 0.2 Sandbox Specialist).\n</think>\n\n<council>\n    @council(\n        head = 010,\n        domain = wasm-wasi-sandboxing\n    )\n</council>\n\n".to_string()
-            }
-            _ => {
-                format!("<think>\n1. Domain: Systems Engineering.\n2. Delegate: Hydra Specialist Head ({specialist}).\n</think>\n\n<council>\n    @council(\n        head = {specialist}\n    )\n</council>\n\n")
-            }
-        }
-    } else {
-        match specialist {
-            "fin-kernel" => {
-                "<think>\n1. Invariant: Acquire/Release memory ordering, cacheline-aligned, panic-safe.\n2. Route: Fin Kernel (1.5B Deep-Councilor).\n</think>\n\n<council>\n    @council(\n        route = fin-kernel,\n        domain = systems-kernel-concurrency\n    )\n</council>\n\n".to_string()
-            }
-            "fin-sql" => {
-                "<think>\n1. Invariant: Dialect AST correctness, index coverage, transaction isolation.\n2. Route: Fin SQL (0.5B Micro-Councilor).\n</think>\n\n<council>\n    @council(\n        route = fin-sql,\n        domain = storage-database-engine\n    )\n</council>\n\n".to_string()
-            }
-            "fin-raft" => {
-                "<think>\n1. Invariant: Leader lease, monotonic term advancement, log replication safety.\n2. Route: Fin Raft (1.5B Deep-Councilor).\n</think>\n\n<council>\n    @council(\n        route = fin-raft,\n        domain = distributed-consensus\n    )\n</council>\n\n".to_string()
-            }
-            _ => {
-                format!("<think>\n1. Route: {specialist}.\n</think>\n\n<council>\n    @council(\n        route = {specialist}\n    )\n</council>\n\n")
-            }
-        }
-    }
-}
-
-fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) -> Option<&'static str> {
-    let lower_acc = accumulated.to_ascii_lowercase();
-    let lower_p = prompt.to_ascii_lowercase();
+fn detect_council_specialist(accumulated: &str, prompt: &str, _is_hydra: bool) -> Option<&'static str> {
+    let lower_acc = format!("{accumulated} {prompt}").to_ascii_lowercase();
 
     // 1. Direct Explicit Neural Directive emitted by the Anchor (<think> or <council>@council(...)</council>)
     // If the Anchor explicitly declared @council(direct) or @council(self), it executes directly as Polymath Speaker!
@@ -389,15 +248,30 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
         || lower_acc.contains("@council(self)")
         || lower_acc.contains("directive: direct")
         || lower_acc.contains("directive: polymath")
+        || lower_acc.contains("council direct")
+        || lower_acc.contains("council: direct")
+        || lower_acc.contains("polymath synthesis")
+        || lower_acc.contains("technology polymath")
     {
-        return None;
+        return Some("head-direct");
     }
 
-    if is_hydra {
-        // --- HYDRA Council Neural Directives ---
-        if lower_acc.contains("head-001")
+    // --- HYDRA Council Neural Directives ---
+        if lower_acc.contains("council 001")
+            || lower_acc.contains("council: 001")
+            || lower_acc.contains("head-001")
             || lower_acc.contains("head_001")
+            || lower_acc.contains("[head-001]")
             || lower_acc.contains("atomic-concurrency")
+            || lower_acc.contains("atomic concurrency")
+            || lower_acc.contains("lock-free")
+            || lower_acc.contains("lockfree")
+            || lower_acc.contains("atomic")
+            || lower_acc.contains("ring buffer")
+            || lower_acc.contains("systems, kernel & atomic")
+            || lower_acc.contains("domain: systems, kernel")
+            || lower_acc.contains("domain: systems & atomic")
+            || lower_acc.contains("domain: atomic")
             || lower_acc.contains("hydra-kernel")
             || lower_acc.contains("head=001")
             || lower_acc.contains("head = 001")
@@ -414,12 +288,17 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
             || lower_acc.contains("domain = kernel")
             || lower_acc.contains("domain=kernel")
         {
-            return Some("hydra-kernel");
+            return Some("head-001");
         }
 
-        if lower_acc.contains("head-002")
+        if lower_acc.contains("council 002")
+            || lower_acc.contains("council: 002")
+            || lower_acc.contains("head-002")
             || lower_acc.contains("head_002")
+            || lower_acc.contains("[head-002]")
             || lower_acc.contains("backend-axum-tokio")
+            || lower_acc.contains("axum")
+            || lower_acc.contains("tokio")
             || lower_acc.contains("head=002")
             || lower_acc.contains("head = 002")
             || lower_acc.contains("head=axum")
@@ -430,376 +309,179 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, is_hydra: bool) ->
             || lower_acc.contains("domain=tokio")
             || lower_acc.contains("domain = backend")
             || lower_acc.contains("domain=backend")
+            || lower_acc.contains("domain: backend")
             || lower_acc.contains("domain = microservices")
             || lower_acc.contains("domain=microservices")
+            || lower_acc.contains("domain: microservices")
+            || lower_acc.contains("domain: cloud")
         {
             return Some("head-002");
         }
 
-        if lower_acc.contains("head-003")
+        if lower_acc.contains("council 003")
+            || lower_acc.contains("council: 003")
+            || lower_acc.contains("head-003")
             || lower_acc.contains("head_003")
+            || lower_acc.contains("[head-003]")
             || lower_acc.contains("frontend-react19-rsc")
+            || lower_acc.contains("react 19")
+            || lower_acc.contains("server component")
+            || lower_acc.contains("rsc")
             || lower_acc.contains("head=003")
             || lower_acc.contains("head = 003")
             || lower_acc.contains("domain = frontend")
             || lower_acc.contains("domain=frontend")
+            || lower_acc.contains("domain: frontend")
+            || lower_acc.contains("domain: full-stack")
+            || lower_acc.contains("domain: web")
             || lower_acc.contains("domain = react")
             || lower_acc.contains("domain=react")
+            || lower_acc.contains("domain: react")
         {
             return Some("head-003");
         }
 
-        if lower_acc.contains("head-004")
+        if lower_acc.contains("council 004")
+            || lower_acc.contains("council: 004")
+            || lower_acc.contains("head-004")
             || lower_acc.contains("head_004")
             || lower_acc.contains("kernel-ebpf-xdp")
             || lower_acc.contains("head=004")
             || lower_acc.contains("head = 004")
             || lower_acc.contains("domain = ebpf")
             || lower_acc.contains("domain=ebpf")
+            || lower_acc.contains("domain: ebpf")
             || lower_acc.contains("domain = xdp")
             || lower_acc.contains("domain=xdp")
+            || lower_acc.contains("domain: xdp")
         {
             return Some("head-004");
         }
 
-        if lower_acc.contains("head-005")
+        if lower_acc.contains("council 005")
+            || lower_acc.contains("council: 005")
+            || lower_acc.contains("head-005")
             || lower_acc.contains("head_005")
             || lower_acc.contains("data-clickhouse-mergetree")
             || lower_acc.contains("head=005")
             || lower_acc.contains("head = 005")
             || lower_acc.contains("domain = clickhouse")
             || lower_acc.contains("domain=clickhouse")
+            || lower_acc.contains("domain: clickhouse")
             || lower_acc.contains("domain = mergetree")
             || lower_acc.contains("domain=mergetree")
+            || lower_acc.contains("domain: mergetree")
+            || lower_acc.contains("domain: columnar")
+            || lower_acc.contains("domain: data engineering")
         {
             return Some("head-005");
         }
 
-        if lower_acc.contains("head-006")
+        if lower_acc.contains("council 006")
+            || lower_acc.contains("council: 006")
+            || lower_acc.contains("head-006")
             || lower_acc.contains("head_006")
             || lower_acc.contains("algorithms-formal-logic")
             || lower_acc.contains("head=006")
             || lower_acc.contains("head = 006")
             || lower_acc.contains("domain = formal-logic")
             || lower_acc.contains("domain=formal-logic")
+            || lower_acc.contains("domain: formal logic")
             || lower_acc.contains("domain = smt")
             || lower_acc.contains("domain=smt")
+            || lower_acc.contains("domain: smt")
+            || lower_acc.contains("domain: algorithmic")
         {
             return Some("head-006");
         }
 
-        if lower_acc.contains("head-007")
+        if lower_acc.contains("council 007")
+            || lower_acc.contains("council: 007")
+            || lower_acc.contains("head-007")
             || lower_acc.contains("head_007")
             || lower_acc.contains("devops-k8s-controller")
             || lower_acc.contains("head=007")
             || lower_acc.contains("head = 007")
             || lower_acc.contains("domain = k8s")
             || lower_acc.contains("domain=k8s")
+            || lower_acc.contains("domain: k8s")
             || lower_acc.contains("domain = controller")
             || lower_acc.contains("domain=controller")
+            || lower_acc.contains("domain: devops")
+            || lower_acc.contains("domain: cloud native")
         {
             return Some("head-007");
         }
 
-        if lower_acc.contains("head-008")
+        if lower_acc.contains("council 008")
+            || lower_acc.contains("council: 008")
+            || lower_acc.contains("head-008")
             || lower_acc.contains("head_008")
             || lower_acc.contains("consensus-raft-paxos")
             || lower_acc.contains("head=008")
             || lower_acc.contains("head = 008")
             || lower_acc.contains("domain = consensus")
             || lower_acc.contains("domain=consensus")
+            || lower_acc.contains("domain: consensus")
             || lower_acc.contains("domain = raft")
             || lower_acc.contains("domain=raft")
+            || lower_acc.contains("domain: raft")
         {
             return Some("head-008");
         }
 
-        if lower_acc.contains("head-009")
+        if lower_acc.contains("council 009")
+            || lower_acc.contains("council: 009")
+            || lower_acc.contains("head-009")
             || lower_acc.contains("head_009")
             || lower_acc.contains("vector-simd-avx512")
             || lower_acc.contains("head=009")
             || lower_acc.contains("head = 009")
             || lower_acc.contains("domain = simd")
             || lower_acc.contains("domain=simd")
+            || lower_acc.contains("domain: simd")
             || lower_acc.contains("domain = avx")
             || lower_acc.contains("domain=avx")
+            || lower_acc.contains("domain: avx")
+            || lower_acc.contains("domain: vector")
         {
             return Some("head-009");
         }
 
-        if lower_acc.contains("head-010")
+        if lower_acc.contains("council 000")
+            || lower_acc.contains("council: 000")
+            || lower_acc.contains("head-000")
+            || lower_acc.contains("head_000")
+            || lower_acc.contains("sovereign-chair")
+            || lower_acc.contains("head=000")
+            || lower_acc.contains("head = 000")
+        {
+            return Some("head-000");
+        }
+
+        if lower_acc.contains("council 010")
+            || lower_acc.contains("council: 010")
+            || lower_acc.contains("head-010")
             || lower_acc.contains("head_010")
             || lower_acc.contains("wasm-wasi-sandboxing")
             || lower_acc.contains("head=010")
             || lower_acc.contains("head = 010")
             || lower_acc.contains("domain = wasm")
             || lower_acc.contains("domain=wasm")
+            || lower_acc.contains("domain: wasm")
             || lower_acc.contains("domain = wasi")
             || lower_acc.contains("domain=wasi")
+            || lower_acc.contains("domain: wasi")
+            || lower_acc.contains("domain: sandboxing")
         {
             return Some("head-010");
         }
 
-        // --- HYDRA Fallback Safety Clutch ONLY (if neural speaker failed to emit a directive) ---
-        if lower_p.contains("axum")
-            || lower_p.contains("tokio")
-            || lower_p.contains("tower")
-            || lower_p.contains("ndjson")
-            || lower_p.contains("sse")
-            || lower_p.contains("microservice")
-        {
-            return Some("head-002");
-        }
-
-        if lower_p.contains("react")
-            || lower_p.contains("server component")
-            || lower_p.contains("rsc")
-            || lower_p.contains("useoptimistic")
-            || lower_p.contains("useactionstate")
-            || lower_p.contains("suspense")
-        {
-            return Some("head-003");
-        }
-
-        if lower_p.contains("ebpf")
-            || lower_p.contains("xdp")
-            || lower_p.contains("aya")
-            || lower_p.contains("aya-bpf")
-            || lower_p.contains("kprobe")
-            || lower_p.contains("kretprobe")
-            || lower_p.contains("bpf")
-        {
-            return Some("head-004");
-        }
-
-        if lower_p.contains("clickhouse")
-            || lower_p.contains("mergetree")
-            || lower_p.contains("replacingmergetree")
-            || lower_p.contains("aggregatingmergetree")
-            || lower_p.contains("columnar")
-        {
-            return Some("head-005");
-        }
-
-        if lower_p.contains("wasi")
-            || lower_p.contains("wasmtime")
-            || lower_p.contains("wasm")
-            || lower_p.contains("wit_bindgen")
-            || lower_p.contains("component model")
-        {
-            return Some("head-010");
-        }
-
-        if lower_p.contains("segment tree")
-            || lower_p.contains("lazy propagation")
-            || lower_p.contains("z3")
-            || lower_p.contains("formal invariant")
-            || lower_p.contains(" smt")
-            || lower_p.contains("smt ")
-            || lower_p.contains("algorithm")
-            || lower_p.contains("dynamic programming")
-            || lower_p.contains("logic")
-            || lower_p.contains("python")
-        {
-            return Some("head-006");
-        }
-
-        if lower_p.contains("kubernetes")
-            || lower_p.contains("k8s")
-            || lower_p.contains("kube-rs")
-            || lower_p.contains("crd operator")
-            || lower_p.contains("admission review")
-            || lower_p.contains("admission webhook")
-        {
-            return Some("head-007");
-        }
-
-        if lower_p.contains("raft")
-            || lower_p.contains("paxos")
-            || lower_p.contains("appendentries")
-            || lower_p.contains("leader lease")
-            || lower_p.contains("quorum")
-        {
-            return Some("head-008");
-        }
-
-        if lower_p.contains("avx2")
-            || lower_p.contains("avx-512")
-            || lower_p.contains("avx512")
-            || lower_p.contains("simd")
-            || lower_p.contains("_mm256")
-            || lower_p.contains("fma")
-        {
-            return Some("head-009");
-        }
-
-        if lower_p.contains("atomic")
-            || lower_p.contains("lock-free")
-            || lower_p.contains("lockfree")
-            || lower_p.contains("ring buffer")
-            || lower_p.contains("seqlock")
-            || lower_p.contains("spsc")
-            || lower_p.contains("mpmc")
-            || lower_p.contains("posix")
-            || lower_p.contains("io_uring")
-            || lower_p.contains("epoll")
-            || lower_p.contains("zig")
-            || lower_p.contains("concurrency")
-            || lower_p.contains("mutex")
-            || lower_p.contains("spinlock")
-            || lower_p.contains("in c")
-            || lower_p.contains("c code")
-            || lower_p.ends_with(" in c")
-        {
-            return Some("hydra-kernel");
-        }
-
-        if lower_p.contains("sql") || lower_p.contains("postgres") {
-            return Some("head-005");
-        }
-
-        if lower_p.contains("rust") {
-            return Some("head-002");
-        }
-
-        return None;
-    }
-
-    // --- FIN Council Neural Directives ---
-    // 1. Direct explicit model identifiers
-    if lower_acc.contains("fin-sql") || lower_acc.contains("fin_sql") {
-        return Some("fin-sql");
-    }
-    if lower_acc.contains("fin-raft") || lower_acc.contains("fin_raft") {
-        return Some("fin-raft");
-    }
-    if lower_acc.contains("fin-concurrency") || lower_acc.contains("fin_concurrency") {
-        return Some("fin-concurrency");
-    }
-    if lower_acc.contains("fin-kernel") || lower_acc.contains("fin_kernel") {
-        return Some("fin-kernel");
-    }
-
-    // 2. Directive route/domain indicators
-    if lower_acc.contains("route = sql")
-        || lower_acc.contains("route=sql")
-        || lower_acc.contains("domain = query")
-        || lower_acc.contains("domain=query")
-        || lower_acc.contains("domain = database")
-        || lower_acc.contains("domain=database")
-    {
-        return Some("fin-sql");
-    }
-
-    if lower_acc.contains("route = raft")
-        || lower_acc.contains("route=raft")
-        || lower_acc.contains("route = consensus")
-        || lower_acc.contains("route=consensus")
-        || lower_acc.contains("domain = replication")
-        || lower_acc.contains("domain=replication")
-        || lower_acc.contains("domain = cluster")
-        || lower_acc.contains("domain=cluster")
-    {
-        return Some("fin-raft");
-    }
-
-    if lower_acc.contains("route = concurrency")
-        || lower_acc.contains("route=concurrency")
-        || lower_acc.contains("route = lockfree")
-        || lower_acc.contains("route = lock-free")
-        || lower_acc.contains("route = atomic")
-        || lower_acc.contains("domain = circular_buffer")
-        || lower_acc.contains("domain=circular_buffer")
-        || lower_acc.contains("domain = ring_buffer")
-        || lower_acc.contains("domain=ring_buffer")
-        || lower_acc.contains("domain = lockfree")
-        || lower_acc.contains("domain = lock-free")
-        || lower_acc.contains("domain = atomic")
-        || lower_acc.contains("domain = mpmc")
-        || lower_acc.contains("domain = queue")
-    {
-        return Some("fin-concurrency");
-    }
-
-    if lower_acc.contains("route = kernel")
-        || lower_acc.contains("route=kernel")
-        || lower_acc.contains("route = posix")
-        || lower_acc.contains("route=posix")
-        || lower_acc.contains("route = memory")
-        || lower_acc.contains("route=memory")
-        || lower_acc.contains("domain = io_uring")
-        || lower_acc.contains("domain=io_uring")
-        || lower_acc.contains("domain = epoll")
-        || lower_acc.contains("domain=epoll")
-    {
-        if lower_p.contains("atomic")
-            || lower_p.contains("ring buffer")
-            || lower_p.contains("circular buffer")
-            || lower_p.contains("lock-free")
-            || lower_p.contains("lockfree")
-            || lower_p.contains("spinlock")
-            || lower_p.contains("seqlock")
-            || lower_p.contains("mpmc")
-        {
-            return Some("fin-concurrency");
-        }
-        return Some("fin-kernel");
-    }
-
-    // 3. Fallback based on user prompt domain keywords (Safety Net)
-    if lower_p.contains("sql")
-        || lower_p.contains("postgres")
-        || lower_p.contains("clickhouse")
-        || lower_p.contains("duckdb")
-        || lower_p.contains("sqlite")
-        || lower_p.contains("jsonb")
-        || lower_p.contains("transpile")
-    {
-        return Some("fin-sql");
-    }
-
-    if lower_p.contains("raft")
-        || lower_p.contains("consensus")
-        || lower_p.contains("appendentries")
-        || lower_p.contains("leader election")
-        || lower_p.contains("split-vote")
-        || lower_p.contains("replication")
-    {
-        return Some("fin-raft");
-    }
-
-    if lower_p.contains("ring buffer")
-        || lower_p.contains("circular buffer")
-        || lower_p.contains("concurrency")
-        || lower_p.contains("lock-free")
-        || lower_p.contains("lockfree")
-        || lower_p.contains("mpmc")
-        || lower_p.contains("seqlock")
-        || lower_p.contains("chase-lev")
-        || lower_p.contains("atomic")
-        || lower_p.contains("spinlock")
-    {
-        return Some("fin-concurrency");
-    }
-
-    if lower_p.contains("kernel")
-        || lower_p.contains("io_uring")
-        || lower_p.contains("epoll")
-        || lower_p.contains("posix")
-        || lower_p.contains("tcp")
-        || lower_p.contains("socket")
-        || lower_p.contains("syscall")
-    {
-        return Some("fin-kernel");
-    }
-
-    // 4. Default fallback specialist
-    Some("fin-kernel")
+    // Pure dynamic neural triage: if no specialist head was explicitly delegated,
+    // execute directly as Polymath Synthesis (no hardcoded prompt keyword shortcuts).
+    None
 }
 
-fn detect_fin_specialist(accumulated: &str, prompt: &str) -> Option<&'static str> {
-    detect_council_specialist(accumulated, prompt, false)
-}
 
 fn print_council_heads_table(heads_dir: &std::path::Path) {
     println!("\n========================================================================================");
@@ -809,6 +491,7 @@ fn print_council_heads_table(heads_dir: &std::path::Path) {
     println!("----------------------------------------------------------------------------------------");
     
     let council_meta = [
+        ("000", "head-000-sovereign-chair", "Meta-Coordination & Triage"),
         ("001", "head-001-systems-atomic-concurrency", "Systems & Concurrency"),
         ("002", "head-002-backend-axum-tokio", "Backend Microservices"),
         ("003", "head-003-frontend-react19-rsc", "Full-Stack Web (RSC)"),
@@ -827,7 +510,17 @@ fn print_council_heads_table(heads_dir: &std::path::Path) {
     for (id, slug, pillar) in &council_meta {
         let dir = heads_dir.join(slug);
         let fallback_dir = heads_dir.join(format!("head-{id}"));
-        let target_p = if dir.exists() { dir } else { fallback_dir };
+        let hydra_dir = heads_dir.join("hydra").join(slug);
+        let hydra_fallback = heads_dir.join("hydra").join(format!("head-{id}"));
+        let target_p = if dir.exists() {
+            dir
+        } else if fallback_dir.exists() {
+            fallback_dir
+        } else if hydra_dir.exists() {
+            hydra_dir
+        } else {
+            hydra_fallback
+        };
         
         let size_mb = if target_p.exists() {
             let bytes: u64 = std::fs::read_dir(&target_p)
@@ -899,10 +592,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|hydra <prompt>|fin <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|hydra <prompt>|council [ls|inspect]|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
-  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, tiger, cheetah, fox, rabbit, hydra, hydra-kernel, fin, all)\n\
+  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, tiger, cheetah, fox, rabbit, hydra, hydra-kernel, all)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
@@ -913,12 +606,11 @@ Commands:\n\
   cheetah <prompt> Run local in-process Cheetah 1.5B sub-20ms sovereign code sprinter\n\
   fox <prompt>    Run local in-process Fox 3.0B sovereign articulate mentor & interactive rubber duck\n\
   rabbit <prompt> Run local in-process Rabbit 3.0B sovereign deep thinker & root-cause detective (<think> CoT)\n\
-  hydra <prompt>  Run local in-process Hydra Sovereign 180M Council Fleet & hot-swappable heads\n\
+  hydra <prompt>  Run local in-process Hydra Sovereign Council Fleet & hot-swappable heads\n\
   hydra-kernel <prompt> Run local Hydra Bare-Metal POSIX & Atomic Concurrency Specialist\n\
   council [ls|update|inspect] Manage and inspect Hydra Sovereign Council heads\n\
   update         Download and install latest calibrated council heads (< 3MB SLA)\n\
   calibrate-head <head> Calibrate and compress LoRA head to < 3MB (FP8 + SVD)\n\
-  fin <prompt>    [Legacy Alias] Directs to Hydra Sovereign Council\n\
   mcp            Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
   init           Initialize configuration for coding agents (--aider, --cline, --opencode, --cursor)\n\
   undo           Rollback last applied multi-file patch (or specific patch_id)\n\
@@ -1753,14 +1445,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     if matches!(
         arg.as_deref(),
         Some(
-            "fin"
-                | "nio-fin"
-                | "fin-base"
-                | "fin-kernel"
-                | "fin-sql"
-                | "fin-concurrency"
-                | "fin-raft"
-                | "hydra"
+            "hydra"
                 | "nio-hydra"
                 | "hydra-kernel"
                 | "nio-hydra-kernel"
@@ -1768,22 +1453,12 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 | "hydra-ultra",
         )
     ) {
-        let cmd = arg.as_deref().unwrap_or("fin");
-        let is_hydra_cmd = matches!(
-            cmd,
-            "hydra" | "nio-hydra" | "hydra-kernel" | "nio-hydra-kernel" | "hydra-max" | "hydra-ultra"
-        );
+        let cmd = arg.as_deref().unwrap_or("hydra");
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
-            if is_hydra_cmd {
-                eprintln!(
-                    "Usage: nioxs hydra [--kernel|--sql|--concurrency|--raft|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
-                );
-            } else {
-                eprintln!(
-                    "Usage: nioxs fin [--kernel|--sql|--concurrency|--raft|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
-                );
-            }
+            eprintln!(
+                "Usage: nioxs hydra [--chair|--kernel|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
             return Ok(());
         }
 
@@ -1792,29 +1467,20 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let mut flow_mode = FlowMode::Token;
         let mut model_target = match cmd {
             "hydra-kernel" | "nio-hydra-kernel" => "hydra-kernel",
-            "hydra" | "nio-hydra" => "hydra",
             "hydra-max" => "hydra-max",
             "hydra-ultra" => "hydra-ultra",
-            "fin-kernel" | "nio-fin-kernel" => "fin-kernel",
-            "fin-sql" | "nio-fin-sql" => "fin-sql",
-            "fin-concurrency" | "nio-fin-concurrency" => "fin-concurrency",
-            "fin-raft" | "nio-fin-raft" => "fin-raft",
-            "fin-base" | "nio-fin-base" => "fin-base",
-            _ => "fin",
+            _ => "hydra",
         };
         let mut prompt_parts = Vec::new();
         let mut iter = raw_args.clone().into_iter();
         while let Some(a) = iter.next() {
             if a == "--kernel" {
-                model_target = if is_hydra_cmd { "hydra-kernel" } else { "fin-kernel" };
-            } else if a == "--sql" {
-                model_target = "fin-sql";
-            } else if a == "--concurrency" {
-                model_target = "fin-concurrency";
-            } else if a == "--raft" {
-                model_target = "fin-raft";
+                model_target = "hydra-kernel";
+            } else if a == "--chair" {
+                model_target = "hydra-chair";
             } else if a == "--base" {
-                model_target = if is_hydra_cmd { "hydra" } else { "fin-base" };
+                model_target = "hydra";
+
             } else if a == "-n" || a == "--max-tokens" {
                 if let Some(val) = iter.next() {
                     custom_max_tokens = val.parse::<usize>().ok();
@@ -1839,275 +1505,133 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
-            if is_hydra_cmd {
-                eprintln!(
-                    "Usage: nioxs hydra [--kernel|--sql|--concurrency|--raft|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
-                );
-            } else {
-                eprintln!(
-                    "Usage: nioxs fin [--kernel|--sql|--concurrency|--raft|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
-                );
-            }
+            eprintln!(
+                "Usage: nioxs hydra [--chair|--kernel|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
             return Ok(());
         }
         let max_tokens = custom_max_tokens.unwrap_or(4096);
         let mut flow = StreamFlow::new(flow_mode);
         flow.set_show_think_tags(true);
 
-        let is_council_speaker_session = model_target == "fin"
-            || model_target == "hydra"
+        if model_target == "hydra-chair" {
+            let base_engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)?;
+            base_engine.ensure_loaded().await?;
+            let _ = base_engine.attach_lora_head("000").await;
+            let chair_prompt = format!(
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n",
+                nioxs_engine::hydra_specialist_system("head-000")
+            );
+            flow.push("<think>\n");
+            let mut chair_rx = base_engine.generate_stream(chair_prompt, max_tokens.min(512), 0.10, 0.90).await?;
+            while let Some(chunk) = chair_rx.recv().await {
+                flow.push(&chunk);
+                if chunk.contains("</think>") {
+                    break;
+                }
+            }
+            flow.finish();
+            return Ok(());
+        }
+
+        let is_council_speaker_session = model_target == "hydra"
             || model_target == "hydra-max"
             || model_target == "hydra-ultra";
 
         if is_council_speaker_session {
-            let is_hydra = model_target != "fin";
+            let speaker_model = "hydra";
+            let speaker_system = nioxs_engine::hydra_specialist_system("head-000");
+            let is_hydra = true;
 
-            if is_hydra {
-                // Canonical Hello World Handling
-                if let Some(hw_lang) = detect_hello_world(&prompt) {
-                    let (think_text, badge, code_lang, code_body) = canonical_hello_world(hw_lang);
-                    flow.push(think_text);
-                    flow.push(badge);
-                    let code_fence = format!("```{code_lang}\n");
-                    flow.push(&code_fence);
-                    for line in code_body.lines() {
-                        flow.push(&format!("{line}\n"));
-                        tokio::time::sleep(tokio::time::Duration::from_millis(12)).await;
-                    }
-                    flow.push("```\n");
-                    flow.finish();
-                    return Ok(());
-                }
-
-                let specialist_target = detect_council_specialist("", &prompt, true);
-                if let Some(specialist) = specialist_target {
-                    let think_text = match specialist {
-                        "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" | "head-001-systems-atomic-concurrency" => {
-                            "<think>\n1. Domain: Systems, Kernel & Atomic Concurrency.\n2. Invariant: Acquire/Release memory ordering, cacheline-aligned (align(64)), zero-branch mask.\n3. Delegate: Hydra Head #001 (Bare-Metal POSIX, Concurrency & Atomic Memory Specialist).\n</think>\n\n"
-                        }
-                        "002" | "head-002" | "head-002-backend-axum-tokio" => {
-                            "<think>\n1. Domain: Backend & Cloud Microservices.\n2. Invariant: Async Tokio runtime, zero-copy streaming, backpressure.\n3. Delegate: Hydra Head #002 (High-Throughput Rust Axum & Tokio Microservices Specialist).\n</think>\n\n"
-                        }
-                        "003" | "head-003" | "head-003-frontend-react19-rsc" => {
-                            "<think>\n1. Domain: Full-Stack Web & Modern Frontend.\n2. Invariant: React 19 RSC streaming, useOptimistic rollback safety, Suspense boundary isolation.\n3. Delegate: Hydra Head #003 (React 19 RSC & Streaming SSR Specialist).\n</think>\n\n"
-                        }
-                        "004" | "head-004" | "head-004-kernel-ebpf-xdp" => {
-                            "<think>\n1. Domain: Systems, Kernel & Concurrency.\n2. Invariant: eBPF verifier bounds proof, zero-copy packet cursor (data..data_end), XDP line-rate filtering.\n3. Delegate: Hydra Head #004 (Linux Kernel eBPF & XDP Network Bypass Specialist).\n</think>\n\n"
-                        }
-                        "005" | "head-005" | "head-005-data-clickhouse-mergetree" => {
-                            "<think>\n1. Domain: Data Engineering & Columnar Analytics.\n2. Invariant: ReplacingMergeTree deduplication versioning, zero-copy materialized view projection.\n3. Delegate: Hydra Head #005 (ClickHouse MergeTree Analytics Specialist).\n</think>\n\n"
-                        }
-                        "006" | "head-006" | "head-006-algorithms-formal-logic" => {
-                            "<think>\n1. Domain: Algorithmic Mastery & Formal Logic.\n2. Invariant: Lazy segment tree pushdown idempotence, Z3 SMT inductive safety proof.\n3. Delegate: Hydra Head #006 (Dynamic Programming & Formal SMT Invariant Specialist).\n</think>\n\n"
-                        }
-                        "007" | "head-007" | "head-007-devops-k8s-controller" => {
-                            "<think>\n1. Domain: DevOps, SRE & Cloud Native.\n2. Invariant: Kube-rs level-triggered reconciliation, finalizer cleanup guarantee, JSON 6902 admission mutate patch.\n3. Delegate: Hydra Head #007 (Kubernetes CRD Operator & Kube-rs Controller Specialist).\n</think>\n\n"
-                        }
-                        "008" | "head-008" | "head-008-consensus-raft-paxos" => {
-                            "<think>\n1. Domain: Distributed Systems & Consensus.\n2. Invariant: Raft AppendEntries monotonic index advance, leader lease monotonic clock bound, split-brain immunity.\n3. Delegate: Hydra Head #008 (Distributed Consensus & Raft State Machine Specialist).\n</think>\n\n"
-                        }
-                        "009" | "head-009" | "head-009-vector-simd-avx512" => {
-                            "<think>\n1. Domain: High-Performance Vector SIMD Acceleration.\n2. Invariant: Unrolled 8-way _mm256_fmadd_ps vector dot kernel, 32-byte alignment, FP8 LUT gather throughput.\n3. Delegate: Hydra Head #009 (Hardware Vector SIMD AVX2/AVX-512 Specialist).\n</think>\n\n"
-                        }
-                        "010" | "head-010" | "head-010-wasm-wasi-sandboxing" => {
-                            "<think>\n1. Domain: Zero-Trust WebAssembly & Sandboxing.\n2. Invariant: WASI 0.2 WIT component contract, Wasmtime epoch fuel limiter, 64MB memory strict boundary.\n3. Delegate: Hydra Head #010 (WebAssembly Component Model & WASI 0.2 Sandbox Specialist).\n</think>\n\n"
-                        }
-                        _ => {
-                            "<think>\n1. Domain: Systems Engineering.\n2. Invariant: Direct specialist delegation.\n3. Delegate: Hydra Sovereign Specialist.\n</think>\n\n"
-                        }
-                    };
-                    flow.push(think_text);
-
-                    let badge = format_hydra_directive(specialist, None);
-                    flow.push(&badge);
-
-                    let lang = detect_target_code_language(&prompt, specialist);
-                    let code_fence = format!("```{lang}\n");
-                    flow.push(&code_fence);
-
-                    let base_engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)?;
-                    base_engine.ensure_loaded().await?;
-                    let t_swap = std::time::Instant::now();
-                    let head_attached = base_engine.attach_lora_head(specialist).await.is_ok();
-                    let swap_ms = t_swap.elapsed().as_secs_f64() * 1000.0;
-                    if head_attached && std::env::var_os("NIOXS_DEBUG").is_some() {
-                        eprintln!("[nioxs-hydra] Hot-swapped to Head '{specialist}' in {swap_ms:.2}ms (Base Anchor resident in RAM)");
-                    }
-
-                    let specialist_prompt = format!(
-                        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n{code_fence}",
-                        nioxs_engine::hydra_specialist_system(specialist)
-                    );
-                    let mut spec_rx = base_engine
-                        .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
-                        .await?;
-                    while let Some(chunk) = spec_rx.recv().await {
-                        flow.push(&chunk);
-                    }
-                    flow.finish();
-                    return Ok(());
-                } else {
-                    // Dynamic Polymath & Greeting generation directly from Hydra 0.5B Sovereign Anchor!
-                    let is_meta = is_greeting_or_meta(&prompt);
-                    if is_meta {
-                        flow.push("<think>\n1. Invariant: User greeting & identity inquiry.\n2. Verification: Direct Sovereign Council greeting synthesis.\n</think>");
-
-                        let greeting_body = synthesize_dynamic_council_greeting(&prompt);
-                        for word in greeting_body.split_inclusive(' ') {
-                            flow.push(word);
-                            tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
-                        }
-                        flow.push("\n");
-                        flow.finish();
-                        return Ok(());
-                    }
-
-                    // Polymath / General Technical Inquiry
-                    flow.push("<think>\n1. Domain: Systems & Technology Polymath.\n2. Invariant: Neural polymath answer synthesis.\n</think>\n\n");
-                    flow.push("Council: Polymath\n\n");
-
-                    // Delegate to Polymath Engine
-                    let polymath_engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)
-                        .or_else(|_| nioxs_engine::AstEngine::for_model_with_device("manta", device_pref))?;
-
-                    let lower_p = prompt.to_ascii_lowercase();
-                    let is_code_request = lower_p.contains("write")
-                        || lower_p.contains("code")
-                        || lower_p.contains("program")
-                        || lower_p.contains("function")
-                        || lower_p.contains("fn ")
-                        || lower_p.contains("func ")
-                        || lower_p.contains("impl")
-                        || lower_p.contains("implement")
-                        || lower_p.contains("create")
-                        || lower_p.contains("script");
-
-                    if is_code_request {
-                        let lang = detect_target_code_language(&prompt, "polymath");
-                        let code_fence = format!("```{lang}\n");
-                        flow.push(&code_fence);
-                        let polymath_prompt = format!(
-                            "<|im_start|>system\nYou are Hydra Polymath. Output pure, clean, compilable code only. Do not output conversational filler or repetition.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n{code_fence}"
-                        );
-                        let mut poly_rx = polymath_engine
-                            .generate_stream_with_policy(
-                                polymath_prompt,
-                                max_tokens,
-                                0.20,
-                                0.85,
-                                Some(1.20),
-                                Some(128),
-                                None,
-                            )
-                            .await?;
-                        while let Some(chunk) = poly_rx.recv().await {
-                            flow.push(&chunk);
-                        }
-                    } else {
-                        let polymath_prompt = format!(
-                            "<|im_start|>system\nYou are Hydra Polymath. Answer concisely, accurately, and directly.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                        );
-                        let mut poly_rx = polymath_engine
-                            .generate_stream_with_policy(
-                                polymath_prompt,
-                                max_tokens,
-                                0.20,
-                                0.85,
-                                Some(1.20),
-                                Some(128),
-                                None,
-                            )
-                            .await?;
-                        while let Some(chunk) = poly_rx.recv().await {
-                            flow.push(&chunk);
-                        }
-                    }
-                    flow.finish();
-                    return Ok(());
-                }
-            }
-
-            let speaker_model = if is_hydra { "hydra" } else { "fin-base" };
-            let speaker_system = if is_hydra {
-                nioxs_engine::hydra_system()
-            } else {
-                nioxs_engine::fin_system()
-            };
-
-            // Step 1: Intelligent Speaker Triage Pass via the 0.5B / 180M Base Anchor
+            // Step 1: Intelligent Speaker Triage Pass via the 180M Base Anchor
             let base_engine = nioxs_engine::AstEngine::for_model_with_device(speaker_model, device_pref)?;
-            let formatted_prompt = if is_hydra {
-                format!(
-                    "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n1. Domain: "
-                )
-            } else {
-                format!(
-                    "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                )
-            };
-            let mut rx = base_engine
-                .generate_stream(formatted_prompt, 256, 0.20, 0.85)
-                .await?;
-
+            
+            // Fast-path: If prompt explicitly targets head or domain is unambiguous, skip 256-token triage pass!
+            let mut specialist_opt = detect_council_specialist("", &prompt, is_hydra);
             let mut accumulated = String::new();
-            let mut council_buffer = String::new();
-            let mut in_council_tag = false;
-            let mut specialist_opt = None;
 
-            if is_hydra {
-                flow.push("<think>\n1. Domain: ");
-            }
-
-            while let Some(chunk) = rx.recv().await {
-                accumulated.push_str(&chunk);
-
-                // Early exit on degenerate token stream (prevent garbage clobbering)
-                if is_degenerate(&accumulated) {
-                    accumulated.clear();
-                    break;
+            if specialist_opt.is_none() {
+                base_engine.ensure_loaded().await?;
+                if is_hydra {
+                    let _ = base_engine.attach_lora_head("000").await;
                 }
-
-                if !in_council_tag {
-                    if let Some(pos) = chunk.find("<council>") {
-                        if is_hydra {
-                            flow.push(&chunk[..pos]);
-                        }
-                        council_buffer.push_str(&chunk[pos..]);
-                        in_council_tag = true;
-                    } else if let Some(pos) = chunk.find("@council") {
-                        if is_hydra {
-                            flow.push(&chunk[..pos]);
-                        }
-                        council_buffer.push_str(&chunk[pos..]);
-                        in_council_tag = true;
-                    } else if is_hydra {
-                        flow.push(&chunk);
-                    }
+                let formatted_prompt = if is_hydra {
+                    format!(
+                        "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n"
+                    )
                 } else {
-                    council_buffer.push_str(&chunk);
+                    format!(
+                        "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                    )
+                };
+                let mut rx = base_engine
+                    .generate_stream(formatted_prompt, 256, 0.10, 0.90)
+                    .await?;
+
+                let mut council_buffer = String::new();
+                let mut in_council_tag = false;
+
+                if is_hydra {
+                    flow.push("<think>\n");
                 }
 
-                if in_council_tag && council_buffer.contains(')') {
-                    if let Some(start) = council_buffer.find("@council") {
-                        if let Some(_end) = council_buffer[start..].find(')') {
-                            specialist_opt = detect_council_specialist(&accumulated, &prompt, is_hydra);
+                while let Some(chunk) = rx.recv().await {
+                    accumulated.push_str(&chunk);
+
+                    // Early exit on degenerate token stream (prevent garbage clobbering)
+                    if is_degenerate(&accumulated) {
+                        accumulated.clear();
+                        break;
+                    }
+
+                    if is_hydra {
+                        flow.push(&chunk);
+                        if chunk.contains("</think>") || accumulated.contains("</think>") {
+                            specialist_opt = detect_council_specialist(&accumulated, &prompt, true);
                             break;
                         }
+                    } else {
+                        if !in_council_tag {
+                            if let Some(pos) = chunk.find("<council>") {
+                                council_buffer.push_str(&chunk[pos..]);
+                                in_council_tag = true;
+                            } else if let Some(pos) = chunk.find("@council") {
+                                council_buffer.push_str(&chunk[pos..]);
+                                in_council_tag = true;
+                            }
+                        } else {
+                            council_buffer.push_str(&chunk);
+                        }
+
+                        if in_council_tag && council_buffer.contains(')') {
+                            if let Some(start) = council_buffer.find("@council") {
+                                if let Some(_end) = council_buffer[start..].find(')') {
+                                    specialist_opt = detect_council_specialist(&accumulated, &prompt, is_hydra);
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
-            }
 
-            // Fallback safety clutch: If neural speaker failed to emit directive, fallback to keyword detection
-            if specialist_opt.is_none() {
-                specialist_opt = detect_council_specialist(&accumulated, &prompt, is_hydra);
+                // Fallback safety clutch: If neural speaker failed to emit directive, fallback to keyword detection
+                if specialist_opt.is_none() {
+                    specialist_opt = detect_council_specialist(&accumulated, &prompt, is_hydra);
+                }
+                drop(rx);
+                flow.close_think();
             }
 
             // Step 2: Automatic In-Flight Hand-Off to Specialist (or Direct Polymath Execution)
             if let Some(specialist) = specialist_opt {
-                drop(rx);
-                flow.close_think();
 
                 if is_hydra {
+                    let specialist = if !is_code_request(&prompt) {
+                        "head-direct"
+                    } else {
+                        specialist
+                    };
+
                     let raw_domain = if accumulated.contains("domain=") || accumulated.contains("domain =") {
                         let dom_start = accumulated.find("domain").unwrap();
                         let rest = &accumulated[dom_start..];
@@ -2120,11 +1644,6 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     let badge = format_hydra_directive(specialist, raw_domain);
                     flow.push(&badge);
 
-                    // Auto Code Priming: Prime the assistant turn with code fence to force clean compilable code
-                    let lang = detect_target_code_language(&prompt, specialist);
-                    let code_fence = format!("```{lang}\n");
-                    flow.push(&code_fence);
-
                     // NATIVE IN-PROCESS LORA HEAD HOT-SWAP (< 1ms switch)
                     // The base anchor (0.5B or 180M) stays resident in RAM!
                     let t_swap = std::time::Instant::now();
@@ -2134,6 +1653,15 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         eprintln!("[nioxs-hydra] Hot-swapped to Head '{specialist}' in {swap_ms:.2}ms (Base Anchor resident in RAM)");
                     }
 
+                    let code_fence = if !is_code_request(&prompt) {
+                        String::new()
+                    } else {
+                        let lang = detect_target_code_language(&prompt, specialist);
+                        let fence = format!("```{lang}\n");
+                        flow.push(&fence);
+                        fence
+                    };
+
                     let specialist_prompt = format!(
                         "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n{code_fence}",
                         nioxs_engine::hydra_specialist_system(specialist)
@@ -2141,8 +1669,17 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     let mut spec_rx = base_engine
                         .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
                         .await?;
+                    let mut spec_output = String::new();
+                    let mut chunk_count = 0;
                     while let Some(chunk) = spec_rx.recv().await {
-                        flow.push(&chunk);
+                        if !is_degenerate(&chunk) {
+                            chunk_count += 1;
+                            spec_output.push_str(&chunk);
+                            flow.push(&chunk);
+                        }
+                    }
+                    if chunk_count == 0 || is_degenerate(&spec_output) {
+                        fallback_to_cheetah_or_rabbit(&prompt, max_tokens, device_pref, &mut flow).await?;
                     }
                 } else {
                     let directive_rendered = if accumulated.contains("@council") {
@@ -2156,7 +1693,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                             format_council_directive(raw_directive)
                         }
                     } else {
-                        format_synthetic_deliberation(specialist, is_hydra)
+                        format_council_directive(&format!("@council(route = {specialist})"))
                     };
                     flow.push(&directive_rendered);
 
@@ -2165,7 +1702,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     let specialist_engine = nioxs_engine::AstEngine::for_model_with_device(specialist, device_pref)?;
                     let specialist_prompt = format!(
                         "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
-                        nioxs_engine::fin_specialist_system(specialist)
+                        nioxs_engine::hydra_specialist_system(specialist)
                     );
                     let mut spec_rx = specialist_engine
                         .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
@@ -2177,59 +1714,42 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             } else {
                 // Direct polymath execution by the base anchor!
                 flow.close_think();
-                if is_hydra {
-                    flow.push("Council: Direct Polymath Synthesis\n\n");
-                    let polymath_content = if let Some(think_end) = accumulated.find("</think>") {
-                        accumulated[think_end + "</think>".len()..].trim_start()
-                    } else {
-                        &accumulated
-                    };
-                    let clean_content = if let Some(c_end) = polymath_content.find("</council>") {
-                        polymath_content[c_end + "</council>".len()..].trim_start()
-                    } else {
-                        polymath_content
-                    };
-                    if !clean_content.is_empty() {
-                        flow.push(clean_content);
-                    }
-                } else if !accumulated.is_empty() && !is_degenerate(&accumulated) {
-                    flow.push(&accumulated);
-                }
-                while let Some(chunk) = rx.recv().await {
+                flow.push("Council: Direct Polymath Synthesis\n\n");
+                // Attach Head Direct (Polymath Synthesis Specialist) LoRA
+                let _ = base_engine.attach_lora_head("head-direct").await;
+                let polymath_prompt = format!(
+                    "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+                    nioxs_engine::hydra_specialist_system("head-direct")
+                );
+                let mut poly_rx = base_engine
+                    .generate_stream(polymath_prompt, max_tokens, 0.20, 0.85)
+                    .await?;
+                let mut poly_output = String::new();
+                let mut chunk_count = 0;
+                while let Some(chunk) = poly_rx.recv().await {
                     if !is_degenerate(&chunk) {
+                        chunk_count += 1;
+                        poly_output.push_str(&chunk);
                         flow.push(&chunk);
                     }
                 }
+                if chunk_count == 0 || is_degenerate(&poly_output) {
+                    fallback_to_cheetah_or_rabbit(&prompt, max_tokens, device_pref, &mut flow).await?;
+                }
             }
         } else {
-            // Direct specialist execution (e.g. nioxs hydra --kernel or nioxs fin --kernel)
-            let is_hydra = matches!(model_target, "hydra-kernel" | "hydra-max" | "hydra-ultra")
-                || model_target.starts_with("head-");
-            if is_hydra {
-                let engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)?;
-                let _ = engine.attach_lora_head(model_target).await;
-                let system_prompt = nioxs_engine::hydra_specialist_system(model_target);
-                let formatted_prompt = format!(
-                    "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                );
-                let mut rx = engine
-                    .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
-                    .await?;
-                while let Some(chunk) = rx.recv().await {
-                    flow.push(&chunk);
-                }
-            } else {
-                let engine = nioxs_engine::AstEngine::for_model_with_device(model_target, device_pref)?;
-                let system_prompt = nioxs_engine::fin_specialist_system(model_target);
-                let formatted_prompt = format!(
-                    "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                );
-                let mut rx = engine
-                    .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
-                    .await?;
-                while let Some(chunk) = rx.recv().await {
-                    flow.push(&chunk);
-                }
+            // Direct specialist execution (e.g. nioxs hydra --kernel)
+            let engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)?;
+            let _ = engine.attach_lora_head(model_target).await;
+            let system_prompt = nioxs_engine::hydra_specialist_system(model_target);
+            let formatted_prompt = format!(
+                "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            );
+            let mut rx = engine
+                .generate_stream(formatted_prompt, max_tokens, 0.20, 0.85)
+                .await?;
+            while let Some(chunk) = rx.recv().await {
+                flow.push(&chunk);
             }
         }
 
@@ -2878,35 +2398,35 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_fin_specialist_atomic_ring_buffer() {
-        let acc = "<think>\n1. Invariant: Linearizable memory ordering\n</think>\n<council>\n@council(\nroute = memory,\ndomain = circular_buffer\n)\n</council>";
+    fn test_detect_hydra_specialist_atomic_ring_buffer() {
+        let acc = "<think>\n1. Invariant: Linearizable memory ordering\n</think>\n<council>\n@council(\nhead = 001,\ndomain = atomic\n)\n</council>";
         let prompt = "Implement an atomic ring buffer in Zig";
-        let specialist = detect_fin_specialist(acc, prompt);
-        assert_eq!(specialist, Some("fin-concurrency"));
+        let specialist = detect_council_specialist(acc, prompt, true);
+        assert_eq!(specialist, Some("head-001"));
     }
 
     #[test]
-    fn test_detect_fin_specialist_sql() {
-        let acc = "@council(route = sql, domain = query)";
-        let prompt = "Optimize this CTE query for Postgres";
-        let specialist = detect_fin_specialist(acc, prompt);
-        assert_eq!(specialist, Some("fin-sql"));
+    fn test_detect_hydra_specialist_sql() {
+        let acc = "@council(head = 005, domain = mergetree)";
+        let prompt = "Optimize this ClickHouse MergeTree query";
+        let specialist = detect_council_specialist(acc, prompt, true);
+        assert_eq!(specialist, Some("head-005"));
     }
 
     #[test]
-    fn test_detect_fin_specialist_raft() {
-        let acc = "@council(route = raft, domain = replication)";
+    fn test_detect_hydra_specialist_raft() {
+        let acc = "@council(head = 008, domain = raft)";
         let prompt = "Implement joint consensus membership change";
-        let specialist = detect_fin_specialist(acc, prompt);
-        assert_eq!(specialist, Some("fin-raft"));
+        let specialist = detect_council_specialist(acc, prompt, true);
+        assert_eq!(specialist, Some("head-008"));
     }
 
     #[test]
-    fn test_detect_fin_specialist_kernel() {
-        let acc = "@council(route = kernel, domain = io_uring)";
+    fn test_detect_hydra_specialist_kernel() {
+        let acc = "@council(head = 001, domain = posix)";
         let prompt = "Write an async submission queue poller in C";
-        let specialist = detect_fin_specialist(acc, prompt);
-        assert_eq!(specialist, Some("fin-kernel"));
+        let specialist = detect_council_specialist(acc, prompt, true);
+        assert_eq!(specialist, Some("head-001"));
     }
 
     #[test]
@@ -2914,7 +2434,7 @@ mod tests {
         let acc = "<think>\nInvariant: memory order seq_cst\n</think>\n@council(head-001-atomic-concurrency)";
         let prompt = "Write a lock-free queue in Zig";
         let specialist = detect_council_specialist(acc, prompt, true);
-        assert_eq!(specialist, Some("hydra-kernel"));
+        assert_eq!(specialist, Some("head-001"));
     }
 
     #[test]
@@ -2927,14 +2447,14 @@ mod tests {
 
     #[test]
     fn test_detect_hydra_specialist_all_heads() {
-        assert_eq!(detect_council_specialist("", "Build a React 19 RSC component with Suspense", true), Some("head-003"));
-        assert_eq!(detect_council_specialist("", "Write an eBPF XDP packet filter in Rust aya", true), Some("head-004"));
-        assert_eq!(detect_council_specialist("", "Create ClickHouse ReplacingMergeTree schema", true), Some("head-005"));
-        assert_eq!(detect_council_specialist("", "Implement lazy propagation segment tree in Rust", true), Some("head-006"));
-        assert_eq!(detect_council_specialist("", "Write a Kubernetes CRD reconciler in kube-rs", true), Some("head-007"));
-        assert_eq!(detect_council_specialist("", "Implement Raft consensus AppendEntries state machine", true), Some("head-008"));
-        assert_eq!(detect_council_specialist("", "Vectorize dot product using AVX2 SIMD intrinsics", true), Some("head-009"));
-        assert_eq!(detect_council_specialist("", "Run WASI 0.2 sandbox in Wasmtime host", true), Some("head-010"));
+        assert_eq!(detect_council_specialist("@council(head=003)", "Build a React 19 RSC component with Suspense", true), Some("head-003"));
+        assert_eq!(detect_council_specialist("@council(head=004)", "Write an eBPF XDP packet filter in Rust aya", true), Some("head-004"));
+        assert_eq!(detect_council_specialist("@council(head=005)", "Create ClickHouse ReplacingMergeTree schema", true), Some("head-005"));
+        assert_eq!(detect_council_specialist("@council(head=006)", "Implement lazy propagation segment tree in Rust", true), Some("head-006"));
+        assert_eq!(detect_council_specialist("@council(head=007)", "Write a Kubernetes CRD reconciler in kube-rs", true), Some("head-007"));
+        assert_eq!(detect_council_specialist("@council(head=008)", "Implement Raft consensus AppendEntries state machine", true), Some("head-008"));
+        assert_eq!(detect_council_specialist("@council(head=009)", "Vectorize dot product using AVX2 SIMD intrinsics", true), Some("head-009"));
+        assert_eq!(detect_council_specialist("@council(head=010)", "Run WASI 0.2 sandbox in Wasmtime host", true), Some("head-010"));
     }
 
     #[test]
@@ -2942,7 +2462,7 @@ mod tests {
         let acc = "<think>\nGeneral query, no specialist needed\n</think>\n@council(direct)";
         let prompt = "Explain the difference between Arc and Rc in Rust";
         let specialist = detect_council_specialist(acc, prompt, true);
-        assert_eq!(specialist, None);
+        assert_eq!(specialist, Some("head-direct"));
     }
 
     #[test]
@@ -2950,7 +2470,7 @@ mod tests {
         let acc = "<think>\nThinking about kernel primitives...\n</think>";
         let prompt = "Implement an atomic lock-free ring buffer in Rust";
         let specialist = detect_council_specialist(acc, prompt, true);
-        assert_eq!(specialist, Some("hydra-kernel"));
+        assert_eq!(specialist, Some("head-001"));
     }
 
     #[test]
@@ -2961,14 +2481,6 @@ mod tests {
         assert!(is_degenerate(garbage2));
         let valid = "<think>\n1. Invariant: memory order.\n</think>\n@council(head=001, domain=systems)";
         assert!(!is_degenerate(valid));
-    }
-
-    #[test]
-    fn test_is_greeting_or_meta() {
-        assert!(is_greeting_or_meta("hello"));
-        assert!(is_greeting_or_meta("hi!"));
-        assert!(is_greeting_or_meta("who are you?"));
-        assert!(!is_greeting_or_meta("write an atomic ring buffer"));
     }
 
     #[test]

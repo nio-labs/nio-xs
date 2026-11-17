@@ -1342,13 +1342,20 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
         return Some(direct.to_path_buf());
     }
 
-    // 2. Standard search directories
+    // 2. Standard search directories across tiers (Hydra, Hydra Max, Hydra Ultra)
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let mut search_dirs = Vec::new();
     if let Some(ref h) = home {
-        search_dirs.push(h.join(".nioxs").join("heads"));
+        let base = h.join(".nioxs").join("heads");
+        search_dirs.push(base.join("hydra-ultra"));
+        search_dirs.push(base.join("hydra-max"));
+        search_dirs.push(base.join("hydra"));
+        search_dirs.push(base);
         search_dirs.push(h.join("nio-labs").join("nio-xs-models").join("models").join("hydra").join("heads"));
     }
+    search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra-ultra"));
+    search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra-max"));
+    search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads"));
     search_dirs.push(PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra/heads"));
 
@@ -1356,6 +1363,12 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
     let mut candidates = Vec::new();
     candidates.push(lower.clone());
 
+    if lower == "000" || lower == "head-000" || lower.contains("chair") || lower.contains("arbiter") {
+        candidates.push("head-000".to_string());
+        candidates.push("head-000-sovereign-chair".to_string());
+        candidates.push("head-000-sovereign-chair-arbiter".to_string());
+        candidates.push("000".to_string());
+    }
     if lower == "001" || lower == "head-001" || lower == "hydra-kernel" || lower.contains("atomic") {
         candidates.push("head-001".to_string());
         candidates.push("head-001-atomic-concurrency".to_string());
@@ -1406,6 +1419,12 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
         candidates.push("head-010".to_string());
         candidates.push("head-010-wasm-wasi-sandboxing".to_string());
         candidates.push("010".to_string());
+    }
+    if lower == "direct" || lower == "head-direct" || lower.contains("polymath") {
+        candidates.push("head-direct".to_string());
+        candidates.push("head-direct-systems-technology-polymath".to_string());
+        candidates.push("head-polymath".to_string());
+        candidates.push("direct".to_string());
     }
 
     for dir in &search_dirs {

@@ -78,16 +78,15 @@ pub fn rabbit_system() -> &'static str {
     "You are Rabbit, Nio's Sovereign Deep Thinker, Architectural Reasoner, and Root-Cause Detective. You untangle convoluted bugs, concurrency deadlocks, memory leaks, and complex systems architecture. Answer the user's actual question directly and accurately. For non-trivial questions, include exactly one brief, relevant <think>...</think> block before the answer, closing with </think>. Then provide your precise diagnosis, architectural breakdown, and production-grade implementation."
 }
 
-pub fn fin_system() -> &'static str {
-    "You are Fin, Nio's Apex Systems Council & Router. Be extremely terse. Emit zero conversational filler. When given a query, issue a concise 1-2 line <think> invariant proof followed immediately by <council>@council(route=..., domain=...)</council> and stop."
-}
-
 pub fn hydra_system() -> &'static str {
-    "You are Hydra, Nio's Sovereign 180M Council Speaker & Arbiter. Be extremely terse. Emit zero conversational filler. When given a coding task, first deliberate concisely in <think>...</think>, then emit your council delegation directive <council>@council(head=..., domain=...)</council> (or @council(direct) for direct Polymath synthesis) and stop."
+    "You are Hydra Head #000: Sovereign Council Chair, Triage Arbiter & Invariant Reasoner. When given a prompt, deliberate concisely in <think> with domain classification, formal invariant proofs, and exact council delegation directive '3. Delegate: Council <ID>: <Domain>', then stop."
 }
 
 pub fn hydra_specialist_system(target: &str) -> &'static str {
     match target {
+        "head-000" | "000" | "head-000-sovereign-chair" | "head-000-sovereign-chair-arbiter" | "chair" => {
+            "You are Hydra Head #000: Sovereign Council Chair, Triage Arbiter & Invariant Reasoner. When given a prompt, deliberate concisely in <think> with domain classification, formal invariant proofs, and exact council delegation directive '3. Delegate: Council <ID>: <Domain>', then stop."
+        }
         "hydra-kernel" | "head-001" | "001" | "head-001-atomic-concurrency" | "head-001-systems-atomic-concurrency" => {
             "You are Hydra Head #001: Bare-Metal POSIX, Concurrency & Atomic Memory Specialist. Output pure, zero-allocation, compilable systems code only. Never output bullet points, numbered lists, theoretical explanations, or conversational filler."
         }
@@ -118,19 +117,13 @@ pub fn hydra_specialist_system(target: &str) -> &'static str {
         "head-010" | "010" | "head-010-wasm-wasi-sandboxing" => {
             "You are Hydra Head #010: WebAssembly Component Model & WASI 0.2 Zero-Trust Sandbox Specialist. Output pure, zero-trust, compilable WASM/WASI code and WIT definitions only. Never output bullet points, numbered lists, theoretical explanations, or conversational filler."
         }
+        "direct" | "head-direct" | "polymath" | "head-direct-systems-technology-polymath" => {
+            "You are Hydra Head: Sovereign Polymath Synthesis Specialist. Provide clear, authoritative, and concise architectural insights across software systems, runtimes, and engineering practices."
+        }
         _ => "You are Hydra Sovereign Specialist Head. Output pure, compilable production code only. Never output bullet points, numbered lists, or prose.",
     }
 }
 
-pub fn fin_specialist_system(target: &str) -> &'static str {
-    match target {
-        "fin-kernel" => "You are Fin Kernel, Nio's Bare-Metal OS & Concurrency Master. Emit zero conversational filler, zero prose, and zero explanations. Output pure, zero-allocation, compilable systems code immediately.",
-        "fin-sql" => "You are Fin SQL, Nio's Storage Engine & Query Specialist. Emit zero conversational filler, zero prose, and zero explanations. Output pure, zero-allocation, compilable database code immediately.",
-        "fin-raft" => "You are Fin Raft, Nio's Consensus & Replication Master. Emit zero conversational filler, zero prose, and zero explanations. Output pure, zero-allocation, compilable consensus code immediately.",
-        "fin-concurrency" => "You are Fin Concurrency, Nio's Lock-Free Specialist. Emit zero conversational filler, zero prose, and zero explanations. Output pure, zero-allocation, compilable lock-free code immediately.",
-        _ => "You are Fin Specialist. Emit zero conversational filler, zero prose, and zero explanations. Output pure, compilable production code immediately.",
-    }
-}
 
 pub fn skate_system() -> Result<String> {
     if let Some(path) = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE") {
@@ -596,24 +589,29 @@ fn stop_position(text: &str) -> Option<usize> {
 
 fn is_repetition_loop(tokens: &[u32]) -> bool {
     let len = tokens.len();
-    // 1-token repeat: 6 identical consecutive tokens indicate degenerate collapse
-    if len >= 6 && tokens[len - 6..].iter().all(|&t| t == tokens[len - 1]) {
+    // 1-token repeat: 4 identical consecutive tokens indicate degenerate collapse
+    if len >= 4 && tokens[len - 4..].iter().all(|&t| t == tokens[len - 1]) {
         return true;
     }
-    // 2-token cycle (e.g. A B A B A B A B) - 4 full periods
-    if len >= 8
+    // 2-token cycle (e.g. A B A B A B) - 3 full periods
+    if len >= 6
         && tokens[len - 1] == tokens[len - 3]
         && tokens[len - 3] == tokens[len - 5]
-        && tokens[len - 5] == tokens[len - 7]
         && tokens[len - 2] == tokens[len - 4]
         && tokens[len - 4] == tokens[len - 6]
-        && tokens[len - 6] == tokens[len - 8]
     {
         return true;
     }
-    // 3-token cycle (e.g. A B C A B C A B C A B C) - 4 full periods
-    if len >= 12 && (0..9).all(|i| tokens[len - 1 - i] == tokens[len - 4 - i]) {
-        return true;
+    // Multi-token cyclic n-gram detector: periods 3..=8 with 3 full periods
+    for period in 3..=8 {
+        if len >= period * 3 {
+            let p1 = &tokens[len - period..];
+            let p2 = &tokens[len - period * 2..len - period];
+            let p3 = &tokens[len - period * 3..len - period * 2];
+            if p1 == p2 && p2 == p3 {
+                return true;
+            }
+        }
     }
     false
 }
@@ -688,7 +686,6 @@ pub struct AstEngine {
     is_tiger: bool,
     is_fox: bool,
     is_rabbit: bool,
-    is_fin: bool,
     is_hydra: bool,
     device_pref: DevicePreference,
 }
@@ -731,15 +728,10 @@ impl AstEngine {
             lowered.as_str(),
             "hydra" | "nio-hydra" | "hydra-kernel" | "nio-hydra-kernel" | "hydra-max" | "hydra-ultra"
         ) || model_path.to_string_lossy().contains("hydra");
-        let is_fin = matches!(
-            lowered.as_str(),
-            "fin" | "nio-fin" | "fin-base" | "fin-kernel" | "fin-sql" | "fin-concurrency" | "fin-raft"
-        ) || model_path.to_string_lossy().contains("fin");
         let is_tiger = (matches!(lowered.as_str(), "tiger" | "nio-tiger")
             || model_path.to_string_lossy().contains("tiger"))
             && !is_rabbit
             && !is_fox
-            && !is_fin
             && !is_hydra;
         Ok(Self {
             bundle: Arc::new(Mutex::new(None)),
@@ -753,7 +745,6 @@ impl AstEngine {
             is_tiger,
             is_fox,
             is_rabbit,
-            is_fin,
             is_hydra,
             device_pref,
         })
@@ -791,9 +782,8 @@ impl AstEngine {
         let is_cheetah = p_str.contains("cheetah");
         let is_rabbit = p_str.contains("rabbit");
         let is_fox = p_str.contains("fox");
-        let is_fin = p_str.contains("fin");
         let is_hydra = p_str.contains("hydra");
-        let is_tiger = p_str.contains("tiger") && !is_rabbit && !is_fox && !is_fin && !is_hydra;
+        let is_tiger = p_str.contains("tiger") && !is_rabbit && !is_fox && !is_hydra;
         Self {
             bundle: Arc::new(Mutex::new(None)),
             model_path,
@@ -806,7 +796,6 @@ impl AstEngine {
             is_tiger,
             is_fox,
             is_rabbit,
-            is_fin,
             is_hydra,
             device_pref: DevicePreference::Auto,
         }
@@ -844,12 +833,6 @@ impl AstEngine {
             "tiger" | "nio-tiger" => "tiger",
             "fox" | "nio-fox" => "fox",
             "rabbit" | "nio-rabbit" => "rabbit",
-            "fin" | "nio-fin" => "fin",
-            "fin-base" | "nio-fin-base" => "fin-base",
-            "fin-kernel" | "nio-fin-kernel" => "fin-kernel",
-            "fin-sql" | "nio-fin-sql" => "fin-sql",
-            "fin-concurrency" | "nio-fin-concurrency" => "fin-concurrency",
-            "fin-raft" | "nio-fin-raft" => "fin-raft",
             "hydra" | "nio-hydra" => "hydra",
             "hydra-kernel" | "nio-hydra-kernel" => "hydra-kernel",
             "hydra-max" => "hydra-max",
@@ -906,53 +889,13 @@ impl AstEngine {
                 "rabbit.vmicrolm-detective.gguf",
                 "nio-rabbit.3b-q4km.gguf",
             ],
-            "fin" | "nio-fin" | "fin-base" | "nio-fin-base" | "hydra" | "nio-hydra" | "hydra-max" | "hydra-ultra" => &[
+            "hydra" | "nio-hydra" | "hydra-max" | "hydra-ultra" => &[
+                "hydra-anchor-0.5b.q4km.gguf",
                 "hydra-anchor-180m.q4km.gguf",
                 "hydra-anchor.q4km.gguf",
-                "hydra-anchor-0.5b.q4km.gguf",
-                "fin-anchor-180m.q3km.gguf",
-                "fin-anchor-180m.iq3xxs.gguf",
-                "fin-anchor-180m.q4km.gguf",
-                "fin-base.vmicrolm-reflex.gguf",
-                "fin-base.0.5b-vmicrolm-reflex.gguf",
-                "fin-base.q4km.gguf",
-                "fin-base.1.5b-q4km.gguf",
-                "fin-base.0.5b-q4km.gguf",
             ],
-            "fin-kernel" | "nio-fin-kernel" | "hydra-kernel" | "nio-hydra-kernel" => &[
+            "hydra-kernel" | "nio-hydra-kernel" => &[
                 "hydra-kernel-180m.q4km.gguf",
-                "fin-kernel-180m.q4km.gguf",
-                "fin-anchor-180m.q3km.gguf",
-                "fin-anchor-180m.iq3xxs.gguf",
-                "fin-anchor-180m.q4km.gguf",
-                "fin-kernel.vmicrolm-reflex.gguf",
-                "fin-kernel.0.5b-vmicrolm-reflex.gguf",
-                "fin-kernel.q4km.gguf",
-                "fin-kernel.1.5b-q4km.gguf",
-                "fin-kernel.0.5b-q4km.gguf",
-            ],
-            "fin-sql" | "nio-fin-sql" => &[
-                "fin-anchor-180m.q3km.gguf",
-                "fin-anchor-180m.iq3xxs.gguf",
-                "fin-anchor-180m.q4km.gguf",
-                "fin-sql.vmicrolm-reflex.gguf",
-                "fin-sql.0.5b-vmicrolm-reflex.gguf",
-                "fin-sql.q4km.gguf",
-                "fin-sql.0.5b-q4km.gguf",
-            ],
-            "fin-concurrency" | "nio-fin-concurrency" => &[
-                "fin-concurrency.vmicrolm-reflex.gguf",
-                "fin-concurrency.0.5b-vmicrolm-reflex.gguf",
-                "fin-concurrency.q4km.gguf",
-                "fin-concurrency.1.5b-q4km.gguf",
-                "fin-concurrency.0.5b-q4km.gguf",
-            ],
-            "fin-raft" | "nio-fin-raft" => &[
-                "fin-raft.vmicrolm-reflex.gguf",
-                "fin-raft.0.5b-vmicrolm-reflex.gguf",
-                "fin-raft.q4km.gguf",
-                "fin-raft.1.5b-q4km.gguf",
-                "fin-raft.0.5b-q4km.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
@@ -1269,7 +1212,6 @@ impl AstEngine {
         let is_tiger = self.is_tiger;
         let is_fox = self.is_fox;
         let is_rabbit = self.is_rabbit;
-        let is_fin = self.is_fin;
         let is_hydra = self.is_hydra;
         let policy = decoding::DecodingPolicy::for_model(
             is_skate, is_manta, is_beluga, is_blue, is_cheetah, is_tiger, is_fox, is_rabbit, is_hydra,
@@ -1377,30 +1319,6 @@ impl AstEngine {
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(resident);
                 }
-            } else if is_fin {
-                let gpu_layers = active_dev.recommended_gpu_layers(28);
-                if gpu_layers > 0 && std::env::var_os("NIOXS_LOW_RAM").is_none() {
-                    engine.set_resident_layers(gpu_layers);
-                    engine.set_rolling_window(gpu_layers.max(4));
-                } else {
-                    let default_resident = if engine.block_count <= 24 {
-                        engine.block_count
-                    } else {
-                        8
-                    };
-                    let resident = std::env::var("NIOXS_FIN_RESIDENT_LAYERS")
-                        .ok()
-                        .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(default_resident)
-                        .min(engine.block_count);
-                    let window = if resident >= engine.block_count {
-                        engine.block_count
-                    } else {
-                        layer_setting("NIOXS_FIN_ROLLING_WINDOW", 8, engine.block_count)
-                    };
-                    engine.set_resident_layers(resident);
-                    engine.set_rolling_window(window);
-                }
             }
 
             // Immediately park worker threads so nioxs sits at 0.0% CPU when idle
@@ -1473,12 +1391,6 @@ impl AstEngine {
             format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 hydra_system(),
-                raw_prompt.trim()
-            )
-        } else if self.is_fin {
-            format!(
-                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
-                fin_system(),
                 raw_prompt.trim()
             )
         } else if self.is_cheetah {
@@ -1630,8 +1542,6 @@ impl AstEngine {
             "NIOXS_CHEETAH_SPECULATION"
         } else if self.is_hydra {
             "NIOXS_HYDRA_SPECULATION"
-        } else if self.is_fin {
-            "NIOXS_FIN_SPECULATION"
         } else {
             "NIOXS_SPECULATION"
         };
@@ -1827,8 +1737,6 @@ impl AstEngine {
             std::env::var_os("NIOXS_INFERENCE_STATS").as_deref() == Some(std::ffi::OsStr::new("1"));
         let stats_model = if self.is_hydra {
             "hydra"
-        } else if self.is_fin {
-            "fin"
         } else if self.is_rabbit {
             "rabbit"
         } else if self.is_fox {
@@ -1915,10 +1823,6 @@ impl AstEngine {
                         "hydra" => Some(format!(
                             "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
                             hydra_system()
-                        )),
-                        "fin" => Some(format!(
-                            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
-                            fin_system()
                         )),
                         "cheetah" => Some(format!(
                             "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",

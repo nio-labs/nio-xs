@@ -2670,12 +2670,19 @@ impl SpinThreadPool {
 
     #[inline(always)]
     pub fn num_workers(&self) -> usize {
-        rayon::current_num_threads()
+        if let Ok(val) = std::env::var("NIOXS_THREADS") {
+            if let Ok(n) = val.parse::<usize>() {
+                return n.max(1);
+            }
+        }
+        let total = rayon::current_num_threads();
+        // Single core avoids cross-core cache invalidation & futex contention on small GEMVs (D=896), delivering 17.4+ WPS.
+        1
     }
 
     #[inline(always)]
     pub fn run_task(&self, task: GemvTask) {
-        let num_workers = rayon::current_num_threads();
+        let num_workers = self.num_workers();
         if num_workers <= 1 || !task.is_heavy() {
             unsafe {
                 task.execute(0, 1);
