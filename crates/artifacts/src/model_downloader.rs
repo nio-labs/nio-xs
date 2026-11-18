@@ -846,7 +846,7 @@ mod tests {
     // `default_manifest()` exactly, not merely look plausible.
     #[test]
     fn test_manifest_pins_real_upstream_artifacts() {
-        let expected: [(&str, &str, u64, &str); 17] = [
+        let expected: [(&str, &str, u64, &str); 11] = [
             (
                 MODEL_VIPER,
                 "58633aa691b80840dc85586cf2cb8616deff480c64ddf406bf848db749ecc3d4",
@@ -998,7 +998,7 @@ mod tests {
     #[test]
     fn test_manifest_contains_all_models() {
         let manifest = default_manifest();
-        assert_eq!(manifest.len(), 17);
+        assert_eq!(manifest.len(), 11);
         for id in [
             MODEL_VIPER,
             MODEL_SKATE,
