@@ -307,30 +307,20 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, _is_hydra: bool) -
             }
         }
 
-        // head-NNN / anchor-NNN explicit mentions
-        for id_num in 0u32..=41 {
+        // Generic head-NNN / anchor-NNN explicit numeric mentions (0..=2048)
+        for id_num in 0u32..=2048 {
             let id3 = format!("{:03}", id_num);
             if lower_acc.contains(&format!("head-{}", id3))
                 || lower_acc.contains(&format!("head={}", id3))
                 || lower_acc.contains(&format!("head = {}", id3))
+                || lower_acc.contains(&format!("anchor-{}", id3))
+                || lower_acc.contains(&format!("anchor={}", id3))
                 || lower_acc.contains(&format!("council {}", id3))
                 || lower_acc.contains(&format!("council: {}", id3))
             {
                 return Some(anchor_head_id(id_num));
             }
         }
-
-        // Legacy slug aliases (backward compat with existing tests & users)
-        if lower_acc.contains("hydra-kernel") || lower_acc.contains("head-001-atomic-concurrency") || lower_acc.contains("head-001-systems-atomic-concurrency") { return Some("head-001"); }
-        if lower_acc.contains("wasm-wasi-sandboxing") { return Some("head-010"); }
-        if lower_acc.contains("vector-simd-avx512") { return Some("head-009"); }
-        if lower_acc.contains("consensus-raft-paxos") { return Some("head-008"); }
-        if lower_acc.contains("devops-k8s-controller") { return Some("head-007"); }
-        if lower_acc.contains("algorithms-formal-logic") { return Some("head-006"); }
-        if lower_acc.contains("data-clickhouse-mergetree") { return Some("head-005"); }
-        if lower_acc.contains("kernel-ebpf-xdp") { return Some("head-004"); }
-        if lower_acc.contains("frontend-react19-rsc") { return Some("head-003"); }
-        if lower_acc.contains("backend-axum-tokio") { return Some("head-002"); }
     }
 
     // ── Layer 3: Cosine Semantic Fingerprint ──────────────────────────────────
@@ -387,6 +377,15 @@ fn get_dynamic_manifests() -> &'static [DynamicManifest] {
                     }
                     let head_id: &'static str = Box::leak(format!("head-{}", id_str).into_boxed_str());
                     let mut triggers = Vec::new();
+                    if let Some(slug) = a.get("slug").and_then(|s| s.as_str()) {
+                        let sl = slug.trim().to_ascii_lowercase();
+                        if !sl.is_empty() {
+                            triggers.push(sl.clone());
+                            if sl.starts_with("anchor-") {
+                                triggers.push(sl.trim_start_matches("anchor-").to_string());
+                            }
+                        }
+                    }
                     if let Some(trigs) = a.get("triggers").and_then(|t| t.as_array()) {
                         for t in trigs {
                             if let Some(s) = t.as_str() {
