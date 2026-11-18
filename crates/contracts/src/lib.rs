@@ -13,12 +13,6 @@ pub const MODEL_TIGER: &str = "tiger";
 pub const MODEL_CHEETAH: &str = "cheetah";
 pub const MODEL_FOX: &str = "fox";
 pub const MODEL_RABBIT: &str = "rabbit";
-pub const MODEL_FIN: &str = "fin";
-pub const MODEL_FIN_BASE: &str = "fin-base";
-pub const MODEL_FIN_KERNEL: &str = "fin-kernel";
-pub const MODEL_FIN_SQL: &str = "fin-sql";
-pub const MODEL_FIN_CONCURRENCY: &str = "fin-concurrency";
-pub const MODEL_FIN_RAFT: &str = "fin-raft";
 pub const MODEL_HYDRA: &str = "hydra";
 pub const MODEL_HYDRA_KERNEL: &str = "hydra-kernel";
 pub const MODEL_NANO: &str = "nio-nano";
@@ -43,12 +37,6 @@ pub const MODELS: &[&str] = &[
     MODEL_CHEETAH,
     MODEL_FOX,
     MODEL_RABBIT,
-    MODEL_FIN,
-    MODEL_FIN_BASE,
-    MODEL_FIN_KERNEL,
-    MODEL_FIN_SQL,
-    MODEL_FIN_CONCURRENCY,
-    MODEL_FIN_RAFT,
     MODEL_HYDRA,
     MODEL_HYDRA_KERNEL,
     MODEL_SKATE,

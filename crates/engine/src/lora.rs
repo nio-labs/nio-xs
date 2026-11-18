@@ -1360,12 +1360,14 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
         search_dirs.push(base);
         search_dirs.push(h.join(".nioxs").join("anchors"));
         search_dirs.push(h.join("nio-labs").join("nio-xs-models").join("models").join("hydra").join("heads"));
+        search_dirs.push(h.join("nio-labs").join("nio-xs-models").join("models").join("hydra").join("heads").join("hydra"));
     }
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra-ultra"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra-max"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads"));
     search_dirs.push(PathBuf::from("/root/.nioxs/anchors"));
+    search_dirs.push(PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra/heads/hydra"));
     search_dirs.push(PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra/heads"));
 
     // 3. Normalized candidate names
@@ -1374,6 +1376,11 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
 
     candidates.push(format!("anchor-{}", lower));
     candidates.push(format!("head-{}", lower));
+    if lower.starts_with("anchor-") || lower.starts_with("anchor_") {
+        candidates.push(lower.replace('_', "-"));
+        let stripped = lower.trim_start_matches("anchor-").trim_start_matches("anchor_");
+        candidates.push(stripped.to_string());
+    }
 
     if lower == "000" || lower == "head-000" || lower == "anchor-000" || lower.contains("chair") || lower.contains("arbiter") {
         candidates.push("anchor-000-chair".to_string());
