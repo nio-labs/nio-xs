@@ -199,54 +199,24 @@ fn detect_target_code_language(prompt: &str, specialist: &str) -> &'static str {
     }
 }
 
+struct DynamicManifest {
+    head_id: &'static str,
+    title: String,
+    triggers: Vec<String>,
+}
+
 fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
-    let (num, label) = match head {
-        "000" | "head-000" | "head-000-sovereign-chair" | "chair" => {
-            ("000", "The Sovereign Chair (Triage & Invariant Arbiter)")
+    let clean_id = head.trim_start_matches("head-").trim_start_matches("anchor-");
+    if clean_id == "direct" || clean_id == "polymath" {
+        return "Council Direct: Polymath Synthesis\n\n".to_string();
+    }
+    let manifests = get_dynamic_manifests();
+    for m in manifests {
+        if m.head_id == head || m.head_id.ends_with(clean_id) {
+            return format!("Council {}: {}\n\n", clean_id, m.title);
         }
-        "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" | "head-001-systems-atomic-concurrency" => {
-            ("001", "Systems & Atomic Concurrency")
-        }
-        "002" | "head-002" | "head-002-backend-axum-tokio" => {
-            ("002", "High-Throughput Axum & Tokio")
-        }
-        "003" | "head-003" | "head-003-frontend-react19-rsc" => {
-            ("003", "React 19 Server Components & Suspense")
-        }
-        "004" | "head-004" | "head-004-kernel-ebpf-xdp" => {
-            ("004", "Linux Kernel eBPF & XDP Network Bypass")
-        }
-        "005" | "head-005" | "head-005-data-clickhouse-mergetree" => {
-            ("005", "ClickHouse MergeTree Analytics")
-        }
-        "006" | "head-006" | "head-006-algorithms-formal-logic" => {
-            ("006", "Formal Logic & Dynamic Programming")
-        }
-        "007" | "head-007" | "head-007-devops-k8s-controller" => {
-            ("007", "Kubernetes CRD & Kube-rs Controller")
-        }
-        "008" | "head-008" | "head-008-consensus-raft-paxos" => {
-            ("008", "Distributed Consensus & Raft State Machine")
-        }
-        "009" | "head-009" | "head-009-vector-simd-avx512" => {
-            ("009", "Hardware Vector SIMD (AVX2/AVX-512)")
-        }
-        "010" | "head-010" | "head-010-wasm-wasi-sandboxing" => {
-            ("010", "WASM Component Model & WASI 0.2 Sandbox")
-        }
-        "direct" | "head-direct" | "polymath" | "head-direct-systems-technology-polymath" => {
-            ("Direct", "Polymath Synthesis")
-        }
-        other => {
-            let n = if let Some(stripped) = other.strip_prefix("head-") {
-                stripped
-            } else {
-                other
-            };
-            (n, domain.unwrap_or(other))
-        }
-    };
-    format!("Council {num}: {label}\n\n")
+    }
+    format!("Council {}: {}\n\n", clean_id, domain.unwrap_or("Domain Specialist"))
 }
 
 /// Cosine-based semantic router for the Hydra Sovereign Council.
@@ -342,11 +312,6 @@ fn anchor_head_id(id: u32) -> &'static str {
     map.get(id as usize).copied().unwrap_or("head-direct")
 }
 
-struct DynamicManifest {
-    head_id: &'static str,
-    triggers: Vec<String>,
-}
-
 /// Dynamically loads the anchor and head manifests from registry JSON files.
 /// Zero hardcoded triggers or head rosters in Rust. Supports scaling to 1,000+ heads.
 fn get_dynamic_manifests() -> &'static [DynamicManifest] {
@@ -376,6 +341,7 @@ fn get_dynamic_manifests() -> &'static [DynamicManifest] {
                         continue; // Chair A does not route to itself
                     }
                     let head_id: &'static str = Box::leak(format!("head-{}", id_str).into_boxed_str());
+                    let title = a.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string();
                     let mut triggers = Vec::new();
                     if let Some(slug) = a.get("slug").and_then(|s| s.as_str()) {
                         let sl = slug.trim().to_ascii_lowercase();
@@ -397,7 +363,7 @@ fn get_dynamic_manifests() -> &'static [DynamicManifest] {
                         }
                     }
                     if !triggers.is_empty() {
-                        list.push(DynamicManifest { head_id, triggers });
+                        list.push(DynamicManifest { head_id, title, triggers });
                     }
                 }
             }
