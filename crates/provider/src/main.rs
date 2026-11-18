@@ -1471,7 +1471,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         if model_target == "hydra-chair" {
             let base_engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)?;
             base_engine.ensure_loaded().await?;
-            let _ = base_engine.attach_lora_head("000").await;
+            if let Err(e) = base_engine.attach_lora_head("000").await {
+                eprintln!("\x1b[1;31m[ERROR] Failed to attach Chair A LoRA (000): {:?}\x1b[0m", e);
+            }
             let chair_prompt = format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n",
                 nioxs_engine::hydra_specialist_system("head-000")

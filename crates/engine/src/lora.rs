@@ -1351,19 +1351,26 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
         search_dirs.push(base.join("hydra-max"));
         search_dirs.push(base.join("hydra"));
         search_dirs.push(base);
+        search_dirs.push(h.join(".nioxs").join("anchors"));
         search_dirs.push(h.join("nio-labs").join("nio-xs-models").join("models").join("hydra").join("heads"));
     }
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra-ultra"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra-max"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads"));
+    search_dirs.push(PathBuf::from("/root/.nioxs/anchors"));
     search_dirs.push(PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra/heads"));
 
     // 3. Normalized candidate names
     let mut candidates = Vec::new();
     candidates.push(lower.clone());
 
-    if lower == "000" || lower == "head-000" || lower.contains("chair") || lower.contains("arbiter") {
+    candidates.push(format!("anchor-{}", lower));
+    candidates.push(format!("head-{}", lower));
+
+    if lower == "000" || lower == "head-000" || lower == "anchor-000" || lower.contains("chair") || lower.contains("arbiter") {
+        candidates.push("anchor-000-chair".to_string());
+        candidates.push("anchor-000".to_string());
         candidates.push("head-000".to_string());
         candidates.push("head-000-sovereign-chair".to_string());
         candidates.push("head-000-sovereign-chair-arbiter".to_string());
@@ -1430,13 +1437,30 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
     for dir in &search_dirs {
         for cand in &candidates {
             let p = dir.join(cand);
-            if p.exists() {
-                return Some(p);
-            }
             if p.join("adapter_model.safetensors").exists()
                 || p.join("adapter_model.safetensors.lz4").exists()
             {
                 return Some(p);
+            }
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        // Dynamic scan: match any subdirectory starting with anchor-{lower} or head-{lower}
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+                if name.starts_with(&format!("anchor-{}", lower))
+                    || name.starts_with(&format!("head-{}", lower))
+                    || name == lower
+                {
+                    let p = entry.path();
+                    if p.join("adapter_model.safetensors").exists()
+                        || p.join("adapter_model.safetensors.lz4").exists()
+                    {
+                        return Some(p);
+                    }
+                }
             }
         }
     }
