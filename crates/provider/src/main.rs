@@ -340,173 +340,92 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, _is_hydra: bool) -
     cosine_route(&lower_acc)
 }
 
-/// Returns the canonical head-ID static string for a 0-padded anchor number.
-/// These are `'static` slices into a lookup table so the borrow checker is happy.
+/// Returns the canonical head-ID static string for any anchor/head number (0..=2048).
+/// Dynamically cached and memoized; zero heap allocations during routing.
 fn anchor_head_id(id: u32) -> &'static str {
-    // Static lookup: index = anchor id (0..=41)
-    const IDS: &[&str] = &[
-        "head-000", "head-001", "head-002", "head-003", "head-004",
-        "head-005", "head-006", "head-007", "head-008", "head-009",
-        "head-010", "head-011", "head-012", "head-013", "head-014",
-        "head-015", "head-016", "head-017", "head-018", "head-019",
-        "head-020", "head-021", "head-022", "head-023", "head-024",
-        "head-025", "head-026", "head-027", "head-028", "head-029",
-        "head-030", "head-031", "head-032", "head-033", "head-034",
-        "head-035", "head-036", "head-037", "head-038", "head-039",
-        "head-040", "head-041",
-    ];
-    IDS.get(id as usize).copied().unwrap_or("head-direct")
+    static HEAD_MAP: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    let map = HEAD_MAP.get_or_init(|| {
+        (0..=2048)
+            .map(|i| Box::leak(format!("head-{:03}", i).into_boxed_str()) as &'static str)
+            .collect()
+    });
+    map.get(id as usize).copied().unwrap_or("head-direct")
 }
 
-/// Bag-of-words cosine router — scores query against 41 anchor manifests.
+struct DynamicManifest {
+    head_id: &'static str,
+    triggers: Vec<String>,
+}
+
+/// Dynamically loads the anchor and head manifests from registry JSON files.
+/// Zero hardcoded triggers or head rosters in Rust. Supports scaling to 1,000+ heads.
+fn get_dynamic_manifests() -> &'static [DynamicManifest] {
+    static MANIFESTS: std::sync::OnceLock<Vec<DynamicManifest>> = std::sync::OnceLock::new();
+    MANIFESTS.get_or_init(|| {
+        let registry_paths = [
+            "/root/.nioxs/registry/hydra_anchor_registry.json",
+            "/root/nio-labs/nio-ideas/registry/hydra_anchor_registry.json",
+        ];
+        let mut raw_json = String::new();
+        for p in &registry_paths {
+            if let Ok(c) = std::fs::read_to_string(p) {
+                raw_json = c;
+                break;
+            }
+        }
+        if raw_json.is_empty() {
+            raw_json = include_str!("../../../../nio-ideas/registry/hydra_anchor_registry.json").to_string();
+        }
+
+        let mut list = Vec::new();
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw_json) {
+            if let Some(anchors) = val.get("anchors").and_then(|a| a.as_array()) {
+                for a in anchors {
+                    let id_str = a.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                    if id_str == "000" {
+                        continue; // Chair A does not route to itself
+                    }
+                    let head_id: &'static str = Box::leak(format!("head-{}", id_str).into_boxed_str());
+                    let mut triggers = Vec::new();
+                    if let Some(trigs) = a.get("triggers").and_then(|t| t.as_array()) {
+                        for t in trigs {
+                            if let Some(s) = t.as_str() {
+                                let st = s.trim().to_ascii_lowercase();
+                                if !st.is_empty() && st != "*" {
+                                    triggers.push(st);
+                                }
+                            }
+                        }
+                    }
+                    if !triggers.is_empty() {
+                        list.push(DynamicManifest { head_id, triggers });
+                    }
+                }
+            }
+        }
+        list
+    })
+}
+
+/// Bag-of-words cosine router — scores query dynamically against all manifests loaded from registry.
 /// Returns the highest-scoring head ID, or None if no trigger matched.
-/// O(tokens × anchors) ≈ 0.05–0.15 ms for a 200-token query vs 41 anchors.
+/// O(tokens × anchors) ≈ 0.05–0.15 ms. 100% dynamic, zero hardcoded tables.
 fn cosine_route(lower_query: &str) -> Option<&'static str> {
-    // Each entry: (head_id, [trigger tokens/phrases])
-    // Derived directly from hydra_anchor_registry.json triggers field.
-    // Add new anchors here — no other code change needed.
-    const MANIFESTS: &[(&str, &[&str])] = &[
-        // 000 — Chair Router (should not be routed TO; handled by layer 1/2)
-        // Skipped intentionally — Chair A never self-routes.
-
-        // 001 — Zig Comptime, Freestanding Arenas & Panic-Free Safety
-        ("head-001", &["zig", "comptime", "freestanding", "arena allocator", "std.mem", "panic-free", "std.heap"]),
-
-        // 002 — Rust Unsafe Lifetimes, Custom Allocators & Miri
-        ("head-002", &["unsafe", "miri", "manuallydrop", "maybeuninit", "nonnull", "allocator-api", "lifetime variance", "unsafe rust"]),
-
-        // 003 — C POSIX Systems, Pthreads & Signal Handling
-        ("head-003", &["posix", "pthreads", "sigaction", "mmap", "syscall", "libc", "c code", "pthread", "munmap", "errno"]),
-
-        // 004 — Lock-Free Data Structures & Atomic Memory Orderings
-        ("head-004", &["atomic", "lock-free", "lockfree", "cas", "acquire", "release", "seqlock", "spsc", "mpmc", "compare_exchange", "spinlock", "treiber", "hazard pointer", "ring buffer", "aba"]),
-
-        // 005 — Linux Kernel eBPF, XDP Network Bypass & Kprobes
-        ("head-005", &["ebpf", "xdp", "aya-bpf", "kprobe", "bpf_", "packet filter", "xdp_pass", "xdp_drop", "tracepoint", "uprobe", "libbpf"]),
-
-        // 006 — Vector SIMD Intrinsics, AVX2/AVX-512 & FMA Kernels
-        ("head-006", &["simd", "avx", "avx2", "avx512", "avx-512", "vectorize", "vectorization", "immintrin", "_mm256", "_mm512", "fma", "neon", "_mm_", "intrinsic"]),
-
-        // 007 — Linux io_uring Async I/O & SQPOLL Kernel Bypass
-        ("head-007", &["io_uring", "sqpoll", "ioring", "sqe", "cqe", "io_uring_enter", "fixed buffer", "zero-copy socket"]),
-
-        // 008 — Linux Kernel Drivers, DMA Buffers & Cgroups v2
-        ("head-008", &["kernel driver", "dma", "spinlock_irqsave", "cgroups", "platform_driver", "dma_alloc", "interrupt handler", "char device", "kobject"]),
-
-        // 009 — Rust Axum & Tokio High-Throughput Microservices
-        ("head-009", &["axum", "tokio", "tower", "mpsc", "ndjson", "microservice", "microservices", "graceful shutdown", "cancellationtoken", "ratelimit"]),
-
-        // 010 — Go gRPC Streaming, Goroutine Pools & Channels
-        ("head-010", &["grpc", "goroutine", "sync.pool", "protobuf", "proto3", "streaming rpc", "bidirectional", "go grpc"]),
-
-        // 011 — Go Gin/Fiber HTTP Microservices & Connection Pooling
-        ("head-011", &["gin", "fiber", "fasthttp", "go http", "golang http", "connection pool", "middleware pipeline"]),
-
-        // 012 — Rust Distributed Consensus, Raft & Quorum State Machines
-        ("head-012", &["raft", "consensus", "appendentries", "paxos", "quorum", "leader lease", "split-brain", "log replication", "commitindex"]),
-
-        // 013 — WebAssembly Component Model & WASI 0.2 Sandboxing
-        ("head-013", &["wasm", "wasi", "wasmtime", "wit component", "epoch fuel", "sandboxing", "wasm component", "wit", "wasmtime store"]),
-
-        // 014 — Binary Network Protocols, Socket Framing & Serialization
-        ("head-014", &["binary protocol", "socket framing", "length-prefixed", "magic header", "crc32", "endian", "byteorder", "zero-copy parsing", "packet framing"]),
-
-        // 015 — Python FastAPI, Pydantic v2 & Async Endpoints
-        ("head-015", &["fastapi", "pydantic", "python async", "async def", "dependency injection", "openapi", "uvicorn", "starlette"]),
-
-        // 016 — Python Asyncio, Celery Tasks & SQLAlchemy 2.0 ORM
-        ("head-016", &["asyncio", "celery", "sqlalchemy", "uvloop", "taskgroup", "async session", "redis broker", "worker pool"]),
-
-        // 017 — Java Spring Boot 3, Virtual Threads & Loom Concurrency
-        ("head-017", &["spring boot", "java", "virtual thread", "project loom", "webflux", "r2dbc", "spring", "jakarta"]),
-
-        // 018 — Kotlin Coroutines, Ktor & Quarkus Native GraalVM
-        ("head-018", &["kotlin", "ktor", "coroutine", "flow backpressure", "stateflow", "graalvm", "quarkus", "dispatchers.io"]),
-
-        // 019 — C# ASP.NET Core Minimal APIs & Entity Framework Core
-        ("head-019", &["aspnet", "asp.net", "csharp", "c#", "entity framework", "minimal api", "valuetask", "iasyncenumerable", "dotnet"]),
-
-        // 020 — GraphQL Schemas, Resolvers & Federation v2
-        ("head-020", &["graphql", "apollo", "federation", "resolver", "dataloader", "n+1", "schema stitching", "@key", "@shareable"]),
-
-        // 021 — React 19 Server Components, Actions & useOptimistic
-        ("head-021", &["react", "react 19", "server component", "use client", "use server", "useoptimistic", "useactionstate", "server action", "suspense", "rsc"]),
-
-        // 022 — Next.js App Router, Streaming SSR & Route Handlers
-        ("head-022", &["nextjs", "next.js", "app router", "streaming ssr", "route handler", "generatestaticparams", "server action", "layout.tsx"]),
-
-        // 023 — TypeScript Advanced Metaprogramming & Type Transformations
-        ("head-023", &["typescript", "conditional type", "template literal type", "mapped type", "infer", "type transform", "keyof", "satisfies", "type predicate"]),
-
-        // 024 — Svelte 5 Runes, Vue 3 Composition API & Solid Signals
-        ("head-024", &["svelte", "vue", "solid", "$state", "$derived", "$effect", "composition api", "shallowref", "script setup", "signals"]),
-
-        // 025 — Tailwind CSS v4, Modern Layouts & Design Tokens
-        ("head-025", &["tailwind", "css", "container query", "subgrid", "design token", "dark mode", "@theme", "tailwind v4"]),
-
-        // 026 — WebGL/Three.js Shaders, Canvas & Web Workers
-        ("head-026", &["webgl", "three.js", "glsl", "vertex shader", "fragment shader", "offscreencanvas", "web worker", "requestanimationframe", "sharedarraybuffer"]),
-
-        // 027 — ClickHouse MergeTree Analytics & Columnar SQL
-        ("head-027", &["clickhouse", "mergetree", "aggregatingmergetree", "replacingmergetree", "columnar", "materialized view", "partition by", "ttl"]),
-
-        // 028 — PostgreSQL Query Planner, Index Internals & pgvector
-        ("head-028", &["postgres", "postgresql", "pgvector", "hnsw", "explain analyze", "brin", "partial index", "advisory lock", "cte"]),
-
-        // 029 — Redis In-Memory Structures, Lua Scripts & Distributed Locks
-        ("head-029", &["redis", "lua script", "evalsha", "hyperloglog", "redis stream", "xadd", "xreadgroup", "redlock", "pfadd"]),
-
-        // 030 — Kafka Consumer Groups, Flink Streams & Event Sourcing
-        ("head-030", &["kafka", "flink", "consumer group", "event sourcing", "tumbling window", "sliding window", "watermark", "exactly-once", "eos"]),
-
-        // 031 — Vector Databases, HNSW Indexing & DuckDB Analytics
-        ("head-031", &["vector database", "hnsw", "ann", "cosine distance", "duckdb", "parquet", "nearest neighbor", "faiss", "pgvector hnsw"]),
-
-        // 032 — CUDA Warp Shuffles, Shared Memory & Streams
-        ("head-032", &["cuda", "__global__", "warp shuffle", "__shfl_down_sync", "__shared__", "cudastream", "tensor core", "gpu kernel"]),
-
-        // 033 — OpenAI Triton Custom Kernels & PyTorch C++ Extensions
-        ("head-033", &["triton", "@triton.jit", "tl.load", "tl.store", "tl.dot", "autotuning", "pytorch extension", "autograd.function"]),
-
-        // 034 — Model Quantization, GGUF Formats & GEMV Kernels
-        ("head-034", &["quantization", "gguf", "q4_k_m", "q8_0", "gemv", "dequantize", "ggml", "block_q8", "int8 kernel"]),
-
-        // 035 — Distributed ML Training, FSDP & Memory Recycling
-        ("head-035", &["fsdp", "distributed training", "flash attention", "activation checkpoint", "zero-3", "zero redundancy", "pytorch fsdp", "gradient checkpointing"]),
-
-        // 036 — Kubernetes CRD Operators, Controllers & Finalizers
-        ("head-036", &["kubernetes", "kube-rs", "crd", "k8s", "reconciler", "finalizer", "controller-runtime", "admission webhook", "kube", "operator"]),
-
-        // 037 — Terraform / OpenTofu Modules & Cloud IAM Policies
-        ("head-037", &["terraform", "opentofu", "hcl", "iam policy", "s3 state backend", "dynamodb lock", "remote state", "aws iam"]),
-
-        // 038 — Multi-Stage Docker (< 20 MB) & GitHub Actions Workflows
-        ("head-038", &["docker", "multi-stage", "distroless", "github actions", "sbom", "non-root", "actions/cache", "dockerfile"]),
-
-        // 039 — Prometheus Metrics, OpenTelemetry Traces & SRE Schedulers
-        ("head-039", &["prometheus", "opentelemetry", "otel", "grafana", "trace", "span", "histogram", "counter", "alert rule", "sre"]),
-
-        // 040 — Dynamic Programming, Segment Trees & LeetCode Hard
-        ("head-040", &["dynamic programming", "segment tree", "lazy propagation", "dijkstra", "tarjan", "topological sort", "interval tree", "red-black", "o(n log n)"]),
-
-        // 041 — Z3 SMT Invariant Verification, TLA+ & Theorem Proofs
-        ("head-041", &["z3", "smt", "tla+", "theorem", "inductive invariant", "formal verification", "z3.solver", "s.check()", "invariant proof"]),
-    ];
-
+    let manifests = get_dynamic_manifests();
     let mut best_id: &'static str = "";
     let mut best_score: u32 = 0;
 
-    for (head_id, triggers) in MANIFESTS {
+    for m in manifests {
         let mut score: u32 = 0;
-        for &t in *triggers {
-            if lower_query.contains(t) {
+        for t in &m.triggers {
+            if lower_query.contains(t.as_str()) {
                 // Weight longer/more-specific triggers higher
                 score += (t.len() as u32).max(1);
             }
         }
         if score > best_score {
             best_score = score;
-            best_id = head_id;
+            best_id = m.head_id;
         }
     }
 
@@ -2505,21 +2424,21 @@ mod tests {
         let acc = "<think>\nThinking about kernel primitives...\n</think>";
         let prompt = "Implement an atomic lock-free ring buffer in Rust";
         let specialist = detect_council_specialist(acc, prompt, true);
-        assert_eq!(specialist, Some("head-001"));
+        assert_eq!(specialist, Some("head-004"));
     }
 
     #[test]
     fn test_detect_hydra_loosened_natural_triage() {
-        assert_eq!(detect_council_specialist("", "Vectorize dot product using AVX2 SIMD intrinsics", true), Some("head-009"));
-        assert_eq!(detect_council_specialist("", "Write an eBPF XDP line-rate packet filter in Rust", true), Some("head-004"));
-        assert_eq!(detect_council_specialist("", "Create ClickHouse ReplacingMergeTree schema", true), Some("head-005"));
-        assert_eq!(detect_council_specialist("", "Implement lazy propagation segment tree in Rust", true), Some("head-006"));
-        assert_eq!(detect_council_specialist("", "Write a Kubernetes CRD reconciler in kube-rs", true), Some("head-007"));
-        assert_eq!(detect_council_specialist("", "Implement Raft consensus AppendEntries state machine", true), Some("head-008"));
-        assert_eq!(detect_council_specialist("", "Run WASI 0.2 sandbox in Wasmtime host", true), Some("head-010"));
-        assert_eq!(detect_council_specialist("", "Build a React 19 RSC component with Suspense", true), Some("head-003"));
-        assert_eq!(detect_council_specialist("", "Build an Axum SSE streaming server with Tokio", true), Some("head-002"));
-        assert_eq!(detect_council_specialist("", "Write a lock-free SPSC ring buffer in Zig", true), Some("head-001"));
+        assert_eq!(detect_council_specialist("", "Vectorize dot product using AVX2 SIMD intrinsics", true), Some("head-006"));
+        assert_eq!(detect_council_specialist("", "Write an eBPF XDP line-rate packet filter in Rust", true), Some("head-005"));
+        assert_eq!(detect_council_specialist("", "Create ClickHouse ReplacingMergeTree schema", true), Some("head-027"));
+        assert_eq!(detect_council_specialist("", "Implement lazy propagation segment tree in Rust", true), Some("head-040"));
+        assert_eq!(detect_council_specialist("", "Write a Kubernetes CRD reconciler in kube-rs", true), Some("head-036"));
+        assert_eq!(detect_council_specialist("", "Implement Raft consensus AppendEntries state machine", true), Some("head-012"));
+        assert_eq!(detect_council_specialist("", "Run WASI 0.2 sandbox in Wasmtime host", true), Some("head-013"));
+        assert_eq!(detect_council_specialist("", "Build a React 19 RSC component with Suspense", true), Some("head-021"));
+        assert_eq!(detect_council_specialist("", "Build an Axum SSE streaming server with Tokio", true), Some("head-009"));
+        assert_eq!(detect_council_specialist("", "Write a lock-free SPSC ring buffer in Rust", true), Some("head-004"));
     }
 
     #[test]
