@@ -1297,6 +1297,13 @@ impl BoundedLoraCache {
                         self.capacity, lru_canon
                     );
                 }
+                // Force glibc to return freed pages to OS immediately.
+                // Without this, dropped f32 LoRA weight Vecs (~55 MB each) remain mapped,
+                // causing RSS to grow with each hot-swap even though the Arc is dropped.
+                #[cfg(target_os = "linux")]
+                unsafe {
+                    libc::malloc_trim(0);
+                }
             }
             self.order.push(canon.clone());
         }
@@ -1446,11 +1453,16 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
                 return Some(p);
             }
         }
-        // Dynamic scan: match any subdirectory starting with anchor-{lower} or head-{lower}
+        // Dynamic scan: match any subdirectory starting with anchor-{id} or head-{id}
+        let id_part = lower
+            .trim_start_matches("head-")
+            .trim_start_matches("anchor-");
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
-                if name.starts_with(&format!("anchor-{}", lower))
+                if name.starts_with(&format!("anchor-{}", id_part))
+                    || name.starts_with(&format!("head-{}", id_part))
+                    || name.starts_with(&format!("anchor-{}", lower))
                     || name.starts_with(&format!("head-{}", lower))
                     || name == lower
                 {
@@ -1617,7 +1629,7 @@ mod tests {
             println!("head-001 loaded in {:.2} ms", load_time_ms);
             assert!(adapter.r > 0);
             assert!(adapter.alpha > 0.0);
-            assert_eq!(adapter.layers.len(), 10);
+            assert!(adapter.layers.len() == 24 || adapter.layers.len() == 10);
 
             // Populate cache
             let _ = get_or_load_head("head-001").expect("initial load");
@@ -1628,7 +1640,7 @@ mod tests {
             let cache_time_us = t1.elapsed().as_micros();
             println!("cached lookup took {} µs", cache_time_us);
             assert!(cache_time_us < 1000, "cache lookup must be sub-millisecond, took {cache_time_us} µs");
-            assert_eq!(cached.layers.len(), 10);
+            assert!(cached.layers.len() == 24 || cached.layers.len() == 10);
         }
     }
 
@@ -1638,7 +1650,7 @@ mod tests {
             let tmp_dir = std::env::temp_dir().join("nioxs_test_calibrated_head_001");
             let _ = std::fs::remove_dir_all(&tmp_dir);
 
-            // Calibrate to Rank 12 + FP8 (< 3MB, target ~2.8MB)
+            // Calibrate to Rank 12 + FP8 (< 8MB for 24 layers, ~2.8MB for 10 layers)
             let stats = calibrate_head_dir(&src_path, &tmp_dir, Some(12), true, false)
                 .expect("calibration must succeed");
             println!(
@@ -1647,9 +1659,15 @@ mod tests {
                 stats.calibrated_size_bytes as f64 / 1024.0 / 1024.0,
                 stats.compression_ratio
             );
+            let max_allowed = if stats.original_size_bytes > 50 * 1024 * 1024 {
+                8 * 1024 * 1024 // 24-layer 0.5B adapter
+            } else {
+                3 * 1024 * 1024 // 10-layer 180M adapter
+            };
             assert!(
-                stats.calibrated_size_bytes < 3 * 1024 * 1024,
-                "Calibrated size must be < 3.0 MB, got {}",
+                stats.calibrated_size_bytes < max_allowed,
+                "Calibrated size must be < {} bytes, got {}",
+                max_allowed,
                 stats.calibrated_size_bytes
             );
 
@@ -1659,7 +1677,7 @@ mod tests {
             let load_time_ms = t0.elapsed().as_secs_f64() * 1000.0;
             println!("Calibrated adapter loaded in {:.2} ms", load_time_ms);
             assert_eq!(cal_adapter.r, 12);
-            assert_eq!(cal_adapter.layers.len(), 10);
+            assert!(cal_adapter.layers.len() == 24 || cal_adapter.layers.len() == 10);
 
             // Compare layer-by-layer forward pass with original
             let orig_adapter = LoraAdapter::load(&src_path).expect("orig load");
@@ -1687,7 +1705,12 @@ mod tests {
                 stats_r8.original_size_bytes / 1024 / 1024,
                 stats_r8.calibrated_size_bytes as f64 / 1024.0 / 1024.0
             );
-            assert!(stats_r8.calibrated_size_bytes < 2 * 1024 * 1024);
+            let max_r8 = if stats_r8.original_size_bytes > 50 * 1024 * 1024 {
+                5 * 1024 * 1024
+            } else {
+                2 * 1024 * 1024
+            };
+            assert!(stats_r8.calibrated_size_bytes < max_r8);
 
             let cal_adapter_r8 = LoraAdapter::load(&tmp_dir_r8).expect("rank 8 load");
             assert_eq!(cal_adapter_r8.r, 8);

@@ -123,6 +123,7 @@ async fn fallback_to_cheetah_or_rabbit(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn is_code_request(prompt: &str) -> bool {
     let lower = prompt.to_ascii_lowercase();
     let has_code_verb = lower.contains("write")
@@ -163,6 +164,7 @@ fn is_code_request(prompt: &str) -> bool {
     has_code_verb || has_lang
 }
 
+#[allow(dead_code)]
 fn detect_target_code_language(prompt: &str, specialist: &str) -> &'static str {
     let lower = prompt.to_ascii_lowercase();
     if lower.contains("zig") {
@@ -1574,17 +1576,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         eprintln!("[nioxs-hydra] Hot-swapped to Head '{specialist}' in {swap_ms:.2}ms (Base Anchor resident in RAM)");
                     }
 
-                    let code_fence = if !is_code_request(&prompt) {
-                        String::new()
-                    } else {
-                        let lang = detect_target_code_language(&prompt, specialist);
-                        let fence = format!("```{lang}\n");
-                        flow.push(&fence);
-                        fence
-                    };
-
                     let specialist_prompt = format!(
-                        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n{code_fence}",
+                        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
                         nioxs_engine::hydra_specialist_system(specialist)
                     );
                     let mut spec_rx = base_engine
