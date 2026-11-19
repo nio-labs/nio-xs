@@ -749,7 +749,10 @@ impl AstEngine {
     }
 
     fn gpu_runner_path(&self) -> Option<PathBuf> {
-        if self.device_pref == DevicePreference::Gpu {
+        if self.device_pref == DevicePreference::Cpu {
+            return None;
+        }
+        if self.device_pref == DevicePreference::Gpu || self.active_device().is_gpu() {
             runner_installer::find_or_download_gpu_runner()
         } else {
             runner_installer::find_existing_runner()
