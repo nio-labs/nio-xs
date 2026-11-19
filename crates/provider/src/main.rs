@@ -1439,68 +1439,37 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
         if is_council_speaker_session {
             let speaker_model = "hydra";
-            let speaker_system = nioxs_engine::hydra_specialist_system("head-000");
             let is_hydra = true;
 
-            // Step 1: Intelligent Speaker Triage Pass via the 180M Base Anchor
+            // Single-Pass Sovereign Streaming by default (matching Cheetah at 10-15+ w/s)
+            // Multi-pass council deliberation triage is opt-in via --council, --deliberate, or NIOXS_DELIBERATE=1
+            let deliberate = raw_args.iter().any(|a| a == "--council" || a == "--deliberate" || a == "--triage")
+                || std::env::var_os("NIOXS_DELIBERATE").is_some();
+
             let base_engine = nioxs_engine::AstEngine::for_model_with_device(speaker_model, device_pref)?;
             
-            // Fast-path: If prompt explicitly targets head or domain is unambiguous, skip 256-token triage pass!
+            // Sub-millisecond (< 0.2ms) zero-token lexical & cosine semantic routing
             let mut specialist_opt = detect_council_specialist("", &prompt, is_hydra);
             let mut accumulated = String::new();
 
-            if specialist_opt.is_none() {
+            if deliberate && specialist_opt.is_none() {
                 base_engine.ensure_loaded().await?;
-                let formatted_prompt = if is_hydra {
-                    format!(
-                        "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n"
-                    )
-                } else {
-                    format!(
-                        "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                    )
-                };
+                let speaker_system = nioxs_engine::hydra_specialist_system("head-000");
+                let formatted_prompt = format!(
+                    "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n"
+                );
                 let mut rx = base_engine
                     .generate_stream(formatted_prompt, 256, 0.10, 0.90)
                     .await?;
 
-                let mut council_buffer = String::new();
-                let mut in_council_tag = false;
-
-                if is_hydra {
-                    flow.push("<think>\n");
-                }
+                flow.push("<think>\n");
 
                 while let Some(chunk) = rx.recv().await {
                     accumulated.push_str(&chunk);
-
-                    if is_hydra {
-                        flow.push(&chunk);
-                        if chunk.contains("</think>") || accumulated.contains("</think>") {
-                            specialist_opt = detect_council_specialist(&accumulated, &prompt, true);
-                            break;
-                        }
-                    } else {
-                        if !in_council_tag {
-                            if let Some(pos) = chunk.find("<council>") {
-                                council_buffer.push_str(&chunk[pos..]);
-                                in_council_tag = true;
-                            } else if let Some(pos) = chunk.find("@council") {
-                                council_buffer.push_str(&chunk[pos..]);
-                                in_council_tag = true;
-                            }
-                        } else {
-                            council_buffer.push_str(&chunk);
-                        }
-
-                        if in_council_tag && council_buffer.contains(')') {
-                            if let Some(start) = council_buffer.find("@council") {
-                                if let Some(_end) = council_buffer[start..].find(')') {
-                                    specialist_opt = detect_council_specialist(&accumulated, &prompt, is_hydra);
-                                    break;
-                                }
-                            }
-                        }
+                    flow.push(&chunk);
+                    if chunk.contains("</think>") || accumulated.contains("</think>") {
+                        specialist_opt = detect_council_specialist(&accumulated, &prompt, true);
+                        break;
                     }
                 }
 
@@ -1512,9 +1481,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 flow.close_think();
             }
 
-            // Step 2: Automatic In-Flight Hand-Off to Specialist (or Direct Polymath Execution)
-            if let Some(specialist) = specialist_opt {
-
+            // Step 2: Automatic Sovereign Single-Pass Execution
+            let specialist = specialist_opt.unwrap_or("head-direct");
+            {
                 if is_hydra {
                     let specialist = if specialist == "head-000" {
                         "head-direct"
@@ -1531,23 +1500,33 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     } else {
                         None
                     };
-                    let badge = format_hydra_directive(specialist, raw_domain);
-                    flow.push(&badge);
 
-                    // NATIVE IN-PROCESS LORA HEAD HOT-SWAP (< 1ms switch)
-                    // The base anchor (0.5B or 180M) stays resident in RAM!
-                    let t_swap = std::time::Instant::now();
-                    let head_attached = base_engine.attach_lora_head(specialist).await.is_ok();
-                    let swap_ms = t_swap.elapsed().as_secs_f64() * 1000.0;
-                    if head_attached && std::env::var_os("NIOXS_DEBUG").is_some() {
-                        eprintln!("[nioxs-hydra] Hot-swapped to Head '{specialist}' in {swap_ms:.2}ms (Base Anchor resident in RAM)");
+                    if specialist != "head-direct" {
+                        let badge = format_hydra_directive(specialist, raw_domain);
+                        flow.push(&badge);
+
+                        // NATIVE IN-PROCESS LORA HEAD HOT-SWAP (< 1ms switch)
+                        let t_swap = std::time::Instant::now();
+                        let head_attached = base_engine.attach_lora_head(specialist).await.is_ok();
+                        let swap_ms = t_swap.elapsed().as_secs_f64() * 1000.0;
+                        if head_attached && std::env::var_os("NIOXS_DEBUG").is_some() {
+                            eprintln!("[nioxs-hydra] Hot-swapped to Head '{specialist}' in {swap_ms:.2}ms (Base Anchor resident in RAM)");
+                        }
                     }
 
-                    let specialist_prompt = format!(
-                        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n",
-                        nioxs_engine::hydra_specialist_system(specialist)
-                    );
-                    flow.push("<think>\n");
+                    let specialist_prompt = if deliberate {
+                        flow.push("<think>\n");
+                        format!(
+                            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n",
+                            nioxs_engine::hydra_specialist_system(specialist)
+                        )
+                    } else {
+                        format!(
+                            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+                            nioxs_engine::hydra_specialist_system(specialist)
+                        )
+                    };
+
                     let mut spec_rx = base_engine
                         .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
                         .await?;
@@ -1611,20 +1590,6 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     while let Some(chunk) = spec_rx.recv().await {
                         flow.push(&chunk);
                     }
-                }
-            } else {
-                // Direct polymath execution by the base anchor!
-                flow.close_think();
-                flow.push("Council: Direct Polymath Synthesis\n\n");
-                let polymath_prompt = format!(
-                    "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
-                    nioxs_engine::hydra_specialist_system("head-direct")
-                );
-                let mut poly_rx = base_engine
-                    .generate_stream(polymath_prompt, max_tokens, 0.20, 0.85)
-                    .await?;
-                while let Some(chunk) = poly_rx.recv().await {
-                    flow.push(&chunk);
                 }
             }
         } else {
