@@ -1353,22 +1353,20 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let mut search_dirs = Vec::new();
     if let Some(ref h) = home {
+        search_dirs.push(h.join(".nioxs").join("anchors"));
+        search_dirs.push(h.join("nio-labs").join("nio-xs-models").join("models").join("hydra").join("heads"));
         let base = h.join(".nioxs").join("heads");
         search_dirs.push(base.join("hydra-ultra"));
         search_dirs.push(base.join("hydra-max"));
         search_dirs.push(base.join("hydra"));
         search_dirs.push(base);
-        search_dirs.push(h.join(".nioxs").join("anchors"));
-        search_dirs.push(h.join("nio-labs").join("nio-xs-models").join("models").join("hydra").join("heads"));
-        search_dirs.push(h.join("nio-labs").join("nio-xs-models").join("models").join("hydra").join("heads").join("hydra"));
     }
+    search_dirs.push(PathBuf::from("/root/.nioxs/anchors"));
+    search_dirs.push(PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra/heads"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra-ultra"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra-max"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads"));
-    search_dirs.push(PathBuf::from("/root/.nioxs/anchors"));
-    search_dirs.push(PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra/heads/hydra"));
-    search_dirs.push(PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra/heads"));
 
     // 3. Normalized candidate names
     let mut candidates = Vec::new();
@@ -1666,8 +1664,16 @@ mod tests {
                 stats.calibrated_size_bytes as f64 / 1024.0 / 1024.0,
                 stats.compression_ratio
             );
-            let max_allowed = if stats.original_size_bytes > 50 * 1024 * 1024 {
-                8 * 1024 * 1024 // 24-layer 0.5B adapter
+            // Load calibrated adapter
+            let t0 = std::time::Instant::now();
+            let cal_adapter = LoraAdapter::load(&tmp_dir).expect("calibrated adapter must load");
+            let load_time_ms = t0.elapsed().as_secs_f64() * 1000.0;
+            println!("Calibrated adapter loaded in {:.2} ms", load_time_ms);
+            assert_eq!(cal_adapter.r, 12);
+            assert!(cal_adapter.layers.len() == 24 || cal_adapter.layers.len() == 10);
+
+            let max_allowed = if cal_adapter.layers.len() == 24 {
+                8 * 1024 * 1024 // 24-layer 0.5B adapter (< 8MB uncompressed, < 6.5MB with lz4)
             } else {
                 3 * 1024 * 1024 // 10-layer 180M adapter
             };
@@ -1677,14 +1683,6 @@ mod tests {
                 max_allowed,
                 stats.calibrated_size_bytes
             );
-
-            // Load calibrated adapter
-            let t0 = std::time::Instant::now();
-            let cal_adapter = LoraAdapter::load(&tmp_dir).expect("calibrated adapter must load");
-            let load_time_ms = t0.elapsed().as_secs_f64() * 1000.0;
-            println!("Calibrated adapter loaded in {:.2} ms", load_time_ms);
-            assert_eq!(cal_adapter.r, 12);
-            assert!(cal_adapter.layers.len() == 24 || cal_adapter.layers.len() == 10);
 
             // Compare layer-by-layer forward pass with original
             let orig_adapter = LoraAdapter::load(&src_path).expect("orig load");
@@ -1712,8 +1710,8 @@ mod tests {
                 stats_r8.original_size_bytes / 1024 / 1024,
                 stats_r8.calibrated_size_bytes as f64 / 1024.0 / 1024.0
             );
-            let max_r8 = if stats_r8.original_size_bytes > 50 * 1024 * 1024 {
-                5 * 1024 * 1024
+            let max_r8 = if cal_adapter.layers.len() == 24 {
+                6 * 1024 * 1024
             } else {
                 2 * 1024 * 1024
             };

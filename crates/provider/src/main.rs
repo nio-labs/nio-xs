@@ -245,7 +245,7 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, _is_hydra: bool) -
                 let end = rest.find(*term).unwrap_or(rest.len()).min(3);
                 let id_str = rest[..end].trim();
                 if let Ok(id_num) = id_str.parse::<u32>() {
-                    if id_num <= 41 {
+                    if id_num <= 2048 {
                         return Some(anchor_head_id(id_num));
                     }
                 }
@@ -292,9 +292,12 @@ fn anchor_head_id(id: u32) -> &'static str {
 fn get_dynamic_manifests() -> &'static [DynamicManifest] {
     static MANIFESTS: std::sync::OnceLock<Vec<DynamicManifest>> = std::sync::OnceLock::new();
     MANIFESTS.get_or_init(|| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
         let registry_paths = [
-            "/root/.nioxs/registry/hydra_anchor_registry.json",
-            "/root/nio-labs/nio-ideas/registry/hydra_anchor_registry.json",
+            format!("{}/.nioxs/registry/hydra_anchor_registry.json", home),
+            format!("{}/nio-labs/nio-ideas/registry/hydra_anchor_registry.json", home),
+            "/root/.nioxs/registry/hydra_anchor_registry.json".to_string(),
+            "/root/nio-labs/nio-ideas/registry/hydra_anchor_registry.json".to_string(),
         ];
         let mut raw_json = String::new();
         for p in &registry_paths {
@@ -1541,14 +1544,43 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     }
 
                     let specialist_prompt = format!(
-                        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+                        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n",
                         nioxs_engine::hydra_specialist_system(specialist)
                     );
+                    flow.push("<think>\n");
                     let mut spec_rx = base_engine
                         .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
                         .await?;
+                    let mut generated_code = String::new();
                     while let Some(chunk) = spec_rx.recv().await {
+                        generated_code.push_str(&chunk);
                         flow.push(&chunk);
+                    }
+
+                    // ── Step 3: Sovereign Chair C Invariant Verification & Formal Audit ────
+                    let skip_audit = std::env::var_os("NIOXS_NO_AUDIT").is_some();
+                    if !skip_audit && specialist != "head-042" && !generated_code.trim().is_empty() {
+                        let chair_c_id = "042"; // anchor-042-chair-c-critic
+                        let t_c = std::time::Instant::now();
+                        let c_attached = base_engine.attach_lora_head(chair_c_id).await.is_ok();
+                        let c_ms = t_c.elapsed().as_secs_f64() * 1000.0;
+                        if c_attached {
+                            if std::env::var_os("NIOXS_DEBUG").is_some() {
+                                eprintln!("[nioxs-hydra] Chair C Invariant Verifier hot-swapped in {c_ms:.2}ms");
+                            }
+                            flow.push("\n\n---\n**Council Chair C: Invariant Audit & Verification**\n\n<audit>\n");
+                            let audit_prompt = format!(
+                                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\nAudit the following code for memory safety, data races, atomic orderings, and invariants:\n\n```\n{}\n```<|im_end|>\n<|im_start|>assistant\n<audit>\n",
+                                nioxs_engine::hydra_specialist_system("head-042"),
+                                generated_code.trim()
+                            );
+                            let audit_tokens = 256.min(max_tokens / 2);
+                            if let Ok(mut audit_rx) = base_engine.generate_stream(audit_prompt, audit_tokens, 0.15, 0.85).await {
+                                while let Some(chunk) = audit_rx.recv().await {
+                                    flow.push(&chunk);
+                                }
+                            }
+                        }
                     }
                 } else {
                     let directive_rendered = if accumulated.contains("@council") {
