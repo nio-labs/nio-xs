@@ -2069,11 +2069,7 @@ impl AstMicroEngine {
     }
 
     pub fn accepts_input_token(&self, token: u32) -> bool {
-        self.gguf
-            .tensors
-            .get("token_embd.weight")
-            .and_then(|tensor| tensor.shape.first())
-            .is_some_and(|&vocab| (token as usize) < vocab)
+        (token as usize) < self.vocab_size
     }
 
     pub fn eos_token_id(&self) -> Option<u32> {
@@ -2522,6 +2518,8 @@ impl AstMicroEngine {
 
         let vocab_size = if let Some(output) = &output_weight {
             output.n_rows
+        } else if embd_info.shape.len() > 1 {
+            embd_info.shape[1]
         } else {
             embd_info.shape[0]
         };
@@ -3293,10 +3291,9 @@ impl AstMicroEngine {
                     let rbytes = (output.n_cols / b_size) * t_size;
                     (output.offset, output.n_rows, rbytes, output.dtype)
                 } else {
-                    let embd_info = self.gguf.tensors.get("token_embd.weight").unwrap();
                     (
                         self.token_embd_offset,
-                        embd_info.shape[0],
+                        self.vocab_size,
                         self.bytes_per_token,
                         self.token_embd_dtype,
                     )
