@@ -1583,24 +1583,32 @@ impl AstEngine {
 
         if let Some(runner_bin) = self.gpu_runner_path() {
             let active_dev = self.active_device();
-            let wants_gpu = self.device_pref == DevicePreference::Gpu || active_dev.is_gpu();
-            if wants_gpu {
+            let wants_runner = self.device_pref != DevicePreference::Cpu;
+            if wants_runner {
                 let model_path = self.model_path.clone();
                 // Match the native runtime's context limit, including the
                 // model's declared maximum, for every companion.
                 let context_size = context_limit.to_string();
                 let gpu_layers = if active_dev.is_gpu() {
                     active_dev.recommended_gpu_layers(total_layers)
-                } else {
+                } else if self.device_pref == DevicePreference::Gpu {
                     total_layers
+                } else {
+                    0
                 };
                 let ngl_arg = gpu_layers.to_string();
-                eprintln!(
-                    "[nioxs] Hardware: {} (offloading {}/{} layers to GPU)",
-                    if active_dev.is_gpu() { active_dev.name() } else { "GPU Runner" },
-                    gpu_layers,
-                    total_layers
-                );
+                if active_dev.is_gpu() || self.device_pref == DevicePreference::Gpu {
+                    eprintln!(
+                        "[nioxs] Hardware: {} (offloading {}/{} layers to GPU)",
+                        if active_dev.is_gpu() { active_dev.name() } else { "GPU Runner" },
+                        gpu_layers,
+                        total_layers
+                    );
+                } else {
+                    eprintln!(
+                        "[nioxs] Hardware: High-Throughput Runner (SIMD AVX2 acceleration)"
+                    );
+                }
 
                 tokio::task::spawn_blocking(move || {
                     let mut cmd = std::process::Command::new(&runner_bin);
@@ -1660,7 +1668,6 @@ impl AstEngine {
                                 }
                                 if line.starts_with("[ Prompt:")
                                     || line.starts_with("Exiting...")
-                                    || line.starts_with("> ")
                                 {
                                     break;
                                 }
