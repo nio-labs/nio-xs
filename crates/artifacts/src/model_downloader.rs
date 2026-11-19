@@ -176,12 +176,12 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
         },
         ModelArtifactEntry {
             model_id: MODEL_HYDRA.into(),
-            brand_name: "Hydra (Sovereign 180M Council Anchor)".into(),
-            base_model: "Qwen/Qwen2.5-Coder-0.5B-Instruct (10L Sliced)".into(),
-            filename: "hydra-anchor-180m.q4km.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-anchor-180m.q4km.gguf".into(),
-            sha256: "cb5c0b050b4cb68712d54a8c47e65b8844bda868e8134c0c18bd86924337216e".into(),
-            size_bytes: 253_590_176,
+            brand_name: "Hydra (Sovereign 0.5B Council Anchor)".into(),
+            base_model: "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L Unpruned)".into(),
+            filename: "hydra-anchor-0.5b.q4km.gguf".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-anchor-0.5b.q4km.gguf".into(),
+            sha256: "4f0ecf3b860a14a7a1ffbc8186ccca87c619f7b7e60551919593033fdeea89f4".into(),
+            size_bytes: 397_807_584,
             tokenizer: Some(ModelTokenizerArtifact {
                 filename: "hydra-tokenizer.json".into(),
                 download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
@@ -903,9 +903,9 @@ mod tests {
             ),
             (
                 MODEL_HYDRA,
-                "cb5c0b050b4cb68712d54a8c47e65b8844bda868e8134c0c18bd86924337216e",
-                253_590_176,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-anchor-180m.q4km.gguf",
+                "4f0ecf3b860a14a7a1ffbc8186ccca87c619f7b7e60551919593033fdeea89f4",
+                397_807_584,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-anchor-0.5b.q4km.gguf",
             ),
             (
                 MODEL_HYDRA_KERNEL,

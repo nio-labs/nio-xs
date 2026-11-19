@@ -864,12 +864,10 @@ impl AstEngine {
             "hydra" | "nio-hydra" | "hydra-max" | "hydra-ultra" => &[
                 "hydra-anchor-0.5b.q4km.gguf",
                 "anchor-base.0.5b.q4km.gguf",
-                "anchor-base.180m.q4km.gguf",
-                "hydra-anchor-180m.q4km.gguf",
                 "hydra-anchor.q4km.gguf",
             ],
             "hydra-kernel" | "nio-hydra-kernel" => &[
-                "hydra-kernel-180m.q4km.gguf",
+                "hydra-kernel-0.5b.q4km.gguf",
             ],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
@@ -943,19 +941,14 @@ impl AstEngine {
             home_dir.join(".nioxs/anchors"),
             PathBuf::from("/root/.nioxs/anchors"),
             base_dir.join("hydra"),
-            base_dir.join("fin"),
             home_dir.join("nio-labs/nio-xs-models/models/hydra"),
-            home_dir.join("nio-labs/nio-xs-models/models/fin"),
             PathBuf::from("/home/mn/nio-labs/nio-xs-models/models/hydra"),
-            PathBuf::from("/home/mn/nio-labs/nio-xs-models/models/fin"),
             PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra"),
-            PathBuf::from("/root/nio-labs/nio-xs-models/models/fin"),
             PathBuf::from("models/hydra"),
-            PathBuf::from("models/fin"),
             PathBuf::from("models"),
         ];
-        for dir in &search_dirs {
-            for name in target_candidates {
+        for name in target_candidates {
+            for dir in &search_dirs {
                 let model = dir.join(name);
                 let tokenizer = Self::tokenizer_for_model(&model);
                 if model.is_file() && tokenizer.is_file() {
@@ -1001,15 +994,11 @@ impl AstEngine {
                 let home_dir = std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/root"));
                 for cand in &[
                     model.with_file_name("hydra-tokenizer.json"),
-                    model.with_file_name("fin-tokenizer.json"),
                     model.with_file_name("tokenizer.json"),
                     model.with_file_name("cheetah-tokenizer.json"),
                     home_dir.join("nio-labs/nio-xs-models/models/hydra/tokenizer.json"),
-                    home_dir.join("nio-labs/nio-xs-models/models/fin/tokenizer.json"),
                     PathBuf::from("/home/mn/nio-labs/nio-xs-models/models/hydra/tokenizer.json"),
-                    PathBuf::from("/home/mn/nio-labs/nio-xs-models/models/fin/tokenizer.json"),
                     PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra/tokenizer.json"),
-                    PathBuf::from("/root/nio-labs/nio-xs-models/models/fin/tokenizer.json"),
                     home_dir.join("nio-labs/nio-xs/models/tokenizer.json"),
                     PathBuf::from("/home/mn/nio-labs/nio-xs/models/tokenizer.json"),
                     PathBuf::from("/root/nio-labs/nio-xs/models/tokenizer.json"),

@@ -269,7 +269,7 @@ def main():
     print("      HYDRA SOVEREIGN MULTI-HEAD COUNCIL PRODUCTION BENCHMARK")
     print("=" * 80)
     print(f"Binary:       {BINARY}")
-    print(f"Target Anchor: hydra-anchor-180m.q4km.gguf (~242 MB, 10 layers)")
+    print(f"Target Anchor: hydra-anchor-0.5b.q4km.gguf (~380 MB, 24 layers, 0.5B unpruned backbone)")
     
     # Check head storage
     heads_dir = Path.home() / ".nioxs" / "heads"

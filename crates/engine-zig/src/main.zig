@@ -132,9 +132,9 @@ pub fn main() !void {
     if (model_path == null) {
         const home = std.posix.getenv("HOME") orelse "/root";
         const filename = if (is_hydra and is_kernel)
-            "hydra-kernel-180m.q4km.gguf"
+            "hydra-kernel-0.5b.q4km.gguf"
         else if (is_hydra)
-            "hydra-anchor-180m.q4km.gguf"
+            "hydra-anchor-0.5b.q4km.gguf"
         else if (is_sql)
             "fin-sql.q4km.gguf"
         else if (is_kernel)
@@ -292,9 +292,9 @@ fn detectCouncilTarget(prompt: []const u8, is_hydra: bool) struct { name: []cons
             std.mem.indexOf(u8, lower, "axum") != null or
             std.mem.indexOf(u8, lower, "tokio") != null)
         {
-            return .{ .name = "hydra-kernel", .filename = "hydra-kernel-180m.q4km.gguf" };
+            return .{ .name = "hydra-kernel", .filename = "hydra-kernel-0.5b.q4km.gguf" };
         }
-        return .{ .name = "hydra", .filename = "hydra-anchor-180m.q4km.gguf" };
+        return .{ .name = "hydra", .filename = "hydra-anchor-0.5b.q4km.gguf" };
     }
 
     if (std.mem.indexOf(u8, lower, "sql") != null or
@@ -349,7 +349,7 @@ fn runAutonomousHandoff(allocator: std.mem.Allocator, prompt: []const u8, window
     try stdout.print("=== Prompt: {s} ===\n\n", .{prompt});
 
     const target = detectCouncilTarget(prompt, is_hydra);
-    const anchor_filename = if (is_hydra) "hydra-anchor-180m.q4km.gguf" else "fin-base.q4km.gguf";
+    const anchor_filename = if (is_hydra) "hydra-anchor-0.5b.q4km.gguf" else "fin-base.q4km.gguf";
 
     const base_path = resolveModelPath(allocator, anchor_filename) orelse {
         try stdout.print("Error: {s} not found.\n", .{anchor_filename});

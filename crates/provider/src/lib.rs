@@ -618,8 +618,11 @@ async fn chat(
         "nio-rabbit" | "rabbit" => {
             return microlm_chat_handler("rabbit", request, None).await;
         }
-        "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" | "nio-fin-concurrency" | "fin-concurrency" | "nio-fin-raft" | "fin-raft" => {
+        "nio-hydra" | "hydra" | "hydra-kernel" | "nio-hydra-kernel" | "hydra-max" | "hydra-ultra" => {
             return microlm_chat_handler(&model_norm, request, None).await;
+        }
+        "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" | "nio-fin-concurrency" | "fin-concurrency" | "nio-fin-raft" | "fin-raft" => {
+            return microlm_chat_handler("hydra", request, None).await;
         }
         "nio-ray" | "ray" => {
             return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;

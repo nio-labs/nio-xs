@@ -44,6 +44,7 @@ fn format_council_directive(directive: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn is_degenerate(s: &str) -> bool {
     let trimmed = s.trim();
     if trimmed.is_empty() {
@@ -93,34 +94,6 @@ fn is_degenerate(s: &str) -> bool {
         }
     }
     false
-}
-
-async fn fallback_to_cheetah_or_rabbit(
-    prompt: &str,
-    max_tokens: usize,
-    device_pref: nioxs_engine::DevicePreference,
-    flow: &mut StreamFlow,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let fallback_model = if std::path::Path::new("/root/.nioxs/models/cheetah.1.5b-q4km.gguf").exists() {
-        "cheetah"
-    } else {
-        "rabbit"
-    };
-    flow.push(&format!("\n\n[Fallback Sovereign Sprinter: {fallback_model}]\n\n"));
-    let engine = nioxs_engine::AstEngine::for_model_with_device(fallback_model, device_pref)?;
-    let system_prompt = if fallback_model == "cheetah" {
-        nioxs_engine::cheetah_system()
-    } else {
-        "You are Rabbit, Nio's Sovereign Code Synthesis Engine. Output accurate, robust code and architecture."
-    };
-    let formatted_prompt = format!(
-        "<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-    );
-    let mut rx = engine.generate_stream(formatted_prompt, max_tokens, 0.20, 0.85).await?;
-    while let Some(chunk) = rx.recv().await {
-        flow.push(&chunk);
-    }
-    Ok(())
 }
 
 #[allow(dead_code)]
@@ -1475,9 +1448,6 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
             if specialist_opt.is_none() {
                 base_engine.ensure_loaded().await?;
-                if is_hydra {
-                    let _ = base_engine.attach_lora_head("000").await;
-                }
                 let formatted_prompt = if is_hydra {
                     format!(
                         "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n"
@@ -1500,12 +1470,6 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
                 while let Some(chunk) = rx.recv().await {
                     accumulated.push_str(&chunk);
-
-                    // Early exit on degenerate token stream (prevent garbage clobbering)
-                    if is_degenerate(&accumulated) {
-                        accumulated.clear();
-                        break;
-                    }
 
                     if is_hydra {
                         flow.push(&chunk);
@@ -1583,17 +1547,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     let mut spec_rx = base_engine
                         .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
                         .await?;
-                    let mut spec_output = String::new();
-                    let mut chunk_count = 0;
                     while let Some(chunk) = spec_rx.recv().await {
-                        if !is_degenerate(&chunk) {
-                            chunk_count += 1;
-                            spec_output.push_str(&chunk);
-                            flow.push(&chunk);
-                        }
-                    }
-                    if chunk_count == 0 || is_degenerate(&spec_output) {
-                        fallback_to_cheetah_or_rabbit(&prompt, max_tokens, device_pref, &mut flow).await?;
+                        flow.push(&chunk);
                     }
                 } else {
                     let directive_rendered = if accumulated.contains("@council") {
@@ -1629,8 +1584,6 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 // Direct polymath execution by the base anchor!
                 flow.close_think();
                 flow.push("Council: Direct Polymath Synthesis\n\n");
-                // Attach Head Direct (Polymath Synthesis Specialist) LoRA
-                let _ = base_engine.attach_lora_head("head-direct").await;
                 let polymath_prompt = format!(
                     "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
                     nioxs_engine::hydra_specialist_system("head-direct")
@@ -1638,17 +1591,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 let mut poly_rx = base_engine
                     .generate_stream(polymath_prompt, max_tokens, 0.20, 0.85)
                     .await?;
-                let mut poly_output = String::new();
-                let mut chunk_count = 0;
                 while let Some(chunk) = poly_rx.recv().await {
-                    if !is_degenerate(&chunk) {
-                        chunk_count += 1;
-                        poly_output.push_str(&chunk);
-                        flow.push(&chunk);
-                    }
-                }
-                if chunk_count == 0 || is_degenerate(&poly_output) {
-                    fallback_to_cheetah_or_rabbit(&prompt, max_tokens, device_pref, &mut flow).await?;
+                    flow.push(&chunk);
                 }
             }
         } else {
