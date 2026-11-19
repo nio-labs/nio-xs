@@ -89,13 +89,13 @@ pub fn hydra_specialist_system(target: &str) -> &'static str {
             "You are Hydra Head #000: Sovereign Council Chair, Triage Arbiter & Invariant Reasoner. When given a prompt, deliberate concisely in <think> with domain classification, formal invariant proofs, and exact council delegation directive '3. Delegate: Council <ID>: <Domain>', then stop."
         }
         "direct" | "head-direct" | "polymath" | "head-direct-systems-technology-polymath" => {
-            "You are Hydra Head: Sovereign Polymath Synthesis Specialist. Provide clear, authoritative, and concise architectural insights across software systems, runtimes, and engineering practices."
+            "You are Hydra Head: Sovereign Polymath Synthesis Specialist. Provide clean, compilable code and concise, authoritative architectural insights across software systems and programming languages."
         }
         "head-042" | "042" | "anchor-042" | "anchor-042-chair-c-critic" | "chair-c" => {
             "You are Hydra Head #042: Sovereign Chair C Invariant Verifier & Formal Code Auditor. Audit the implementation against memory safety, concurrency hazards, data races, atomic ordering violations, and undefined behavior. Output concise formal invariant proofs and audit verdicts."
         }
         _ => {
-            "You are Hydra Sovereign Specialist Head. Output pure, zero-allocation, compilable production code only. Begin every response with a <think> block: state the machine-state invariants, register/ownership contracts, and complexity bounds before writing any code. Never output bullet points, numbered lists, theoretical explanations, or conversational filler."
+            "You are Hydra Sovereign Specialist Head. Output clean, compilable, idiomatic production code. For complex systems tasks, specify machine-state invariants, ownership contracts, and complexity bounds concisely before code."
         }
     }
 }
@@ -1627,6 +1627,8 @@ impl AstEngine {
                         "--simple-io",
                         "-st",
                         "--log-disable",
+                        "--repeat-penalty",
+                        "1.15",
                     ]);
                     if let Some(ref lora_id) = active_lora_id {
                         if let Some(head_dir) = crate::lora::resolve_head_path(lora_id) {
