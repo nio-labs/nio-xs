@@ -119,6 +119,7 @@ mod tests {
     }
 }
 
+#[allow(dead_code)]
 #[inline(always)]
 fn worker_cpu_id(worker_id: usize) -> usize {
     worker_id % 18
@@ -2318,6 +2319,16 @@ impl GemvTask {
                             out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
                         }
                     }
+                    2 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_q4_0(row_slice, &mut dequant_buf);
+                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                        }
+                    }
                     _ => panic!("unhandled generic linear 2tokens dtype {dtype}"),
                 }
             }
@@ -2531,6 +2542,17 @@ impl GemvTask {
                             out2[r] = quants::dot_f32(&dequant_buf, x2_f32);
                         }
                     }
+                    2 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in start_r..end_r {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = std::slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_q4_0(row_slice, &mut dequant_buf);
+                            out0[r] = quants::dot_f32(&dequant_buf, x0_f32);
+                            out1[r] = quants::dot_f32(&dequant_buf, x1_f32);
+                            out2[r] = quants::dot_f32(&dequant_buf, x2_f32);
+                        }
+                    }
                     _ => panic!("unhandled generic linear 3tokens dtype {dtype}"),
                 }
             }
@@ -2616,6 +2638,7 @@ impl GemvTask {
     }
 }
 
+#[allow(dead_code)]
 struct SharedState {
     task: std::cell::UnsafeCell<Option<GemvTask>>,
     generation: AtomicU32,
@@ -2629,6 +2652,7 @@ struct SharedState {
 unsafe impl Sync for SharedState {}
 
 #[cfg(target_os = "linux")]
+#[allow(dead_code)]
 unsafe fn pin_thread_to_cpu(cpu_id: usize) {
     let mut set: libc::cpu_set_t = std::mem::zeroed();
     libc::CPU_SET(cpu_id, &mut set);
@@ -2636,6 +2660,7 @@ unsafe fn pin_thread_to_cpu(cpu_id: usize) {
 }
 
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)]
 unsafe fn pin_thread_to_cpu(_cpu_id: usize) {}
 
 #[cfg(any(test, not(target_arch = "x86_64")))]
@@ -2675,7 +2700,6 @@ impl SpinThreadPool {
                 return n.max(1);
             }
         }
-        let total = rayon::current_num_threads();
         // Single core avoids cross-core cache invalidation & futex contention on small GEMVs (D=896), delivering 17.4+ WPS.
         1
     }
