@@ -2730,8 +2730,9 @@ impl SpinThreadPool {
                 return n.max(1);
             }
         }
-        // Single core avoids cross-core cache invalidation & futex contention on small GEMVs (D=896), delivering 17.4+ WPS.
-        1
+        std::thread::available_parallelism()
+            .map(|n| n.get().min(4))
+            .unwrap_or(4)
     }
 
     #[inline(always)]

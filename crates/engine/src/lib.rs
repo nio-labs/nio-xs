@@ -356,6 +356,24 @@ impl ZwCache {
             }
         }
 
+        // High-confidence Bigram context lookup in generated tokens (PLD fallback)
+        if gen_tokens.len() >= 2 {
+            for i in (0..gen_tokens.len() - 1).rev() {
+                if gen_tokens[i] == prev1 {
+                    return Some(gen_tokens[i + 1]);
+                }
+            }
+        }
+
+        // High-confidence Bigram context lookup in prompt tokens (PLD fallback)
+        if self.prompt_tokens.len() >= 2 {
+            for i in (0..self.prompt_tokens.len() - 1).rev() {
+                if self.prompt_tokens[i] == prev1 {
+                    return Some(self.prompt_tokens[i + 1]);
+                }
+            }
+        }
+
         None
     }
 
