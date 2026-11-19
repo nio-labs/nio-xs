@@ -282,6 +282,7 @@ pub struct ScratchBuffers {
     pub w1: Vec<f32>,
     pub w3: Vec<f32>,
     pub inter: Vec<f32>,
+    pub inter_q8_0: Vec<quants::BlockQ8_0>,
     pub inter_q8_k: Vec<quants::BlockQ8_K>,
     pub mlp_out: Vec<f32>,
     pub attn_scores: Vec<f32>,
@@ -352,6 +353,13 @@ impl ScratchBuffers {
             w1: vec![0f32; w1_rows],
             w3: vec![0f32; w1_rows],
             inter: vec![0f32; w1_rows],
+            inter_q8_0: vec![
+                quants::BlockQ8_0 {
+                    d: 0.0,
+                    qs: [0; 32]
+                };
+                (w1_rows + 31) / 32
+            ],
             inter_q8_k: vec![
                 quants::BlockQ8_K {
                     d: 0.0,
@@ -917,6 +925,15 @@ impl LayerDesc {
                 out_ptr: scratch.mlp_out.as_mut_ptr() as usize,
                 weight_ptr: w2_slice.as_ptr() as usize,
                 x_q8_k_ptr: scratch.inter_q8_k.as_ptr() as usize,
+                n_rows: self.w2.n_rows,
+                n_cols: self.w2.n_cols,
+            });
+        } else if self.w2.dtype == 20 {
+            quants::quantize_row_q8_0(&scratch.inter, &mut scratch.inter_q8_0);
+            pool.run_task(GemvTask::Iq4Nl {
+                out_ptr: scratch.mlp_out.as_mut_ptr() as usize,
+                weight_ptr: w2_slice.as_ptr() as usize,
+                x_blocks_ptr: scratch.inter_q8_0.as_ptr() as usize,
                 n_rows: self.w2.n_rows,
                 n_cols: self.w2.n_cols,
             });
@@ -2383,10 +2400,10 @@ impl AstMicroEngine {
                     }
                 }
                 if meta_w2.shape.len() != 2
-                    || !matches!(meta_w2.dtype, 2 | 6 | 8 | 12 | 13 | 14 | 18 | 21 | 22)
+                    || !matches!(meta_w2.dtype, 2 | 6 | 8 | 12 | 13 | 14 | 18 | 20 | 21 | 22)
                     || (matches!(meta_w2.dtype, 12 | 13 | 14 | 18 | 21 | 22)
                         && meta_w2.shape[1] % 256 != 0)
-                    || ((meta_w2.dtype == 2 || meta_w2.dtype == 6 || meta_w2.dtype == 8) && meta_w2.shape[1] % 32 != 0)
+                    || ((meta_w2.dtype == 2 || meta_w2.dtype == 6 || meta_w2.dtype == 8 || meta_w2.dtype == 20) && meta_w2.shape[1] % 32 != 0)
                 {
                     anyhow::bail!(
                         "unsupported AST-Micro tensor {}: dtype {} shape {:?}",

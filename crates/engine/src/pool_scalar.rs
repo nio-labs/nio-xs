@@ -588,6 +588,15 @@ impl GemvTask {
                             out[r] = quants::dot_f32(&dequant_buf, x_f32);
                         }
                     }
+                    20 => {
+                        let mut dequant_buf = vec![0.0f32; n_cols];
+                        for r in lo..hi {
+                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                            let row_slice = slice::from_raw_parts(r_ptr, row_bytes);
+                            quants::dequantize_row_iq4_nl(row_slice, &mut dequant_buf);
+                            out[r] = quants::dot_f32(&dequant_buf, x_f32);
+                        }
+                    }
                     _ => panic!("unhandled generic linear dtype {dtype}"),
                 }
             }
