@@ -15,6 +15,7 @@ pub mod lora;
 pub mod pool;
 pub mod prefix_cache;
 pub mod quants;
+pub mod runner_installer;
 mod speculation;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 pub use hardware::{ActiveDevice, DevicePreference};
@@ -747,19 +748,12 @@ impl AstEngine {
         ActiveDevice::detect(self.device_pref)
     }
 
-    fn gpu_runner_path() -> Option<PathBuf> {
-        let runner = std::env::var_os("NIOXS_GPU_RUNNER")
-            .or_else(|| std::env::var_os("NIOXS_LLAMA_CLI"))
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("llama-cli"));
-        if runner.is_file() {
-            return Some(runner);
+    fn gpu_runner_path(&self) -> Option<PathBuf> {
+        if self.device_pref == DevicePreference::Gpu {
+            runner_installer::find_or_download_gpu_runner()
+        } else {
+            runner_installer::find_existing_runner()
         }
-        std::env::var_os("PATH").and_then(|path| {
-            std::env::split_paths(&path)
-                .map(|dir| dir.join(&runner))
-                .find(|path| path.is_file())
-        })
     }
 
     pub fn set_device_preference(&mut self, pref: DevicePreference) {
@@ -1207,7 +1201,7 @@ impl AstEngine {
 
         // The native fallback must use CPU residency settings. Hardware probing
         // cannot enable GPU execution when the external runner is unavailable.
-        let active_dev = if Self::gpu_runner_path().is_some() {
+        let active_dev = if self.gpu_runner_path().is_some() {
             self.active_device()
         } else {
             ActiveDevice::Cpu
@@ -1584,18 +1578,23 @@ impl AstEngine {
         let max_tokens = output_budget(prompt_tokens.len(), context_limit, max_tokens)?;
         let (tx, rx) = mpsc::channel(64);
 
-        if let Some(runner_bin) = Self::gpu_runner_path() {
+        if let Some(runner_bin) = self.gpu_runner_path() {
             let active_dev = self.active_device();
-            if active_dev.is_gpu() {
+            let wants_gpu = self.device_pref == DevicePreference::Gpu || active_dev.is_gpu();
+            if wants_gpu {
                 let model_path = self.model_path.clone();
                 // Match the native runtime's context limit, including the
                 // model's declared maximum, for every companion.
                 let context_size = context_limit.to_string();
-                let gpu_layers = active_dev.recommended_gpu_layers(total_layers);
+                let gpu_layers = if active_dev.is_gpu() {
+                    active_dev.recommended_gpu_layers(total_layers)
+                } else {
+                    total_layers
+                };
                 let ngl_arg = gpu_layers.to_string();
                 eprintln!(
                     "[nioxs] Hardware: {} (offloading {}/{} layers to GPU)",
-                    active_dev.name(),
+                    if active_dev.is_gpu() { active_dev.name() } else { "GPU Runner" },
                     gpu_layers,
                     total_layers
                 );
@@ -1615,6 +1614,8 @@ impl AstEngine {
                         &ngl_arg,
                         "--no-display-prompt",
                         "--simple-io",
+                        "-st",
+                        "--log-disable",
                     ]);
                     if let Some(ref lora_id) = active_lora_id {
                         if let Some(head_dir) = crate::lora::resolve_head_path(lora_id) {
@@ -1642,7 +1643,24 @@ impl AstEngine {
                         if let Some(stdout) = child.stdout.take() {
                             use std::io::{BufRead, BufReader};
                             let reader = BufReader::new(stdout);
+                            let mut started = false;
                             for line in reader.lines().flatten() {
+                                if !started {
+                                    let trimmed = line.trim();
+                                    if trimmed == "assistant"
+                                        || trimmed.starts_with("assistant:")
+                                        || trimmed.starts_with("<|im_start|>assistant")
+                                    {
+                                        started = true;
+                                    }
+                                    continue;
+                                }
+                                if line.starts_with("[ Prompt:")
+                                    || line.starts_with("Exiting...")
+                                    || line.starts_with("> ")
+                                {
+                                    break;
+                                }
                                 if !line.is_empty() {
                                     let _ = tx.blocking_send(format!("{line}\n"));
                                 }

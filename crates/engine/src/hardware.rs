@@ -166,8 +166,8 @@ impl ActiveDevice {
             return vulkan_dev;
         }
 
-        // Fallback: If GPU was strictly requested but not found, log warning and use CPU
-        if effective_pref == DevicePreference::Gpu {
+        // Fallback: If GPU was strictly requested but not found and no runner exists, log warning and use CPU
+        if effective_pref == DevicePreference::Gpu && crate::runner_installer::find_existing_runner().is_none() {
             eprintln!(
                 "[nioxs] Notice: GPU acceleration requested but no compatible GPU was detected. Falling back to pure CPU."
             );
