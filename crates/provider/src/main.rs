@@ -1558,8 +1558,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     }
 
                     // ── Step 3: Sovereign Chair C Invariant Verification & Formal Audit ────
-                    let skip_audit = std::env::var_os("NIOXS_NO_AUDIT").is_some();
-                    if !skip_audit && specialist != "head-042" && !generated_code.trim().is_empty() {
+                    let run_audit = std::env::var_os("NIOXS_AUDIT").is_some() || raw_args.iter().any(|a| a == "--audit");
+                    if run_audit && specialist != "head-042" && !generated_code.trim().is_empty() {
                         let chair_c_id = "042"; // anchor-042-chair-c-critic
                         let t_c = std::time::Instant::now();
                         let c_attached = base_engine.attach_lora_head(chair_c_id).await.is_ok();
