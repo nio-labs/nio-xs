@@ -92,7 +92,7 @@ pub fn hydra_specialist_system(target: &str) -> &'static str {
             "You are Hydra Head: Sovereign Polymath Synthesis Specialist. Provide clean, compilable code and concise, authoritative architectural insights across software systems and programming languages."
         }
         "head-042" | "042" | "anchor-042" | "anchor-042-chair-c-critic" | "chair-c" => {
-            "You are Hydra Head #042: Sovereign Chair C Invariant Verifier & Formal Code Auditor. Audit the implementation against memory safety, concurrency hazards, data races, atomic ordering violations, and undefined behavior. Output concise formal invariant proofs and audit verdicts."
+            "You are Hydra Head #042: Sovereign Chair C Invariant Verifier & Formal Code Auditor. Audit the provided implementation against memory safety, pointer provenance, data races, atomic memory ordering contracts, and formal invariants. Output concise formal analysis and audit verdicts (SOUND or REQUIRES CORRECTION)."
         }
         _ => {
             "You are Hydra Sovereign Specialist Head. Output clean, compilable, idiomatic production code. For complex systems tasks, specify machine-state invariants, ownership contracts, and complexity bounds concisely before code."
@@ -1597,17 +1597,21 @@ impl AstEngine {
                     0
                 };
                 let ngl_arg = gpu_layers.to_string();
-                if active_dev.is_gpu() || self.device_pref == DevicePreference::Gpu {
-                    eprintln!(
-                        "[nioxs] Hardware: {} (offloading {}/{} layers to GPU)",
-                        if active_dev.is_gpu() { active_dev.name() } else { "GPU Runner" },
-                        gpu_layers,
-                        total_layers
-                    );
-                } else {
-                    eprintln!(
-                        "[nioxs] Hardware: High-Throughput Runner (SIMD AVX2 acceleration)"
-                    );
+                static HARDWARE_LOGGED: std::sync::atomic::AtomicBool =
+                    std::sync::atomic::AtomicBool::new(false);
+                if !HARDWARE_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    if active_dev.is_gpu() || self.device_pref == DevicePreference::Gpu {
+                        eprintln!(
+                            "[nioxs] Hardware: {} (offloading {}/{} layers to GPU)",
+                            if active_dev.is_gpu() { active_dev.name() } else { "GPU Runner" },
+                            gpu_layers,
+                            total_layers
+                        );
+                    } else {
+                        eprintln!(
+                            "[nioxs] Hardware: High-Throughput Runner (SIMD AVX2 acceleration)"
+                        );
+                    }
                 }
 
                 tokio::task::spawn_blocking(move || {
@@ -1650,36 +1654,58 @@ impl AstEngine {
                             cmd.env("LD_LIBRARY_PATH", joined);
                         }
                     }
+                    let stderr_cfg = if std::env::var_os("NIOXS_DEBUG").is_some() {
+                        std::process::Stdio::inherit()
+                    } else {
+                        std::process::Stdio::null()
+                    };
                     cmd.stdout(std::process::Stdio::piped());
-                    cmd.stderr(std::process::Stdio::null());
+                    cmd.stderr(stderr_cfg);
 
-                    if let Ok(mut child) = cmd.spawn() {
-                        if let Some(stdout) = child.stdout.take() {
-                            use std::io::{BufRead, BufReader};
-                            let reader = BufReader::new(stdout);
-                            let mut started = false;
-                            for line in reader.lines().flatten() {
-                                if !started {
-                                    let trimmed = line.trim();
-                                    if trimmed == "assistant"
-                                        || trimmed.starts_with("assistant:")
-                                        || trimmed.starts_with("<|im_start|>assistant")
-                                    {
-                                        started = true;
+                    match cmd.spawn() {
+                        Ok(mut child) => {
+                            if let Some(stdout) = child.stdout.take() {
+                                use std::io::{BufRead, BufReader};
+                                let reader = BufReader::new(stdout);
+                                let mut started = false;
+                                for line in reader.lines().flatten() {
+                                    if !started {
+                                        let trimmed = line.trim();
+                                        if trimmed == "assistant"
+                                            || trimmed.starts_with("assistant:")
+                                            || trimmed.starts_with("<|im_start|>assistant")
+                                            || trimmed.contains("(truncated)")
+                                        {
+                                            started = true;
+                                        }
+                                        continue;
                                     }
-                                    continue;
-                                }
-                                if line.starts_with("[ Prompt:")
-                                    || line.starts_with("Exiting...")
-                                {
-                                    break;
-                                }
-                                if !line.is_empty() {
-                                    let _ = tx.blocking_send(format!("{line}\n"));
+                                    let trimmed = line.trim();
+                                    if trimmed.starts_with("[ Prompt:")
+                                        || trimmed.starts_with("Exiting...")
+                                        || trimmed == ">"
+                                    {
+                                        break;
+                                    }
+                                    if trimmed == "<audit>" || trimmed.starts_with("<audit>") {
+                                        let stripped = trimmed.trim_start_matches("<audit>").trim();
+                                        if !stripped.is_empty() {
+                                            let _ = tx.blocking_send(format!("{stripped}\n"));
+                                        }
+                                        continue;
+                                    }
+                                    if !line.is_empty() {
+                                        let _ = tx.blocking_send(format!("{line}\n"));
+                                    }
                                 }
                             }
+                            let _ = child.wait();
                         }
-                        let _ = child.wait();
+                        Err(e) => {
+                            if std::env::var_os("NIOXS_DEBUG").is_some() {
+                                eprintln!("[nioxs-engine] failed to spawn runner: {e}");
+                            }
+                        }
                     }
                 });
                 return Ok(rx);

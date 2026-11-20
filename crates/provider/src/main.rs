@@ -518,6 +518,7 @@ Commands:\n\
   history        Display local session turn journal from .nioxs/history.jsonl\n\
 \n\
 Options:\n\
+  --audit, -a                        Trigger Chair C formal invariant verification & safety audit pass\n\
   --device, -d <auto|cpu|gpu>        Select hardware compute device (default: auto; uses GPU if available, else pure CPU)\n\
   --gpu                              Shortcut to target GPU acceleration\n\
   --cpu                              Shortcut to target pure-CPU execution\n\
@@ -1371,7 +1372,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
             eprintln!(
-                "Usage: nioxs hydra [--chair|--kernel|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+                "Usage: nioxs hydra [--chair|--kernel|--base] [--audit|-a] [--head <id>] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
             );
             return Ok(());
         }
@@ -1379,6 +1380,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let mut custom_max_tokens = None;
         let mut device_pref = nioxs_engine::DevicePreference::Auto;
         let mut flow_mode = FlowMode::Token;
+        let mut run_audit = raw_args.iter().any(|a| a == "--audit" || a == "-a")
+            || std::env::var_os("NIOXS_AUDIT").is_some();
+        let mut deliberate = raw_args.iter().any(|a| a == "--council" || a == "--deliberate" || a == "--triage")
+            || std::env::var_os("NIOXS_DELIBERATE").is_some();
+        let mut explicit_head = None;
         let mut model_target = match cmd {
             "hydra-kernel" | "nio-hydra-kernel" => "hydra-kernel",
             "hydra-max" => "hydra-max",
@@ -1394,7 +1400,14 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 model_target = "hydra-chair";
             } else if a == "--base" {
                 model_target = "hydra";
-
+            } else if a == "--audit" || a == "-a" {
+                run_audit = true;
+            } else if a == "--deliberate" || a == "--council" || a == "--triage" {
+                deliberate = true;
+            } else if a == "--head" || a == "-H" {
+                if let Some(val) = iter.next() {
+                    explicit_head = Some(val);
+                }
             } else if a == "-n" || a == "--max-tokens" {
                 if let Some(val) = iter.next() {
                     custom_max_tokens = val.parse::<usize>().ok();
@@ -1420,7 +1433,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
             eprintln!(
-                "Usage: nioxs hydra [--chair|--kernel|--base] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+                "Usage: nioxs hydra [--chair|--kernel|--base] [--audit|-a] [--head <id>] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
             );
             return Ok(());
         }
@@ -1458,15 +1471,14 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             let speaker_model = "hydra";
             let is_hydra = true;
 
-            // Single-Pass Sovereign Streaming by default (matching Cheetah at 10-15+ w/s)
-            // Multi-pass council deliberation triage is opt-in via --council, --deliberate, or NIOXS_DELIBERATE=1
-            let deliberate = raw_args.iter().any(|a| a == "--council" || a == "--deliberate" || a == "--triage")
-                || std::env::var_os("NIOXS_DELIBERATE").is_some();
-
             let base_engine = nioxs_engine::AstEngine::for_model_with_device(speaker_model, device_pref)?;
             
-            // Sub-millisecond (< 0.2ms) zero-token lexical & cosine semantic routing
-            let mut specialist_opt = detect_council_specialist("", &prompt, is_hydra);
+            // Explicit head override or sub-millisecond (< 0.2ms) zero-token lexical & cosine semantic routing
+            let mut specialist_opt = if let Some(ref h) = explicit_head {
+                Some(h.as_str())
+            } else {
+                detect_council_specialist("", &prompt, is_hydra)
+            };
             let mut accumulated = String::new();
 
             if deliberate && specialist_opt.is_none() {
@@ -1554,28 +1566,35 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     }
 
                     // ── Step 3: Sovereign Chair C Invariant Verification & Formal Audit ────
-                    let run_audit = std::env::var_os("NIOXS_AUDIT").is_some() || raw_args.iter().any(|a| a == "--audit");
                     if run_audit && specialist != "head-042" && !generated_code.trim().is_empty() {
                         let chair_c_id = "042"; // anchor-042-chair-c-critic
                         let t_c = std::time::Instant::now();
-                        let c_attached = base_engine.attach_lora_head(chair_c_id).await.is_ok();
+                        let _ = base_engine.attach_lora_head(chair_c_id).await;
                         let c_ms = t_c.elapsed().as_secs_f64() * 1000.0;
-                        if c_attached {
-                            if std::env::var_os("NIOXS_DEBUG").is_some() {
-                                eprintln!("[nioxs-hydra] Chair C Invariant Verifier hot-swapped in {c_ms:.2}ms");
-                            }
-                            flow.push("\n\n---\n**Council Chair C: Invariant Audit & Verification**\n\n<audit>\n");
-                            let audit_prompt = format!(
-                                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\nAudit the following code for memory safety, data races, atomic orderings, and invariants:\n\n```\n{}\n```<|im_end|>\n<|im_start|>assistant\n<audit>\n",
-                                nioxs_engine::hydra_specialist_system("head-042"),
-                                generated_code.trim()
-                            );
-                            let audit_tokens = 256.min(max_tokens / 2);
-                            if let Ok(mut audit_rx) = base_engine.generate_stream(audit_prompt, audit_tokens, 0.15, 0.85).await {
+                        if std::env::var_os("NIOXS_DEBUG").is_some() {
+                            eprintln!("[nioxs-hydra] Chair C Invariant Verifier hot-swapped in {c_ms:.2}ms");
+                        }
+                        flow.push("\n\n---\n**Council Chair C: Invariant Audit & Verification**\n\n<audit>\n");
+                        let audit_prompt = format!(
+                            "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\nAudit the following implementation:\n```\n{}\n```\n\nProvide:\n1. Invariant & Safety Analysis (data races, memory safety, pointer validity, and language correctness)\n2. Verdict: State SOUND or REQUIRES CORRECTION with a concise explanation.<|im_end|>\n<|im_start|>assistant\n<audit>\n",
+                            nioxs_engine::hydra_specialist_system("head-042"),
+                            generated_code.trim()
+                        );
+                        let audit_tokens = 384.min(max_tokens / 2);
+                        let mut audit_text = String::new();
+                        match base_engine.generate_stream(audit_prompt, audit_tokens, 0.15, 0.85).await {
+                            Ok(mut audit_rx) => {
                                 while let Some(chunk) = audit_rx.recv().await {
+                                    audit_text.push_str(&chunk);
                                     flow.push(&chunk);
                                 }
                             }
+                            Err(e) => {
+                                eprintln!("[nioxs-hydra] Chair C stream error: {e}");
+                            }
+                        }
+                        if !audit_text.contains("</audit>") {
+                            flow.push("\n</audit>\n");
                         }
                     }
                 } else {
