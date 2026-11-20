@@ -19,7 +19,10 @@ pub mod runner_installer;
 mod speculation;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 pub use hardware::{ActiveDevice, DevicePreference};
-pub use lora::{LoraAdapter, decompress_all_anchors, ensure_safetensors_file, get_or_load_head, resolve_head_path};
+pub use lora::{
+    LoraAdapter, convert_all_anchors_to_gguf, decompress_all_anchors, ensure_gguf_adapter_file,
+    ensure_safetensors_file, get_or_load_head, resolve_head_path,
+};
 
 fn output_budget(prompt_tokens: usize, context: usize, requested: usize) -> Result<usize> {
     anyhow::ensure!(prompt_tokens > 0, "prompt must contain at least one token");
@@ -84,20 +87,91 @@ pub fn hydra_system() -> &'static str {
 }
 
 pub fn hydra_specialist_system(target: &str) -> &'static str {
-    match target {
-        "head-000" | "000" | "head-000-sovereign-chair" | "head-000-sovereign-chair-arbiter" | "chair" => {
-            "You are Hydra Head #000: Sovereign Council Chair, Triage Arbiter & Invariant Reasoner. When given a prompt, deliberate concisely in <think> with domain classification, formal invariant proofs, and exact council delegation directive '3. Delegate: Council <ID>: <Domain>', then stop."
+    let lower = target.to_ascii_lowercase();
+    let clean_id = lower
+        .trim_start_matches("head-")
+        .trim_start_matches("anchor-");
+
+    if clean_id.starts_with("000") || clean_id == "chair" || clean_id == "arbiter" {
+        return "You are Hydra Head #000: Sovereign Council Chair, Triage Arbiter & Invariant Reasoner. When given a prompt, deliberate concisely in <think> with domain classification, formal invariant proofs, and exact council delegation directive '3. Delegate: Council <ID>: <Domain>', then stop.";
+    }
+    if clean_id.starts_with("direct") || clean_id.starts_with("polymath") {
+        return "You are Hydra Head: Sovereign Polymath Synthesis Specialist. Provide clean, compilable code and concise, authoritative architectural insights across software systems and programming languages.";
+    }
+    if clean_id.starts_with("042") || clean_id.contains("chair-c") || clean_id.contains("critic") {
+        return "You are Hydra Head #042: Sovereign Chair C Invariant Verifier & Formal Code Auditor. Audit the provided implementation against memory safety, pointer provenance, data races, atomic memory ordering contracts, and formal invariants. Output concise formal analysis and audit verdicts (SOUND or REQUIRES CORRECTION).";
+    }
+    if clean_id.starts_with("043") || clean_id.contains("socratic") || clean_id.contains("mentor") {
+        return "You are Hydra Head #043: Sovereign Socratic Mentor & Rubber Duck Companion. Ask clarifying questions, encourage first-principles deduction, explain subtle concepts with grounded analogies, and guide the developer gently toward optimal solutions.";
+    }
+    if clean_id.starts_with("044") || clean_id.contains("architect") {
+        return "You are Hydra Head #044: Sovereign Chief Architect & System Design Specialist. Formulate robust distributed topologies, document CAP/PACELC trade-offs, define SLA/SLO boundaries, produce quantitative comparison matrices, and specify single-points-of-failure.";
+    }
+    if clean_id.starts_with("045") || clean_id.contains("debugger") || clean_id.contains("forensics") {
+        return "You are Hydra Head #045: Sovereign Incident Forensics & Root-Cause Debugger. Analyze stack traces, coredumps, ASan/TSan reports, gdb backtraces, and memory corruption patterns. Identify exact line numbers, corrupted invariants, and minimal fix patches.";
+    }
+    if clean_id.starts_with("046") || clean_id.contains("api-rfc") {
+        return "You are Hydra Head #046: Sovereign API & Protocol RFC Designer. Author rigorous, backward-compatible schemas (OpenAPI 3.1, Protobuf v3, RFC-compliant JSON/binary specs) with strict idempotent semantics, semantic versioning, and rate-limit headers.";
+    }
+    if clean_id.starts_with("047") || clean_id.contains("code-reviewer") || clean_id.contains("refactor") {
+        return "You are Hydra Head #047: Sovereign Code Reviewer & Refactoring Specialist. Scrutinize pull requests for cyclomatic complexity, cognitive load, SOLID adherence, naming accuracy, DRY violations, and architectural regression. Provide diff patches.";
+    }
+    if clean_id.starts_with("048") || clean_id.contains("security") || clean_id.contains("hardener") {
+        return "You are Hydra Head #048: Sovereign Security Red-Team & Hardening Auditor. Detect OWASP Top 10 vulnerabilities, integer overflows, format string bugs, insecure deserialization, privilege escalations, and provide hardened seccomp/AppArmor policies.";
+    }
+
+    // Dynamic resolution from registry
+    static TITLES_MAP: std::sync::OnceLock<std::collections::HashMap<String, &'static str>> = std::sync::OnceLock::new();
+    let titles = TITLES_MAP.get_or_init(|| {
+        let mut map = std::collections::HashMap::new();
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+        let registry_paths = [
+            format!("{}/.nioxs/registry/hydra_anchor_registry.json", home),
+            format!("{}/nio-labs/nio-ideas/registry/hydra_anchor_registry.json", home),
+        ];
+        for p in &registry_paths {
+            if let Ok(c) = std::fs::read_to_string(p) {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&c) {
+                    if let Some(anchors) = val.get("anchors").and_then(|a| a.as_array()) {
+                        for a in anchors {
+                            let id_str = a.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                            let slug = a.get("slug").and_then(|s| s.as_str()).unwrap_or("");
+                            let title = a.get("title").and_then(|t| t.as_str()).unwrap_or("Domain Specialist");
+                            let prompt_str: &'static str = Box::leak(format!("You are Hydra Head #{id_str}: Sovereign {title}.").into_boxed_str());
+                            if !id_str.is_empty() {
+                                map.insert(id_str.to_string(), prompt_str);
+                                map.insert(format!("head-{}", id_str), prompt_str);
+                                map.insert(format!("anchor-{}", id_str), prompt_str);
+                            }
+                            if !slug.is_empty() {
+                                map.insert(slug.to_ascii_lowercase(), prompt_str);
+                                if slug.starts_with("anchor-") {
+                                    map.insert(slug.trim_start_matches("anchor-").to_ascii_lowercase(), prompt_str);
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+            }
         }
-        "direct" | "head-direct" | "polymath" | "head-direct-systems-technology-polymath" => {
-            "You are Hydra Head: Sovereign Polymath Synthesis Specialist. Provide clean, compilable code and concise, authoritative architectural insights across software systems and programming languages."
-        }
-        "head-042" | "042" | "anchor-042" | "anchor-042-chair-c-critic" | "chair-c" => {
-            "You are Hydra Head #042: Sovereign Chair C Invariant Verifier & Formal Code Auditor. Audit the provided implementation against memory safety, pointer provenance, data races, atomic memory ordering contracts, and formal invariants. Output concise formal analysis and audit verdicts (SOUND or REQUIRES CORRECTION)."
-        }
-        _ => {
-            "You are Hydra Sovereign Specialist Head. Output clean, compilable, idiomatic production code. For complex systems tasks, specify machine-state invariants, ownership contracts, and complexity bounds concisely before code."
+        map
+    });
+
+    if let Some(&prompt) = titles.get(target) {
+        return prompt;
+    }
+    if let Some(&prompt) = titles.get(clean_id) {
+        return prompt;
+    }
+    if clean_id.len() >= 3 && clean_id[..3].chars().all(|c| c.is_ascii_digit()) {
+        let prefix = &clean_id[..3];
+        if let Some(&prompt) = titles.get(prefix) {
+            return prompt;
         }
     }
+
+    "You are Hydra Head: Sovereign Specialist Head. Output clean, compilable, idiomatic production code."
 }
 
 
@@ -1637,6 +1711,7 @@ impl AstEngine {
                     if let Some(ref lora_id) = active_lora_id {
                         if let Some(head_dir) = crate::lora::resolve_head_path(lora_id) {
                             let _ = crate::lora::ensure_safetensors_file(&head_dir);
+                            let _ = crate::lora::ensure_gguf_adapter_file(&head_dir);
                             let gguf_adapter = head_dir.join("adapter_model.gguf");
                             if gguf_adapter.is_file() {
                                 cmd.arg("--lora");

@@ -386,45 +386,49 @@ fn cosine_route(lower_query: &str) -> Option<&'static str> {
 
 fn print_council_heads_table(heads_dir: &std::path::Path) {
     println!("\n========================================================================================");
-    println!("                      HYDRA SOVEREIGN vMicroLM-COUNCIL ROSTER");
+    println!("                      HYDRA SOVEREIGN 64-ANCHOR COUNCIL ROSTER");
     println!("========================================================================================");
-    println!("{:<9} | {:<36} | {:<22} | {:<9} | {:<12}", "Head ID", "Canonical Slug", "Pillar", "Size (MB)", "SLA Status");
+    println!("{:<9} | {:<36} | {:<22} | {:<9} | {:<12}", "Head ID", "Canonical Slug", "Domain Title", "Size (MB)", "Status");
     println!("----------------------------------------------------------------------------------------");
     
-    let council_meta = [
-        ("000", "head-000-sovereign-chair", "Meta-Coordination & Triage"),
-        ("001", "head-001-systems-atomic-concurrency", "Systems & Concurrency"),
-        ("002", "head-002-backend-axum-tokio", "Backend Microservices"),
-        ("003", "head-003-frontend-react19-rsc", "Full-Stack Web (RSC)"),
-        ("004", "head-004-kernel-ebpf-xdp", "Kernel eBPF & XDP"),
-        ("005", "head-005-data-clickhouse-mergetree", "Data & Columnar SQL"),
-        ("006", "head-006-algorithms-formal-logic", "Formal Logic & Z3 SMT"),
-        ("007", "head-007-devops-k8s-controller", "Cloud Native (Kube-rs)"),
-        ("008", "head-008-consensus-raft-paxos", "Distributed Consensus"),
-        ("009", "head-009-vector-simd-avx512", "Hardware SIMD (AVX2)"),
-        ("010", "head-010-wasm-wasi-sandboxing", "WASM Component / WASI"),
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let anchors_dir = std::path::PathBuf::from(format!("{}/.nioxs/anchors", home));
+
+    let registry_paths = [
+        format!("{}/.nioxs/registry/hydra_anchor_registry.json", home),
+        format!("{}/nio-labs/nio-ideas/registry/hydra_anchor_registry.json", home),
     ];
+    let mut anchors_data = Vec::new();
+    for p in &registry_paths {
+        if let Ok(c) = std::fs::read_to_string(p) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&c) {
+                if let Some(anchors) = val.get("anchors").and_then(|a| a.as_array()) {
+                    for a in anchors {
+                        let id = a.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string();
+                        let slug = a.get("slug").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                        let title = a.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string();
+                        anchors_data.push((id, slug, title));
+                    }
+                }
+            }
+            break;
+        }
+    }
 
     let mut total_mb = 0.0;
     let mut installed_count = 0;
 
-    for (id, slug, pillar) in &council_meta {
-        let dir = heads_dir.join(slug);
-        let fallback_dir = heads_dir.join(format!("head-{id}"));
-        let hydra_dir = heads_dir.join("hydra").join(slug);
-        let hydra_fallback = heads_dir.join("hydra").join(format!("head-{id}"));
-        let target_p = if dir.exists() {
-            dir
-        } else if fallback_dir.exists() {
-            fallback_dir
-        } else if hydra_dir.exists() {
-            hydra_dir
-        } else {
-            hydra_fallback
-        };
-        
-        let size_mb = if target_p.exists() {
-            let bytes: u64 = std::fs::read_dir(&target_p)
+    for (id, slug, title) in &anchors_data {
+        let candidate_dirs = [
+            anchors_dir.join(slug),
+            anchors_dir.join(format!("head-{}", id)),
+            heads_dir.join(slug),
+            heads_dir.join(format!("head-{}", id)),
+            heads_dir.join("hydra").join(slug),
+        ];
+        let target_p = candidate_dirs.iter().find(|p| p.exists());
+        let size_mb = if let Some(p) = target_p {
+            let bytes: u64 = std::fs::read_dir(p)
                 .map(|entries| {
                     entries
                         .filter_map(|e| e.ok())
@@ -437,18 +441,24 @@ fn print_council_heads_table(heads_dir: &std::path::Path) {
             0.0
         };
 
+        let short_title = if title.len() > 22 {
+            format!("{}...", &title[..19])
+        } else {
+            title.clone()
+        };
+
         if size_mb > 0.05 {
             installed_count += 1;
             total_mb += size_mb;
-            let status = if size_mb < 3.0 { "\x1b[1;32mPASS (<3.0MB)\x1b[0m" } else { "\x1b[1;31mEXCEEDED\x1b[0m" };
-            println!("Head #{:<4} | {:<36} | {:<22} | {:>6.2} MB | {}", id, slug, pillar, size_mb, status);
+            let status = if size_mb < 30.0 { "\x1b[1;32mREADY (GGUF)\x1b[0m" } else { "\x1b[1;33mLARGE\x1b[0m" };
+            println!("Head #{:<4} | {:<36} | {:<22} | {:>6.2} MB | {}", id, slug, short_title, size_mb, status);
         } else {
-            println!("Head #{:<4} | {:<36} | {:<22} | {:>6}    | \x1b[1;33mNOT PRESENT\x1b[0m", id, slug, pillar, "-");
+            println!("Head #{:<4} | {:<36} | {:<22} | {:>6}    | \x1b[1;33mNOT PRESENT\x1b[0m", id, slug, short_title, "-");
         }
     }
     println!("----------------------------------------------------------------------------------------");
-    println!("Directory: {}", heads_dir.display());
-    println!("Status:    {} / 10 Heads Installed | Total Footprint: {:.2} MB (Precision: FP8 E4M3, Rank 12)", installed_count, total_mb);
+    println!("Directory: {}", anchors_dir.display());
+    println!("Status:    {} / {} Anchors Installed | Total Footprint: {:.2} MB (GGUF + FP8, Rank 12-32)", installed_count, anchors_data.len(), total_mb);
     println!("Runtime:   In-Process Hot-Swap Latency < 1ms | Target Hardware: Raspberry Pi 5 / CPU / GPU\n");
 }
 
@@ -615,7 +625,20 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             return Ok(());
         }
 
-        println!("Usage: nioxs council [ls|update|inspect <id>|status|decompress]");
+        if sub == "export-gguf" || sub == "convert-gguf" {
+            println!("\x1b[1;36m[Hydra Council]\x1b[0m Converting Sovereign Council adapters to GGUF...");
+            match nioxs_engine::convert_all_anchors_to_gguf() {
+                Ok(count) => {
+                    println!("\x1b[1;32m✔ Successfully converted/verified {count} anchor adapter(s) in GGUF format\x1b[0m");
+                }
+                Err(err) => {
+                    eprintln!("\x1b[1;31m✘ Failed to convert anchors to GGUF: {err}\x1b[0m");
+                }
+            }
+            return Ok(());
+        }
+
+        println!("Usage: nioxs council [ls|update|inspect <id>|status|decompress|export-gguf]");
         println!("       nioxs update");
         return Ok(());
     }
@@ -1473,7 +1496,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
             let base_engine = nioxs_engine::AstEngine::for_model_with_device(speaker_model, device_pref)?;
             
-            // Explicit head override or sub-millisecond (< 0.2ms) zero-token lexical & cosine semantic routing
+            // Fast-Path: Explicit head override or sub-millisecond (< 0.2ms) zero-token lexical & cosine semantic routing
             let mut specialist_opt = if let Some(ref h) = explicit_head {
                 Some(h.as_str())
             } else {
@@ -1481,14 +1504,17 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             };
             let mut accumulated = String::new();
 
-            if deliberate && specialist_opt.is_none() {
+            // Chair A Neural Triage Fallback:
+            // If deliberate flag is passed OR prompt was ambiguous/unrouted by fast-path (< 0.2ms)
+            if (deliberate || specialist_opt.is_none()) && explicit_head.is_none() {
                 base_engine.ensure_loaded().await?;
+                let _ = base_engine.attach_lora_head("000").await;
                 let speaker_system = nioxs_engine::hydra_specialist_system("head-000");
                 let formatted_prompt = format!(
                     "<|im_start|>system\n{speaker_system}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n"
                 );
                 let mut rx = base_engine
-                    .generate_stream(formatted_prompt, 256, 0.10, 0.90)
+                    .generate_stream(formatted_prompt, 128, 0.10, 0.90)
                     .await?;
 
                 flow.push("<think>\n");

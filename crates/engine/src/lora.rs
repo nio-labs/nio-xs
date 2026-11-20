@@ -1505,6 +1505,85 @@ pub fn ensure_safetensors_file(head_dir: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Ensures that adapter_model.gguf exists in head_dir.
+/// If only safetensors exists, converts it on-demand via convert_lora_to_gguf.py.
+pub fn ensure_gguf_adapter_file(head_dir: &Path) -> Option<PathBuf> {
+    let gguf_file = head_dir.join("adapter_model.gguf");
+    if gguf_file.is_file() {
+        return Some(gguf_file);
+    }
+    let _ = ensure_safetensors_file(head_dir);
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)?;
+    let python_bin = home.join(".nioxs").join("env").join("bin").join("python3");
+    let script_candidates = [
+        home.join("nio-labs").join("nio-xs").join("scripts").join("convert_lora_to_gguf.py"),
+        home.join(".nioxs").join("scripts").join("convert_lora_to_gguf.py"),
+    ];
+    let script_path = script_candidates.iter().find(|p| p.is_file())?;
+    let py = if python_bin.is_file() {
+        python_bin
+    } else {
+        PathBuf::from("python3")
+    };
+
+    let _ = std::process::Command::new(py)
+        .arg(script_path)
+        .arg(head_dir)
+        .status();
+
+    if gguf_file.is_file() {
+        Some(gguf_file)
+    } else {
+        None
+    }
+}
+
+/// Converts all anchors in ~/.nioxs/anchors/ to GGUF format using convert_lora_to_gguf.py.
+pub fn convert_all_anchors_to_gguf() -> Result<usize> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow!("Cannot locate HOME directory"))?;
+    let anchors_dir = home.join(".nioxs").join("anchors");
+    let python_bin = home.join(".nioxs").join("env").join("bin").join("python3");
+    let script_candidates = [
+        home.join("nio-labs").join("nio-xs").join("scripts").join("convert_lora_to_gguf.py"),
+        home.join(".nioxs").join("scripts").join("convert_lora_to_gguf.py"),
+    ];
+    let script_path = script_candidates
+        .iter()
+        .find(|p| p.is_file())
+        .ok_or_else(|| anyhow!("convert_lora_to_gguf.py script not found"))?;
+
+    let py = if python_bin.is_file() {
+        python_bin
+    } else {
+        PathBuf::from("python3")
+    };
+
+    let status = std::process::Command::new(&py)
+        .arg(script_path)
+        .arg(&anchors_dir)
+        .arg("--all")
+        .status()?;
+
+    if !status.success() {
+        return Err(anyhow!("GGUF conversion failed with exit code: {:?}", status.code()));
+    }
+
+    let mut count = 0;
+    if let Ok(entries) = std::fs::read_dir(&anchors_dir) {
+        for entry in entries.flatten() {
+            if entry.path().join("adapter_model.gguf").is_file() {
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
+}
+
 /// Scans ~/.nioxs/anchors/ and ~/.nioxs/heads/ and decompresses all adapter_model.safetensors.lz4 files to adapter_model.safetensors.
 pub fn decompress_all_anchors() -> Result<usize> {
     let home = std::env::var_os("HOME")
