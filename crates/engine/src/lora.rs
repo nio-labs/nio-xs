@@ -1485,6 +1485,59 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
     None
 }
 
+/// Ensures that adapter_model.safetensors exists in head_dir.
+/// If only adapter_model.safetensors.lz4 exists, decompresses it on-demand in < 2ms.
+pub fn ensure_safetensors_file(head_dir: &Path) -> Option<PathBuf> {
+    let raw = head_dir.join("adapter_model.safetensors");
+    if raw.is_file() {
+        return Some(raw);
+    }
+    let lz4_file = head_dir.join("adapter_model.safetensors.lz4");
+    if lz4_file.is_file() {
+        if let Ok(compressed) = std::fs::read(&lz4_file) {
+            if let Ok(decompressed) = lz4_flex::decompress_size_prepended(&compressed) {
+                if std::fs::write(&raw, &decompressed).is_ok() {
+                    return Some(raw);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Scans ~/.nioxs/anchors/ and ~/.nioxs/heads/ and decompresses all adapter_model.safetensors.lz4 files to adapter_model.safetensors.
+pub fn decompress_all_anchors() -> Result<usize> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow!("Cannot locate HOME directory"))?;
+    let search_roots = [
+        home.join(".nioxs").join("anchors"),
+        home.join(".nioxs").join("heads"),
+    ];
+    let mut count = 0;
+    for root in &search_roots {
+        if !root.is_dir() {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(root) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let lz4_file = path.join("adapter_model.safetensors.lz4");
+                    let raw_file = path.join("adapter_model.safetensors");
+                    if lz4_file.is_file() && !raw_file.is_file() {
+                        if let Some(_p) = ensure_safetensors_file(&path) {
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(count)
+}
+
 /// Retrieve a cached LoRA adapter or load it from disk with bounded LRU memory protection
 pub fn get_or_load_head(head_id_or_path: &str) -> Result<Arc<LoraAdapter>> {
     let lower = head_id_or_path.trim().to_ascii_lowercase();

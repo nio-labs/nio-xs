@@ -19,7 +19,7 @@ pub mod runner_installer;
 mod speculation;
 pub use ast_engine::{AstMicroEngine, memory_mb};
 pub use hardware::{ActiveDevice, DevicePreference};
-pub use lora::{LoraAdapter, get_or_load_head, resolve_head_path};
+pub use lora::{LoraAdapter, decompress_all_anchors, ensure_safetensors_file, get_or_load_head, resolve_head_path};
 
 fn output_budget(prompt_tokens: usize, context: usize, requested: usize) -> Result<usize> {
     anyhow::ensure!(prompt_tokens > 0, "prompt must contain at least one token");
@@ -1632,10 +1632,11 @@ impl AstEngine {
                     ]);
                     if let Some(ref lora_id) = active_lora_id {
                         if let Some(head_dir) = crate::lora::resolve_head_path(lora_id) {
-                            let adapter_file = head_dir.join("adapter_model.safetensors");
-                            if adapter_file.is_file() {
+                            let _ = crate::lora::ensure_safetensors_file(&head_dir);
+                            let gguf_adapter = head_dir.join("adapter_model.gguf");
+                            if gguf_adapter.is_file() {
                                 cmd.arg("--lora");
-                                cmd.arg(adapter_file.to_str().unwrap_or_default());
+                                cmd.arg(gguf_adapter.to_str().unwrap_or_default());
                             }
                         }
                     }

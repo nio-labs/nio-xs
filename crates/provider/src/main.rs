@@ -8,9 +8,13 @@ mod stream_flow;
 
 use stream_flow::{FlowMode, StreamFlow};
 
-#[tokio::main]
-async fn main() {
-    if let Err(error) = run().await {
+fn main() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(8 * 1024 * 1024)
+        .build()
+        .expect("Failed to build Tokio runtime");
+    if let Err(error) = rt.block_on(run()) {
         eprintln!("nioxs: {error}");
         std::process::exit(1);
     }
@@ -505,7 +509,7 @@ Commands:\n\
   rabbit <prompt> Run local in-process Rabbit 3.0B sovereign deep thinker & root-cause detective (<think> CoT)\n\
   hydra <prompt>  Run local in-process Hydra Sovereign Council Fleet & hot-swappable heads\n\
   hydra-kernel <prompt> Run local Hydra Bare-Metal POSIX & Atomic Concurrency Specialist\n\
-  council [ls|update|inspect] Manage and inspect Hydra Sovereign Council heads\n\
+  council [ls|update|inspect|decompress] Manage and inspect Hydra Sovereign Council heads\n\
   update         Download and install latest calibrated council heads (< 3MB SLA)\n\
   calibrate-head <head> Calibrate and compress LoRA head to < 3MB (FP8 + SVD)\n\
   mcp            Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
@@ -597,7 +601,20 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             return Ok(());
         }
 
-        println!("Usage: nioxs council [ls|update|inspect <id>|status]");
+        if sub == "decompress" || sub == "unpack" {
+            println!("\x1b[1;36m[Hydra Council]\x1b[0m Decompressing LZ4 adapter weights for Sovereign Council anchors...");
+            match nioxs_engine::decompress_all_anchors() {
+                Ok(count) => {
+                    println!("\x1b[1;32m✔ Successfully decompressed {count} anchor adapter(s) to .safetensors\x1b[0m");
+                }
+                Err(err) => {
+                    eprintln!("\x1b[1;31m✘ Failed to decompress anchors: {err}\x1b[0m");
+                }
+            }
+            return Ok(());
+        }
+
+        println!("Usage: nioxs council [ls|update|inspect <id>|status|decompress]");
         println!("       nioxs update");
         return Ok(());
     }
