@@ -410,7 +410,6 @@ pub enum GemvTask {
     },
 }
 
-#[cfg(target_arch = "x86_64")]
 impl GemvTask {
     #[inline(always)]
     pub fn is_heavy(&self) -> bool {
@@ -422,7 +421,10 @@ impl GemvTask {
             _ => true,
         }
     }
+}
 
+#[cfg(target_arch = "x86_64")]
+impl GemvTask {
     #[inline(always)]
     pub unsafe fn execute(&self, worker_id: usize, num_workers: usize) {
         match *self {
