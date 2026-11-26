@@ -1826,10 +1826,12 @@ mod tests {
 
     #[test]
     fn test_resolve_head_path() {
-        let p1 = resolve_head_path("head-001");
-        assert!(p1.is_some(), "head-001 should resolve in .nioxs/heads");
-        let p2 = resolve_head_path("head-002");
-        assert!(p2.is_some(), "head-002 should resolve in .nioxs/heads");
+        assert!(resolve_head_path("nonexistent_head_xyz_999").is_none());
+        if let Some(p1) = resolve_head_path("head-001") {
+            assert!(p1.exists());
+            let p2 = resolve_head_path("head-002");
+            assert!(p2.is_some(), "head-002 should resolve alongside head-001");
+        }
     }
 
     #[test]

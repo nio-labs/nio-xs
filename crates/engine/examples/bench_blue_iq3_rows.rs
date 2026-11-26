@@ -1,7 +1,10 @@
 //! Compare existing IQ3 row kernels at Blue's matrix dimensions, without weights changes.
+#[cfg(target_arch = "x86_64")]
 use nioxs_engine::quants::{self, BlockQ8_K};
+#[cfg(target_arch = "x86_64")]
 use std::{hint::black_box, time::Instant};
 
+#[cfg(target_arch = "x86_64")]
 fn calculate(weights: &[u8], x: &[BlockQ8_K], out: &mut [f32], rows_per_step: usize) {
     let nb = x.len();
     let stride = nb * 98;
@@ -27,6 +30,7 @@ fn calculate(weights: &[u8], x: &[BlockQ8_K], out: &mut [f32], rows_per_step: us
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 fn main() -> anyhow::Result<()> {
     anyhow::ensure!(
         is_x86_feature_detected!("avx2")
@@ -88,4 +92,9 @@ fn main() -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+fn main() -> anyhow::Result<()> {
+    anyhow::bail!("bench_blue_iq3_rows requires x86_64 AVX2")
 }
