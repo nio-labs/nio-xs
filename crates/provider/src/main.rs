@@ -3814,7 +3814,7 @@ async fn run_penguin_turn(
     builder_path: &std::path::Path,
     tokenizer_path: &std::path::Path,
 ) -> anyhow::Result<String> {
-    let initial_path = if opts.use_builder || !scout_path.is_file() {
+    let _initial_path = if opts.use_builder || !scout_path.is_file() {
         builder_path.to_path_buf()
     } else {
         scout_path.to_path_buf()
@@ -3864,7 +3864,9 @@ async fn run_penguin_turn(
                     snip.len()
                 );
             }
-            format!("[Web Grounding]\n- {snip}\n\n")
+            format!(
+                "[Live Web Search Results]\n- {snip}\n\nInstruction: Answer directly using ONLY the exact version numbers and facts in [Live Web Search Results] above. Do NOT say 'as of my last update'.\n\nQuestion: "
+            )
         } else {
             String::new()
         }
