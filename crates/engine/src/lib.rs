@@ -1378,6 +1378,10 @@ impl AstEngine {
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(resident);
                 }
+            } else if std::env::var_os("NIOXS_LOW_RAM").is_none() {
+                let resident = engine.block_count;
+                engine.set_resident_layers(resident);
+                engine.set_rolling_window(resident);
             }
 
             // Immediately park worker threads so nioxs sits at 0.0% CPU when idle

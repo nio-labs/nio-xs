@@ -144,8 +144,8 @@ async fn models(State(app): State<Arc<App>>, headers: HeaderMap) -> Response {
         "Fin SQL — SQL Dialect & Transpilation Specialist (24L, 0.5B, < 350 MB RAM)",
         "Fin Concurrency — Lock-Free Atomics & Memory Ordering Specialist (28L, 1.5B, < 850 MB RAM)",
         "Fin Raft — Distributed Consensus & State Machine Specialist (28L, 1.5B, < 850 MB RAM)",
-        "Hydra — Sovereign 180M Council Anchor (10L, < 150 MB RAM)",
-        "Hydra Kernel — Bare-Metal POSIX & Atomic Concurrency Specialist (10L, < 150 MB RAM)",
+        "Orca Nano — 0.5B×13 Sovereign Pod Fleet (85.37% HumanEval, ~4.9 GB)",
+        "Orca Mini — 1.5B×13 Sovereign Pod Fleet (86.59% HumanEval, ~12.2 GB)",
         "Skate — Resident Micro-Guru & Edge Companion (v-µLM Companion, < 50 MB RAM)",
         "NioNano — Intent Reflex & MicroLM (~0.5M, sub-0.1ms)",
         "NioMicro — Contextual Policy Decision Arbiter (5.0M / cluster)",
@@ -273,8 +273,8 @@ async fn microlm_chat_handler(
         "nio-tiger" | "tiger" => nioxs_engine::tiger_system(),
         "nio-fox" | "fox" => nioxs_engine::fox_system(),
         "nio-rabbit" | "rabbit" => nioxs_engine::rabbit_system(),
-        "nio-hydra" | "hydra" | "hydra-kernel" | "nio-hydra-kernel" | "hydra-max" | "hydra-ultra" => {
-            nioxs_engine::hydra_system()
+        "orca" | "orca-nano" | "orca-mini" | "orca-max" | "orca-ultra" => {
+            "You are Orca (vMicroLM-Reflex), a concise, accurate coding assistant."
         }
         "nio-skate" | "skate" => {
             "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and helpful. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Beluga. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."
@@ -618,11 +618,11 @@ async fn chat(
         "nio-rabbit" | "rabbit" => {
             return microlm_chat_handler("rabbit", request, None).await;
         }
-        "nio-hydra" | "hydra" | "hydra-kernel" | "nio-hydra-kernel" | "hydra-max" | "hydra-ultra" => {
+        "orca" | "orca-nano" | "orca-mini" | "orca-max" | "orca-ultra" => {
             return microlm_chat_handler(&model_norm, request, None).await;
         }
         "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" | "nio-fin-concurrency" | "fin-concurrency" | "nio-fin-raft" | "fin-raft" => {
-            return microlm_chat_handler("hydra", request, None).await;
+            return microlm_chat_handler("beluga", request, None).await;
         }
         "nio-ray" | "ray" => {
             return microlm_chat_handler("nio-ray", request, app.ray_engine.as_ref()).await;

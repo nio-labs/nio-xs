@@ -5,8 +5,8 @@
 
 use futures_util::StreamExt;
 use nioxs_contracts::{
-    MODEL_BELUGA, MODEL_BLUE, MODEL_CHEETAH, MODEL_FOX, MODEL_HYDRA, MODEL_HYDRA_KERNEL,
-    MODEL_MANTA, MODEL_NANO, MODEL_RABBIT, MODEL_SKATE, MODEL_TIGER, MODEL_VIPER,
+    MODEL_BELUGA, MODEL_BLUE, MODEL_CHEETAH, MODEL_FOX, MODEL_MANTA, MODEL_NANO, MODEL_ORCA_MINI,
+    MODEL_ORCA_NANO, MODEL_RABBIT, MODEL_SKATE, MODEL_TIGER, MODEL_VIPER,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -174,37 +174,240 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
                 size_bytes: 7_031_645,
             }),
         },
-        ModelArtifactEntry {
-            model_id: MODEL_HYDRA.into(),
-            brand_name: "Hydra (Sovereign 0.5B Council Anchor)".into(),
-            base_model: "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L Unpruned)".into(),
-            filename: "hydra-anchor-0.5b.q4km.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-anchor-0.5b.q4km.gguf".into(),
-            sha256: "4f0ecf3b860a14a7a1ffbc8186ccca87c619f7b7e60551919593033fdeea89f4".into(),
-            size_bytes: 397_807_584,
-            tokenizer: Some(ModelTokenizerArtifact {
-                filename: "hydra-tokenizer.json".into(),
-                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
-                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
-                size_bytes: 7_031_645,
-            }),
-        },
-        ModelArtifactEntry {
-            model_id: MODEL_HYDRA_KERNEL.into(),
-            brand_name: "Hydra Kernel (Bare-Metal POSIX & Atomic Concurrency Specialist)".into(),
-            base_model: "Qwen/Qwen2.5-Coder-0.5B-Instruct (10L SFT)".into(),
-            filename: "hydra-kernel-180m.q4km.gguf".into(),
-            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-kernel-180m.q4km.gguf".into(),
-            sha256: "f177c73a75219c875dff160b8381e821cfb9565e714e9907e759d4469adf912d".into(),
-            size_bytes: 253_590_208,
-            tokenizer: Some(ModelTokenizerArtifact {
-                filename: "hydra-tokenizer.json".into(),
-                download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.0/cheetah-tokenizer.json".into(),
-                sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
-                size_bytes: 7_031_645,
-            }),
-        },
+        orca_entry(
+            MODEL_ORCA_NANO,
+            "Orca Nano Lead (0.5B Sovereign Router & Lead)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-lead-0.5b-q4_k_m.gguf",
+            "0af05b68e6dec88ec02af0868888878fbe871e04d4c4910c15d6649ea40775ec",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-architect",
+            "Orca Nano Architect (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-architect-0.5b-q4_k_m.gguf",
+            "941f626b522ff4ac7bdefc2e1810273e57024ed4f69842d28c4bbf51da3471ef",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-reasoner",
+            "Orca Nano Reasoner (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-reasoner-0.5b-q4_k_m.gguf",
+            "acdc5717058a7fc453f690978d26f84b03955857b553356b878a31c971947649",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-algo-reasoner",
+            "Orca Nano Algo Reasoner (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-algo-reasoner-0.5b-q4_k_m.gguf",
+            "7c29cbe6eaa5a1d40afd387381e0331356e76c8e4a45593b0b2846f2469a3e65",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-repair-reasoner",
+            "Orca Nano Repair Reasoner (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-repair-reasoner-0.5b-q4_k_m.gguf",
+            "ad35632ebe47ffa17d3d9875558bb56d411103e5909b990450a8e60e4b244345",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-security-reasoner",
+            "Orca Nano Security Reasoner (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-security-reasoner-0.5b-q4_k_m.gguf",
+            "6e449dae1bfe800e6e36e1fb110aeec545c2e98f863d18504696c7413d399023",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-test-reasoner",
+            "Orca Nano Test Reasoner (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-test-reasoner-0.5b-q4_k_m.gguf",
+            "be1d9f44db02697226a46dd3f9a5664f9b8ad1061a2a1250c4a33cc07175ff82",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-pod-0",
+            "Orca Nano Pod 0 (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-pod-0-0.5b-q4_k_m.gguf",
+            "3042d45fe16e1814a75d2dcfc746e9f658aafd506cbe033fb7c740d423d98efd",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-pod-1",
+            "Orca Nano Pod 1 (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-pod-1-0.5b-q4_k_m.gguf",
+            "91d3f4f36e5a64e93cc2699e79efa2aa0a937d0cabb2d958ea5fb18dc5bd2fbe",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-pod-2",
+            "Orca Nano Pod 2 (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-pod-2-0.5b-q4_k_m.gguf",
+            "42b7b273c9a2243b3c0f8d32fd51c18fd97454becb6427a462498fa2f396a3f1",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-pod-3",
+            "Orca Nano Pod 3 (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-pod-3-0.5b-q4_k_m.gguf",
+            "95551f5e6e4ec10748e0ce948375befa3c92076c8aa96f36cd82d88bbffb5abc",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-pod-4",
+            "Orca Nano Pod 4 (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-pod-4-0.5b-q4_k_m.gguf",
+            "671316a2ebad327055edee84330fa915bec3197eb6b1ee26089a44f7e5f4bcb3",
+            397_807_616,
+        ),
+        orca_entry(
+            "orca-nano-pod-5",
+            "Orca Nano Pod 5 (0.5B)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-nano-pod-5-0.5b-q4_k_m.gguf",
+            "b12a5499f24b8f1e3b1a425eae0fe7f6b2dfaff8e2d0fee2b8cb027a16ab6054",
+            397_807_616,
+        ),
+        orca_entry(
+            MODEL_ORCA_MINI,
+            "Orca Mini Lead (1.5B Sovereign Router & Lead)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-lead-1.5b-q4_k_m.gguf",
+            "6aa0cb0f99b32d359eaae3e90d4b01222a9430717d160f3f01ae48f981b07135",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-architect",
+            "Orca Mini Architect (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-architect-1.5b-q4_k_m.gguf",
+            "3ef190a8a113ab4f2d3ddc2a3492d3a296e2636fd804dd24ac5c843911e7e584",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-reasoner",
+            "Orca Mini Reasoner (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-reasoner-1.5b-q4_k_m.gguf",
+            "ed5e9ef7915eb40b17422ab8af544a34e95030a42f852e50aec2fc2055b41574",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-algo-reasoner",
+            "Orca Mini Algo Reasoner (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-algo-reasoner-1-5b-q4_k_m.gguf",
+            "d8bfce8d934b1b23f681772d606938242a34830d6257e1e7229447abdbf1747a",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-repair-reasoner",
+            "Orca Mini Repair Reasoner (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-repair-reasoner-1-5b-q4_k_m.gguf",
+            "e79687b4f825cfcdffa27d2725a2c72168eaef6abf50aa47df0a792e06aebe9e",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-security-reasoner",
+            "Orca Mini Security Reasoner (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-security-reasoner-1-5b-q4_k_m.gguf",
+            "674936bc473b27f31f97beb7eb18e26f205e074f7d80166e6149d21a15ccc914",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-test-reasoner",
+            "Orca Mini Test Reasoner (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-test-reasoner-1-5b-q4_k_m.gguf",
+            "2939f8df5d44380b4bfed55a45bd1dcd20b05260517b2bec88549d0404e7f32f",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-pod-0",
+            "Orca Mini Pod 0 (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-pod-0-1-5b-q4_k_m.gguf",
+            "de53a71f8d67ba916665edf6384cbd074d40b52311fbda8a0a46431af519bdd5",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-pod-1",
+            "Orca Mini Pod 1 (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-pod-1-1-5b-q4_k_m.gguf",
+            "dceb9734ce024364c667c1e9cd714832ec7eb00bd683cfb3f1bc880bd7b9153d",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-pod-2",
+            "Orca Mini Pod 2 (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-pod-2-1-5b-q4_k_m.gguf",
+            "66285737714a395fe79bcaaeb0858038916978d46a208479a4eab74041f244d6",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-pod-3",
+            "Orca Mini Pod 3 (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-pod-3-1-5b-q4_k_m.gguf",
+            "e9895784ad3c0d6a050a18f51ad9399ba2d03a1cbd69048df71cbc23a53364e3",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-pod-4",
+            "Orca Mini Pod 4 (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-pod-4-1-5b-q4_k_m.gguf",
+            "c414a78056add9efc64506019545903778aaf1499ba20de5aa873d827e065281",
+            986_048_192,
+        ),
+        orca_entry(
+            "orca-mini-pod-5",
+            "Orca Mini Pod 5 (1.5B)",
+            "Qwen/Qwen2.5-Coder-1.5B-Instruct (28L, Q4_K_M)",
+            "orca-pod-5-1-5b-q4_k_m.gguf",
+            "2b4e4280bf3ff4046cbcc936f80358842a53c871d818071d81fde63e43dccee0",
+            986_048_192,
+        ),
     ]
+}
+
+fn orca_entry(
+    model_id: &str,
+    brand_name: &str,
+    base_model: &str,
+    filename: &str,
+    sha256: &str,
+    size_bytes: u64,
+) -> ModelArtifactEntry {
+    ModelArtifactEntry {
+        model_id: model_id.into(),
+        brand_name: brand_name.into(),
+        base_model: base_model.into(),
+        filename: filename.into(),
+        download_url: format!("https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/{filename}"),
+        sha256: sha256.into(),
+        size_bytes,
+        tokenizer: Some(ModelTokenizerArtifact {
+            filename: "orca-tokenizer.json".into(),
+            download_url: "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/orca-tokenizer.json".into(),
+            sha256: "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539".into(),
+            size_bytes: 7_031_645,
+        }),
+    }
 }
 
 pub fn get_manifest_entry(model_id: &str) -> Option<ModelArtifactEntry> {
@@ -902,20 +1105,20 @@ mod tests {
                 "https://github.com/nio-labs/nio-xs-models/releases/download/v0.4.1/tiger.3b-q4km.gguf",
             ),
             (
-                MODEL_HYDRA,
-                "4f0ecf3b860a14a7a1ffbc8186ccca87c619f7b7e60551919593033fdeea89f4",
-                397_807_584,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-anchor-0.5b.q4km.gguf",
+                MODEL_ORCA_NANO,
+                "0af05b68e6dec88ec02af0868888878fbe871e04d4c4910c15d6649ea40775ec",
+                397_807_616,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/orca-nano-lead-0.5b-q4_k_m.gguf",
             ),
             (
-                MODEL_HYDRA_KERNEL,
-                "f177c73a75219c875dff160b8381e821cfb9565e714e9907e759d4469adf912d",
-                253_590_208,
-                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.0/hydra-kernel-180m.q4km.gguf",
+                MODEL_ORCA_MINI,
+                "6aa0cb0f99b32d359eaae3e90d4b01222a9430717d160f3f01ae48f981b07135",
+                986_048_192,
+                "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/orca-lead-1.5b-q4_k_m.gguf",
             ),
         ];
         let manifest = default_manifest();
-        assert_eq!(manifest.len(), expected.len());
+        assert_eq!(manifest.len(), expected.len() + 24);
         for (id, sha256, size_bytes, url) in expected {
             let entry =
                 get_manifest_entry(id).unwrap_or_else(|| panic!("missing manifest entry for {id}"));
@@ -998,7 +1201,7 @@ mod tests {
     #[test]
     fn test_manifest_contains_all_models() {
         let manifest = default_manifest();
-        assert_eq!(manifest.len(), 11);
+        assert_eq!(manifest.len(), 35);
         for id in [
             MODEL_VIPER,
             MODEL_SKATE,
@@ -1009,8 +1212,8 @@ mod tests {
             MODEL_TIGER,
             MODEL_FOX,
             MODEL_RABBIT,
-            MODEL_HYDRA,
-            MODEL_HYDRA_KERNEL,
+            MODEL_ORCA_NANO,
+            MODEL_ORCA_MINI,
         ] {
             assert!(manifest.iter().any(|e| e.model_id == id));
         }

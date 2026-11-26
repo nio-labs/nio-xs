@@ -19,12 +19,12 @@
                                                             │
     ┌──────────────────────┬──────────────────────┬─────────┴────────────┬──────────────────────┬──────────────────────┐
     ▼                      ▼                      ▼                      ▼                      ▼                      ▼
-🐍 Viper (100M)      🐟 Skate (135M)       🦈 Manta (494M)        🐉 Hydra (0.5B Trinity) 🐋 Beluga (1.54B)      🐅 Tiger (3.0B)
-Tactical Striker     Ambient Companion     DAG Architect          Sovereign Council      Lead Architect         Daily Workhorse
-• Sub-20µs Latency   • 33.9–39.3 MiB anon* • < 235 MB Peak RAM    • 0.5B + 14B Trinity   • < 295 MB Peak RAM    • 36L / 3.0B Q4_K_M
-• < 27 MB Resident   • 23–53 words/sec*    • <manta_plan> DAGs    • 3-Chair Handoff      • Bit-exact <think>    • Pure-Code Vibe Coder
-• Safety Clutch (-x) • Friendly Banter     • Multi-File Refactor  • 43 Dynamic Anchors   • Dual CPU/GPU Engine  • Compilable Modules
-• POSIX & PowerShell • Pure Zero-Code      • 45+ w/s GPU Burst    • < 475 MB Peak RAM    • 20+ w/s GPU Burst    • < 720 MB Peak RAM
+🐍 Viper (100M)      🐟 Skate (135M)       🦈 Manta (494M)        🐋 Orca (0.5B/1.5B×13) 🐋 Beluga (1.54B)      🐅 Tiger (3.0B)
+Tactical Striker     Ambient Companion     DAG Architect          Sovereign Pod Fleet    Lead Architect         Daily Workhorse
+• Sub-20µs Latency   • 33.9–39.3 MiB anon* • < 235 MB Peak RAM    • 85.37–86.59% HE      • < 295 MB Peak RAM    • 36L / 3.0B Q4_K_M
+• < 27 MB Resident   • 23–53 words/sec*    • <manta_plan> DAGs    • Dynamic Pod Routing  • Bit-exact <think>    • Pure-Code Vibe Coder
+• Safety Clutch (-x) • Friendly Banter     • Multi-File Refactor  • --verify Self-Repair • Dual CPU/GPU Engine  • Compilable Modules
+• POSIX & PowerShell • Pure Zero-Code      • 45+ w/s GPU Burst    • ~582 MB (Nano) RAM   • 20+ w/s GPU Burst    • < 720 MB Peak RAM
 ```
 
 ---
@@ -33,11 +33,9 @@ Tactical Striker     Ambient Companion     DAG Architect          Sovereign Coun
 
 ### 1. Instant Run via Cargo / Release Binary
 ```bash
-# Sovereign Hydra Council with 3-Chair Invariant Triage & Verification
-nioxs hydra "Implement an SPSC lock-free ring buffer in Zig with comptime"
-
-# Inspect Installed Council Heads & Memory SLA (< 6.5 MB per head)
-nioxs council ls
+# Orca Sovereign Pod Fleet (0.5B×13 Nano or 1.5B×13 Mini) with --verify self-repair
+nioxs orca-nano --verify "Write a Python function fib(n) with assert fib(6) == 8"
+nioxs orca-mini --verify "Implement an SPSC lock-free ring buffer in Python with tests"
 
 # Terminal Tactical Reflex
 nioxs viper "kill whatever process is holding port 3000"
@@ -61,7 +59,8 @@ nioxs tiger "Implement an SPSC lock-free bounded ring buffer with zero allocatio
 nioxs rabbit "Diagnose subtle memory leak in tokio broadcast subscriber queue"
 
 # Pull verified weights for any model
-nioxs pull hydra
+nioxs pull orca-nano
+nioxs pull orca-mini
 nioxs pull tiger
 
 # Enforce Hardware GPU Acceleration (Intel Arc / NVIDIA CUDA / Metal)
@@ -122,54 +121,34 @@ nioxs viper -x -y "kill port 3000"
 | **Skate** | **135M** | Ambient Desk Companion | **82.93 MiB** (`IQ3_XXS`) | **33.86–39.25 MiB anon*** | **98.48–100.64 MiB*** | 23–53 w/s* | Friendly Banter & Zero-Code Focus |
 | **Mako** | **150M** | Live Web Intelligence & Scout | **~65.4 MB** (`IQ3_XXS`) | **< 22 MB** | **~120 MB** | 200+ tok/s | DOM Noise Stripping & Wire DSL |
 | **Manta** | **494M** | Systems Guru & DAG Architect | **~254 MB** (`Q4_0`) | **~95 MB** | **~195 MB** | 20–35 w/s | `<manta_plan>` DAGs & Wasm Engine |
-| **Hydra** | **0.5B Trinity** | Sovereign 3-Chair Council & Hot-Swap Fleet | **~380 MB** (`Q4_K_M`) | **~180 MB** | **~472 MB** | 25–40 tok/s | 3-Chair Triage, Generation & Invariant Audit |
+| **Orca Nano** | **0.5B×13** | Sovereign Micro-Pod Fleet | **~4.9 GB** (`13×380 MB Q4_K_M`) | **~380 MB** | **~582 MB** | ~20 w/s | **85.37% HumanEval / 84.0% MBPP** |
+| **Orca Mini** | **1.5B×13** | Sovereign Mini-Pod Fleet | **~12.2 GB** (`13×941 MB Q4_K_M`) | **~941 MB** | **~1,839 MB** | 8–10 w/s | **86.59% HumanEval / 87.0% MBPP** |
 | **Beluga** | **1.54B** | Sovereign Lead Architect | **~604 MB** (`IQ3_XXS`) | **~76 MB** | **~295 MB** | 14–22 tok/s | Deep `<think>` CoT Invariant Proofs |
 | **Blue** | **3.82B** | Sovereign Reflex Lead & Staff Peer | **~1.40 GiB** (`IQ3_XXS`) | n/a | **~192 MB** | ~4.4 tok/s (measured) | Lean `<think>` verification (`nioxs blue`) |
 
 ---
 
-## 🐉 Hydra: Sovereign 3-Chair Council & Dynamic Anchor Fleet
+## 🐋 Orca: Sovereign Pod Fleet (0.5B×13 Nano & 1.5B×13 Mini)
 
-Hydra is NioXS's sovereign multi-head engine running on the **0.5B + 14B Trinity Architecture** (`Qwen2.5-Coder-0.5B` 24-layer unpruned backbone, distilled from 14B teacher outputs with formal invariant verification).
+Orca replaces single-model bottlenecks with a **13-pod specialist fleet** (`1× Lead + 6× Action Pods + 6× Reasoner Pods`) routed dynamically via `pod_manifest.json` and backed by bounded `--verify` error-guided self-repair:
 
-### 1. The 3-Chair Sovereign Pipeline
+| Tier | Topology | HumanEval | MBPP | Host RAM (`VmHWM`) | CPU Speed |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`orca-nano`** | `0.5B × 13` (`Q4_K_M`) | **85.37%** (`140/164`) | **84.0%** (`84/100`) | **~582 MB** | **~20 w/s** |
+| **`orca-mini`** | `1.5B × 13` (`Q4_K_M`) | **86.59%** (`142/164`) | **87.0%** (`87/100`) | **~1,839 MB** | **8–10 w/s** |
 
-```
-User Prompt
-    │
-    ▼
-[Chair A: Sovereign Arbiter & Triage] (anchor-000-chair)
-    │  Deliberates in <think> with invariant triage, emits:
-    │  `@council(head=NNN)`
-    ▼
-[Chair B: Domain Specialist] (anchor-001 through anchor-041)
-    │  ⚡ In-process LoRA head hot-swap (< 60 ms cold, < 1 ms warm LRU)
-    │  Emits zero-allocation, compilable code
-    ▼
-[Chair C: Invariant Verifier & Auditor] (anchor-042-chair-c-critic)
-    │  ⚡ Hot-swaps in < 50 ms
-    │  Conducts formal audit on memory safety, concurrency, and data race invariants
-    ▼
-Client Response Stream
-```
+*(Both tiers beat stock `Qwen2.5-Coder-7B-Instruct INT4` at `84.15%` HumanEval / `84.0%` MBPP on-device.)*
 
-### 2. Verified Operational Telemetry
-- **Peak RSS (Full Multi-Turn 3-Chair Run):** **472.82 MB** (Strictly within the **< 673 MB** SLA ceiling).
-- **LoRA Hot-Swap Latency:** **~43–59 ms** cold / **< 1 ms** in-memory LRU cache hit.
-- **Council Anchor Storage:** **6.33 MB** per 24-layer head (SVD Rank 12 + FP8 E4M3 + LZ4 compression).
-- **Total Sovereignty:** 0% fallback to external models or cloud crutches.
-
-### 3. Usage & CLI Management
+### Usage & CLI Management
 ```bash
-# Run with automatic 3-Chair triage & formal verification
-nioxs hydra "Implement an SPSC ring buffer in Zig with comptime"
+# Pull Orca Nano (13× 380 MB) or Orca Mini (13× 941 MB) from GitHub Releases
+nioxs pull orca-nano
+nioxs pull orca-mini
 
-# Inspect all installed council heads and memory SLA status
-nioxs council ls
-
-# Inspect specific head configuration and invariant contract
-nioxs council inspect 001
-nioxs council inspect 042 |
+# Run with automatic pod routing & bounded --verify self-repair
+nioxs orca-nano --verify "Write a Python function fib(n) with assert fib(6) == 8"
+nioxs orca-mini --verify "Implement a persistent B-tree node split in Python with tests"
+```
 
 ---
 

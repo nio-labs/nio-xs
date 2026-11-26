@@ -2020,14 +2020,20 @@ impl GemvTask {
 
                 match dtype {
                     12 => {
-                        use candle_core::quantized::k_quants::{BlockQ4K, BlockQ8K, GgmlType};
-                        let ys =
-                            std::slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, n_cols / 256);
-                        for r in start_r..end_r {
-                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let xs =
-                                std::slice::from_raw_parts(r_ptr as *const BlockQ4K, n_cols / 256);
-                            out[r] = BlockQ4K::vec_dot(n_cols, xs, ys).unwrap_or(0.0);
+                        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") && is_x86_feature_detected!("f16c") {
+                            let ys = std::slice::from_raw_parts(x_q8_k_ptr as *const crate::quants::BlockQ8_K, n_cols / 256);
+                            for r in start_r..end_r {
+                                let r_bytes = std::slice::from_raw_parts((weight_ptr as *const u8).add(r * row_bytes), row_bytes);
+                                out[r] = crate::quants::vec_dot_q4_k_q8_k_avx2(r_bytes, ys);
+                            }
+                        } else {
+                            use candle_core::quantized::k_quants::{BlockQ4K, BlockQ8K, GgmlType};
+                            let ys = std::slice::from_raw_parts(x_q8_k_ptr as *const BlockQ8K, n_cols / 256);
+                            for r in start_r..end_r {
+                                let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                let xs = std::slice::from_raw_parts(r_ptr as *const BlockQ4K, n_cols / 256);
+                                out[r] = BlockQ4K::vec_dot(n_cols, xs, ys).unwrap_or(0.0);
+                            }
                         }
                     }
                     13 => {
@@ -2193,21 +2199,25 @@ impl GemvTask {
 
                 match dtype {
                     12 => {
-                        use candle_core::quantized::k_quants::{BlockQ4K, BlockQ8K, GgmlType};
-                        let ys0 = std::slice::from_raw_parts(
-                            x0_q8_k_ptr as *const BlockQ8K,
-                            n_cols / 256,
-                        );
-                        let ys1 = std::slice::from_raw_parts(
-                            x1_q8_k_ptr as *const BlockQ8K,
-                            n_cols / 256,
-                        );
-                        for r in start_r..end_r {
-                            let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
-                            let xs =
-                                std::slice::from_raw_parts(r_ptr as *const BlockQ4K, n_cols / 256);
-                            out0[r] = BlockQ4K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
-                            out1[r] = BlockQ4K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
+                        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") && is_x86_feature_detected!("f16c") {
+                            let ys0 = std::slice::from_raw_parts(x0_q8_k_ptr as *const crate::quants::BlockQ8_K, n_cols / 256);
+                            let ys1 = std::slice::from_raw_parts(x1_q8_k_ptr as *const crate::quants::BlockQ8_K, n_cols / 256);
+                            for r in start_r..end_r {
+                                let r_bytes = std::slice::from_raw_parts((weight_ptr as *const u8).add(r * row_bytes), row_bytes);
+                                let (v0, v1) = crate::quants::vec_dot_q4_k_q8_k_2tokens_avx2(r_bytes, ys0, ys1);
+                                out0[r] = v0;
+                                out1[r] = v1;
+                            }
+                        } else {
+                            use candle_core::quantized::k_quants::{BlockQ4K, BlockQ8K, GgmlType};
+                            let ys0 = std::slice::from_raw_parts(x0_q8_k_ptr as *const BlockQ8K, n_cols / 256);
+                            let ys1 = std::slice::from_raw_parts(x1_q8_k_ptr as *const BlockQ8K, n_cols / 256);
+                            for r in start_r..end_r {
+                                let r_ptr = (weight_ptr as *const u8).add(r * row_bytes);
+                                let xs = std::slice::from_raw_parts(r_ptr as *const BlockQ4K, n_cols / 256);
+                                out0[r] = BlockQ4K::vec_dot(n_cols, xs, ys0).unwrap_or(0.0);
+                                out1[r] = BlockQ4K::vec_dot(n_cols, xs, ys1).unwrap_or(0.0);
+                            }
                         }
                     }
                     13 => {
@@ -2637,8 +2647,14 @@ impl GemvTask {
                     let row_ptr = (weight_ptr as *const u8).add(row_offset);
                     let val = match bytes_per_token / nb {
                         144 => {
-                            let xs = std::slice::from_raw_parts(row_ptr as *const BlockQ4K, nb);
-                            BlockQ4K::vec_dot(n_cols, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") && is_x86_feature_detected!("f16c") {
+                                let r_bytes = std::slice::from_raw_parts(row_ptr, bytes_per_token);
+                                let ys_q8k = std::slice::from_raw_parts(x_q8_k_ptr as *const crate::quants::BlockQ8_K, nb);
+                                crate::quants::vec_dot_q4_k_q8_k_avx2(r_bytes, ys_q8k)
+                            } else {
+                                let xs = std::slice::from_raw_parts(row_ptr as *const BlockQ4K, nb);
+                                BlockQ4K::vec_dot(n_cols, xs, ys).unwrap_or(f32::NEG_INFINITY)
+                            }
                         }
                         210 => {
                             let xs = std::slice::from_raw_parts(row_ptr as *const BlockQ6K, nb);

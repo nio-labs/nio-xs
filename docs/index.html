@@ -150,13 +150,17 @@
           <p>Direct CLI execution and verified weight caching across all fleet tiers:</p>
           <div class="code-wrapper">
             <button class="copy-btn" type="button">Copy</button>
-            <pre><code class="language-bash"># Pull verified model weights
+            <pre><code class="language-bash"># Pull verified model weights (Orca Sovereign Pod Fleets &amp; Companions)
+nioxs pull orca-nano
+nioxs pull orca-mini
 nioxs pull skate
 nioxs pull manta
 nioxs pull beluga
 nioxs pull tiger
 
 # Run directly on CPU or GPU
+nioxs orca-nano "Write a Python function fib(n) with assert fib(6) == 8"
+nioxs orca-mini --verify "Implement a lock-free ring buffer in Python with tests"
 nioxs skate "Hello! How are you?"
 nioxs manta "Architect a zero-downtime PostgreSQL schema migration"
 nioxs beluga "Compare epoll and io_uring under high concurrency"
@@ -362,7 +366,7 @@ nioxs viper plugin list</code></pre>
         <!-- 6. FLEET HIERARCHY -->
         <section id="fleet" class="doc-section">
           <h2>6. Full-Brain Fleet Hierarchy: MicroLM to Sovereign Titan</h2>
-          <p>In NioXS, reasoning models are <strong>never degraded or stripped</strong>. NioRay, NioApex, and NioHydra retain <strong>100% of their full transformer layers and reasoning weights</strong>. Memory efficiency is solved entirely in native Rust via <strong>dynamic SIMD layer streaming (<code>madvise(MADV_DONTNEED)</code>)</strong>, slashing RAM consumption by up to 96% while maintaining state-of-the-art coding benchmarks.</p>
+          <p>In NioXS, reasoning models are <strong>never degraded or stripped</strong>. NioRay, NioApex, and Orca retain <strong>100% of their full transformer layers and reasoning weights</strong>. Memory efficiency is solved entirely in native Rust via <strong>dynamic SIMD layer streaming (<code>madvise(MADV_DONTNEED)</code>)</strong>, slashing RAM consumption by up to 96% while maintaining state-of-the-art coding benchmarks.</p>
 
           <div class="table-container"><table>
             <thead><tr><th>Model</th><th>Parameters</th><th>Role</th><th>Disk Format</th><th>Net Model RAM</th><th>Process Peak</th><th>Speed (CPU)</th><th>Cognitive Mode</th></tr></thead>
@@ -375,7 +379,8 @@ nioxs viper plugin list</code></pre>
               <tr><td><strong>NioRay</strong></td><td><strong>1.54B</strong></td><td>Rapid Code Synthesizer (Full Brain)</td><td><strong>980 MB (Q4_K)</strong></td><td><strong>~88 MB</strong></td><td><strong>~188 MB</strong></td><td>24–28 w/s</td><td><strong>75.6% HumanEval</strong></td></tr>
               <tr><td><strong>NioApex</strong></td><td><strong>3.09B</strong></td><td>Mini Coding Model (Full Brain)</td><td><strong>1.78 GB</strong></td><td><strong>~135 MB</strong></td><td><strong>~235 MB</strong></td><td>16–22 w/s</td><td><strong>81.7% HumanEval</strong></td></tr>
               <tr><td><strong>Blue</strong></td><td><strong>3.82B</strong></td><td>Sovereign Reflex Lead (v-µLM Reflex)</td><td><strong>1.40 GB (IQ3_XXS)</strong></td><td><strong>~42 MB</strong></td><td><strong>~192 MB</strong></td><td>7.8 tok/s</td><td>Staff-Engineer Peer</td></tr>
-              <tr><td><strong>Hydra</strong></td><td><strong>0.5B Trinity</strong></td><td>Sovereign 3-Chair Council &amp; Hot-Swap Fleet</td><td><strong>380 MB (Q4_K_M)</strong></td><td><strong>~180 MB</strong></td><td><strong>~472 MB</strong></td><td>25–40 tok/s</td><td>3-Chair Triage, Generation &amp; Invariant Audit</td></tr>
+              <tr><td><strong>Orca Nano</strong></td><td><strong>0.5B×13</strong></td><td>Sovereign Micro-Pod Fleet (Lead + 6 Action + 6 Reasoners)</td><td><strong>~4.9 GB (13×380 MB Q4_K_M)</strong></td><td><strong>~380 MB</strong></td><td><strong>~582 MB</strong></td><td>~20 w/s CPU</td><td><strong>85.37% HumanEval / 84.0% MBPP</strong></td></tr>
+              <tr><td><strong>Orca Mini</strong></td><td><strong>1.5B×13</strong></td><td>Sovereign Mini-Pod Fleet (Lead + 6 Action + 6 Reasoners)</td><td><strong>~12.2 GB (13×941 MB Q4_K_M)</strong></td><td><strong>~941 MB</strong></td><td><strong>~1,839 MB</strong></td><td>8–10 w/s CPU</td><td><strong>86.59% HumanEval / 87.0% MBPP</strong></td></tr>
               <tr><td><strong>Tiger</strong></td><td><strong>3.0B</strong></td><td>Sovereign Vibe Coder &amp; Daily Workhorse</td><td><strong>1.96 GB (Q4_K_M)</strong></td><td><strong>~180 MB</strong></td><td><strong>&lt; 720 MB</strong></td><td>25–45 w/s CPU</td><td>Pure-Code Vibe Coder</td></tr>
             </tbody>
           </table></div>

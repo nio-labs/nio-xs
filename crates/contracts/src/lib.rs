@@ -13,8 +13,8 @@ pub const MODEL_TIGER: &str = "tiger";
 pub const MODEL_CHEETAH: &str = "cheetah";
 pub const MODEL_FOX: &str = "fox";
 pub const MODEL_RABBIT: &str = "rabbit";
-pub const MODEL_HYDRA: &str = "hydra";
-pub const MODEL_HYDRA_KERNEL: &str = "hydra-kernel";
+pub const MODEL_ORCA_NANO: &str = "orca-nano";
+pub const MODEL_ORCA_MINI: &str = "orca-mini";
 pub const MODEL_NANO: &str = "nio-nano";
 pub const MODEL_MICRO: &str = "nio-micro";
 pub const MODEL_MASK: &str = "nio-mask";
@@ -37,8 +37,8 @@ pub const MODELS: &[&str] = &[
     MODEL_CHEETAH,
     MODEL_FOX,
     MODEL_RABBIT,
-    MODEL_HYDRA,
-    MODEL_HYDRA_KERNEL,
+    MODEL_ORCA_NANO,
+    MODEL_ORCA_MINI,
     MODEL_SKATE,
     MODEL_NANO,
     MODEL_MICRO,

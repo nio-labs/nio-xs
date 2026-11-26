@@ -212,6 +212,151 @@ fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
 /// 3. **Cosine semantic fingerprint** — bag-of-words dot-product against 41 anchor manifests.
 ///    Returns the highest-scoring anchor head ID, or None if max score == 0.
 ///
+/// Extract the first fenced code block `(lang, code)` from model output
+/// after any `<think>...</think>` reasoning block, ignoring nested doc-comment fences.
+fn extract_code_block(text: &str) -> Option<(String, String)> {
+    let cleaned = if let Some(pos) = text.rfind("</think>") {
+        &text[pos + "</think>".len()..]
+    } else if text.contains("<think>") {
+        ""
+    } else {
+        text
+    };
+    let mut lines = cleaned.lines();
+    let mut lang = String::new();
+    let mut found_open = false;
+    let mut body = Vec::new();
+    for line in &mut lines {
+        let trimmed = line.trim();
+        if !found_open {
+            if let Some(rest) = trimmed.strip_prefix("```") {
+                lang = rest.trim().to_ascii_lowercase();
+                found_open = true;
+            }
+        } else if trimmed == "```" {
+            return Some((lang, body.join("\n")));
+        } else {
+            body.push(line);
+        }
+    }
+    if found_open && !body.is_empty() {
+        return Some((lang, body.join("\n")));
+    }
+    None
+}
+
+/// Compile/test generated code in an isolated temp dir and return concise diagnostics on failure.
+fn verify_generated_code(
+    output: &str,
+    prompt: &str,
+    specialist: &str,
+    test_file: Option<&std::path::Path>,
+    extra_harness: Option<&str>,
+) -> Result<String, String> {
+    let (fence_lang, mut code) = extract_code_block(output)
+        .ok_or_else(|| "No fenced code block (```...```) found in output.".to_string())?;
+    let lower_p = prompt.to_ascii_lowercase();
+    let lang = if !fence_lang.is_empty() {
+        fence_lang
+    } else if specialist.contains("001") || lower_p.contains("zig") {
+        "zig".to_string()
+    } else if specialist.contains("015") || specialist.contains("016") || lower_p.contains("python") {
+        "python".to_string()
+    } else {
+        "rust".to_string()
+    };
+
+    let harness_opt = test_file
+        .and_then(|tf| std::fs::read_to_string(tf).ok())
+        .or_else(|| extra_harness.map(|s| s.to_string()));
+    if let Some(harness) = harness_opt {
+        if (lang == "rust" || lang == "rs") && harness.contains("fn main(") {
+            if let Some(pos) = code.find("fn main(") {
+                code.truncate(pos);
+            }
+        }
+        code.push('\n');
+        code.push_str(&harness);
+    }
+
+    let tmp_dir = std::env::temp_dir().join(format!(
+        "nioxs_verify_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&tmp_dir);
+
+    let result = match lang.as_str() {
+        "rust" | "rs" => {
+            let src = tmp_dir.join("main.rs");
+            let bin = tmp_dir.join("main_bin");
+            let _ = std::fs::write(&src, &code);
+            let is_test = code.contains("#[test]");
+            let has_main = code.contains("fn main(");
+            let mut cmd = std::process::Command::new("rustc");
+            cmd.arg("--edition").arg("2021").arg(&src).arg("-o").arg(&bin);
+            if is_test {
+                cmd.arg("--test");
+            } else if !has_main {
+                cmd.arg("--crate-type").arg("lib");
+            }
+            match cmd.output() {
+                Ok(out) if out.status.success() => {
+                    if is_test || has_main {
+                        match std::process::Command::new(&bin).output() {
+                            Ok(run_out) if run_out.status.success() => Ok("rustc + run PASS".to_string()),
+                            Ok(run_out) => Err(String::from_utf8_lossy(&run_out.stderr).chars().take(600).collect()),
+                            Err(e) => Err(format!("Failed to execute binary: {e}")),
+                        }
+                    } else {
+                        Ok("rustc lib PASS".to_string())
+                    }
+                }
+                Ok(out) => Err(String::from_utf8_lossy(&out.stderr).chars().take(600).collect()),
+                Err(e) => Err(format!("Failed to invoke rustc: {e}")),
+            }
+        }
+        "zig" => {
+            let src = tmp_dir.join("main.zig");
+            let _ = std::fs::write(&src, &code);
+            let subcmd = if code.contains("test ") { "test" } else { "build-obj" };
+            let mut cmd = std::process::Command::new("zig");
+            cmd.arg(subcmd).arg(&src).current_dir(&tmp_dir);
+            match cmd.output() {
+                Ok(out) if out.status.success() => Ok(format!("zig {subcmd} PASS")),
+                Ok(out) => Err(String::from_utf8_lossy(&out.stderr).chars().take(600).collect()),
+                Err(e) => Err(format!("Failed to invoke zig: {e}")),
+            }
+        }
+        "python" | "py" => {
+            let src = tmp_dir.join("main.py");
+            let _ = std::fs::write(&src, &code);
+            match std::process::Command::new("python3").arg("-m").arg("py_compile").arg(&src).output() {
+                Ok(out) if out.status.success() => {
+                    if code.contains("assert ") || code.contains("unittest") {
+                        match std::process::Command::new("python3").arg(&src).output() {
+                            Ok(run_out) if run_out.status.success() => Ok("python3 + assert PASS".to_string()),
+                            Ok(run_out) => Err(String::from_utf8_lossy(&run_out.stderr).chars().take(600).collect()),
+                            Err(e) => Err(format!("Failed to run python3: {e}")),
+                        }
+                    } else {
+                        Ok("python3 py_compile PASS".to_string())
+                    }
+                }
+                Ok(out) => Err(String::from_utf8_lossy(&out.stderr).chars().take(600).collect()),
+                Err(e) => Err(format!("Failed to invoke python3: {e}")),
+            }
+        }
+        other => Ok(format!("skipped unsupported fence '{other}'")),
+    };
+
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+    result
+}
+
 /// Scales to 1,000+ heads with no code changes — add anchors to ANCHOR_MANIFESTS below.
 fn detect_council_specialist(accumulated: &str, prompt: &str, _is_hydra: bool) -> Option<&'static str> {
     let lower_acc = format!("{accumulated} {prompt}").to_ascii_lowercase();
@@ -273,10 +418,10 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, _is_hydra: bool) -
     }
 
     // ── Layer 3: Cosine Semantic Fingerprint ──────────────────────────────────
-    // Each anchor manifest is a bag-of-trigger-words. We score the query against
-    // every manifest via dot-product (count of matching tokens) and return the
-    // winning head ID. No VRAM, no model load — pure O(T·K) string ops, < 0.2 ms.
-    cosine_route(&lower_acc)
+    // Each anchor manifest is a bag-of-trigger-words. We score only the user
+    // prompt (never Chair A's free-form <think> prose) via dot-product and
+    // return the winning head ID. Pure O(T·K) string ops, < 0.2 ms.
+    cosine_route(&prompt.to_ascii_lowercase())
 }
 
 /// Returns the canonical head-ID static string for any anchor/head number (0..=2048).
@@ -354,6 +499,69 @@ fn get_dynamic_manifests() -> &'static [DynamicManifest] {
     })
 }
 
+/// Hop 2 of Two-Hop Routing: Dynamically score installed Tier-3 heads under this Anchor.
+/// Falls back to the Sovereign Anchor unless a Tier-3 head's sub-skill matches the prompt.
+fn resolve_tier3_head(anchor: &str, prompt: &str) -> String {
+    let lower_p = prompt.to_ascii_lowercase();
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let anchors_dir = std::path::PathBuf::from(&home).join(".nioxs").join("anchors");
+    let clean_num = anchor.trim_start_matches("head-").trim_start_matches("anchor-");
+    let prefix = format!("tier3-{clean_num}");
+
+    let mut best_slug: Option<String> = None;
+    let mut best_score: u32 = 0;
+
+    if let Ok(entries) = std::fs::read_dir(&anchors_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with(&prefix) || !entry.path().join("adapter_model.gguf").is_file() {
+                continue;
+            }
+            // Score sub-skill tokens after `tier3-XXXy-` (skip generic filler words)
+            let tail = name.strip_prefix(&prefix).unwrap_or("");
+            let sub = tail.splitn(2, '-').nth(1).unwrap_or("");
+            let mut score: u32 = 0;
+            for tok in sub.split('-').filter(|t| t.len() >= 3 && !matches!(*t, "core" | "idioms" | "opt")) {
+                if contains_trigger(&lower_p, tok) {
+                    score += 1;
+                }
+            }
+            if score > best_score {
+                best_score = score;
+                best_slug = Some(name);
+            }
+        }
+    }
+
+    if best_score >= 1 {
+        if let Some(slug) = best_slug {
+            return slug;
+        }
+    }
+    anchor.to_string()
+}
+
+/// Word-boundary trigger match so e.g. "wit" does not match "with".
+fn contains_trigger(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let mut start = 0;
+    while let Some(pos) = haystack[start..].find(needle) {
+        let abs_start = start + pos;
+        let abs_end = abs_start + needle.len();
+        let left_ok = abs_start == 0
+            || !haystack[..abs_start].chars().next_back().is_some_and(|c| c.is_ascii_alphanumeric());
+        let right_ok = abs_end == haystack.len()
+            || !haystack[abs_end..].chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
+        if left_ok && right_ok {
+            return true;
+        }
+        start = abs_start + 1;
+    }
+    false
+}
+
 /// Bag-of-words cosine router — scores query dynamically against all manifests loaded from registry.
 /// Returns the highest-scoring head ID, or None if no trigger matched.
 /// O(tokens × anchors) ≈ 0.05–0.15 ms. 100% dynamic, zero hardcoded tables.
@@ -365,7 +573,7 @@ fn cosine_route(lower_query: &str) -> Option<&'static str> {
     for m in manifests {
         let mut score: u32 = 0;
         for t in &m.triggers {
-            if lower_query.contains(t.as_str()) {
+            if contains_trigger(lower_query, t.as_str()) {
                 // Weight longer/more-specific triggers higher
                 score += (t.len() as u32).max(1);
             }
@@ -503,10 +711,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|hydra <prompt>|council [ls|inspect]|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|orca <prompt>|orca-nano <prompt>|orca-mini <prompt>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
-  pull [model]   Download and verify local MicroLM weights (viper, skate, manta, beluga, blue, tiger, cheetah, fox, rabbit, hydra, hydra-kernel, all)\n\
+  pull [model]   Download and verify local MicroLM weights (orca-nano, orca-mini, viper, skate, manta, beluga, blue, tiger, cheetah, fox, rabbit, all)\n\
+  orca <prompt>  Run Orca Sovereign Pod Fleet (auto-routes lead/pods/reasoners; --tier nano|mini|max|ultra, --verify)\n\
+  orca-nano <prompt> Run Orca Nano 0.5B×13 Sovereign Pod Fleet\n\
+  orca-mini <prompt> Run Orca Mini 1.5B×13 Sovereign Pod Fleet\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
@@ -517,9 +728,6 @@ Commands:\n\
   cheetah <prompt> Run local in-process Cheetah 1.5B sub-20ms sovereign code sprinter\n\
   fox <prompt>    Run local in-process Fox 3.0B sovereign articulate mentor & interactive rubber duck\n\
   rabbit <prompt> Run local in-process Rabbit 3.0B sovereign deep thinker & root-cause detective (<think> CoT)\n\
-  hydra <prompt>  Run local in-process Hydra Sovereign Council Fleet & hot-swappable heads\n\
-  hydra-kernel <prompt> Run local Hydra Bare-Metal POSIX & Atomic Concurrency Specialist\n\
-  council [ls|update|inspect|decompress] Manage and inspect Hydra Sovereign Council heads\n\
   update         Download and install latest calibrated council heads (< 3MB SLA)\n\
   calibrate-head <head> Calibrate and compress LoRA head to < 3MB (FP8 + SVD)\n\
   mcp            Start Model Context Protocol (MCP) JSON-RPC stdio server\n\
@@ -656,6 +864,38 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             return Ok(());
         }
         let lowered = model_target.trim().to_ascii_lowercase();
+        let fleet_prefix = match lowered.as_str() {
+            "orca" | "orca-mini" => Some("orca-mini"),
+            "orca-nano" => Some("orca-nano"),
+            _ => None,
+        };
+        if let Some(prefix) = fleet_prefix {
+            let pod_entries: Vec<_> = manifest
+                .iter()
+                .filter(|e| e.model_id == prefix || e.model_id.starts_with(&format!("{prefix}-")))
+                .collect();
+            println!(
+                "Pulling {} fleet ({} pods + pod_manifest.json)...",
+                prefix,
+                pod_entries.len()
+            );
+            for entry in pod_entries {
+                let _ = nioxs_artifacts::prompt_and_pull_if_needed(&entry.model_id, auto_yes)
+                    .map_err(|e| format!("Failed to pull {}: {e}", entry.model_id))?;
+            }
+            let manifest_dest = nioxs_artifacts::resolve_models_dir().join("pod_manifest.json");
+            if !manifest_dest.exists() {
+                if let Ok(resp) = reqwest::get("https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/pod_manifest.json").await {
+                    if resp.status().is_success() {
+                        if let Ok(bytes) = resp.bytes().await {
+                            let _ = std::fs::write(&manifest_dest, &bytes);
+                        }
+                    }
+                }
+            }
+            println!("✔ Fleet '{prefix}' ready in {}", nioxs_artifacts::resolve_models_dir().display());
+            return Ok(());
+        }
         let normalized = match lowered.as_str() {
             "viper" | "nio-viper" => "nio-viper",
             "skate" | "nio-skate" => "nio-skate",
@@ -673,8 +913,6 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             "fin-sql" | "nio-fin-sql" => "fin-sql",
             "fin-concurrency" | "nio-fin-concurrency" => "fin-concurrency",
             "fin-raft" | "nio-fin-raft" => "fin-raft",
-            "hydra" | "nio-hydra" => "hydra",
-            "hydra-kernel" | "nio-hydra-kernel" => "hydra-kernel",
             other => other,
         };
         let path = nioxs_artifacts::prompt_and_pull_if_needed(normalized, auto_yes)
@@ -1132,6 +1370,291 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         println!();
         return Ok(());
     }
+    if matches!(
+        arg.as_deref(),
+        Some("orca" | "orca-nano" | "orca-mini" | "orca-max" | "orca-ultra")
+    ) {
+        let cmd_name = arg.as_deref().unwrap_or("orca");
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        if raw_args.is_empty() || raw_args[0] == "-h" || raw_args[0] == "--help" {
+            println!(
+                "Usage: nioxs {cmd_name} [--tier <nano|mini|max|ultra>] [--think|--no-think] [--verify|--no-verify] [--retries <N>] [--pod <id>] [--verbose|-v] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+            );
+            println!("Tiers: orca-nano (0.5B), orca-mini (1.5B), orca-max (3B), orca-ultra (7B)");
+            return Ok(());
+        }
+
+        let mut tier = match cmd_name {
+            "orca-nano" => "nano".to_string(),
+            "orca-mini" => "mini".to_string(),
+            "orca-max" => "max".to_string(),
+            "orca-ultra" => "ultra".to_string(),
+            _ => "auto".to_string(),
+        };
+        let mut custom_max_tokens: Option<usize> = None;
+        let mut device_pref = nioxs_engine::DevicePreference::Auto;
+        let mut flow_mode = FlowMode::Token;
+        let mut think_override: Option<bool> = None;
+        let mut forced_pod: Option<String> = None;
+        let mut verify = true;
+        let mut max_retries: usize = 3;
+        let mut verbose = false;
+        let mut prompt_parts = Vec::new();
+        let mut iter = raw_args.into_iter();
+        while let Some(a) = iter.next() {
+            match a.as_str() {
+                "--think" => think_override = Some(true),
+                "--no-think" => think_override = Some(false),
+                "--verify" => verify = true,
+                "--no-verify" => verify = false,
+                "--retries" => {
+                    if let Some(v) = iter.next() {
+                        max_retries = v.parse::<usize>().unwrap_or(3);
+                    }
+                }
+                "--verbose" | "-v" => verbose = true,
+                "--gpu" => device_pref = nioxs_engine::DevicePreference::Gpu,
+                "--cpu" => device_pref = nioxs_engine::DevicePreference::Cpu,
+                "--auto" => device_pref = nioxs_engine::DevicePreference::Auto,
+                "--tier" => {
+                    if let Some(v) = iter.next() {
+                        tier = v.to_ascii_lowercase();
+                    }
+                }
+                "--pod" => {
+                    if let Some(v) = iter.next() {
+                        forced_pod = Some(v);
+                    }
+                }
+                "--flow" => {
+                    if let Some(v) = iter.next() {
+                        flow_mode = match v.to_ascii_lowercase().as_str() {
+                            "burst" => FlowMode::Burst,
+                            "paragraph" | "para" => FlowMode::Paragraph,
+                            _ => FlowMode::Token,
+                        };
+                    }
+                }
+                "-n" | "--max-tokens" => {
+                    if let Some(v) = iter.next() {
+                        custom_max_tokens = v.parse::<usize>().ok();
+                    }
+                }
+                "--device" => {
+                    if let Some(v) = iter.next() {
+                        device_pref = match v.to_ascii_lowercase().as_str() {
+                            "cpu" => nioxs_engine::DevicePreference::Cpu,
+                            "gpu" => nioxs_engine::DevicePreference::Gpu,
+                            _ => nioxs_engine::DevicePreference::Auto,
+                        };
+                    }
+                }
+                other => prompt_parts.push(other.to_string()),
+            }
+        }
+        let prompt = prompt_parts.join(" ");
+        if prompt.is_empty() {
+            return Err(format!("Usage: nioxs {cmd_name} <prompt>").into());
+        }
+
+        let home = std::env::var("HOME").unwrap_or_default();
+        let gguf_dirs = [
+            std::path::PathBuf::from("models/gguf"),
+            std::path::PathBuf::from("models/orca_nano_gguf"),
+            std::path::PathBuf::from(&home).join("nio-labs/nio-ideas/models/gguf"),
+            std::path::PathBuf::from(&home).join("nio-labs/nio-ideas/models/orca_nano_gguf"),
+            std::path::PathBuf::from(&home).join(".nioxs/models/orca"),
+            std::path::PathBuf::from(&home).join(".nioxs/models"),
+        ];
+        let tok_candidates = [
+            std::path::PathBuf::from("models/orca_lead_1_5b_instruct_tuned/tokenizer.json"),
+            std::path::PathBuf::from(&home).join("nio-labs/nio-ideas/models/orca_lead_1_5b_instruct_tuned/tokenizer.json"),
+            std::path::PathBuf::from(&home).join("nio-labs/nio-ideas/models/orca_nano_kaggle/orca_lite_models/orca_lite_lead_0_5b/tokenizer.json"),
+            std::path::PathBuf::from(&home).join(".nioxs/models/orca/tokenizer.json"),
+        ];
+        let tokenizer_path = tok_candidates
+            .into_iter()
+            .find(|p| p.is_file())
+            .ok_or_else(|| "Could not locate Orca tokenizer.json".to_string())?;
+
+        let manifest_candidates = [
+            std::env::var_os("ORCA_MANIFEST").map(std::path::PathBuf::from),
+            Some(std::path::PathBuf::from("data/phase2_instruct/pod_manifest.json")),
+            Some(std::path::PathBuf::from(&home).join("nio-labs/nio-ideas/data/phase2_instruct/pod_manifest.json")),
+            Some(std::path::PathBuf::from(&home).join(".nioxs/models/orca/pod_manifest.json")),
+            Some(std::path::PathBuf::from(&home).join(".nioxs/orca/pod_manifest.json")),
+        ];
+        let manifest_entries: Vec<serde_json::Value> = manifest_candidates
+            .into_iter()
+            .flatten()
+            .find(|p| p.is_file())
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
+            .unwrap_or_default();
+
+        let (pod_id, matched_think_meta) =
+            route_orca_pod(&prompt, forced_pod.as_deref(), &manifest_entries);
+        let is_reasoning_pod = |p: &str| p.contains("reasoner") || p == "architect";
+        let think_enabled = think_override.unwrap_or_else(|| matched_think_meta || is_reasoning_pod(&pod_id));
+
+        let kebab = pod_id.replace('_', "-");
+        let tier_specs: Vec<(&str, &[&str])> = match tier.as_str() {
+            "nano" => vec![("nano", &["0.5b", "0-5b"])],
+            "mini" => vec![("mini", &["1.5b", "1-5b"])],
+            "max" => vec![("max", &["3b"])],
+            "ultra" => vec![("ultra", &["7b"])],
+            _ => vec![("mini", &["1.5b", "1-5b"]), ("nano", &["0.5b", "0-5b"]), ("max", &["3b"]), ("ultra", &["7b"])],
+        };
+
+        let mut names = Vec::new();
+        for (t_name, size_tags) in &tier_specs {
+            for size_tag in *size_tags {
+                names.push(format!("orca-{t_name}-{kebab}-{size_tag}-q4_k_m.gguf"));
+                names.push(format!("orca-{kebab}-{size_tag}-q4_k_m.gguf"));
+            }
+            if think_enabled {
+                for size_tag in *size_tags {
+                    names.push(format!("orca-{t_name}-reasoner-{size_tag}-q4_k_m.gguf"));
+                    names.push(format!("orca-reasoner-{size_tag}-q4_k_m.gguf"));
+                }
+            }
+            for size_tag in *size_tags {
+                names.push(format!("orca-{t_name}-lead-{size_tag}-q4_k_m.gguf"));
+                names.push(format!("orca-lead-{size_tag}-q4_k_m.gguf"));
+            }
+        }
+
+        let model_path = gguf_dirs
+            .iter()
+            .flat_map(|d| names.iter().map(move |n| d.join(n)))
+            .find(|p| p.is_file())
+            .ok_or_else(|| format!("Could not locate Orca ({tier}) GGUF (run 'nioxs pull {cmd_name}' or check models/gguf/)"))?;
+
+        let resolved_tier = {
+            let fname = model_path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if fname.contains("0.5b") || fname.contains("0-5b") { "nano" } else if fname.contains("3b") { "max" } else if fname.contains("7b") { "ultra" } else { "mini" }
+        };
+
+        let mut engine = nioxs_engine::AstEngine::from_paths(model_path.clone(), tokenizer_path.clone());
+        engine.set_device_preference(device_pref);
+        let action_sys = "You are Orca (vMicroLM-Reflex), a concise, accurate coding assistant.";
+        let think_sys = "You are Orca-Reasoner (vMicroLM-Reflex), a compact coding specialist. Start with a concise <think> block (short bulleted invariants and edge cases, under 12 lines) </think>, followed immediately by the complete working code.";
+        let sys = if think_enabled { think_sys } else { action_sys };
+        let formatted_prompt = format!(
+            "<|im_start|>system\n{sys}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        );
+        let max_tokens = custom_max_tokens.unwrap_or(8192);
+        let temp = if think_enabled { 0.20 } else { 0.0 };
+        let t0 = std::time::Instant::now();
+        let mut rx = engine.generate_stream(formatted_prompt, max_tokens, temp, 0.90).await?;
+        let mut flow = StreamFlow::new(flow_mode);
+        flow.set_show_think_tags(true);
+        let mut full_resp = String::new();
+        while let Some(chunk) = rx.recv().await {
+            full_resp.push_str(&chunk);
+            flow.push(&chunk);
+        }
+        flow.finish();
+        println!();
+
+        let mut verified_opt: Option<bool> = None;
+        let mut retry_rounds = 0usize;
+        let mut active_pod = pod_id.clone();
+        let mut active_gguf = model_path.clone();
+
+        if verify {
+            let (mut ok, mut err) = verify_orca_code(&full_resp);
+            let active_size_tags: &[&str] = match resolved_tier {
+                "nano" => &["0.5b", "0-5b"],
+                "max" => &["3b"],
+                "ultra" => &["7b"],
+                _ => &["1.5b", "1-5b"],
+            };
+            let mut retry_ring: Vec<(String, std::path::PathBuf)> = Vec::new();
+            for d in &gguf_dirs {
+                if let Ok(entries) = std::fs::read_dir(d) {
+                    for entry in entries.flatten() {
+                        let p = entry.path();
+                        if !p.is_file() {
+                            continue;
+                        }
+                        let fname = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                        if fname.starts_with("orca-")
+                            && fname.ends_with(".gguf")
+                            && active_size_tags.iter().any(|t| fname.contains(t))
+                            && !retry_ring.iter().any(|(_, existing)| existing == &p)
+                        {
+                            let label = fname
+                                .trim_start_matches("orca-")
+                                .split("-1.5b")
+                                .next()
+                                .unwrap_or(fname)
+                                .split("-1-5b")
+                                .next()
+                                .unwrap_or(fname)
+                                .split("-0.5b")
+                                .next()
+                                .unwrap_or(fname)
+                                .to_string();
+                            retry_ring.push((label, p));
+                        }
+                    }
+                }
+            }
+            retry_ring.sort_by_key(|(label, p)| {
+                let is_repair = label.contains("repair");
+                let is_reason = label.contains("reasoner") || label.contains("architect");
+                let is_same = *p == model_path;
+                (is_same, !is_repair, !is_reason, label.clone())
+            });
+            if retry_ring.is_empty() {
+                retry_ring.push((pod_id.clone(), model_path.clone()));
+            }
+            while !ok && retry_rounds < max_retries {
+                let (r_pod, r_path) = retry_ring[retry_rounds % retry_ring.len()].clone();
+                retry_rounds += 1;
+                eprintln!("[verify] Attempt {} failed ({}) -> retrying with {}...", retry_rounds, err.lines().last().unwrap_or("error"), r_pod);
+                let mut r_eng = nioxs_engine::AstEngine::from_paths(r_path.clone(), tokenizer_path.clone());
+                r_eng.set_device_preference(device_pref);
+                let fix_prompt = format!(
+                    "<|im_start|>system\n{think_sys}<|im_end|>\n<|im_start|>user\nFix this code based on the error. Output the complete corrected code in a fenced block.\n\nOriginal task:\n{prompt}\n\nPrevious output:\n{full_resp}\n\nError:\n{err}<|im_end|>\n<|im_start|>assistant\n"
+                );
+                let mut r_rx = r_eng.generate_stream(fix_prompt, max_tokens, 0.35, 0.90).await?;
+                let mut r_flow = StreamFlow::new(flow_mode);
+                r_flow.set_show_think_tags(true);
+                full_resp.clear();
+                while let Some(chunk) = r_rx.recv().await {
+                    full_resp.push_str(&chunk);
+                    r_flow.push(&chunk);
+                }
+                r_flow.finish();
+                println!();
+                active_pod = r_pod.to_string();
+                active_gguf = r_path;
+                let res = verify_orca_code(&full_resp);
+                ok = res.0;
+                err = res.1;
+            }
+            verified_opt = Some(ok);
+        }
+
+        if verbose {
+            let secs = t0.elapsed().as_secs_f64().max(1e-6);
+            println!("---");
+            println!(
+                "Orca [AstMicroEngine native] | tier={} | pod={} | think={} | verified={:?} | retries={} | gguf={} | {:.2}s ({} chars)",
+                resolved_tier,
+                active_pod,
+                think_enabled || retry_rounds > 0,
+                verified_opt,
+                retry_rounds,
+                active_gguf.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
+                secs,
+                full_resp.len()
+            );
+        }
+        return Ok(());
+    }
     if arg.as_deref() == Some("cheetah") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
@@ -1395,7 +1918,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() {
             eprintln!(
-                "Usage: nioxs hydra [--chair|--kernel|--base] [--audit|-a] [--head <id>] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+                "Usage: nioxs hydra [--chair|--kernel|--base] [--audit|-a] [--verbose|-v] [--head <id>] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
             );
             return Ok(());
         }
@@ -1405,6 +1928,14 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let mut flow_mode = FlowMode::Token;
         let mut run_audit = raw_args.iter().any(|a| a == "--audit" || a == "-a")
             || std::env::var_os("NIOXS_AUDIT").is_some();
+        let mut verbose = raw_args.iter().any(|a| a == "--verbose" || a == "-v")
+            || std::env::var_os("NIOXS_VERBOSE").is_some();
+        let mut verify = raw_args.iter().any(|a| a == "--verify");
+        let mut tdd = raw_args.iter().any(|a| a == "--tdd");
+        if tdd {
+            verify = true;
+        }
+        let mut test_file: Option<std::path::PathBuf> = None;
         let mut deliberate = raw_args.iter().any(|a| a == "--council" || a == "--deliberate" || a == "--triage")
             || std::env::var_os("NIOXS_DELIBERATE").is_some();
         let mut explicit_head = None;
@@ -1425,6 +1956,18 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 model_target = "hydra";
             } else if a == "--audit" || a == "-a" {
                 run_audit = true;
+            } else if a == "--verbose" || a == "-v" {
+                verbose = true;
+            } else if a == "--verify" {
+                verify = true;
+            } else if a == "--tdd" {
+                tdd = true;
+                verify = true;
+            } else if a == "--test-file" {
+                if let Some(val) = iter.next() {
+                    test_file = Some(std::path::PathBuf::from(val));
+                    verify = true;
+                }
             } else if a == "--deliberate" || a == "--council" || a == "--triage" {
                 deliberate = true;
             } else if a == "--head" || a == "-H" {
@@ -1456,7 +1999,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let prompt = prompt_parts.join(" ");
         if prompt.is_empty() {
             eprintln!(
-                "Usage: nioxs hydra [--chair|--kernel|--base] [--audit|-a] [--head <id>] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+                "Usage: nioxs hydra [--chair|--kernel|--base] [--audit|-a] [--verbose|-v] [--head <id>] [--device <auto|cpu|gpu>] [--gpu] [--cpu] [--auto] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
             );
             return Ok(());
         }
@@ -1476,8 +2019,19 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             );
             flow.push("<think>\n");
             let mut chair_rx = base_engine.generate_stream(chair_prompt, max_tokens.min(512), 0.10, 0.90).await?;
+            let mut seen_body = false;
             while let Some(chunk) = chair_rx.recv().await {
-                flow.push(&chunk);
+                let to_push = if !seen_body {
+                    let trimmed = chunk.trim_start_matches(|c: char| c.is_whitespace()).strip_prefix("<think>").unwrap_or(&chunk);
+                    let trimmed = trimmed.trim_start_matches('\n');
+                    if !trimmed.is_empty() { seen_body = true; }
+                    trimmed
+                } else {
+                    &chunk
+                };
+                if !to_push.is_empty() {
+                    flow.push(to_push);
+                }
                 if chunk.contains("</think>") {
                     break;
                 }
@@ -1518,10 +2072,21 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     .await?;
 
                 flow.push("<think>\n");
+                let mut seen_triage_body = false;
 
                 while let Some(chunk) = rx.recv().await {
-                    accumulated.push_str(&chunk);
-                    flow.push(&chunk);
+                    let to_push = if !seen_triage_body {
+                        let stripped = chunk.trim_start_matches(|c: char| c.is_whitespace());
+                        let stripped = stripped.strip_prefix("<think>").unwrap_or(stripped).trim_start_matches('\n');
+                        if !stripped.is_empty() { seen_triage_body = true; }
+                        stripped
+                    } else {
+                        &chunk
+                    };
+                    if !to_push.is_empty() {
+                        accumulated.push_str(to_push);
+                        flow.push(to_push);
+                    }
                     if chunk.contains("</think>") || accumulated.contains("</think>") {
                         specialist_opt = detect_council_specialist(&accumulated, &prompt, true);
                         break;
@@ -1556,16 +2121,27 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         None
                     };
 
-                    if specialist != "head-direct" {
-                        let badge = format_hydra_directive(specialist, raw_domain);
-                        flow.push(&badge);
+                    let active_head = if explicit_head.is_none() && specialist != "head-direct" {
+                        resolve_tier3_head(specialist, &prompt)
+                    } else {
+                        specialist.to_string()
+                    };
+
+                    if active_head != "head-direct" {
+                        if verbose {
+                            let badge = format_hydra_directive(specialist, raw_domain);
+                            flow.push(&badge);
+                            if active_head != specialist {
+                                eprintln!("[nioxs-hydra] Hop 2 (Anchor -> Tier-3): {specialist} -> {active_head}");
+                            }
+                        }
 
                         // NATIVE IN-PROCESS LORA HEAD HOT-SWAP (< 1ms switch)
                         let t_swap = std::time::Instant::now();
-                        let head_attached = base_engine.attach_lora_head(specialist).await.is_ok();
+                        let head_attached = base_engine.attach_lora_head(&active_head).await.is_ok();
                         let swap_ms = t_swap.elapsed().as_secs_f64() * 1000.0;
                         if head_attached && std::env::var_os("NIOXS_DEBUG").is_some() {
-                            eprintln!("[nioxs-hydra] Hot-swapped to Head '{specialist}' in {swap_ms:.2}ms (Base Anchor resident in RAM)");
+                            eprintln!("[nioxs-hydra] Hot-swapped to Head '{active_head}' in {swap_ms:.2}ms (Base Anchor resident in RAM)");
                         }
                     }
 
@@ -1582,13 +2158,144 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         )
                     };
 
-                    let mut spec_rx = base_engine
-                        .generate_stream(specialist_prompt, max_tokens, 0.20, 0.85)
-                        .await?;
+                    let t_gen_start = std::time::Instant::now();
+                    let mut t_first_tok: Option<f64> = None;
                     let mut generated_code = String::new();
-                    while let Some(chunk) = spec_rx.recv().await {
-                        generated_code.push_str(&chunk);
-                        flow.push(&chunk);
+
+                    if verify {
+                        let mut tdd_harness: Option<String> = None;
+                        if tdd && test_file.is_none() {
+                            let test_prompt = format!(
+                                "<|im_start|>system\nYou are Hydra Test-Writer. Write ONLY a small, self-contained unit test block (in ```rust with `fn main()` + `assert_eq!`, or ```python with `assert`, or ```zig with `test`) covering normal cases and edge cases (empty input, zero, bounds) for the requested function. Do NOT implement the function itself.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                            );
+                            let mut test_out = String::new();
+                            let mut test_rx = base_engine.generate_stream(test_prompt, 256, 0.15, 0.85).await?;
+                            while let Some(chunk) = test_rx.recv().await {
+                                test_out.push_str(&chunk);
+                            }
+                            if let Some((_, tests_code)) = extract_code_block(&test_out) {
+                                let valid_harness = !tests_code.trim_start().starts_with("///")
+                                    && (tests_code.contains("fn main(")
+                                        || tests_code.contains("#[test]")
+                                        || tests_code.contains("assert")
+                                        || tests_code.contains("test "));
+                                if valid_harness {
+                                    if verbose {
+                                        eprintln!("[nioxs-tdd] Generated edge-case test harness ({} bytes)", tests_code.len());
+                                    }
+                                    tdd_harness = Some(tests_code);
+                                } else if verbose {
+                                    eprintln!("[nioxs-tdd] Discarded non-runnable test harness; using compiler check only");
+                                }
+                            }
+                        }
+
+                        let draft_prompt = if let Some(ref th) = tdd_harness {
+                            format!(
+                                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}\n\nYour implementation must pass these tests:\n```\n{th}\n```\nReturn ONLY the implementation in a fenced code block (no <think>, no doc-comment examples).<|im_end|>\n<|im_start|>assistant\n",
+                                nioxs_engine::hydra_specialist_system(specialist)
+                            )
+                        } else {
+                            specialist_prompt.clone()
+                        };
+
+                        let mut spec_rx = base_engine
+                            .generate_stream(draft_prompt, max_tokens, 0.20, 0.85)
+                            .await?;
+                        while let Some(chunk) = spec_rx.recv().await {
+                            if t_first_tok.is_none() && !chunk.is_empty() {
+                                t_first_tok = Some(t_gen_start.elapsed().as_secs_f64());
+                            }
+                            generated_code.push_str(&chunk);
+                            flow.push(&chunk);
+                        }
+
+                        let mut last_err = match verify_generated_code(&generated_code, &prompt, specialist, test_file.as_deref(), tdd_harness.as_deref()) {
+                            Ok(msg) => {
+                                if verbose {
+                                    eprintln!("\n[nioxs-verify] PASS: {msg}");
+                                }
+                                None
+                            }
+                            Err(err) => Some(err),
+                        };
+
+                        if let Some(mut err) = last_err.take() {
+                            for round in 1..=3 {
+                                if verbose {
+                                    eprintln!("\n[nioxs-verify] Round {round} repair after: {err}");
+                                }
+                                let repair_prompt = format!(
+                                    "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}\n\nPrevious code failed verification with:\n{err}\n\nPrevious code:\n{generated_code}\n\nFix the exact error and return ONLY the complete working fenced code block.<|im_end|>\n<|im_start|>assistant\n",
+                                    nioxs_engine::hydra_specialist_system(specialist)
+                                );
+                                let mut repaired = String::new();
+                                let mut rep_rx = base_engine.generate_stream(repair_prompt, max_tokens, 0.20, 0.85).await?;
+                                while let Some(chunk) = rep_rx.recv().await {
+                                    repaired.push_str(&chunk);
+                                    flow.push(&chunk);
+                                }
+                                generated_code = repaired;
+                                match verify_generated_code(&generated_code, &prompt, specialist, test_file.as_deref(), tdd_harness.as_deref()) {
+                                    Ok(msg) => {
+                                        if verbose {
+                                            eprintln!("\n[nioxs-verify] PASS (repair round {round}): {msg}");
+                                        }
+                                        last_err = None;
+                                        break;
+                                    }
+                                    Err(next_err) => {
+                                        err = next_err.clone();
+                                        last_err = Some(next_err);
+                                    }
+                                }
+                            }
+                            if let Some(final_err) = last_err {
+                                if verbose {
+                                    eprintln!("\n[nioxs-verify] FAIL (after 3 repair rounds): {final_err}");
+                                }
+                            }
+                        }
+                    } else {
+                        let mut spec_rx = base_engine
+                            .generate_stream(specialist_prompt.clone(), max_tokens, 0.20, 0.85)
+                            .await?;
+                        while let Some(chunk) = spec_rx.recv().await {
+                            if t_first_tok.is_none() && !chunk.is_empty() {
+                                t_first_tok = Some(t_gen_start.elapsed().as_secs_f64());
+                            }
+                            generated_code.push_str(&chunk);
+                            flow.push(&chunk);
+                        }
+                        // Empty-output / early-EOS retry guard (e.g. calibrated r=12 heads)
+                        if generated_code.trim().is_empty() {
+                            let nudge = "Here is the implementation:\n";
+                            let retry_prompt = format!("{specialist_prompt}{nudge}");
+                            if let Ok(mut retry_rx) = base_engine.generate_stream(retry_prompt, max_tokens, 0.35, 0.90).await {
+                                flow.push(nudge);
+                                generated_code.push_str(nudge);
+                                while let Some(chunk) = retry_rx.recv().await {
+                                    if t_first_tok.is_none() && !chunk.is_empty() {
+                                        t_first_tok = Some(t_gen_start.elapsed().as_secs_f64());
+                                    }
+                                    generated_code.push_str(&chunk);
+                                    flow.push(&chunk);
+                                }
+                            }
+                        }
+                    }
+                    if verbose {
+                        let total_s = t_gen_start.elapsed().as_secs_f64();
+                        let ttft_s = t_first_tok.unwrap_or(total_s);
+                        let decode_s = (total_s - ttft_s).max(0.001);
+                        let words = generated_code.split_whitespace().count();
+                        let wps = words as f64 / decode_s;
+                        let dev_label = match device_pref {
+                            nioxs_engine::DevicePreference::Gpu => "gpu",
+                            nioxs_engine::DevicePreference::Cpu => "cpu",
+                            nioxs_engine::DevicePreference::Auto => "auto",
+                        };
+                        eprintln!("\n[nioxs] ({dev_label}) TTFT: {ttft_s:.2}s | Decode: {decode_s:.2}s | {words} words ({wps:.2} w/s)");
                     }
 
                     // ── Step 3: Sovereign Chair C Invariant Verification & Formal Audit ────
@@ -2420,5 +3127,254 @@ mod tests {
         let formatted = format_council_directive(directive);
         assert!(formatted.contains("head = 001"));
         assert!(formatted.contains("domain = systems-atomic-concurrency"));
+    }
+}
+
+fn route_orca_pod(
+    prompt: &str,
+    forced_pod: Option<&str>,
+    manifest_entries: &[serde_json::Value],
+) -> (String, bool) {
+    if let Some(p) = forced_pod {
+        let meta = manifest_entries
+            .iter()
+            .find(|e| e.get("pod_id").and_then(|v| v.as_str()) == Some(p))
+            .map(|e| {
+                e.get("think").and_then(|v| v.as_bool()).unwrap_or(false)
+                    || e.get("role")
+                        .and_then(|v| v.as_str())
+                        .map(|r| r.contains("reason"))
+                        .unwrap_or(false)
+            })
+            .unwrap_or(false);
+        return (p.to_string(), meta);
+    }
+
+    let prompt_tokens: std::collections::HashSet<String> = prompt
+        .to_ascii_lowercase()
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    let mut best_pod = "lead".to_string();
+    let mut best_score = 0usize;
+    let mut matched_think = false;
+    for entry in manifest_entries {
+        let Some(pid) = entry.get("pod_id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let mut score = 0usize;
+        if let Some(terms) = entry.get("salient_terms").and_then(|v| v.as_array()) {
+            for t in terms {
+                if let Some(ts) = t.as_str() {
+                    if prompt_tokens.contains(&ts.to_ascii_lowercase()) {
+                        score += 1;
+                    }
+                }
+            }
+        }
+        if prompt_tokens.contains(&pid.to_ascii_lowercase()) {
+            score += 2;
+        }
+        if score > best_score {
+            best_score = score;
+            best_pod = pid.to_string();
+            matched_think = entry.get("think").and_then(|v| v.as_bool()).unwrap_or(false)
+                || entry
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .map(|r| r.contains("reason"))
+                    .unwrap_or(false);
+        }
+    }
+    (best_pod, matched_think)
+}
+
+fn run_cmd_with_timeout(
+    mut cmd: std::process::Command,
+    timeout_secs: u64,
+    use_stdout_on_fail: bool,
+) -> (bool, String) {
+    use std::io::Read;
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (true, String::new()),
+        Err(e) => return (false, e.to_string()),
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if status.success() {
+                    return (true, String::new());
+                }
+                let mut err_buf = String::new();
+                if use_stdout_on_fail {
+                    if let Some(mut out) = child.stdout.take() {
+                        let _ = out.read_to_string(&mut err_buf);
+                    }
+                } else if let Some(mut err) = child.stderr.take() {
+                    let _ = err.read_to_string(&mut err_buf);
+                }
+                return (false, err_buf.trim().to_string());
+            }
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return (
+                        false,
+                        format!("TimeoutExpired: verification exceeded {timeout_secs}s"),
+                    );
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            Err(e) => return (false, e.to_string()),
+        }
+    }
+}
+
+fn verify_orca_code(resp: &str) -> (bool, String) {
+    let body = resp.split("</think>").last().unwrap_or(resp);
+    let mut lang = "";
+    let mut blocks: Vec<String> = Vec::new();
+    let mut rest = body;
+    while let Some(start) = rest.find("```") {
+        let after = &rest[start + 3..];
+        let Some(nl) = after.find('\n') else { break; };
+        let tag = after[..nl].trim().to_ascii_lowercase();
+        let code_start = &after[nl + 1..];
+        let Some(end) = code_start.find("```") else { break; };
+        if lang.is_empty() {
+            if tag.contains("python") || tag == "py" {
+                lang = "python";
+            } else if tag.contains("rust") || tag == "rs" {
+                lang = "rust";
+            } else if tag == "js" || tag == "javascript" {
+                lang = "js";
+            } else if tag == "ts" || tag == "typescript" {
+                lang = "ts";
+            } else if tag == "sh" || tag == "bash" || tag == "zsh" {
+                lang = "bash";
+            } else if tag == "go" || tag == "golang" {
+                lang = "go";
+            }
+        }
+        blocks.push(code_start[..end].to_string());
+        rest = &code_start[end + 3..];
+    }
+    if blocks.is_empty() || lang.is_empty() {
+        return (true, String::new());
+    }
+    let joined = blocks.join("\n\n");
+    static VERIFY_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let pid = std::process::id();
+    let seq = VERIFY_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp_dir = std::env::temp_dir();
+    match lang {
+        "python" => {
+            let p = tmp_dir.join(format!("nioxs_orca_verify_{pid}_{seq}.py"));
+            let _ = std::fs::write(&p, &joined);
+            let mut cmd = std::process::Command::new("python3");
+            cmd.arg(&p);
+            let res = run_cmd_with_timeout(cmd, 5, false);
+            let _ = std::fs::remove_file(&p);
+            res
+        }
+        "rust" => {
+            let p = tmp_dir.join(format!("nioxs_orca_verify_{pid}_{seq}.rs"));
+            let rlib = tmp_dir.join(format!("libnioxs_orca_verify_{pid}_{seq}.rlib"));
+            let _ = std::fs::write(&p, &joined);
+            let mut cmd = std::process::Command::new("rustc");
+            cmd.args(["--edition", "2021", "--crate-type", "lib", "--emit=metadata", "-o"])
+                .arg(&rlib)
+                .arg(&p);
+            let res = run_cmd_with_timeout(cmd, 10, false);
+            let _ = std::fs::remove_file(&p);
+            let _ = std::fs::remove_file(&rlib);
+            res
+        }
+        "js" => {
+            let p = tmp_dir.join(format!("nioxs_orca_verify_{pid}_{seq}.js"));
+            let _ = std::fs::write(&p, &joined);
+            let mut cmd = std::process::Command::new("node");
+            cmd.arg("--check").arg(&p);
+            let res = run_cmd_with_timeout(cmd, 5, false);
+            let _ = std::fs::remove_file(&p);
+            res
+        }
+        "ts" => {
+            let p = tmp_dir.join(format!("nioxs_orca_verify_{pid}_{seq}.ts"));
+            let _ = std::fs::write(&p, &joined);
+            let mut cmd = std::process::Command::new("tsc");
+            cmd.args(["--noEmit", "--skipLibCheck"]).arg(&p);
+            let res = run_cmd_with_timeout(cmd, 10, true);
+            let _ = std::fs::remove_file(&p);
+            res
+        }
+        "bash" => {
+            let p = tmp_dir.join(format!("nioxs_orca_verify_{pid}_{seq}.sh"));
+            let _ = std::fs::write(&p, &joined);
+            let mut cmd = std::process::Command::new("bash");
+            cmd.arg("-n").arg(&p);
+            let res = run_cmd_with_timeout(cmd, 5, false);
+            let _ = std::fs::remove_file(&p);
+            res
+        }
+        "go" => {
+            let p = tmp_dir.join(format!("nioxs_orca_verify_{pid}_{seq}.go"));
+            let _ = std::fs::write(&p, &joined);
+            let mut cmd = std::process::Command::new("gofmt");
+            cmd.arg("-e").arg(&p);
+            let res = run_cmd_with_timeout(cmd, 5, false);
+            let _ = std::fs::remove_file(&p);
+            res
+        }
+        _ => (true, String::new()),
+    }
+}
+
+#[cfg(test)]
+mod orca_tests {
+    use super::*;
+
+    #[test]
+    fn test_route_orca_pod_dynamic_manifest() {
+        let manifest = vec![
+            serde_json::json!({"pod_id": "pod_0", "salient_terms": ["git", "diff"]}),
+            serde_json::json!({"pod_id": "sql_plugin", "salient_terms": ["postgres", "migration"], "think": true}),
+        ];
+        assert_eq!(route_orca_pod("fix postgres migration", None, &manifest), ("sql_plugin".into(), true));
+        assert_eq!(route_orca_pod("unrelated prompt", None, &manifest), ("lead".into(), false));
+        assert_eq!(route_orca_pod("anything", Some("sql_plugin"), &manifest), ("sql_plugin".into(), true));
+    }
+
+    #[test]
+    fn test_verify_orca_code_pass_and_fail() {
+        let ok = verify_orca_code("```python\nassert 2 + 2 == 4\n```");
+        assert!(ok.0, "expected pass: {:?}", ok);
+
+        let bad = verify_orca_code("```python\nassert 2 + 2 == 5\n```");
+        assert!(!bad.0);
+        assert!(bad.1.contains("AssertionError"));
+    }
+
+    #[test]
+    fn test_verify_orca_code_timeout() {
+        let (ok, err) = verify_orca_code("```python\nwhile True:\n    pass\n```");
+        assert!(!ok);
+        assert!(err.contains("TimeoutExpired"), "unexpected err: {err}");
+    }
+
+    #[test]
+    fn test_verify_orca_code_missing_tool_skips() {
+        let mut cmd = std::process::Command::new("nioxs_nonexistent_linter_binary_12345");
+        cmd.arg("--check");
+        let (ok, err) = run_cmd_with_timeout(cmd, 5, false);
+        assert!(ok);
+        assert!(err.is_empty());
     }
 }

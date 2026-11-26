@@ -2535,10 +2535,8 @@ impl AstMicroEngine {
 
         let vocab_size = if let Some(output) = &output_weight {
             output.n_rows
-        } else if embd_info.shape.len() > 1 {
-            embd_info.shape[1]
         } else {
-            embd_info.shape[0]
+            infer_tied_vocab_size(&embd_info.shape, embedding_length)
         };
 
         let mut engine = Self {
@@ -3727,6 +3725,18 @@ pub fn find_candidate_draft_tokens_with_min(
     Vec::new()
 }
 
+fn infer_tied_vocab_size(shape: &[usize], embedding_length: usize) -> usize {
+    if shape.len() > 1 {
+        if shape[1] == embedding_length {
+            shape[0]
+        } else {
+            shape[1]
+        }
+    } else {
+        shape.first().copied().unwrap_or(0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3776,5 +3786,12 @@ mod tests {
         cache.truncate(8, kv_stride);
         assert_eq!(cache.cur_len, 6);
         assert_eq!(cache.k.len(), 6 * kv_stride);
+    }
+
+    #[test]
+    fn test_infer_tied_vocab_size() {
+        assert_eq!(infer_tied_vocab_size(&[151936, 1536], 1536), 151936);
+        assert_eq!(infer_tied_vocab_size(&[1536, 151936], 1536), 151936);
+        assert_eq!(infer_tied_vocab_size(&[32000], 1536), 32000);
     }
 }
