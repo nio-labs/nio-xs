@@ -273,7 +273,7 @@ async fn microlm_chat_handler(
         "nio-tiger" | "tiger" => nioxs_engine::tiger_system(),
         "nio-fox" | "fox" => nioxs_engine::fox_system(),
         "nio-rabbit" | "rabbit" => nioxs_engine::rabbit_system(),
-        "orca" | "orca-nano" | "orca-mini" | "orca-max" | "orca-ultra" => {
+        "orca" | "orca-nano" | "orca-mini" | "orca-omni" | "orca-max" | "orca-ultra" => {
             "You are Orca (vMicroLM-Reflex), a concise, accurate coding assistant developed by Nio Labs."
         }
         "nio-skate" | "skate" => {
@@ -618,7 +618,7 @@ async fn chat(
         "nio-rabbit" | "rabbit" => {
             return microlm_chat_handler("rabbit", request, None).await;
         }
-        "orca" | "orca-nano" | "orca-mini" | "orca-max" | "orca-ultra" => {
+        "orca" | "orca-nano" | "orca-mini" | "orca-omni" | "orca-max" | "orca-ultra" => {
             return microlm_chat_handler(&model_norm, request, None).await;
         }
         "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" | "nio-fin-concurrency" | "fin-concurrency" | "nio-fin-raft" | "fin-raft" => {
