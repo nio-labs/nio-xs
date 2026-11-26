@@ -3850,9 +3850,8 @@ async fn run_penguin_turn(
         )
     };
 
-    let auto_search = opts.use_search || penguin::needs_web_scouting(prompt);
     let mut used_web = false;
-    let web_block = if auto_search {
+    let web_block = if opts.use_search {
         if opts.verbose {
             println!("\x1b[1;36m[Penguin Scout]\x1b[0m Scouting the web...");
         }
@@ -3906,9 +3905,9 @@ async fn run_penguin_turn(
         String::new()
     };
     let sys = if think_enabled {
-        "You are Nio Penguin Builder Reasoner (vMicroLM-Growth), created by Nio Labs. Write a concise 3-6 line <think>...</think> plan, then provide a clear, accurate answer using any provided [Identity], [Known User Facts], or [Web Grounding].".to_string()
+        "You are Nio Penguin Builder Reasoner (vMicroLM-Growth), created by Nio Labs. Write a concise 3-6 line <think>...</think> plan, then provide a clear, accurate answer using any provided [Identity], [Known User Facts], or [Live Web Search Results].".to_string()
     } else {
-        "You are Nio Penguin (vMicroLM-Growth), created by Nio Labs. Be natural, concise, and accurate. Always follow [Identity] and [Known User Facts] directly, and never claim to be Alibaba Cloud, Qwen, or Pegasus.".to_string()
+        "You are Nio Penguin (vMicroLM-Growth), created by Nio Labs. Be natural, concise, and accurate. Always follow [Identity] and [Known User Facts] directly. If you don't know a current/post-2024 fact and it is not in [Known User Facts] or [Live Web Search Results], reply ONLY with [SEARCH].".to_string()
     };
     let mut history_chatml = String::new();
     for (u, a) in history {
@@ -4054,7 +4053,7 @@ async fn run_penguin_turn(
                 .await
                 .map(|s| {
                     used_web = true;
-                    format!("[Web Grounding]\n- {s}\n\n")
+                    format!("[Live Web Search Results]\n- {s}\n\nInstruction: Answer concisely in 1-3 sentences using ONLY the facts in [Live Web Search Results] above.\n\nQuestion: ")
                 })
                 .unwrap_or_default()
         } else {
@@ -4065,7 +4064,7 @@ async fn run_penguin_turn(
                 "\x1b[1;33m[Penguin Heal]\x1b[0m Answering from live web grounding via 1.5B Builder..."
             );
             let heal_prompt = format!(
-                "<|im_start|>system\nYou are Nio Penguin (vMicroLM-Growth), created by Nio Labs. Answer directly and concisely using ONLY the facts in [Web Grounding].<|im_end|>\n<|im_start|>user\n{web_heal}{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                "<|im_start|>system\nYou are Nio Penguin (vMicroLM-Growth), created by Nio Labs. Answer directly and concisely using ONLY the facts in [Live Web Search Results].<|im_end|>\n<|im_start|>user\n{web_heal}{prompt}<|im_end|>\n<|im_start|>assistant\n"
             );
             let mut b_engine = nioxs_engine::AstEngine::from_paths(
                 builder_path.to_path_buf(),
@@ -4086,7 +4085,38 @@ async fn run_penguin_turn(
             println!();
             active_model = "penguin-builder-1.5b-q4_k_m.gguf".to_string();
             healed = true;
+            let _ = penguin::append_memory(
+                mem_path,
+                "global",
+                prompt,
+                full_resp.trim(),
+                "web_healed",
+                true,
+            );
+            let _ = penguin::append_replay(
+                rep_path,
+                &penguin::PenguinReplayEntry {
+                    prompt: prompt.to_string(),
+                    failed_draft: None,
+                    verifier_error: Some("knowledge_gap".to_string()),
+                    verified_solution: full_resp.clone(),
+                    used_web: true,
+                    created_at: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0),
+                },
+            );
         }
+    } else if used_web {
+        let _ = penguin::append_memory(
+            mem_path,
+            "global",
+            prompt,
+            full_resp.trim(),
+            "web_healed",
+            true,
+        );
     }
 
     if opts.verbose {

@@ -228,29 +228,11 @@ pub fn looks_like_code_task(prompt: &str, response: &str) -> bool {
     .any(|kw| lower.contains(kw))
 }
 
-pub fn needs_web_scouting(prompt: &str) -> bool {
-    let lower = prompt.to_ascii_lowercase();
-    [
-        "latest",
-        "newest",
-        "current version",
-        "release",
-        "today",
-        "2025",
-        "2026",
-        "changelog",
-        "price",
-        "news",
-        "weather",
-        "version of",
-    ]
-    .iter()
-    .any(|kw| lower.contains(kw))
-}
-
 pub fn looks_like_knowledge_gap(resp: &str) -> bool {
     let lower = resp.to_ascii_lowercase();
     [
+        "[search]",
+        "[need_web]",
         "as an ai",
         "knowledge cutoff",
         "don't have access",
@@ -258,6 +240,9 @@ pub fn looks_like_knowledge_gap(resp: &str) -> bool {
         "do not have access",
         "i don't have a specific",
         "real-time",
+        "i'm not sure",
+        "i am not sure",
+        "cannot verify",
     ]
     .iter()
     .any(|kw| lower.contains(kw))
