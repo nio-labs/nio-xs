@@ -107,27 +107,38 @@ pub fn hydra_specialist_system(target: &str) -> &'static str {
     if clean_id.starts_with("044") || clean_id.contains("architect") {
         return "You are Hydra Head #044: Sovereign Chief Architect & System Design Specialist. Formulate robust distributed topologies, document CAP/PACELC trade-offs, define SLA/SLO boundaries, produce quantitative comparison matrices, and specify single-points-of-failure.";
     }
-    if clean_id.starts_with("045") || clean_id.contains("debugger") || clean_id.contains("forensics") {
+    if clean_id.starts_with("045")
+        || clean_id.contains("debugger")
+        || clean_id.contains("forensics")
+    {
         return "You are Hydra Head #045: Sovereign Incident Forensics & Root-Cause Debugger. Analyze stack traces, coredumps, ASan/TSan reports, gdb backtraces, and memory corruption patterns. Identify exact line numbers, corrupted invariants, and minimal fix patches.";
     }
     if clean_id.starts_with("046") || clean_id.contains("api-rfc") {
         return "You are Hydra Head #046: Sovereign API & Protocol RFC Designer. Author rigorous, backward-compatible schemas (OpenAPI 3.1, Protobuf v3, RFC-compliant JSON/binary specs) with strict idempotent semantics, semantic versioning, and rate-limit headers.";
     }
-    if clean_id.starts_with("047") || clean_id.contains("code-reviewer") || clean_id.contains("refactor") {
+    if clean_id.starts_with("047")
+        || clean_id.contains("code-reviewer")
+        || clean_id.contains("refactor")
+    {
         return "You are Hydra Head #047: Sovereign Code Reviewer & Refactoring Specialist. Scrutinize pull requests for cyclomatic complexity, cognitive load, SOLID adherence, naming accuracy, DRY violations, and architectural regression. Provide diff patches.";
     }
-    if clean_id.starts_with("048") || clean_id.contains("security") || clean_id.contains("hardener") {
+    if clean_id.starts_with("048") || clean_id.contains("security") || clean_id.contains("hardener")
+    {
         return "You are Hydra Head #048: Sovereign Security Red-Team & Hardening Auditor. Detect OWASP Top 10 vulnerabilities, integer overflows, format string bugs, insecure deserialization, privilege escalations, and provide hardened seccomp/AppArmor policies.";
     }
 
     // Dynamic resolution from registry
-    static TITLES_MAP: std::sync::OnceLock<std::collections::HashMap<String, &'static str>> = std::sync::OnceLock::new();
+    static TITLES_MAP: std::sync::OnceLock<std::collections::HashMap<String, &'static str>> =
+        std::sync::OnceLock::new();
     let titles = TITLES_MAP.get_or_init(|| {
         let mut map = std::collections::HashMap::new();
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
         let registry_paths = [
             format!("{}/.nioxs/registry/hydra_anchor_registry.json", home),
-            format!("{}/nio-labs/nio-ideas/registry/hydra_anchor_registry.json", home),
+            format!(
+                "{}/nio-labs/nio-ideas/registry/hydra_anchor_registry.json",
+                home
+            ),
         ];
         for p in &registry_paths {
             if let Ok(c) = std::fs::read_to_string(p) {
@@ -136,8 +147,14 @@ pub fn hydra_specialist_system(target: &str) -> &'static str {
                         for a in anchors {
                             let id_str = a.get("id").and_then(|i| i.as_str()).unwrap_or("");
                             let slug = a.get("slug").and_then(|s| s.as_str()).unwrap_or("");
-                            let title = a.get("title").and_then(|t| t.as_str()).unwrap_or("Domain Specialist");
-                            let prompt_str: &'static str = Box::leak(format!("You are Hydra Head #{id_str}: Sovereign {title}.").into_boxed_str());
+                            let title = a
+                                .get("title")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("Domain Specialist");
+                            let prompt_str: &'static str = Box::leak(
+                                format!("You are Hydra Head #{id_str}: Sovereign {title}.")
+                                    .into_boxed_str(),
+                            );
                             if !id_str.is_empty() {
                                 map.insert(id_str.to_string(), prompt_str);
                                 map.insert(format!("head-{}", id_str), prompt_str);
@@ -146,7 +163,10 @@ pub fn hydra_specialist_system(target: &str) -> &'static str {
                             if !slug.is_empty() {
                                 map.insert(slug.to_ascii_lowercase(), prompt_str);
                                 if slug.starts_with("anchor-") {
-                                    map.insert(slug.trim_start_matches("anchor-").to_ascii_lowercase(), prompt_str);
+                                    map.insert(
+                                        slug.trim_start_matches("anchor-").to_ascii_lowercase(),
+                                        prompt_str,
+                                    );
                                 }
                             }
                         }
@@ -173,7 +193,6 @@ pub fn hydra_specialist_system(target: &str) -> &'static str {
 
     "You are Hydra Head: Sovereign Specialist Head. Output clean, compilable, idiomatic production code."
 }
-
 
 pub fn skate_system() -> Result<String> {
     if let Some(path) = std::env::var_os("NIOXS_SKATE_SYSTEM_FILE") {
@@ -794,7 +813,12 @@ impl AstEngine {
         let is_fox = matches!(lowered.as_str(), "fox" | "nio-fox");
         let is_hydra = matches!(
             lowered.as_str(),
-            "hydra" | "nio-hydra" | "hydra-kernel" | "nio-hydra-kernel" | "hydra-max" | "hydra-ultra"
+            "hydra"
+                | "nio-hydra"
+                | "hydra-kernel"
+                | "nio-hydra-kernel"
+                | "hydra-max"
+                | "hydra-ultra"
         ) || model_path.to_string_lossy().contains("hydra");
         let is_tiger = (matches!(lowered.as_str(), "tiger" | "nio-tiger")
             || model_path.to_string_lossy().contains("tiger"))
@@ -959,9 +983,7 @@ impl AstEngine {
                 "anchor-base.0.5b.q4km.gguf",
                 "hydra-anchor.q4km.gguf",
             ],
-            "hydra-kernel" | "nio-hydra-kernel" => &[
-                "hydra-kernel-0.5b.q4km.gguf",
-            ],
+            "hydra-kernel" | "nio-hydra-kernel" => &["hydra-kernel-0.5b.q4km.gguf"],
             "viper" | "nio-viper" => &[
                 "nio-viper.Q4_0.gguf",
                 "nio-viper-ast-32k.Q4_0.gguf",
@@ -1027,7 +1049,9 @@ impl AstEngine {
         }
 
         let base_dir = nioxs_artifacts::resolve_models_dir();
-        let home_dir = std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/root"));
+        let home_dir = std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/root"));
         let search_dirs = [
             base_dir.clone(),
             base_dir.join("anchors"),
@@ -1084,7 +1108,9 @@ impl AstEngine {
                 }
             }
             if s.contains("fin") || s.contains("hydra") {
-                let home_dir = std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/root"));
+                let home_dir = std::env::var("HOME")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|_| PathBuf::from("/root"));
                 for cand in &[
                     model.with_file_name("hydra-tokenizer.json"),
                     model.with_file_name("tokenizer.json"),
@@ -1273,7 +1299,8 @@ impl AstEngine {
         let is_rabbit = self.is_rabbit;
         let is_hydra = self.is_hydra;
         let policy = decoding::DecodingPolicy::for_model(
-            is_skate, is_manta, is_beluga, is_blue, is_cheetah, is_tiger, is_fox, is_rabbit, is_hydra,
+            is_skate, is_manta, is_beluga, is_blue, is_cheetah, is_tiger, is_fox, is_rabbit,
+            is_hydra,
         );
 
         // The native fallback must use CPU residency settings. Hardware probing
@@ -1345,7 +1372,8 @@ impl AstEngine {
                         .and_then(|v| v.parse::<usize>().ok())
                         .unwrap_or(16)
                         .min(engine.block_count);
-                    let window = layer_setting("NIOXS_CHEETAH_ROLLING_WINDOW", 18, engine.block_count);
+                    let window =
+                        layer_setting("NIOXS_CHEETAH_ROLLING_WINDOW", 18, engine.block_count);
                     engine.set_resident_layers(resident);
                     engine.set_rolling_window(window);
                 }
@@ -1577,16 +1605,8 @@ impl AstEngine {
         temperature: f64,
         top_p: f64,
     ) -> Result<mpsc::Receiver<String>> {
-        self.generate_stream_with_policy(
-            prompt,
-            max_tokens,
-            temperature,
-            top_p,
-            None,
-            None,
-            None,
-        )
-        .await
+        self.generate_stream_with_policy(prompt, max_tokens, temperature, top_p, None, None, None)
+            .await
     }
 
     pub async fn generate_stream_with_policy(
@@ -1612,11 +1632,13 @@ impl AstEngine {
             Ok("off") => speculation::Mode::Off,
             Ok("on") => speculation::Mode::On,
             Ok("adaptive") => speculation::Mode::Adaptive,
-            Err(_) => if self.is_hydra {
-                speculation::Mode::On
-            } else {
-                speculation::Mode::Adaptive
-            },
+            Err(_) => {
+                if self.is_hydra {
+                    speculation::Mode::On
+                } else {
+                    speculation::Mode::Adaptive
+                }
+            }
             Ok(value) => {
                 return Err(anyhow!(
                     "Invalid {speculation_var}={value:?}; use on, off, or adaptive"
@@ -1681,7 +1703,11 @@ impl AstEngine {
                     if active_dev.is_gpu() || self.device_pref == DevicePreference::Gpu {
                         eprintln!(
                             "[nioxs] Hardware: {} (offloading {}/{} layers to GPU)",
-                            if active_dev.is_gpu() { active_dev.name() } else { "GPU Runner" },
+                            if active_dev.is_gpu() {
+                                active_dev.name()
+                            } else {
+                                "GPU Runner"
+                            },
                             gpu_layers,
                             total_layers
                         );
@@ -1901,7 +1927,9 @@ impl AstEngine {
             if let Some(ref tokens) = suppressed_tokens {
                 bundle.engine.set_suppressed_tokens(tokens.iter().copied());
             } else {
-                bundle.engine.set_suppressed_tokens(policy.suppressed.iter().copied());
+                bundle
+                    .engine
+                    .set_suppressed_tokens(policy.suppressed.iter().copied());
             }
             let mut sampling_history =
                 prompt_tokens[prompt_tokens.len().saturating_sub(active_history_window)..].to_vec();
@@ -1934,16 +1962,19 @@ impl AstEngine {
             }
 
             // Identify invariant system prompt prefix if available for auto-caching
-            let sys_prefix_tokens: Option<Vec<u32>> =
-                if !disable_prefix_cache && bundle.cached_prefix.is_empty() {
-                    let extracted = if let Some(idx) = prompt.find("<|im_end|>\n<|im_start|>user\n") {
-                        Some(&prompt[..idx + "<|im_end|>\n<|im_start|>user\n".len()])
-                    } else if let Some(idx) = prompt.find("<|end|>\n<|user|>\n") {
-                        Some(&prompt[..idx + "<|end|>\n<|user|>\n".len()])
-                    } else {
-                        None
-                    };
-                    let sys_text = extracted.map(|s| s.to_string()).or_else(|| match stats_model {
+            let sys_prefix_tokens: Option<Vec<u32>> = if !disable_prefix_cache
+                && bundle.cached_prefix.is_empty()
+            {
+                let extracted = if let Some(idx) = prompt.find("<|im_end|>\n<|im_start|>user\n") {
+                    Some(&prompt[..idx + "<|im_end|>\n<|im_start|>user\n".len()])
+                } else if let Some(idx) = prompt.find("<|end|>\n<|user|>\n") {
+                    Some(&prompt[..idx + "<|end|>\n<|user|>\n".len()])
+                } else {
+                    None
+                };
+                let sys_text = extracted
+                    .map(|s| s.to_string())
+                    .or_else(|| match stats_model {
                         "hydra" => Some(format!(
                             "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n",
                             hydra_system()
@@ -1967,16 +1998,16 @@ impl AstEngine {
                         "blue" => Some(format!("<|system|>\n{}<|end|>\n<|user|>\n", blue_system())),
                         _ => None,
                     });
-                    sys_text.and_then(|text| {
-                        bundle
-                            .tokenizer
-                            .encode(text.as_str(), false)
-                            .ok()
-                            .map(|enc| enc.get_ids().to_vec())
-                    })
-                } else {
-                    None
-                };
+                sys_text.and_then(|text| {
+                    bundle
+                        .tokenizer
+                        .encode(text.as_str(), false)
+                        .ok()
+                        .map(|enc| enc.get_ids().to_vec())
+                })
+            } else {
+                None
+            };
 
             let sys_prefix_len = sys_prefix_tokens.as_ref().map(|p| p.len());
 
@@ -2643,7 +2674,10 @@ mod tests {
                                 let tok = bundle.engine.next_token(&hidden, None).unwrap();
                                 assert!(tok > 0);
                                 let (rss, _hwm) = memory_mb();
-                                assert!(rss < 350.0, "Resident RAM was {rss}MB, expected <350MB (0.5B backbone)");
+                                assert!(
+                                    rss < 350.0,
+                                    "Resident RAM was {rss}MB, expected <350MB (0.5B backbone)"
+                                );
                             }
                         }
                     }

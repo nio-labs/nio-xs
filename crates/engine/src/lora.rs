@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use memmap2::Mmap;
 use safetensors::SafeTensors;
 use serde::{Deserialize, Serialize};
@@ -309,7 +309,11 @@ pub fn reduce_rank_svd(
     let (eigvals, u_z) = jacobi_eigenvalues_symm(&g_z, r, 120);
 
     let mut indices: Vec<usize> = (0..r).collect();
-    indices.sort_by(|&i, &j| eigvals[j].partial_cmp(&eigvals[i]).unwrap_or(std::cmp::Ordering::Equal));
+    indices.sort_by(|&i, &j| {
+        eigvals[j]
+            .partial_cmp(&eigvals[i])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // 6. Compute V_z = Z^T * U_z * diag(1/sigma)
     let mut s = vec![0.0f32; r];
@@ -406,8 +410,8 @@ impl<'a> safetensors::tensor::View for SimpleTensorView<'a> {
 /// In-process LoRA low-rank projection for a single linear layer
 #[derive(Clone, Debug, Default)]
 pub struct LoraLinear {
-    pub a: Vec<f32>, // shape: [r, in_dim], row-major
-    pub b: Vec<f32>, // shape: [out_dim, r], row-major
+    pub a: Vec<f32>,   // shape: [r, in_dim], row-major
+    pub b: Vec<f32>,   // shape: [out_dim, r], row-major
     pub b_t: Vec<f32>, // shape: [r, out_dim], pre-transposed for AVX2 vectorization
     pub r: usize,
     pub in_dim: usize,
@@ -507,8 +511,14 @@ unsafe fn vec_add_scaled_avx2(y: &mut [f32], x: &[f32], alpha: f32) {
 
             _mm256_storeu_ps(y.as_mut_ptr().add(i), _mm256_fmadd_ps(valpha, vx0, vy0));
             _mm256_storeu_ps(y.as_mut_ptr().add(i + 8), _mm256_fmadd_ps(valpha, vx1, vy1));
-            _mm256_storeu_ps(y.as_mut_ptr().add(i + 16), _mm256_fmadd_ps(valpha, vx2, vy2));
-            _mm256_storeu_ps(y.as_mut_ptr().add(i + 24), _mm256_fmadd_ps(valpha, vx3, vy3));
+            _mm256_storeu_ps(
+                y.as_mut_ptr().add(i + 16),
+                _mm256_fmadd_ps(valpha, vx2, vy2),
+            );
+            _mm256_storeu_ps(
+                y.as_mut_ptr().add(i + 24),
+                _mm256_fmadd_ps(valpha, vx3, vy3),
+            );
             i += 32;
         }
         while i + 8 <= n {
@@ -649,11 +659,7 @@ impl LoraAdapter {
             let cfg = path.join("adapter_config.json");
             let wgt_lz4 = path.join("adapter_model.safetensors.lz4");
             let wgt_raw = path.join("adapter_model.safetensors");
-            let wgt = if wgt_lz4.exists() {
-                wgt_lz4
-            } else {
-                wgt_raw
-            };
+            let wgt = if wgt_lz4.exists() { wgt_lz4 } else { wgt_raw };
             let name = path
                 .file_name()
                 .map(|s| s.to_string_lossy().to_string())
@@ -692,10 +698,7 @@ impl LoraAdapter {
             }
         };
 
-        let is_lz4 = weights_path
-            .extension()
-            .and_then(|e| e.to_str())
-            == Some("lz4");
+        let is_lz4 = weights_path.extension().and_then(|e| e.to_str()) == Some("lz4");
 
         let decompressed_buf: Vec<u8>;
         let mmap_handle: Option<Mmap>;
@@ -744,9 +747,7 @@ impl LoraAdapter {
 
         for layer_idx in 0..num_layers {
             for &(mod_name, mod_type) in &module_specs {
-                if let Some(linear) =
-                    load_lora_linear(&tensors, layer_idx, mod_name, r, scaling)?
-                {
+                if let Some(linear) = load_lora_linear(&tensors, layer_idx, mod_name, r, scaling)? {
                     match mod_type {
                         0 => layers[layer_idx].wq = Some(linear),
                         1 => layers[layer_idx].wk = Some(linear),
@@ -988,7 +989,10 @@ pub fn calibrate_head_dir(
         input_dir.join("adapter_model.safetensors")
     };
     if !input_weights.exists() {
-        return Err(anyhow!("Input weights not found in {}", input_dir.display()));
+        return Err(anyhow!(
+            "Input weights not found in {}",
+            input_dir.display()
+        ));
     }
 
     let original_size = std::fs::metadata(&input_weights)?.len();
@@ -1029,7 +1033,8 @@ pub fn calibrate_head_dir(
     };
 
     // Find all tensor pairs (lora_A and lora_B)
-    let mut tensor_names: Vec<String> = tensors.names().into_iter().map(|s| s.to_string()).collect();
+    let mut tensor_names: Vec<String> =
+        tensors.names().into_iter().map(|s| s.to_string()).collect();
     tensor_names.sort();
 
     // Storage for calibrated tensor data buffers
@@ -1109,14 +1114,22 @@ pub fn calibrate_head_dir(
                 // 2. Quantize or Store
                 if use_fp8 {
                     // Scaled FP8 E4M3 quantization (scaled to 240.0 for maximum dynamic range)
-                    let max_abs_a = proc_a.iter().map(|x| x.abs()).fold(0.0f32, f32::max).max(1e-8);
+                    let max_abs_a = proc_a
+                        .iter()
+                        .map(|x| x.abs())
+                        .fold(0.0f32, f32::max)
+                        .max(1e-8);
                     let scale_a = max_abs_a / 240.0f32;
                     let mut fp8_bytes_a = Vec::with_capacity(proc_a.len());
                     for &x in &proc_a {
                         fp8_bytes_a.push(f32_to_fp8_e4m3(x / scale_a));
                     }
 
-                    let max_abs_b = proc_b.iter().map(|x| x.abs()).fold(0.0f32, f32::max).max(1e-8);
+                    let max_abs_b = proc_b
+                        .iter()
+                        .map(|x| x.abs())
+                        .fold(0.0f32, f32::max)
+                        .max(1e-8);
                     let scale_b = max_abs_b / 240.0f32;
                     let mut fp8_bytes_b = Vec::with_capacity(proc_b.len());
                     for &x in &proc_b {
@@ -1290,7 +1303,8 @@ impl BoundedLoraCache {
         } else {
             while self.order.len() >= self.capacity {
                 let lru_canon = self.order.remove(0);
-                self.entries.retain(|_, v| v.id.to_ascii_lowercase() != lru_canon);
+                self.entries
+                    .retain(|_, v| v.id.to_ascii_lowercase() != lru_canon);
                 if std::env::var_os("NIOXS_DEBUG").is_some() {
                     eprintln!(
                         "[nioxs-lora] Bounded LRU cache full (capacity={}); evicted resident head '{}'",
@@ -1354,7 +1368,13 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
     let mut search_dirs = Vec::new();
     if let Some(ref h) = home {
         search_dirs.push(h.join(".nioxs").join("anchors"));
-        search_dirs.push(h.join("nio-labs").join("nio-xs-models").join("models").join("hydra").join("heads"));
+        search_dirs.push(
+            h.join("nio-labs")
+                .join("nio-xs-models")
+                .join("models")
+                .join("hydra")
+                .join("heads"),
+        );
         let base = h.join(".nioxs").join("heads");
         search_dirs.push(base.join("hydra-ultra"));
         search_dirs.push(base.join("hydra-max"));
@@ -1362,7 +1382,9 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
         search_dirs.push(base);
     }
     search_dirs.push(PathBuf::from("/root/.nioxs/anchors"));
-    search_dirs.push(PathBuf::from("/root/nio-labs/nio-xs-models/models/hydra/heads"));
+    search_dirs.push(PathBuf::from(
+        "/root/nio-labs/nio-xs-models/models/hydra/heads",
+    ));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra-ultra"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra-max"));
     search_dirs.push(PathBuf::from("/root/.nioxs/heads/hydra"));
@@ -1376,11 +1398,18 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
     candidates.push(format!("head-{}", lower));
     if lower.starts_with("anchor-") || lower.starts_with("anchor_") {
         candidates.push(lower.replace('_', "-"));
-        let stripped = lower.trim_start_matches("anchor-").trim_start_matches("anchor_");
+        let stripped = lower
+            .trim_start_matches("anchor-")
+            .trim_start_matches("anchor_");
         candidates.push(stripped.to_string());
     }
 
-    if lower == "000" || lower == "head-000" || lower == "anchor-000" || lower.contains("chair") || lower.contains("arbiter") {
+    if lower == "000"
+        || lower == "head-000"
+        || lower == "anchor-000"
+        || lower.contains("chair")
+        || lower.contains("arbiter")
+    {
         candidates.push("anchor-000-chair".to_string());
         candidates.push("anchor-000".to_string());
         candidates.push("head-000".to_string());
@@ -1388,13 +1417,15 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
         candidates.push("head-000-sovereign-chair-arbiter".to_string());
         candidates.push("000".to_string());
     }
-    if lower == "001" || lower == "head-001" || lower == "hydra-kernel" || lower.contains("atomic") {
+    if lower == "001" || lower == "head-001" || lower == "hydra-kernel" || lower.contains("atomic")
+    {
         candidates.push("head-001".to_string());
         candidates.push("head-001-atomic-concurrency".to_string());
         candidates.push("head-001-systems-atomic-concurrency".to_string());
         candidates.push("001".to_string());
     }
-    if lower == "002" || lower == "head-002" || lower.contains("axum") || lower.contains("backend") {
+    if lower == "002" || lower == "head-002" || lower.contains("axum") || lower.contains("backend")
+    {
         candidates.push("head-002".to_string());
         candidates.push("head-002-backend-axum-tokio".to_string());
         candidates.push("002".to_string());
@@ -1409,22 +1440,39 @@ pub fn resolve_head_path(head_name: &str) -> Option<PathBuf> {
         candidates.push("head-004-kernel-ebpf-xdp".to_string());
         candidates.push("004".to_string());
     }
-    if lower == "005" || lower == "head-005" || lower.contains("clickhouse") || lower.contains("mergetree") {
+    if lower == "005"
+        || lower == "head-005"
+        || lower.contains("clickhouse")
+        || lower.contains("mergetree")
+    {
         candidates.push("head-005".to_string());
         candidates.push("head-005-data-clickhouse-mergetree".to_string());
         candidates.push("005".to_string());
     }
-    if lower == "006" || lower == "head-006" || lower.contains("logic") || lower.contains("algorithm") {
+    if lower == "006"
+        || lower == "head-006"
+        || lower.contains("logic")
+        || lower.contains("algorithm")
+    {
         candidates.push("head-006".to_string());
         candidates.push("head-006-algorithms-formal-logic".to_string());
         candidates.push("006".to_string());
     }
-    if lower == "007" || lower == "head-007" || lower.contains("k8s") || lower.contains("kubernetes") {
+    if lower == "007"
+        || lower == "head-007"
+        || lower.contains("k8s")
+        || lower.contains("kubernetes")
+    {
         candidates.push("head-007".to_string());
         candidates.push("head-007-devops-k8s-controller".to_string());
         candidates.push("007".to_string());
     }
-    if lower == "008" || lower == "head-008" || lower.contains("raft") || lower.contains("paxos") || lower.contains("consensus") {
+    if lower == "008"
+        || lower == "head-008"
+        || lower.contains("raft")
+        || lower.contains("paxos")
+        || lower.contains("consensus")
+    {
         candidates.push("head-008".to_string());
         candidates.push("head-008-consensus-raft-paxos".to_string());
         candidates.push("008".to_string());
@@ -1518,8 +1566,13 @@ pub fn ensure_gguf_adapter_file(head_dir: &Path) -> Option<PathBuf> {
         .map(PathBuf::from)?;
     let python_bin = home.join(".nioxs").join("env").join("bin").join("python3");
     let script_candidates = [
-        home.join("nio-labs").join("nio-xs").join("scripts").join("convert_lora_to_gguf.py"),
-        home.join(".nioxs").join("scripts").join("convert_lora_to_gguf.py"),
+        home.join("nio-labs")
+            .join("nio-xs")
+            .join("scripts")
+            .join("convert_lora_to_gguf.py"),
+        home.join(".nioxs")
+            .join("scripts")
+            .join("convert_lora_to_gguf.py"),
     ];
     let script_path = script_candidates.iter().find(|p| p.is_file())?;
     let py = if python_bin.is_file() {
@@ -1549,8 +1602,13 @@ pub fn convert_all_anchors_to_gguf() -> Result<usize> {
     let anchors_dir = home.join(".nioxs").join("anchors");
     let python_bin = home.join(".nioxs").join("env").join("bin").join("python3");
     let script_candidates = [
-        home.join("nio-labs").join("nio-xs").join("scripts").join("convert_lora_to_gguf.py"),
-        home.join(".nioxs").join("scripts").join("convert_lora_to_gguf.py"),
+        home.join("nio-labs")
+            .join("nio-xs")
+            .join("scripts")
+            .join("convert_lora_to_gguf.py"),
+        home.join(".nioxs")
+            .join("scripts")
+            .join("convert_lora_to_gguf.py"),
     ];
     let script_path = script_candidates
         .iter()
@@ -1570,7 +1628,10 @@ pub fn convert_all_anchors_to_gguf() -> Result<usize> {
         .status()?;
 
     if !status.success() {
-        return Err(anyhow!("GGUF conversion failed with exit code: {:?}", status.code()));
+        return Err(anyhow!(
+            "GGUF conversion failed with exit code: {:?}",
+            status.code()
+        ));
     }
 
     let mut count = 0;
@@ -1703,13 +1764,27 @@ mod tests {
                 if let Some(ref lin) = orig.layers[layer_idx].wq {
                     if lin.r >= 8 {
                         let target_r = lin.r / 2;
-                        let (a_sub, b_sub) = reduce_rank_svd(&lin.a, &lin.b, lin.in_dim, lin.out_dim, lin.r, target_r);
+                        let (a_sub, b_sub) = reduce_rank_svd(
+                            &lin.a,
+                            &lin.b,
+                            lin.in_dim,
+                            lin.out_dim,
+                            lin.r,
+                            target_r,
+                        );
 
                         let probe = vec![0.5f32; lin.in_dim];
                         let mut y_orig = vec![0.0f32; lin.out_dim];
                         lin.apply(&probe, &mut y_orig);
 
-                        let lin_sub = LoraLinear::new(a_sub, b_sub, target_r, lin.in_dim, lin.out_dim, lin.scaling);
+                        let lin_sub = LoraLinear::new(
+                            a_sub,
+                            b_sub,
+                            target_r,
+                            lin.in_dim,
+                            lin.out_dim,
+                            lin.scaling,
+                        );
                         let mut y_sub = vec![0.0f32; lin.out_dim];
                         lin_sub.apply(&probe, &mut y_sub);
 
@@ -1776,7 +1851,10 @@ mod tests {
             let cached = get_or_load_head("head-001").expect("cached lookup");
             let cache_time_us = t1.elapsed().as_micros();
             println!("cached lookup took {} µs", cache_time_us);
-            assert!(cache_time_us < 1000, "cache lookup must be sub-millisecond, took {cache_time_us} µs");
+            assert!(
+                cache_time_us < 1000,
+                "cache lookup must be sub-millisecond, took {cache_time_us} µs"
+            );
             assert!(cached.layers.len() == 24 || cached.layers.len() == 10);
         }
     }
@@ -1818,18 +1896,30 @@ mod tests {
 
             // Compare layer-by-layer forward pass with original
             let orig_adapter = LoraAdapter::load(&src_path).expect("orig load");
-            if let (Some(orig_wq), Some(cal_wq)) = (&orig_adapter.layers[0].wq, &cal_adapter.layers[0].wq) {
+            if let (Some(orig_wq), Some(cal_wq)) =
+                (&orig_adapter.layers[0].wq, &cal_adapter.layers[0].wq)
+            {
                 let x = vec![0.5f32; orig_wq.in_dim];
                 let mut y_orig = vec![0.0f32; orig_wq.out_dim];
                 let mut y_cal = vec![0.0f32; cal_wq.out_dim];
                 orig_wq.apply(&x, &mut y_orig);
                 cal_wq.apply(&x, &mut y_cal);
                 let cos = cos_sim(&y_orig, &y_cal);
-                let norm_orig = y_orig.iter().map(|v| v*v).sum::<f32>().sqrt();
-                let norm_cal = y_cal.iter().map(|v| v*v).sum::<f32>().sqrt();
-                println!("orig_wq.scaling = {}, cal_wq.scaling = {}", orig_wq.scaling, cal_wq.scaling);
-                println!("orig_a[0..3] = {:?}, cal_a[0..3] = {:?}", &orig_wq.a[0..3], &cal_wq.a[0..3]);
-                println!("Layer 0 wq comparison: cos = {:.6}, norm_orig = {:.4}, norm_cal = {:.4}", cos, norm_orig, norm_cal);
+                let norm_orig = y_orig.iter().map(|v| v * v).sum::<f32>().sqrt();
+                let norm_cal = y_cal.iter().map(|v| v * v).sum::<f32>().sqrt();
+                println!(
+                    "orig_wq.scaling = {}, cal_wq.scaling = {}",
+                    orig_wq.scaling, cal_wq.scaling
+                );
+                println!(
+                    "orig_a[0..3] = {:?}, cal_a[0..3] = {:?}",
+                    &orig_wq.a[0..3],
+                    &cal_wq.a[0..3]
+                );
+                println!(
+                    "Layer 0 wq comparison: cos = {:.6}, norm_orig = {:.4}, norm_cal = {:.4}",
+                    cos, norm_orig, norm_cal
+                );
             }
 
             // Test Rank 8 SVD truncation + FP8 (< 2MB)

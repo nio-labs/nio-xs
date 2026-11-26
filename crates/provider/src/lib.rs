@@ -621,7 +621,18 @@ async fn chat(
         "orca" | "orca-nano" | "orca-mini" | "orca-omni" | "orca-max" | "orca-ultra" => {
             return microlm_chat_handler(&model_norm, request, None).await;
         }
-        "nio-fin" | "fin" | "nio-fin-base" | "fin-base" | "nio-fin-kernel" | "fin-kernel" | "nio-fin-sql" | "fin-sql" | "nio-fin-concurrency" | "fin-concurrency" | "nio-fin-raft" | "fin-raft" => {
+        "nio-fin"
+        | "fin"
+        | "nio-fin-base"
+        | "fin-base"
+        | "nio-fin-kernel"
+        | "fin-kernel"
+        | "nio-fin-sql"
+        | "fin-sql"
+        | "nio-fin-concurrency"
+        | "fin-concurrency"
+        | "nio-fin-raft"
+        | "fin-raft" => {
             return microlm_chat_handler("beluga", request, None).await;
         }
         "nio-ray" | "ray" => {

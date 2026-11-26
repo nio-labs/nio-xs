@@ -7,14 +7,18 @@ pub fn find_or_download_gpu_runner() -> Option<PathBuf> {
     if let Some(existing) = find_existing_runner() {
         return Some(existing);
     }
-    eprintln!("📦 GPU acceleration requested: downloading high-performance runner into ~/.nioxs/bin/...");
+    eprintln!(
+        "📦 GPU acceleration requested: downloading high-performance runner into ~/.nioxs/bin/..."
+    );
     match download_and_install_runner() {
         Ok(path) => {
             eprintln!("✅ GPU runner installed successfully: {}", path.display());
             Some(path)
         }
         Err(e) => {
-            eprintln!("⚠️ Failed to auto-download GPU runner: {e}. Falling back to native CPU engine.");
+            eprintln!(
+                "⚠️ Failed to auto-download GPU runner: {e}. Falling back to native CPU engine."
+            );
             None
         }
     }
@@ -22,9 +26,15 @@ pub fn find_or_download_gpu_runner() -> Option<PathBuf> {
 
 /// Locates an existing runner binary in ~/.nioxs/bin, env vars, or system PATH.
 pub fn find_existing_runner() -> Option<PathBuf> {
-    let runner_name = if cfg!(windows) { "llama-cli.exe" } else { "llama-cli" };
+    let runner_name = if cfg!(windows) {
+        "llama-cli.exe"
+    } else {
+        "llama-cli"
+    };
 
-    if let Some(custom) = std::env::var_os("NIOXS_GPU_RUNNER").or_else(|| std::env::var_os("NIOXS_LLAMA_CLI")) {
+    if let Some(custom) =
+        std::env::var_os("NIOXS_GPU_RUNNER").or_else(|| std::env::var_os("NIOXS_LLAMA_CLI"))
+    {
         let p = PathBuf::from(custom);
         if p.is_file() {
             return Some(p);
@@ -32,7 +42,10 @@ pub fn find_existing_runner() -> Option<PathBuf> {
     }
 
     if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
-        let nioxs_bin = PathBuf::from(home).join(".nioxs").join("bin").join(runner_name);
+        let nioxs_bin = PathBuf::from(home)
+            .join(".nioxs")
+            .join("bin")
+            .join(runner_name);
         if nioxs_bin.is_file() {
             return Some(nioxs_bin);
         }
@@ -144,11 +157,14 @@ exec "$DIR/llama-cli" "$@"
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&launcher_path, std::fs::Permissions::from_mode(0o755));
+            let _ =
+                std::fs::set_permissions(&launcher_path, std::fs::Permissions::from_mode(0o755));
         }
 
         return Ok(launcher_path);
     }
 
-    Err(anyhow!("Completed installation but could not locate runner executable"))
+    Err(anyhow!(
+        "Completed installation but could not locate runner executable"
+    ))
 }

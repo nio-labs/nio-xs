@@ -1914,7 +1914,8 @@ impl LayerDesc {
         kv_cache: &mut LayerKvCache,
     ) {
         self.forward_token(
-            mmap, scratch, pool, pos, cos, sin, neox, n_head, n_kv_head, head_dim, eps, kv_cache, None,
+            mmap, scratch, pool, pos, cos, sin, neox, n_head, n_kv_head, head_dim, eps, kv_cache,
+            None,
         );
     }
 }
@@ -2382,7 +2383,6 @@ impl AstMicroEngine {
                     .get(&format!("{prefix}.ffn_up.weight"))
                     .ok_or_else(|| anyhow!("missing {prefix}.ffn_up.weight"))?;
 
-
                 for meta in [meta_w1, meta_w3] {
                     let is_256 = matches!(meta.dtype, 12 | 13 | 14 | 18 | 21 | 22);
                     let is_32 = matches!(meta.dtype, 2 | 6 | 8 | 20);
@@ -2403,7 +2403,11 @@ impl AstMicroEngine {
                     || !matches!(meta_w2.dtype, 2 | 6 | 8 | 12 | 13 | 14 | 18 | 20 | 21 | 22)
                     || (matches!(meta_w2.dtype, 12 | 13 | 14 | 18 | 21 | 22)
                         && meta_w2.shape[1] % 256 != 0)
-                    || ((meta_w2.dtype == 2 || meta_w2.dtype == 6 || meta_w2.dtype == 8 || meta_w2.dtype == 20) && meta_w2.shape[1] % 32 != 0)
+                    || ((meta_w2.dtype == 2
+                        || meta_w2.dtype == 6
+                        || meta_w2.dtype == 8
+                        || meta_w2.dtype == 20)
+                        && meta_w2.shape[1] % 32 != 0)
                 {
                     anyhow::bail!(
                         "unsupported AST-Micro tensor {}: dtype {} shape {:?}",
@@ -2876,11 +2880,16 @@ impl AstMicroEngine {
                 self.layers[layer_idx + 1].prefetch_layer(&self.mmap);
             }
             let layer = &self.layers[layer_idx];
-            let lora = self.active_lora.as_ref().and_then(|a| a.layers.get(layer_idx));
+            let lora = self
+                .active_lora
+                .as_ref()
+                .and_then(|a| a.layers.get(layer_idx));
             let mut step = 0;
 
             while step < n_tokens {
-                if step + 3 <= n_tokens && matches!(layer.w1.dtype, 2 | 6 | 8 | 12 | 13 | 14 | 18 | 20 | 21 | 22) {
+                if step + 3 <= n_tokens
+                    && matches!(layer.w1.dtype, 2 | 6 | 8 | 12 | 13 | 14 | 18 | 20 | 21 | 22)
+                {
                     let pos0 = index_pos + step;
                     let pos1 = pos0 + 1;
                     let pos2 = pos0 + 2;
@@ -2923,7 +2932,9 @@ impl AstMicroEngine {
                     activations[step + 1].copy_from_slice(&self.scratch1.x);
                     activations[step + 2].copy_from_slice(&self.scratch2.x);
                     step += 3;
-                } else if step + 2 <= n_tokens && matches!(layer.w1.dtype, 2 | 6 | 8 | 12 | 13 | 14 | 18 | 20 | 21 | 22) {
+                } else if step + 2 <= n_tokens
+                    && matches!(layer.w1.dtype, 2 | 6 | 8 | 12 | 13 | 14 | 18 | 20 | 21 | 22)
+                {
                     let pos0 = index_pos + step;
                     let pos1 = pos0 + 1;
                     let cos0 = &self.cos_table[pos0 * half..(pos0 + 1) * half];
@@ -2984,7 +2995,8 @@ impl AstMicroEngine {
             }
 
             if let Some(trace) = trace.as_mut() {
-                let scratch = if (layer.w1.dtype == 18 || layer.w1.dtype == 12) && n_tokens % 3 == 0 {
+                let scratch = if (layer.w1.dtype == 18 || layer.w1.dtype == 12) && n_tokens % 3 == 0
+                {
                     &self.scratch2
                 } else if (layer.w1.dtype == 18 || layer.w1.dtype == 12) && n_tokens % 3 == 2 {
                     &self.scratch1

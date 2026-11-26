@@ -60,7 +60,9 @@ struct AnchorSpec {
 async fn main() -> Result<()> {
     // Enforce LRU cache capacity = 1 so each hot-swap evicts the previous adapter.
     // This keeps peak RAM at: base_model + 1 active LoRA adapter only.
-    unsafe { std::env::set_var("NIOXS_LORA_CACHE_CAPACITY", "1"); }
+    unsafe {
+        std::env::set_var("NIOXS_LORA_CACHE_CAPACITY", "1");
+    }
 
     let anchors = vec![
         AnchorSpec {
@@ -107,7 +109,10 @@ async fn main() -> Result<()> {
     let engine = AstEngine::for_model_with_device("hydra", DevicePreference::Cpu)?;
     let init_ms = t_init.elapsed().as_millis();
     let base_rss = get_rss_mb();
-    println!("   ✔ Base loaded in {}ms  |  Resident RSS: {:.1} MB\n", init_ms, base_rss);
+    println!(
+        "   ✔ Base loaded in {}ms  |  Resident RSS: {:.1} MB\n",
+        init_ms, base_rss
+    );
 
     // SLA check
     let ram_sla = 673.0f64;
@@ -119,7 +124,7 @@ async fn main() -> Result<()> {
         name: String,
         swap_ms: f64,
         peak_rss_mb: f64,
-        true_wps: f64,   // actual words/sec
+        true_wps: f64, // actual words/sec
         ram_ok: bool,
         wps_ok: bool,
     }
@@ -171,7 +176,11 @@ async fn main() -> Result<()> {
             wps_samples.push(wps);
 
             if run == 0 {
-                first_tokens = output.chars().take(60).collect::<String>().replace('\n', " ");
+                first_tokens = output
+                    .chars()
+                    .take(60)
+                    .collect::<String>()
+                    .replace('\n', " ");
             }
         }
 
@@ -188,9 +197,22 @@ async fn main() -> Result<()> {
         let est_true_wps = median_wps * 4.0;
         let true_wps_ok = est_true_wps >= wps_sla;
 
-        println!("   Peak RSS:  {:.1} MB  {}  (HWM: {:.1} MB)", peak, if ram_ok { "✅" } else { "❌ OVER SLA" }, hwm);
-        println!("   Phrases/s: {:.2}  →  Est. WPS: {:.1} w/s  {}",
-            median_wps, est_true_wps, if true_wps_ok { "✅" } else { "⚠️  BELOW SLA" });
+        println!(
+            "   Peak RSS:  {:.1} MB  {}  (HWM: {:.1} MB)",
+            peak,
+            if ram_ok { "✅" } else { "❌ OVER SLA" },
+            hwm
+        );
+        println!(
+            "   Phrases/s: {:.2}  →  Est. WPS: {:.1} w/s  {}",
+            median_wps,
+            est_true_wps,
+            if true_wps_ok {
+                "✅"
+            } else {
+                "⚠️  BELOW SLA"
+            }
+        );
         println!("   Output:    \"{}…\"", first_tokens);
         println!();
 
@@ -206,7 +228,9 @@ async fn main() -> Result<()> {
     }
 
     // Summary table
-    println!("╔══════════════════════════════════════════════════════════════════════════════════╗");
+    println!(
+        "╔══════════════════════════════════════════════════════════════════════════════════╗"
+    );
     println!("║                           FLEET BENCHMARK SUMMARY                               ║");
     println!("╠══════╦══════════════════════════════╦══════════╦═══════════╦══════════╦═════════╣");
     println!("║ ID   ║ Name                         ║ Swap ms  ║ Peak RAM  ║ WPS      ║ Status  ║");
@@ -216,12 +240,25 @@ async fn main() -> Result<()> {
     let mut all_wps_ok = true;
 
     for r in &results {
-        let status = if r.ram_ok && r.wps_ok { "✅ PASS" } else { "❌ FAIL" };
-        if !r.ram_ok { all_ram_ok = false; }
-        if !r.wps_ok { all_wps_ok = false; }
+        let status = if r.ram_ok && r.wps_ok {
+            "✅ PASS"
+        } else {
+            "❌ FAIL"
+        };
+        if !r.ram_ok {
+            all_ram_ok = false;
+        }
+        if !r.wps_ok {
+            all_wps_ok = false;
+        }
         println!(
             "║ {:4} ║ {:28} ║ {:>7.3}ms ║ {:>7.1} MB ║ {:>7.2}   ║ {:7} ║",
-            r.anchor_id, &r.name[..r.name.len().min(28)], r.swap_ms, r.peak_rss_mb, r.true_wps, status
+            r.anchor_id,
+            &r.name[..r.name.len().min(28)],
+            r.swap_ms,
+            r.peak_rss_mb,
+            r.true_wps,
+            status
         );
     }
 
@@ -235,10 +272,20 @@ async fn main() -> Result<()> {
         "❌  SLA BREACH — Investigate immediately"
     };
 
-    println!("║  {}{}║", final_verdict, " ".repeat(82usize.saturating_sub(final_verdict.len() + 2)));
-    println!("║  SLA targets: RAM < {:.0} MB per chair  |  WPS ≥ {:.1} w/s{}║",
-        ram_sla, wps_sla, " ".repeat(43));
-    println!("╚══════════════════════════════════════════════════════════════════════════════════╝");
+    println!(
+        "║  {}{}║",
+        final_verdict,
+        " ".repeat(82usize.saturating_sub(final_verdict.len() + 2))
+    );
+    println!(
+        "║  SLA targets: RAM < {:.0} MB per chair  |  WPS ≥ {:.1} w/s{}║",
+        ram_sla,
+        wps_sla,
+        " ".repeat(43)
+    );
+    println!(
+        "╚══════════════════════════════════════════════════════════════════════════════════╝"
+    );
 
     Ok(())
 }

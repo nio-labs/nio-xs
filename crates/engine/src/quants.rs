@@ -1060,10 +1060,7 @@ pub unsafe fn vec_dot_q5_0_q8_0_2rows_avx2(
 #[inline]
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma,f16c")]
-pub unsafe fn vec_dot_q5_0_q8_0_avx2(
-    weight_ptr: *const u8,
-    x_blocks: &[BlockQ8_0],
-) -> f32 {
+pub unsafe fn vec_dot_q5_0_q8_0_avx2(weight_ptr: *const u8, x_blocks: &[BlockQ8_0]) -> f32 {
     use core::arch::x86_64::*;
     let nb = x_blocks.len();
     let row_bytes = nb * 22;
@@ -2170,11 +2167,17 @@ pub unsafe fn vec_dot_q4_k_q8_k_2tokens_avx2(
             sum_pos1 = _mm256_add_epi32(sum_pos1, _mm256_mullo_epi32(p1_hi, sc1_v));
         }
 
-        let s128_0 = _mm_add_epi32(_mm256_castsi256_si128(sum_pos0), _mm256_extracti128_si256(sum_pos0, 1));
+        let s128_0 = _mm_add_epi32(
+            _mm256_castsi256_si128(sum_pos0),
+            _mm256_extracti128_si256(sum_pos0, 1),
+        );
         let s64_0 = _mm_add_epi32(s128_0, _mm_srli_si128(s128_0, 8));
         let pos0_i32 = _mm_cvtsi128_si32(_mm_add_epi32(s64_0, _mm_srli_si128(s64_0, 4)));
 
-        let s128_1 = _mm_add_epi32(_mm256_castsi256_si128(sum_pos1), _mm256_extracti128_si256(sum_pos1, 1));
+        let s128_1 = _mm_add_epi32(
+            _mm256_castsi256_si128(sum_pos1),
+            _mm256_extracti128_si256(sum_pos1, 1),
+        );
         let s64_1 = _mm_add_epi32(s128_1, _mm_srli_si128(s128_1, 8));
         let pos1_i32 = _mm_cvtsi128_si32(_mm_add_epi32(s64_1, _mm_srli_si128(s64_1, 4)));
 
@@ -4054,9 +4057,8 @@ mod tests {
             2
         ];
         quantize_row_q8_k(&x, &mut ours);
-        let ours_as_candle = unsafe {
-            std::slice::from_raw_parts(ours.as_ptr() as *const BlockQ8K, 2)
-        };
+        let ours_as_candle =
+            unsafe { std::slice::from_raw_parts(ours.as_ptr() as *const BlockQ8K, 2) };
         let mut candle_blocks = vec![BlockQ8K::zeros(); 2];
         BlockQ8K::from_float(&x, &mut candle_blocks).unwrap();
 
@@ -4064,12 +4066,18 @@ mod tests {
         let dot_ours = BlockQ4K::vec_dot(512, &w_q4k, ours_as_candle).unwrap();
         let dot_candle = BlockQ4K::vec_dot(512, &w_q4k, &candle_blocks).unwrap();
         let diff = (dot_ours - dot_candle).abs();
-        assert!(diff < 1.0, "Q4K vec_dot mismatch: ours={dot_ours} candle={dot_candle}");
+        assert!(
+            diff < 1.0,
+            "Q4K vec_dot mismatch: ours={dot_ours} candle={dot_candle}"
+        );
 
         let mut deq_ours = vec![0.0f32; 512];
         let mut deq_candle = vec![0.0f32; 512];
         let w_bytes = unsafe {
-            std::slice::from_raw_parts(w_q4k.as_ptr() as *const u8, 2 * std::mem::size_of::<BlockQ4K>())
+            std::slice::from_raw_parts(
+                w_q4k.as_ptr() as *const u8,
+                2 * std::mem::size_of::<BlockQ4K>(),
+            )
         };
         dequantize_row_q4_k(w_bytes, &mut deq_ours);
         BlockQ4K::to_float(&w_q4k, &mut deq_candle).unwrap();
@@ -4078,7 +4086,10 @@ mod tests {
             .zip(deq_candle.iter())
             .map(|(a, b)| (a - b).abs())
             .fold(0.0f32, f32::max);
-        assert!(max_deq_diff < 1e-4, "Q4K dequantize mismatch: max_deq_diff={max_deq_diff}");
+        assert!(
+            max_deq_diff < 1e-4,
+            "Q4K dequantize mismatch: max_deq_diff={max_deq_diff}"
+        );
     }
 
     #[test]
@@ -4091,25 +4102,48 @@ mod tests {
         let w_f32: Vec<f32> = (0..n).map(|i| ((i as f32 * 0.23).cos()) * 1.4).collect();
         let mut w_q4k = vec![BlockQ4K::zeros(); nb];
         BlockQ4K::from_float(&w_f32, &mut w_q4k).unwrap();
-        let w_bytes = unsafe {
-            std::slice::from_raw_parts(w_q4k.as_ptr() as *const u8, nb * 144)
-        };
+        let w_bytes = unsafe { std::slice::from_raw_parts(w_q4k.as_ptr() as *const u8, nb * 144) };
 
-        let mut x_q8k = vec![BlockQ8_K { d: 0.0, qs: [0; 256], bsums: [0; 16] }; nb];
-        let mut x1_q8k = vec![BlockQ8_K { d: 0.0, qs: [0; 256], bsums: [0; 16] }; nb];
+        let mut x_q8k = vec![
+            BlockQ8_K {
+                d: 0.0,
+                qs: [0; 256],
+                bsums: [0; 16]
+            };
+            nb
+        ];
+        let mut x1_q8k = vec![
+            BlockQ8_K {
+                d: 0.0,
+                qs: [0; 256],
+                bsums: [0; 16]
+            };
+            nb
+        ];
         quantize_row_q8_k(&x, &mut x_q8k);
         quantize_row_q8_k(&x1, &mut x1_q8k);
 
-        let y0_candle = unsafe { std::slice::from_raw_parts(x_q8k.as_ptr() as *const BlockQ8K, nb) };
-        let y1_candle = unsafe { std::slice::from_raw_parts(x1_q8k.as_ptr() as *const BlockQ8K, nb) };
+        let y0_candle =
+            unsafe { std::slice::from_raw_parts(x_q8k.as_ptr() as *const BlockQ8K, nb) };
+        let y1_candle =
+            unsafe { std::slice::from_raw_parts(x1_q8k.as_ptr() as *const BlockQ8K, nb) };
         let ref0 = BlockQ4K::vec_dot(n, &w_q4k, y0_candle).unwrap();
         let ref1 = BlockQ4K::vec_dot(n, &w_q4k, y1_candle).unwrap();
 
         let avx0 = unsafe { vec_dot_q4_k_q8_k_avx2(w_bytes, &x_q8k) };
         let (avx2_0, avx2_1) = unsafe { vec_dot_q4_k_q8_k_2tokens_avx2(w_bytes, &x_q8k, &x1_q8k) };
-        assert!((avx0 - ref0).abs() < 1e-3, "1tok mismatch: avx={avx0} ref={ref0}");
-        assert!((avx2_0 - ref0).abs() < 1e-3, "2tok[0] mismatch: avx={avx2_0} ref={ref0}");
-        assert!((avx2_1 - ref1).abs() < 1e-3, "2tok[1] mismatch: avx={avx2_1} ref={ref1}");
+        assert!(
+            (avx0 - ref0).abs() < 1e-3,
+            "1tok mismatch: avx={avx0} ref={ref0}"
+        );
+        assert!(
+            (avx2_0 - ref0).abs() < 1e-3,
+            "2tok[0] mismatch: avx={avx2_0} ref={ref0}"
+        );
+        assert!(
+            (avx2_1 - ref1).abs() < 1e-3,
+            "2tok[1] mismatch: avx={avx2_1} ref={ref1}"
+        );
     }
 }
 

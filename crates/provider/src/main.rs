@@ -29,18 +29,29 @@ fn format_council_directive(directive: &str) -> String {
     let mut domain = String::new();
     for part in inner.split(',') {
         let p = part.trim();
-        if let Some(val) = p.strip_prefix("head=").or_else(|| p.strip_prefix("head = ")) {
+        if let Some(val) = p
+            .strip_prefix("head=")
+            .or_else(|| p.strip_prefix("head = "))
+        {
             key_name = "head";
             key_val = val.trim_matches(|c| c == '"' || c == '\'').to_string();
-        } else if let Some(val) = p.strip_prefix("route=").or_else(|| p.strip_prefix("route = ")) {
+        } else if let Some(val) = p
+            .strip_prefix("route=")
+            .or_else(|| p.strip_prefix("route = "))
+        {
             key_name = "route";
             key_val = val.trim_matches(|c| c == '"' || c == '\'').to_string();
-        } else if let Some(val) = p.strip_prefix("domain=").or_else(|| p.strip_prefix("domain = ")) {
+        } else if let Some(val) = p
+            .strip_prefix("domain=")
+            .or_else(|| p.strip_prefix("domain = "))
+        {
             domain = val.trim_matches(|c| c == '"' || c == '\'').to_string();
         }
     }
     if !key_val.is_empty() && !domain.is_empty() {
-        format!("<council>\n    @council(\n        {key_name} = {key_val},\n        domain = {domain}\n    )\n</council>\n\n")
+        format!(
+            "<council>\n    @council(\n        {key_name} = {key_val},\n        domain = {domain}\n    )\n</council>\n\n"
+        )
     } else if !key_val.is_empty() {
         format!("<council>\n    @council(\n        {key_name} = {key_val}\n    )\n</council>\n\n")
     } else {
@@ -84,7 +95,9 @@ fn is_degenerate(s: &str) -> bool {
     let lines: Vec<&str> = trimmed
         .lines()
         .map(|l| l.trim())
-        .filter(|l| !l.is_empty() && *l != "}" && *l != "};" && *l != "]" && *l != "];" && *l != ")")
+        .filter(|l| {
+            !l.is_empty() && *l != "}" && *l != "};" && *l != "]" && *l != "];" && *l != ")"
+        })
         .collect();
     if lines.len() >= 3 {
         let mut repeat_count = 0;
@@ -163,7 +176,11 @@ fn detect_target_code_language(prompt: &str, specialist: &str) -> &'static str {
         "go"
     } else {
         match specialist {
-            "001" | "head-001" | "hydra-kernel" | "head-001-atomic-concurrency" | "head-001-systems-atomic-concurrency" => "zig",
+            "001"
+            | "head-001"
+            | "hydra-kernel"
+            | "head-001-atomic-concurrency"
+            | "head-001-systems-atomic-concurrency" => "zig",
             "002" | "head-002" | "head-002-backend-axum-tokio" => "rust",
             "003" | "head-003" | "head-003-frontend-react19-rsc" => "tsx",
             "004" | "head-004" | "head-004-kernel-ebpf-xdp" => "rust",
@@ -185,7 +202,9 @@ struct DynamicManifest {
 }
 
 fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
-    let clean_id = head.trim_start_matches("head-").trim_start_matches("anchor-");
+    let clean_id = head
+        .trim_start_matches("head-")
+        .trim_start_matches("anchor-");
     if clean_id == "direct" || clean_id == "polymath" {
         return "Council Direct: Polymath Synthesis\n\n".to_string();
     }
@@ -195,7 +214,11 @@ fn format_hydra_directive(head: &str, domain: Option<&str>) -> String {
             return format!("Council {}: {}\n\n", clean_id, m.title);
         }
     }
-    format!("Council {}: {}\n\n", clean_id, domain.unwrap_or("Domain Specialist"))
+    format!(
+        "Council {}: {}\n\n",
+        clean_id,
+        domain.unwrap_or("Domain Specialist")
+    )
 }
 
 /// Cosine-based semantic router for the Hydra Sovereign Council.
@@ -260,7 +283,8 @@ fn verify_generated_code(
         fence_lang
     } else if specialist.contains("001") || lower_p.contains("zig") {
         "zig".to_string()
-    } else if specialist.contains("015") || specialist.contains("016") || lower_p.contains("python") {
+    } else if specialist.contains("015") || specialist.contains("016") || lower_p.contains("python")
+    {
         "python".to_string()
     } else {
         "rust".to_string()
@@ -297,7 +321,11 @@ fn verify_generated_code(
             let is_test = code.contains("#[test]");
             let has_main = code.contains("fn main(");
             let mut cmd = std::process::Command::new("rustc");
-            cmd.arg("--edition").arg("2021").arg(&src).arg("-o").arg(&bin);
+            cmd.arg("--edition")
+                .arg("2021")
+                .arg(&src)
+                .arg("-o")
+                .arg(&bin);
             if is_test {
                 cmd.arg("--test");
             } else if !has_main {
@@ -307,46 +335,74 @@ fn verify_generated_code(
                 Ok(out) if out.status.success() => {
                     if is_test || has_main {
                         match std::process::Command::new(&bin).output() {
-                            Ok(run_out) if run_out.status.success() => Ok("rustc + run PASS".to_string()),
-                            Ok(run_out) => Err(String::from_utf8_lossy(&run_out.stderr).chars().take(600).collect()),
+                            Ok(run_out) if run_out.status.success() => {
+                                Ok("rustc + run PASS".to_string())
+                            }
+                            Ok(run_out) => Err(String::from_utf8_lossy(&run_out.stderr)
+                                .chars()
+                                .take(600)
+                                .collect()),
                             Err(e) => Err(format!("Failed to execute binary: {e}")),
                         }
                     } else {
                         Ok("rustc lib PASS".to_string())
                     }
                 }
-                Ok(out) => Err(String::from_utf8_lossy(&out.stderr).chars().take(600).collect()),
+                Ok(out) => Err(String::from_utf8_lossy(&out.stderr)
+                    .chars()
+                    .take(600)
+                    .collect()),
                 Err(e) => Err(format!("Failed to invoke rustc: {e}")),
             }
         }
         "zig" => {
             let src = tmp_dir.join("main.zig");
             let _ = std::fs::write(&src, &code);
-            let subcmd = if code.contains("test ") { "test" } else { "build-obj" };
+            let subcmd = if code.contains("test ") {
+                "test"
+            } else {
+                "build-obj"
+            };
             let mut cmd = std::process::Command::new("zig");
             cmd.arg(subcmd).arg(&src).current_dir(&tmp_dir);
             match cmd.output() {
                 Ok(out) if out.status.success() => Ok(format!("zig {subcmd} PASS")),
-                Ok(out) => Err(String::from_utf8_lossy(&out.stderr).chars().take(600).collect()),
+                Ok(out) => Err(String::from_utf8_lossy(&out.stderr)
+                    .chars()
+                    .take(600)
+                    .collect()),
                 Err(e) => Err(format!("Failed to invoke zig: {e}")),
             }
         }
         "python" | "py" => {
             let src = tmp_dir.join("main.py");
             let _ = std::fs::write(&src, &code);
-            match std::process::Command::new("python3").arg("-m").arg("py_compile").arg(&src).output() {
+            match std::process::Command::new("python3")
+                .arg("-m")
+                .arg("py_compile")
+                .arg(&src)
+                .output()
+            {
                 Ok(out) if out.status.success() => {
                     if code.contains("assert ") || code.contains("unittest") {
                         match std::process::Command::new("python3").arg(&src).output() {
-                            Ok(run_out) if run_out.status.success() => Ok("python3 + assert PASS".to_string()),
-                            Ok(run_out) => Err(String::from_utf8_lossy(&run_out.stderr).chars().take(600).collect()),
+                            Ok(run_out) if run_out.status.success() => {
+                                Ok("python3 + assert PASS".to_string())
+                            }
+                            Ok(run_out) => Err(String::from_utf8_lossy(&run_out.stderr)
+                                .chars()
+                                .take(600)
+                                .collect()),
                             Err(e) => Err(format!("Failed to run python3: {e}")),
                         }
                     } else {
                         Ok("python3 py_compile PASS".to_string())
                     }
                 }
-                Ok(out) => Err(String::from_utf8_lossy(&out.stderr).chars().take(600).collect()),
+                Ok(out) => Err(String::from_utf8_lossy(&out.stderr)
+                    .chars()
+                    .take(600)
+                    .collect()),
                 Err(e) => Err(format!("Failed to invoke python3: {e}")),
             }
         }
@@ -358,7 +414,11 @@ fn verify_generated_code(
 }
 
 /// Scales to 1,000+ heads with no code changes — add anchors to ANCHOR_MANIFESTS below.
-fn detect_council_specialist(accumulated: &str, prompt: &str, _is_hydra: bool) -> Option<&'static str> {
+fn detect_council_specialist(
+    accumulated: &str,
+    prompt: &str,
+    _is_hydra: bool,
+) -> Option<&'static str> {
     let lower_acc = format!("{accumulated} {prompt}").to_ascii_lowercase();
 
     // ── Layer 1: Explicit Neural Directives from Chair A ─────────────────────
@@ -386,7 +446,7 @@ fn detect_council_specialist(accumulated: &str, prompt: &str, _is_hydra: bool) -
             ("@council(anchor=", ')'),
             ("delegate: council ", ':'),
             ("delegate: council ", ' '),
-            ("council: ", ':'),  // "council: 009: SIMD"
+            ("council: ", ':'), // "council: 009: SIMD"
         ];
         for (prefix, term) in &patterns {
             if let Some(pos) = lower_acc.find(prefix) {
@@ -444,7 +504,10 @@ fn get_dynamic_manifests() -> &'static [DynamicManifest] {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
         let registry_paths = [
             format!("{}/.nioxs/registry/hydra_anchor_registry.json", home),
-            format!("{}/nio-labs/nio-ideas/registry/hydra_anchor_registry.json", home),
+            format!(
+                "{}/nio-labs/nio-ideas/registry/hydra_anchor_registry.json",
+                home
+            ),
             "/root/.nioxs/registry/hydra_anchor_registry.json".to_string(),
             "/root/nio-labs/nio-ideas/registry/hydra_anchor_registry.json".to_string(),
         ];
@@ -456,7 +519,8 @@ fn get_dynamic_manifests() -> &'static [DynamicManifest] {
             }
         }
         if raw_json.is_empty() {
-            raw_json = include_str!("../../../../nio-ideas/registry/hydra_anchor_registry.json").to_string();
+            raw_json = include_str!("../../../../nio-ideas/registry/hydra_anchor_registry.json")
+                .to_string();
         }
 
         let mut list = Vec::new();
@@ -467,8 +531,13 @@ fn get_dynamic_manifests() -> &'static [DynamicManifest] {
                     if id_str == "000" {
                         continue; // Chair A does not route to itself
                     }
-                    let head_id: &'static str = Box::leak(format!("head-{}", id_str).into_boxed_str());
-                    let title = a.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string();
+                    let head_id: &'static str =
+                        Box::leak(format!("head-{}", id_str).into_boxed_str());
+                    let title = a
+                        .get("title")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let mut triggers = Vec::new();
                     if let Some(slug) = a.get("slug").and_then(|s| s.as_str()) {
                         let sl = slug.trim().to_ascii_lowercase();
@@ -490,7 +559,11 @@ fn get_dynamic_manifests() -> &'static [DynamicManifest] {
                         }
                     }
                     if !triggers.is_empty() {
-                        list.push(DynamicManifest { head_id, title, triggers });
+                        list.push(DynamicManifest {
+                            head_id,
+                            title,
+                            triggers,
+                        });
                     }
                 }
             }
@@ -504,8 +577,12 @@ fn get_dynamic_manifests() -> &'static [DynamicManifest] {
 fn resolve_tier3_head(anchor: &str, prompt: &str) -> String {
     let lower_p = prompt.to_ascii_lowercase();
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-    let anchors_dir = std::path::PathBuf::from(&home).join(".nioxs").join("anchors");
-    let clean_num = anchor.trim_start_matches("head-").trim_start_matches("anchor-");
+    let anchors_dir = std::path::PathBuf::from(&home)
+        .join(".nioxs")
+        .join("anchors");
+    let clean_num = anchor
+        .trim_start_matches("head-")
+        .trim_start_matches("anchor-");
     let prefix = format!("tier3-{clean_num}");
 
     let mut best_slug: Option<String> = None;
@@ -521,7 +598,10 @@ fn resolve_tier3_head(anchor: &str, prompt: &str) -> String {
             let tail = name.strip_prefix(&prefix).unwrap_or("");
             let sub = tail.splitn(2, '-').nth(1).unwrap_or("");
             let mut score: u32 = 0;
-            for tok in sub.split('-').filter(|t| t.len() >= 3 && !matches!(*t, "core" | "idioms" | "opt")) {
+            for tok in sub
+                .split('-')
+                .filter(|t| t.len() >= 3 && !matches!(*t, "core" | "idioms" | "opt"))
+            {
                 if contains_trigger(&lower_p, tok) {
                     score += 1;
                 }
@@ -551,9 +631,15 @@ fn contains_trigger(haystack: &str, needle: &str) -> bool {
         let abs_start = start + pos;
         let abs_end = abs_start + needle.len();
         let left_ok = abs_start == 0
-            || !haystack[..abs_start].chars().next_back().is_some_and(|c| c.is_ascii_alphanumeric());
+            || !haystack[..abs_start]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_alphanumeric());
         let right_ok = abs_end == haystack.len()
-            || !haystack[abs_end..].chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
+            || !haystack[abs_end..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric());
         if left_ok && right_ok {
             return true;
         }
@@ -584,27 +670,34 @@ fn cosine_route(lower_query: &str) -> Option<&'static str> {
         }
     }
 
-    if best_score > 0 {
-        Some(best_id)
-    } else {
-        None
-    }
+    if best_score > 0 { Some(best_id) } else { None }
 }
 
-
 fn print_council_heads_table(heads_dir: &std::path::Path) {
-    println!("\n========================================================================================");
+    println!(
+        "\n========================================================================================"
+    );
     println!("                      HYDRA SOVEREIGN 64-ANCHOR COUNCIL ROSTER");
-    println!("========================================================================================");
-    println!("{:<9} | {:<36} | {:<22} | {:<9} | {:<12}", "Head ID", "Canonical Slug", "Domain Title", "Size (MB)", "Status");
-    println!("----------------------------------------------------------------------------------------");
-    
+    println!(
+        "========================================================================================"
+    );
+    println!(
+        "{:<9} | {:<36} | {:<22} | {:<9} | {:<12}",
+        "Head ID", "Canonical Slug", "Domain Title", "Size (MB)", "Status"
+    );
+    println!(
+        "----------------------------------------------------------------------------------------"
+    );
+
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
     let anchors_dir = std::path::PathBuf::from(format!("{}/.nioxs/anchors", home));
 
     let registry_paths = [
         format!("{}/.nioxs/registry/hydra_anchor_registry.json", home),
-        format!("{}/nio-labs/nio-ideas/registry/hydra_anchor_registry.json", home),
+        format!(
+            "{}/nio-labs/nio-ideas/registry/hydra_anchor_registry.json",
+            home
+        ),
     ];
     let mut anchors_data = Vec::new();
     for p in &registry_paths {
@@ -612,9 +705,21 @@ fn print_council_heads_table(heads_dir: &std::path::Path) {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&c) {
                 if let Some(anchors) = val.get("anchors").and_then(|a| a.as_array()) {
                     for a in anchors {
-                        let id = a.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string();
-                        let slug = a.get("slug").and_then(|s| s.as_str()).unwrap_or("").to_string();
-                        let title = a.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string();
+                        let id = a
+                            .get("id")
+                            .and_then(|i| i.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let slug = a
+                            .get("slug")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let title = a
+                            .get("title")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         anchors_data.push((id, slug, title));
                     }
                 }
@@ -658,16 +763,35 @@ fn print_council_heads_table(heads_dir: &std::path::Path) {
         if size_mb > 0.05 {
             installed_count += 1;
             total_mb += size_mb;
-            let status = if size_mb < 30.0 { "\x1b[1;32mREADY (GGUF)\x1b[0m" } else { "\x1b[1;33mLARGE\x1b[0m" };
-            println!("Head #{:<4} | {:<36} | {:<22} | {:>6.2} MB | {}", id, slug, short_title, size_mb, status);
+            let status = if size_mb < 30.0 {
+                "\x1b[1;32mREADY (GGUF)\x1b[0m"
+            } else {
+                "\x1b[1;33mLARGE\x1b[0m"
+            };
+            println!(
+                "Head #{:<4} | {:<36} | {:<22} | {:>6.2} MB | {}",
+                id, slug, short_title, size_mb, status
+            );
         } else {
-            println!("Head #{:<4} | {:<36} | {:<22} | {:>6}    | \x1b[1;33mNOT PRESENT\x1b[0m", id, slug, short_title, "-");
+            println!(
+                "Head #{:<4} | {:<36} | {:<22} | {:>6}    | \x1b[1;33mNOT PRESENT\x1b[0m",
+                id, slug, short_title, "-"
+            );
         }
     }
-    println!("----------------------------------------------------------------------------------------");
+    println!(
+        "----------------------------------------------------------------------------------------"
+    );
     println!("Directory: {}", anchors_dir.display());
-    println!("Status:    {} / {} Anchors Installed | Total Footprint: {:.2} MB (GGUF + FP8, Rank 12-32)", installed_count, anchors_data.len(), total_mb);
-    println!("Runtime:   In-Process Hot-Swap Latency < 1ms | Target Hardware: Raspberry Pi 5 / CPU / GPU\n");
+    println!(
+        "Status:    {} / {} Anchors Installed | Total Footprint: {:.2} MB (GGUF + FP8, Rank 12-32)",
+        installed_count,
+        anchors_data.len(),
+        total_mb
+    );
+    println!(
+        "Runtime:   In-Process Hot-Swap Latency < 1ms | Target Hardware: Raspberry Pi 5 / CPU / GPU\n"
+    );
 }
 
 fn inspect_council_head(head_id: &str) {
@@ -680,10 +804,24 @@ fn inspect_council_head(head_id: &str) {
             let config_p = path.join("adapter_config.json");
             if let Ok(content) = std::fs::read_to_string(&config_p) {
                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                    println!("  • Rank (r):        {}", val.get("r").unwrap_or(&serde_json::Value::Null));
-                    println!("  • LoRA Alpha:      {}", val.get("lora_alpha").unwrap_or(&serde_json::Value::Null));
-                    println!("  • Target Modules:  {}", val.get("target_modules").unwrap_or(&serde_json::Value::Null));
-                    println!("  • Base Anchor:     {}", val.get("base_model_name_or_path").unwrap_or(&serde_json::Value::Null));
+                    println!(
+                        "  • Rank (r):        {}",
+                        val.get("r").unwrap_or(&serde_json::Value::Null)
+                    );
+                    println!(
+                        "  • LoRA Alpha:      {}",
+                        val.get("lora_alpha").unwrap_or(&serde_json::Value::Null)
+                    );
+                    println!(
+                        "  • Target Modules:  {}",
+                        val.get("target_modules")
+                            .unwrap_or(&serde_json::Value::Null)
+                    );
+                    println!(
+                        "  • Base Anchor:     {}",
+                        val.get("base_model_name_or_path")
+                            .unwrap_or(&serde_json::Value::Null)
+                    );
                 }
             }
             let bytes = std::fs::read_dir(&path)
@@ -694,11 +832,19 @@ fn inspect_council_head(head_id: &str) {
                         .sum::<u64>()
                 })
                 .unwrap_or(0);
-            println!("  • Total Footprint: {:.2} MB (\x1b[1;32m< 3.0 MB SLA Met\x1b[0m)", bytes as f64 / (1024.0 * 1024.0));
-            println!("  • System Prompt:\n    {}\n", nioxs_engine::hydra_specialist_system(head_id));
+            println!(
+                "  • Total Footprint: {:.2} MB (\x1b[1;32m< 3.0 MB SLA Met\x1b[0m)",
+                bytes as f64 / (1024.0 * 1024.0)
+            );
+            println!(
+                "  • System Prompt:\n    {}\n",
+                nioxs_engine::hydra_specialist_system(head_id)
+            );
         }
         None => {
-            eprintln!("Error: Could not locate council head '{head_id}'. Run 'nioxs council update' to install.");
+            eprintln!(
+                "Error: Could not locate council head '{head_id}'. Run 'nioxs council update' to install."
+            );
         }
     }
 }
@@ -765,7 +911,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         std::fs::create_dir_all(&heads_dir)?;
 
         if sub == "update" {
-            println!("\x1b[1;36m[Hydra Council]\x1b[0m Checking for latest calibrated council heads...");
+            println!(
+                "\x1b[1;36m[Hydra Council]\x1b[0m Checking for latest calibrated council heads..."
+            );
             let download_url = "https://github.com/nio-labs/nio-xs-models/releases/download/v0.5.1/hydra-founding-council-10heads.tar.gz";
             let tar_dest = std::env::temp_dir().join("hydra-founding-council-10heads.tar.gz");
 
@@ -774,7 +922,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 Ok(resp) if resp.status().is_success() => {
                     let bytes = resp.bytes().await?;
                     std::fs::write(&tar_dest, &bytes)?;
-                    println!("  • Extracting {:.2} MB archive to '{}'...", bytes.len() as f64 / (1024.0 * 1024.0), heads_dir.display());
+                    println!(
+                        "  • Extracting {:.2} MB archive to '{}'...",
+                        bytes.len() as f64 / (1024.0 * 1024.0),
+                        heads_dir.display()
+                    );
                     let status = std::process::Command::new("tar")
                         .arg("-xzf")
                         .arg(&tar_dest)
@@ -783,12 +935,16 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         .status();
                     if let Ok(st) = status {
                         if st.success() {
-                            println!("\x1b[1;32m✔ Successfully updated Hydra Council to v0.5.1 (10 Calibrated Heads)!\x1b[0m");
+                            println!(
+                                "\x1b[1;32m✔ Successfully updated Hydra Council to v0.5.1 (10 Calibrated Heads)!\x1b[0m"
+                            );
                         }
                     }
                 }
                 _ => {
-                    let repo_heads = std::path::PathBuf::from("/home/mn/nio-labs/nio-xs-models/models/hydra/heads");
+                    let repo_heads = std::path::PathBuf::from(
+                        "/home/mn/nio-labs/nio-xs-models/models/hydra/heads",
+                    );
                     if repo_heads.exists() {
                         println!("  • Synchronizing from local calibrated models repository...");
                         for entry in std::fs::read_dir(&repo_heads)? {
@@ -802,7 +958,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                                 }
                             }
                         }
-                        println!("\x1b[1;32m✔ Successfully updated Hydra Council from local repository (10 Calibrated Heads)!\x1b[0m");
+                        println!(
+                            "\x1b[1;32m✔ Successfully updated Hydra Council from local repository (10 Calibrated Heads)!\x1b[0m"
+                        );
                     }
                 }
             }
@@ -822,10 +980,14 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
 
         if sub == "decompress" || sub == "unpack" {
-            println!("\x1b[1;36m[Hydra Council]\x1b[0m Decompressing LZ4 adapter weights for Sovereign Council anchors...");
+            println!(
+                "\x1b[1;36m[Hydra Council]\x1b[0m Decompressing LZ4 adapter weights for Sovereign Council anchors..."
+            );
             match nioxs_engine::decompress_all_anchors() {
                 Ok(count) => {
-                    println!("\x1b[1;32m✔ Successfully decompressed {count} anchor adapter(s) to .safetensors\x1b[0m");
+                    println!(
+                        "\x1b[1;32m✔ Successfully decompressed {count} anchor adapter(s) to .safetensors\x1b[0m"
+                    );
                 }
                 Err(err) => {
                     eprintln!("\x1b[1;31m✘ Failed to decompress anchors: {err}\x1b[0m");
@@ -835,10 +997,14 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
 
         if sub == "export-gguf" || sub == "convert-gguf" {
-            println!("\x1b[1;36m[Hydra Council]\x1b[0m Converting Sovereign Council adapters to GGUF...");
+            println!(
+                "\x1b[1;36m[Hydra Council]\x1b[0m Converting Sovereign Council adapters to GGUF..."
+            );
             match nioxs_engine::convert_all_anchors_to_gguf() {
                 Ok(count) => {
-                    println!("\x1b[1;32m✔ Successfully converted/verified {count} anchor adapter(s) in GGUF format\x1b[0m");
+                    println!(
+                        "\x1b[1;32m✔ Successfully converted/verified {count} anchor adapter(s) in GGUF format\x1b[0m"
+                    );
                 }
                 Err(err) => {
                     eprintln!("\x1b[1;31m✘ Failed to convert anchors to GGUF: {err}\x1b[0m");
@@ -899,7 +1065,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                     }
                 }
             }
-            println!("✔ Fleet '{lowered}' ready in {}", nioxs_artifacts::resolve_models_dir().display());
+            println!(
+                "✔ Fleet '{lowered}' ready in {}",
+                nioxs_artifacts::resolve_models_dir().display()
+            );
             return Ok(());
         }
         let normalized = match lowered.as_str() {
@@ -953,7 +1122,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         };
 
         if !input_path.exists() {
-            eprintln!("Error: Adapter path '{}' does not exist.", input_path.display());
+            eprintln!(
+                "Error: Adapter path '{}' does not exist.",
+                input_path.display()
+            );
             std::process::exit(1);
         }
 
@@ -987,26 +1159,67 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         } else if let Some(out) = out_dir {
             out
         } else {
-            let parent = input_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+            let parent = input_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."));
             let name = input_path.file_name().unwrap_or_default().to_string_lossy();
             parent.join(format!("{name}_calibrated"))
         };
 
-        println!("\x1b[1;36m[Hydra Calibration Engine]\x1b[0m Calibrating '{}' -> '{}'...", input_path.display(), final_out.display());
+        println!(
+            "\x1b[1;36m[Hydra Calibration Engine]\x1b[0m Calibrating '{}' -> '{}'...",
+            input_path.display(),
+            final_out.display()
+        );
         let t0 = std::time::Instant::now();
-        let report = nioxs_engine::lora::calibrate_head_dir(&input_path, &final_out, target_rank, use_fp8, compress_lz4)
-            .map_err(|e| format!("Calibration failed: {e}"))?;
+        let report = nioxs_engine::lora::calibrate_head_dir(
+            &input_path,
+            &final_out,
+            target_rank,
+            use_fp8,
+            compress_lz4,
+        )
+        .map_err(|e| format!("Calibration failed: {e}"))?;
         let elapsed = t0.elapsed().as_secs_f64();
 
-        println!("\x1b[1;32m✔ Head Calibration Complete in {:.2}s\x1b[0m", elapsed);
+        println!(
+            "\x1b[1;32m✔ Head Calibration Complete in {:.2}s\x1b[0m",
+            elapsed
+        );
         println!("  • Head ID:             {}", report.head_id);
-        println!("  • Original Size:       {:.2} MB", report.original_size_bytes as f64 / (1024.0 * 1024.0));
-        println!("  • Calibrated Size:     \x1b[1;32m{:.2} MB\x1b[0m (Target < 3.0 MB met)", report.calibrated_size_bytes as f64 / (1024.0 * 1024.0));
-        println!("  • Compression Ratio:   \x1b[1;33m{:.1}x\x1b[0m", report.compression_ratio);
+        println!(
+            "  • Original Size:       {:.2} MB",
+            report.original_size_bytes as f64 / (1024.0 * 1024.0)
+        );
+        println!(
+            "  • Calibrated Size:     \x1b[1;32m{:.2} MB\x1b[0m (Target < 3.0 MB met)",
+            report.calibrated_size_bytes as f64 / (1024.0 * 1024.0)
+        );
+        println!(
+            "  • Compression Ratio:   \x1b[1;33m{:.1}x\x1b[0m",
+            report.compression_ratio
+        );
         println!("  • Storage Saved:       {:.2} MB", report.saved_mb);
-        println!("  • Effective Rank:      {} -> {}", report.original_rank, report.calibrated_rank);
-        println!("  • Precision:           {}", if report.is_fp8 { "FP8 E4M3 (scaled)" } else { "FP16" });
-        println!("  • Container:           {}", if report.is_compressed { "SafeTensors + LZ4" } else { "SafeTensors (Standard)" });
+        println!(
+            "  • Effective Rank:      {} -> {}",
+            report.original_rank, report.calibrated_rank
+        );
+        println!(
+            "  • Precision:           {}",
+            if report.is_fp8 {
+                "FP8 E4M3 (scaled)"
+            } else {
+                "FP16"
+            }
+        );
+        println!(
+            "  • Container:           {}",
+            if report.is_compressed {
+                "SafeTensors + LZ4"
+            } else {
+                "SafeTensors (Standard)"
+            }
+        );
         return Ok(());
     }
     if arg.as_deref() == Some("skate") {
@@ -1386,7 +1599,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             println!(
                 "Usage: nioxs {cmd_name} [--tier <nano|mini|omni|max|ultra>] [--think|--no-think] [--verify|--no-verify] [--retries <N>] [--pod <id>] [--verbose|-v] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
             );
-            println!("Tiers: orca-nano (0.5B), orca-mini (1.5B), orca-omni (0.5B Lead + 1.5B+ Pods), orca-max (3B), orca-ultra (7B)");
+            println!(
+                "Tiers: orca-nano (0.5B), orca-mini (1.5B), orca-omni (0.5B Lead + 1.5B+ Pods), orca-max (3B), orca-ultra (7B)"
+            );
             return Ok(());
         }
 
@@ -1489,8 +1704,13 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let manifest_candidates = [
             std::env::var_os("ORCA_MANIFEST").map(std::path::PathBuf::from),
             Some(models_dir.join("pod_manifest.json")),
-            Some(std::path::PathBuf::from("data/phase2_instruct/pod_manifest.json")),
-            Some(std::path::PathBuf::from(&home).join("nio-labs/nio-ideas/data/phase2_instruct/pod_manifest.json")),
+            Some(std::path::PathBuf::from(
+                "data/phase2_instruct/pod_manifest.json",
+            )),
+            Some(
+                std::path::PathBuf::from(&home)
+                    .join("nio-labs/nio-ideas/data/phase2_instruct/pod_manifest.json"),
+            ),
             Some(std::path::PathBuf::from(&home).join(".nioxs/models/orca/pod_manifest.json")),
             Some(std::path::PathBuf::from(&home).join(".nioxs/orca/pod_manifest.json")),
         ];
@@ -1505,7 +1725,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let (pod_id, matched_think_meta) =
             route_orca_pod(&prompt, forced_pod.as_deref(), &manifest_entries);
         let is_reasoning_pod = |p: &str| p.contains("reasoner") || p == "architect";
-        let think_enabled = think_override.unwrap_or_else(|| matched_think_meta || is_reasoning_pod(&pod_id));
+        let think_enabled =
+            think_override.unwrap_or_else(|| matched_think_meta || is_reasoning_pod(&pod_id));
 
         let kebab = pod_id.replace('_', "-");
         let tier_specs: Vec<(&str, &[&str])> = match tier.as_str() {
@@ -1514,7 +1735,12 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             "omni" => {
                 if think_enabled || is_reasoning_pod(&pod_id) {
                     // Heavy path: prefer 1.5B (or 3B/7B) reasoner/architect pods
-                    vec![("mini", &["1.5b", "1-5b"]), ("max", &["3b"]), ("ultra", &["7b"]), ("nano", &["0.5b", "0-5b"])]
+                    vec![
+                        ("mini", &["1.5b", "1-5b"]),
+                        ("max", &["3b"]),
+                        ("ultra", &["7b"]),
+                        ("nano", &["0.5b", "0-5b"]),
+                    ]
                 } else {
                     // Fast path: 0.5B Lead/Action pods first, falling back to 1.5B
                     vec![("nano", &["0.5b", "0-5b"]), ("mini", &["1.5b", "1-5b"])]
@@ -1522,7 +1748,12 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             }
             "max" => vec![("max", &["3b"])],
             "ultra" => vec![("ultra", &["7b"])],
-            _ => vec![("mini", &["1.5b", "1-5b"]), ("nano", &["0.5b", "0-5b"]), ("max", &["3b"]), ("ultra", &["7b"])],
+            _ => vec![
+                ("mini", &["1.5b", "1-5b"]),
+                ("nano", &["0.5b", "0-5b"]),
+                ("max", &["3b"]),
+                ("ultra", &["7b"]),
+            ],
         };
 
         let mut names = Vec::new();
@@ -1552,11 +1783,23 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let resolved_tier = if tier == "omni" {
             "omni"
         } else {
-            let fname = model_path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-            if fname.contains("0.5b") || fname.contains("0-5b") { "nano" } else if fname.contains("3b") { "max" } else if fname.contains("7b") { "ultra" } else { "mini" }
+            let fname = model_path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            if fname.contains("0.5b") || fname.contains("0-5b") {
+                "nano"
+            } else if fname.contains("3b") {
+                "max"
+            } else if fname.contains("7b") {
+                "ultra"
+            } else {
+                "mini"
+            }
         };
 
-        let mut engine = nioxs_engine::AstEngine::from_paths(model_path.clone(), tokenizer_path.clone());
+        let mut engine =
+            nioxs_engine::AstEngine::from_paths(model_path.clone(), tokenizer_path.clone());
         engine.set_device_preference(device_pref);
         let action_sys = "You are Orca (vMicroLM-Reflex), a concise, accurate coding assistant developed by Nio Labs.";
         let think_sys = "You are Orca-Reasoner (vMicroLM-Reflex), a compact coding specialist developed by Nio Labs. Start with a concise <think> block (short bulleted invariants and edge cases, under 12 lines) </think>, followed immediately by the complete working code.";
@@ -1567,7 +1810,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let max_tokens = custom_max_tokens.unwrap_or(8192);
         let temp = if think_enabled { 0.20 } else { 0.0 };
         let t0 = std::time::Instant::now();
-        let mut rx = engine.generate_stream(formatted_prompt, max_tokens, temp, 0.90).await?;
+        let mut rx = engine
+            .generate_stream(formatted_prompt, max_tokens, temp, 0.90)
+            .await?;
         let mut flow = StreamFlow::new(flow_mode);
         flow.set_show_think_tags(true);
         let mut full_resp = String::new();
@@ -1635,13 +1880,21 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             while !ok && retry_rounds < max_retries {
                 let (r_pod, r_path) = retry_ring[retry_rounds % retry_ring.len()].clone();
                 retry_rounds += 1;
-                eprintln!("[verify] Attempt {} failed ({}) -> retrying with {}...", retry_rounds, err.lines().last().unwrap_or("error"), r_pod);
-                let mut r_eng = nioxs_engine::AstEngine::from_paths(r_path.clone(), tokenizer_path.clone());
+                eprintln!(
+                    "[verify] Attempt {} failed ({}) -> retrying with {}...",
+                    retry_rounds,
+                    err.lines().last().unwrap_or("error"),
+                    r_pod
+                );
+                let mut r_eng =
+                    nioxs_engine::AstEngine::from_paths(r_path.clone(), tokenizer_path.clone());
                 r_eng.set_device_preference(device_pref);
                 let fix_prompt = format!(
                     "<|im_start|>system\n{think_sys}<|im_end|>\n<|im_start|>user\nFix this code based on the error. Output the complete corrected code in a fenced block.\n\nOriginal task:\n{prompt}\n\nPrevious output:\n{full_resp}\n\nError:\n{err}<|im_end|>\n<|im_start|>assistant\n"
                 );
-                let mut r_rx = r_eng.generate_stream(fix_prompt, max_tokens, 0.35, 0.90).await?;
+                let mut r_rx = r_eng
+                    .generate_stream(fix_prompt, max_tokens, 0.35, 0.90)
+                    .await?;
                 let mut r_flow = StreamFlow::new(flow_mode);
                 r_flow.set_show_think_tags(true);
                 full_resp.clear();
@@ -1670,7 +1923,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 think_enabled || retry_rounds > 0,
                 verified_opt,
                 retry_rounds,
-                active_gguf.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
+                active_gguf
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("?"),
                 secs,
                 full_resp.len()
             );
@@ -1958,7 +2214,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             verify = true;
         }
         let mut test_file: Option<std::path::PathBuf> = None;
-        let mut deliberate = raw_args.iter().any(|a| a == "--council" || a == "--deliberate" || a == "--triage")
+        let mut deliberate = raw_args
+            .iter()
+            .any(|a| a == "--council" || a == "--deliberate" || a == "--triage")
             || std::env::var_os("NIOXS_DELIBERATE").is_some();
         let mut explicit_head = None;
         let mut model_target = match cmd {
@@ -2033,20 +2291,30 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             let base_engine = nioxs_engine::AstEngine::for_model_with_device("hydra", device_pref)?;
             base_engine.ensure_loaded().await?;
             if let Err(e) = base_engine.attach_lora_head("000").await {
-                eprintln!("\x1b[1;31m[ERROR] Failed to attach Chair A LoRA (000): {:?}\x1b[0m", e);
+                eprintln!(
+                    "\x1b[1;31m[ERROR] Failed to attach Chair A LoRA (000): {:?}\x1b[0m",
+                    e
+                );
             }
             let chair_prompt = format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n",
                 nioxs_engine::hydra_specialist_system("head-000")
             );
             flow.push("<think>\n");
-            let mut chair_rx = base_engine.generate_stream(chair_prompt, max_tokens.min(512), 0.10, 0.90).await?;
+            let mut chair_rx = base_engine
+                .generate_stream(chair_prompt, max_tokens.min(512), 0.10, 0.90)
+                .await?;
             let mut seen_body = false;
             while let Some(chunk) = chair_rx.recv().await {
                 let to_push = if !seen_body {
-                    let trimmed = chunk.trim_start_matches(|c: char| c.is_whitespace()).strip_prefix("<think>").unwrap_or(&chunk);
+                    let trimmed = chunk
+                        .trim_start_matches(|c: char| c.is_whitespace())
+                        .strip_prefix("<think>")
+                        .unwrap_or(&chunk);
                     let trimmed = trimmed.trim_start_matches('\n');
-                    if !trimmed.is_empty() { seen_body = true; }
+                    if !trimmed.is_empty() {
+                        seen_body = true;
+                    }
                     trimmed
                 } else {
                     &chunk
@@ -2062,16 +2330,16 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             return Ok(());
         }
 
-        let is_council_speaker_session = model_target == "hydra"
-            || model_target == "hydra-max"
-            || model_target == "hydra-ultra";
+        let is_council_speaker_session =
+            model_target == "hydra" || model_target == "hydra-max" || model_target == "hydra-ultra";
 
         if is_council_speaker_session {
             let speaker_model = "hydra";
             let is_hydra = true;
 
-            let base_engine = nioxs_engine::AstEngine::for_model_with_device(speaker_model, device_pref)?;
-            
+            let base_engine =
+                nioxs_engine::AstEngine::for_model_with_device(speaker_model, device_pref)?;
+
             // Fast-Path: Explicit head override or sub-millisecond (< 0.2ms) zero-token lexical & cosine semantic routing
             let mut specialist_opt = if let Some(ref h) = explicit_head {
                 Some(h.as_str())
@@ -2099,8 +2367,13 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 while let Some(chunk) = rx.recv().await {
                     let to_push = if !seen_triage_body {
                         let stripped = chunk.trim_start_matches(|c: char| c.is_whitespace());
-                        let stripped = stripped.strip_prefix("<think>").unwrap_or(stripped).trim_start_matches('\n');
-                        if !stripped.is_empty() { seen_triage_body = true; }
+                        let stripped = stripped
+                            .strip_prefix("<think>")
+                            .unwrap_or(stripped)
+                            .trim_start_matches('\n');
+                        if !stripped.is_empty() {
+                            seen_triage_body = true;
+                        }
                         stripped
                     } else {
                         &chunk
@@ -2133,15 +2406,24 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         specialist
                     };
 
-                    let raw_domain = if accumulated.contains("domain=") || accumulated.contains("domain =") {
-                        let dom_start = accumulated.find("domain").unwrap();
-                        let rest = &accumulated[dom_start..];
-                        let val = rest.split(|c| c == ',' || c == ')' || c == '\n').next().unwrap_or("");
-                        let clean = val.split('=').nth(1).unwrap_or("").trim().trim_matches(|c| c == '"' || c == '\'' || c == ' ');
-                        if !clean.is_empty() { Some(clean) } else { None }
-                    } else {
-                        None
-                    };
+                    let raw_domain =
+                        if accumulated.contains("domain=") || accumulated.contains("domain =") {
+                            let dom_start = accumulated.find("domain").unwrap();
+                            let rest = &accumulated[dom_start..];
+                            let val = rest
+                                .split(|c| c == ',' || c == ')' || c == '\n')
+                                .next()
+                                .unwrap_or("");
+                            let clean = val
+                                .split('=')
+                                .nth(1)
+                                .unwrap_or("")
+                                .trim()
+                                .trim_matches(|c| c == '"' || c == '\'' || c == ' ');
+                            if !clean.is_empty() { Some(clean) } else { None }
+                        } else {
+                            None
+                        };
 
                     let active_head = if explicit_head.is_none() && specialist != "head-direct" {
                         resolve_tier3_head(specialist, &prompt)
@@ -2154,16 +2436,21 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                             let badge = format_hydra_directive(specialist, raw_domain);
                             flow.push(&badge);
                             if active_head != specialist {
-                                eprintln!("[nioxs-hydra] Hop 2 (Anchor -> Tier-3): {specialist} -> {active_head}");
+                                eprintln!(
+                                    "[nioxs-hydra] Hop 2 (Anchor -> Tier-3): {specialist} -> {active_head}"
+                                );
                             }
                         }
 
                         // NATIVE IN-PROCESS LORA HEAD HOT-SWAP (< 1ms switch)
                         let t_swap = std::time::Instant::now();
-                        let head_attached = base_engine.attach_lora_head(&active_head).await.is_ok();
+                        let head_attached =
+                            base_engine.attach_lora_head(&active_head).await.is_ok();
                         let swap_ms = t_swap.elapsed().as_secs_f64() * 1000.0;
                         if head_attached && std::env::var_os("NIOXS_DEBUG").is_some() {
-                            eprintln!("[nioxs-hydra] Hot-swapped to Head '{active_head}' in {swap_ms:.2}ms (Base Anchor resident in RAM)");
+                            eprintln!(
+                                "[nioxs-hydra] Hot-swapped to Head '{active_head}' in {swap_ms:.2}ms (Base Anchor resident in RAM)"
+                            );
                         }
                     }
 
@@ -2191,7 +2478,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                                 "<|im_start|>system\nYou are Hydra Test-Writer. Write ONLY a small, self-contained unit test block (in ```rust with `fn main()` + `assert_eq!`, or ```python with `assert`, or ```zig with `test`) covering normal cases and edge cases (empty input, zero, bounds) for the requested function. Do NOT implement the function itself.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
                             );
                             let mut test_out = String::new();
-                            let mut test_rx = base_engine.generate_stream(test_prompt, 256, 0.15, 0.85).await?;
+                            let mut test_rx = base_engine
+                                .generate_stream(test_prompt, 256, 0.15, 0.85)
+                                .await?;
                             while let Some(chunk) = test_rx.recv().await {
                                 test_out.push_str(&chunk);
                             }
@@ -2203,11 +2492,16 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                                         || tests_code.contains("test "));
                                 if valid_harness {
                                     if verbose {
-                                        eprintln!("[nioxs-tdd] Generated edge-case test harness ({} bytes)", tests_code.len());
+                                        eprintln!(
+                                            "[nioxs-tdd] Generated edge-case test harness ({} bytes)",
+                                            tests_code.len()
+                                        );
                                     }
                                     tdd_harness = Some(tests_code);
                                 } else if verbose {
-                                    eprintln!("[nioxs-tdd] Discarded non-runnable test harness; using compiler check only");
+                                    eprintln!(
+                                        "[nioxs-tdd] Discarded non-runnable test harness; using compiler check only"
+                                    );
                                 }
                             }
                         }
@@ -2232,7 +2526,13 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                             flow.push(&chunk);
                         }
 
-                        let mut last_err = match verify_generated_code(&generated_code, &prompt, specialist, test_file.as_deref(), tdd_harness.as_deref()) {
+                        let mut last_err = match verify_generated_code(
+                            &generated_code,
+                            &prompt,
+                            specialist,
+                            test_file.as_deref(),
+                            tdd_harness.as_deref(),
+                        ) {
                             Ok(msg) => {
                                 if verbose {
                                     eprintln!("\n[nioxs-verify] PASS: {msg}");
@@ -2252,16 +2552,26 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                                     nioxs_engine::hydra_specialist_system(specialist)
                                 );
                                 let mut repaired = String::new();
-                                let mut rep_rx = base_engine.generate_stream(repair_prompt, max_tokens, 0.20, 0.85).await?;
+                                let mut rep_rx = base_engine
+                                    .generate_stream(repair_prompt, max_tokens, 0.20, 0.85)
+                                    .await?;
                                 while let Some(chunk) = rep_rx.recv().await {
                                     repaired.push_str(&chunk);
                                     flow.push(&chunk);
                                 }
                                 generated_code = repaired;
-                                match verify_generated_code(&generated_code, &prompt, specialist, test_file.as_deref(), tdd_harness.as_deref()) {
+                                match verify_generated_code(
+                                    &generated_code,
+                                    &prompt,
+                                    specialist,
+                                    test_file.as_deref(),
+                                    tdd_harness.as_deref(),
+                                ) {
                                     Ok(msg) => {
                                         if verbose {
-                                            eprintln!("\n[nioxs-verify] PASS (repair round {round}): {msg}");
+                                            eprintln!(
+                                                "\n[nioxs-verify] PASS (repair round {round}): {msg}"
+                                            );
                                         }
                                         last_err = None;
                                         break;
@@ -2274,7 +2584,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                             }
                             if let Some(final_err) = last_err {
                                 if verbose {
-                                    eprintln!("\n[nioxs-verify] FAIL (after 3 repair rounds): {final_err}");
+                                    eprintln!(
+                                        "\n[nioxs-verify] FAIL (after 3 repair rounds): {final_err}"
+                                    );
                                 }
                             }
                         }
@@ -2293,7 +2605,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         if generated_code.trim().is_empty() {
                             let nudge = "Here is the implementation:\n";
                             let retry_prompt = format!("{specialist_prompt}{nudge}");
-                            if let Ok(mut retry_rx) = base_engine.generate_stream(retry_prompt, max_tokens, 0.35, 0.90).await {
+                            if let Ok(mut retry_rx) = base_engine
+                                .generate_stream(retry_prompt, max_tokens, 0.35, 0.90)
+                                .await
+                            {
                                 flow.push(nudge);
                                 generated_code.push_str(nudge);
                                 while let Some(chunk) = retry_rx.recv().await {
@@ -2317,7 +2632,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                             nioxs_engine::DevicePreference::Cpu => "cpu",
                             nioxs_engine::DevicePreference::Auto => "auto",
                         };
-                        eprintln!("\n[nioxs] ({dev_label}) TTFT: {ttft_s:.2}s | Decode: {decode_s:.2}s | {words} words ({wps:.2} w/s)");
+                        eprintln!(
+                            "\n[nioxs] ({dev_label}) TTFT: {ttft_s:.2}s | Decode: {decode_s:.2}s | {words} words ({wps:.2} w/s)"
+                        );
                     }
 
                     // ── Step 3: Sovereign Chair C Invariant Verification & Formal Audit ────
@@ -2327,7 +2644,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         let _ = base_engine.attach_lora_head(chair_c_id).await;
                         let c_ms = t_c.elapsed().as_secs_f64() * 1000.0;
                         if std::env::var_os("NIOXS_DEBUG").is_some() {
-                            eprintln!("[nioxs-hydra] Chair C Invariant Verifier hot-swapped in {c_ms:.2}ms");
+                            eprintln!(
+                                "[nioxs-hydra] Chair C Invariant Verifier hot-swapped in {c_ms:.2}ms"
+                            );
                         }
                         flow.push("\n\n---\n**Council Chair C: Invariant Audit & Verification**\n\n<audit>\n");
                         let audit_prompt = format!(
@@ -2337,7 +2656,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                         );
                         let audit_tokens = 384.min(max_tokens / 2);
                         let mut audit_text = String::new();
-                        match base_engine.generate_stream(audit_prompt, audit_tokens, 0.15, 0.85).await {
+                        match base_engine
+                            .generate_stream(audit_prompt, audit_tokens, 0.15, 0.85)
+                            .await
+                        {
                             Ok(mut audit_rx) => {
                                 while let Some(chunk) = audit_rx.recv().await {
                                     audit_text.push_str(&chunk);
@@ -2355,7 +2677,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 } else {
                     let directive_rendered = if accumulated.contains("@council") {
                         let start = accumulated.find("@council").unwrap();
-                        let end = accumulated[start..].find(')').unwrap_or(accumulated[start..].len() - 1);
+                        let end = accumulated[start..]
+                            .find(')')
+                            .unwrap_or(accumulated[start..].len() - 1);
                         let raw_directive = &accumulated[start..=start + end];
                         let prefix = accumulated[..start].trim();
                         if !prefix.is_empty() {
@@ -2370,7 +2694,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
                     base_engine.unload().await;
                     drop(base_engine); // Evict Speaker working set to guarantee < 180MB RAM (< 850MB on fin)
-                    let specialist_engine = nioxs_engine::AstEngine::for_model_with_device(specialist, device_pref)?;
+                    let specialist_engine =
+                        nioxs_engine::AstEngine::for_model_with_device(specialist, device_pref)?;
                     let specialist_prompt = format!(
                         "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
                         nioxs_engine::hydra_specialist_system(specialist)
@@ -3093,14 +3418,70 @@ mod tests {
 
     #[test]
     fn test_detect_hydra_specialist_all_heads() {
-        assert_eq!(detect_council_specialist("@council(head=003)", "Build a React 19 RSC component with Suspense", true), Some("head-003"));
-        assert_eq!(detect_council_specialist("@council(head=004)", "Write an eBPF XDP packet filter in Rust aya", true), Some("head-004"));
-        assert_eq!(detect_council_specialist("@council(head=005)", "Create ClickHouse ReplacingMergeTree schema", true), Some("head-005"));
-        assert_eq!(detect_council_specialist("@council(head=006)", "Implement lazy propagation segment tree in Rust", true), Some("head-006"));
-        assert_eq!(detect_council_specialist("@council(head=007)", "Write a Kubernetes CRD reconciler in kube-rs", true), Some("head-007"));
-        assert_eq!(detect_council_specialist("@council(head=008)", "Implement Raft consensus AppendEntries state machine", true), Some("head-008"));
-        assert_eq!(detect_council_specialist("@council(head=009)", "Vectorize dot product using AVX2 SIMD intrinsics", true), Some("head-009"));
-        assert_eq!(detect_council_specialist("@council(head=010)", "Run WASI 0.2 sandbox in Wasmtime host", true), Some("head-010"));
+        assert_eq!(
+            detect_council_specialist(
+                "@council(head=003)",
+                "Build a React 19 RSC component with Suspense",
+                true
+            ),
+            Some("head-003")
+        );
+        assert_eq!(
+            detect_council_specialist(
+                "@council(head=004)",
+                "Write an eBPF XDP packet filter in Rust aya",
+                true
+            ),
+            Some("head-004")
+        );
+        assert_eq!(
+            detect_council_specialist(
+                "@council(head=005)",
+                "Create ClickHouse ReplacingMergeTree schema",
+                true
+            ),
+            Some("head-005")
+        );
+        assert_eq!(
+            detect_council_specialist(
+                "@council(head=006)",
+                "Implement lazy propagation segment tree in Rust",
+                true
+            ),
+            Some("head-006")
+        );
+        assert_eq!(
+            detect_council_specialist(
+                "@council(head=007)",
+                "Write a Kubernetes CRD reconciler in kube-rs",
+                true
+            ),
+            Some("head-007")
+        );
+        assert_eq!(
+            detect_council_specialist(
+                "@council(head=008)",
+                "Implement Raft consensus AppendEntries state machine",
+                true
+            ),
+            Some("head-008")
+        );
+        assert_eq!(
+            detect_council_specialist(
+                "@council(head=009)",
+                "Vectorize dot product using AVX2 SIMD intrinsics",
+                true
+            ),
+            Some("head-009")
+        );
+        assert_eq!(
+            detect_council_specialist(
+                "@council(head=010)",
+                "Run WASI 0.2 sandbox in Wasmtime host",
+                true
+            ),
+            Some("head-010")
+        );
     }
 
     #[test]
@@ -3121,16 +3502,54 @@ mod tests {
 
     #[test]
     fn test_detect_hydra_loosened_natural_triage() {
-        assert_eq!(detect_council_specialist("", "Vectorize dot product using AVX2 SIMD intrinsics", true), Some("head-006"));
-        assert_eq!(detect_council_specialist("", "Write an eBPF XDP line-rate packet filter in Rust", true), Some("head-005"));
-        assert_eq!(detect_council_specialist("", "Create ClickHouse ReplacingMergeTree schema", true), Some("head-027"));
-        assert_eq!(detect_council_specialist("", "Implement lazy propagation segment tree in Rust", true), Some("head-040"));
-        assert_eq!(detect_council_specialist("", "Write a Kubernetes CRD reconciler in kube-rs", true), Some("head-036"));
-        assert_eq!(detect_council_specialist("", "Implement Raft consensus AppendEntries state machine", true), Some("head-012"));
-        assert_eq!(detect_council_specialist("", "Run WASI 0.2 sandbox in Wasmtime host", true), Some("head-013"));
-        assert_eq!(detect_council_specialist("", "Build a React 19 RSC component with Suspense", true), Some("head-021"));
-        assert_eq!(detect_council_specialist("", "Build an Axum SSE streaming server with Tokio", true), Some("head-009"));
-        assert_eq!(detect_council_specialist("", "Write a lock-free SPSC ring buffer in Rust", true), Some("head-004"));
+        assert_eq!(
+            detect_council_specialist("", "Vectorize dot product using AVX2 SIMD intrinsics", true),
+            Some("head-006")
+        );
+        assert_eq!(
+            detect_council_specialist(
+                "",
+                "Write an eBPF XDP line-rate packet filter in Rust",
+                true
+            ),
+            Some("head-005")
+        );
+        assert_eq!(
+            detect_council_specialist("", "Create ClickHouse ReplacingMergeTree schema", true),
+            Some("head-027")
+        );
+        assert_eq!(
+            detect_council_specialist("", "Implement lazy propagation segment tree in Rust", true),
+            Some("head-040")
+        );
+        assert_eq!(
+            detect_council_specialist("", "Write a Kubernetes CRD reconciler in kube-rs", true),
+            Some("head-036")
+        );
+        assert_eq!(
+            detect_council_specialist(
+                "",
+                "Implement Raft consensus AppendEntries state machine",
+                true
+            ),
+            Some("head-012")
+        );
+        assert_eq!(
+            detect_council_specialist("", "Run WASI 0.2 sandbox in Wasmtime host", true),
+            Some("head-013")
+        );
+        assert_eq!(
+            detect_council_specialist("", "Build a React 19 RSC component with Suspense", true),
+            Some("head-021")
+        );
+        assert_eq!(
+            detect_council_specialist("", "Build an Axum SSE streaming server with Tokio", true),
+            Some("head-009")
+        );
+        assert_eq!(
+            detect_council_specialist("", "Write a lock-free SPSC ring buffer in Rust", true),
+            Some("head-004")
+        );
     }
 
     #[test]
@@ -3139,7 +3558,8 @@ mod tests {
         assert!(is_degenerate(garbage1));
         let garbage2 = "011200000";
         assert!(is_degenerate(garbage2));
-        let valid = "<think>\n1. Invariant: memory order.\n</think>\n@council(head=001, domain=systems)";
+        let valid =
+            "<think>\n1. Invariant: memory order.\n</think>\n@council(head=001, domain=systems)";
         assert!(!is_degenerate(valid));
     }
 
@@ -3202,7 +3622,10 @@ fn route_orca_pod(
         if score > best_score {
             best_score = score;
             best_pod = pid.to_string();
-            matched_think = entry.get("think").and_then(|v| v.as_bool()).unwrap_or(false)
+            matched_think = entry
+                .get("think")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
                 || entry
                     .get("role")
                     .and_then(|v| v.as_str())
@@ -3266,10 +3689,14 @@ fn verify_orca_code(resp: &str) -> (bool, String) {
     let mut rest = body;
     while let Some(start) = rest.find("```") {
         let after = &rest[start + 3..];
-        let Some(nl) = after.find('\n') else { break; };
+        let Some(nl) = after.find('\n') else {
+            break;
+        };
         let tag = after[..nl].trim().to_ascii_lowercase();
         let code_start = &after[nl + 1..];
-        let Some(end) = code_start.find("```") else { break; };
+        let Some(end) = code_start.find("```") else {
+            break;
+        };
         if lang.is_empty() {
             if tag.contains("python") || tag == "py" {
                 lang = "python";
@@ -3311,9 +3738,16 @@ fn verify_orca_code(resp: &str) -> (bool, String) {
             let rlib = tmp_dir.join(format!("libnioxs_orca_verify_{pid}_{seq}.rlib"));
             let _ = std::fs::write(&p, &joined);
             let mut cmd = std::process::Command::new("rustc");
-            cmd.args(["--edition", "2021", "--crate-type", "lib", "--emit=metadata", "-o"])
-                .arg(&rlib)
-                .arg(&p);
+            cmd.args([
+                "--edition",
+                "2021",
+                "--crate-type",
+                "lib",
+                "--emit=metadata",
+                "-o",
+            ])
+            .arg(&rlib)
+            .arg(&p);
             let res = run_cmd_with_timeout(cmd, 10, false);
             let _ = std::fs::remove_file(&p);
             let _ = std::fs::remove_file(&rlib);
@@ -3369,9 +3803,18 @@ mod orca_tests {
             serde_json::json!({"pod_id": "pod_0", "salient_terms": ["git", "diff"]}),
             serde_json::json!({"pod_id": "sql_plugin", "salient_terms": ["postgres", "migration"], "think": true}),
         ];
-        assert_eq!(route_orca_pod("fix postgres migration", None, &manifest), ("sql_plugin".into(), true));
-        assert_eq!(route_orca_pod("unrelated prompt", None, &manifest), ("lead".into(), false));
-        assert_eq!(route_orca_pod("anything", Some("sql_plugin"), &manifest), ("sql_plugin".into(), true));
+        assert_eq!(
+            route_orca_pod("fix postgres migration", None, &manifest),
+            ("sql_plugin".into(), true)
+        );
+        assert_eq!(
+            route_orca_pod("unrelated prompt", None, &manifest),
+            ("lead".into(), false)
+        );
+        assert_eq!(
+            route_orca_pod("anything", Some("sql_plugin"), &manifest),
+            ("sql_plugin".into(), true)
+        );
     }
 
     #[test]

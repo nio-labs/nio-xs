@@ -32,11 +32,7 @@ impl DecodingPolicy {
             } else {
                 1.10
             },
-            history_window: if hydra || manta || tiger || fox || rabbit {
-                128
-            } else {
-                128
-            },
+            history_window: 128,
             suppressed: if skate {
                 &[3725, 47182]
             } else if manta {
@@ -174,7 +170,7 @@ mod tests {
             ),
             (
                 (false, false, false, false, false, false, false, false, true),
-                "1.05",
+                "1.15",
                 vec![],
             ),
         ] {
@@ -184,16 +180,7 @@ mod tests {
             .runner_args();
             let value = |key| args.windows(2).find(|w| w[0] == key).map(|w| w[1].as_str());
             assert_eq!(value("--repeat-penalty"), Some(expected_penalty));
-            assert_eq!(
-                value("--repeat-last-n"),
-                Some(if flags.8 {
-                    "64"
-                } else if flags.1 || flags.5 || flags.6 || flags.7 {
-                    "128"
-                } else {
-                    "64"
-                })
-            );
+            assert_eq!(value("--repeat-last-n"), Some("128"));
             assert_eq!(value("--temp"), Some("0"));
             assert_eq!(value("--frequency-penalty"), Some("0"));
             assert_eq!(value("--presence-penalty"), Some("0"));
