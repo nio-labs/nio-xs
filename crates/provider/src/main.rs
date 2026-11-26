@@ -3,6 +3,7 @@ use nioxs_provider::{ActiveTurns, App, router};
 use nioxs_storage::NioDb;
 use std::sync::Arc;
 
+mod penguin;
 mod skate_safety;
 mod stream_flow;
 
@@ -856,7 +857,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|orca <prompt>|orca-nano <prompt>|orca-mini <prompt>|orca-omni <prompt>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|orca <prompt>|orca-nano <prompt>|orca-mini <prompt>|orca-omni <prompt>|penguin <prompt>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
   pull [model]   Download and verify local MicroLM weights (orca-nano, orca-mini, orca-omni, viper, skate, manta, beluga, blue, tiger, cheetah, fox, rabbit, all)\n\
@@ -864,6 +865,7 @@ Commands:\n\
   orca-nano <prompt> Run Orca Nano 0.5B×13 Sovereign Pod Fleet\n\
   orca-mini <prompt> Run Orca Mini 1.5B×13 Sovereign Pod Fleet\n\
   orca-omni <prompt> Run Orca Omni Hybrid Fleet (0.5B fast Lead + 1.5B+ heavy Pods)\n\
+  penguin <prompt>   Run Penguin Self-Healing Herd (0.5B Scout + 1.5B Builder + /teach memory)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
@@ -1603,6 +1605,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         flow.finish();
         println!();
         return Ok(());
+    }
+    if arg.as_deref() == Some("penguin") {
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        return Ok(run_penguin_cli(raw_args).await?);
     }
     if matches!(
         arg.as_deref(),
@@ -3540,6 +3546,308 @@ mod tests {
         assert!(formatted.contains("head = 001"));
         assert!(formatted.contains("domain = systems-atomic-concurrency"));
     }
+}
+
+async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
+    if raw_args.is_empty() || raw_args[0] == "-h" || raw_args[0] == "--help" {
+        println!(
+            "Usage: nioxs penguin [--builder] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--verbose|-v] <prompt>"
+        );
+        println!(
+            "  teach <trigger => fact>   Save an instant SimSimi-style memory to ~/.nioxs/penguin_memory.jsonl"
+        );
+        return Ok(());
+    }
+
+    let mem_path = penguin::memory_path();
+    let rep_path = penguin::replay_path();
+    if raw_args[0] == "teach" {
+        let joined = raw_args[1..].join(" ");
+        if joined.trim().is_empty() {
+            return Err(anyhow::anyhow!(
+                "Usage: nioxs penguin teach \"<trigger => fact>\""
+            ));
+        }
+        let (trigger, content) = joined
+            .split_once("=>")
+            .map(|(a, b)| (a.trim(), b.trim()))
+            .unwrap_or((joined.trim(), joined.trim()));
+        let saved = penguin::append_memory(&mem_path, "global", trigger, content, "teach", true)
+            .map_err(|e| anyhow::anyhow!(e))?;
+        println!(
+            "✔ Taught Penguin [id={}] ({}): {}",
+            saved.id, saved.trigger, saved.content
+        );
+        return Ok(());
+    }
+
+    let mut use_builder = false;
+    let mut use_search = false;
+    let mut force_think: Option<bool> = None;
+    let mut force_verify: Option<bool> = None;
+    let mut verbose = false;
+    let mut flow_mode = FlowMode::Token;
+    let mut custom_max_tokens: Option<usize> = None;
+    let mut device_pref = nioxs_engine::DevicePreference::Auto;
+    let mut prompt_parts = Vec::new();
+    let mut iter = raw_args.into_iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--builder" => use_builder = true,
+            "--search" => use_search = true,
+            "--think" => force_think = Some(true),
+            "--no-think" => force_think = Some(false),
+            "--verify" => force_verify = Some(true),
+            "--no-verify" => force_verify = Some(false),
+            "--verbose" | "-v" => verbose = true,
+            "--cpu" => device_pref = nioxs_engine::DevicePreference::Cpu,
+            "--gpu" => device_pref = nioxs_engine::DevicePreference::Gpu,
+            "--memories" => {
+                let all = penguin::load_memories(&mem_path);
+                if all.is_empty() {
+                    println!("(no Penguin memories saved yet in {})", mem_path.display());
+                } else {
+                    for m in all {
+                        println!(
+                            "#{} [{}|{}] {} => {}",
+                            m.id, m.scope, m.source, m.trigger, m.content
+                        );
+                    }
+                }
+                return Ok(());
+            }
+            "--forget" => {
+                let target = iter
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--forget requires <id|all>"))?;
+                let n =
+                    penguin::forget_memories(&mem_path, &target).map_err(|e| anyhow::anyhow!(e))?;
+                println!("✔ Forgot {n} Penguin memory entry(s).");
+                return Ok(());
+            }
+            "--teach" => {
+                let fact = iter
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--teach requires <fact>"))?;
+                let (trigger, content) = fact
+                    .split_once("=>")
+                    .map(|(a, b)| (a.trim(), b.trim()))
+                    .unwrap_or((fact.trim(), fact.trim()));
+                let saved =
+                    penguin::append_memory(&mem_path, "global", trigger, content, "teach", true)
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                println!("✔ Taught Penguin [id={}]: {}", saved.id, saved.content);
+                if prompt_parts.is_empty() && iter.len() == 0 {
+                    return Ok(());
+                }
+            }
+            "--flow" => {
+                if let Some(v) = iter.next() {
+                    flow_mode = match v.to_ascii_lowercase().as_str() {
+                        "burst" => FlowMode::Burst,
+                        "paragraph" | "para" => FlowMode::Paragraph,
+                        _ => FlowMode::Token,
+                    };
+                }
+            }
+            "-n" | "--max-tokens" => {
+                if let Some(v) = iter.next() {
+                    custom_max_tokens = v.parse().ok();
+                }
+            }
+            _ => prompt_parts.push(a),
+        }
+    }
+    let prompt = prompt_parts.join(" ");
+    if prompt.trim().is_empty() {
+        return Err(anyhow::anyhow!(
+            "Empty prompt. Usage: nioxs penguin <prompt>"
+        ));
+    }
+
+    let models_dir = nioxs_artifacts::resolve_models_dir();
+    let tokenizer_path = [
+        models_dir.join("orca-tokenizer.json"),
+        models_dir.join("tiger-tokenizer.json"),
+    ]
+    .into_iter()
+    .find(|p| p.is_file())
+    .ok_or_else(|| {
+        anyhow::anyhow!(
+            "Could not locate orca-tokenizer.json in {}",
+            models_dir.display()
+        )
+    })?;
+
+    let scout_path = models_dir.join("penguin-scout-0.5b-q4_k_m.gguf");
+    let builder_path = models_dir.join("penguin-builder-1.5b-q4_k_m.gguf");
+    let initial_path = if use_builder || !scout_path.is_file() {
+        if builder_path.is_file() {
+            builder_path.clone()
+        } else {
+            return Err(anyhow::anyhow!(
+                "Could not locate Penguin GGUFs in {} (expected penguin-scout-0.5b-q4_k_m.gguf / penguin-builder-1.5b-q4_k_m.gguf)",
+                models_dir.display()
+            ));
+        }
+    } else {
+        scout_path.clone()
+    };
+
+    let memories = penguin::retrieve_memories(&mem_path, &prompt, 3);
+    let mem_block = if memories.is_empty() {
+        String::new()
+    } else {
+        let lines: Vec<String> = memories
+            .iter()
+            .map(|m| format!("- {}: {}", m.trigger, m.content))
+            .collect();
+        format!(
+            "[Known User Facts / Taught Memories]\n{}\n\n",
+            lines.join("\n")
+        )
+    };
+
+    let web_block = if use_search {
+        if let Some(snip) = penguin::fetch_web_grounding(&prompt).await {
+            format!("[Web Grounding]\n- {snip}\n\n")
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
+    let think_enabled = force_think.unwrap_or(false);
+    let sys = if think_enabled {
+        "You are Penguin Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a concise 3-6 line <think>...</think> plan, then provide a clear, accurate answer using any provided [Known User Facts] or [Web Grounding].".to_string()
+    } else {
+        "You are Penguin (vMicroLM-Growth), developed by Nio Labs. Be natural, concise, and accurate. Always use [Known User Facts] directly when answering questions about the user, and never reply with 'As an AI language model'.".to_string()
+    };
+    let user_msg = format!("{mem_block}{web_block}{prompt}");
+    let formatted_prompt = format!(
+        "<|im_start|>system\n{sys}<|im_end|>\n<|im_start|>user\n{user_msg}<|im_end|>\n<|im_start|>assistant\n"
+    );
+
+    let max_tokens = custom_max_tokens.unwrap_or(2048);
+    let temp = if think_enabled { 0.20 } else { 0.30 };
+    let t0 = std::time::Instant::now();
+    let mut engine =
+        nioxs_engine::AstEngine::from_paths(initial_path.clone(), tokenizer_path.clone());
+    engine.set_device_preference(device_pref);
+    let mut rx = engine
+        .generate_stream(formatted_prompt, max_tokens, temp, 0.90)
+        .await?;
+    let mut flow = StreamFlow::new(flow_mode);
+    flow.set_show_think_tags(true);
+    let mut full_resp = String::new();
+    while let Some(chunk) = rx.recv().await {
+        full_resp.push_str(&chunk);
+        flow.push(&chunk);
+    }
+    flow.finish();
+    println!();
+
+    let should_verify =
+        force_verify.unwrap_or_else(|| penguin::looks_like_code_task(&prompt, &full_resp));
+    let mut active_model = initial_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("penguin")
+        .to_string();
+    let mut healed = false;
+    let mut verified_opt: Option<bool> = None;
+
+    if should_verify {
+        let (mut ok, mut err) = verify_orca_with_mode(&full_resp, "code");
+        if !ok && builder_path.is_file() {
+            let web_heal = if web_block.is_empty() {
+                penguin::fetch_web_grounding(&prompt)
+                    .await
+                    .map(|s| format!("\n\n[Web Grounding]\n- {s}"))
+                    .unwrap_or_default()
+            } else {
+                web_block.clone()
+            };
+            let used_web = !web_heal.is_empty();
+            let failed_draft = full_resp.clone();
+            let first_err = err.clone();
+
+            println!(
+                "\x1b[1;33m[Penguin Heal]\x1b[0m Verifier caught issue; escalating to 1.5B Builder..."
+            );
+            let heal_sys = format!(
+                "You are Penguin Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a short 3-6 line <think>...</think> root-cause analysis, then output the complete, verified working code.{mem_block}{web_heal}"
+            );
+            let heal_user = format!(
+                "Original request:\n{prompt}\n\nFailed draft:\n{failed_draft}\n\nVerifier error:\n{first_err}\n\nFix the issue completely."
+            );
+            let heal_prompt = format!(
+                "<|im_start|>system\n{heal_sys}<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
+            );
+            let mut b_engine =
+                nioxs_engine::AstEngine::from_paths(builder_path.clone(), tokenizer_path.clone());
+            b_engine.set_device_preference(device_pref);
+            let mut b_rx = b_engine
+                .generate_stream(heal_prompt, max_tokens, 0.20, 0.90)
+                .await?;
+            let mut b_flow = StreamFlow::new(flow_mode);
+            b_flow.set_show_think_tags(true);
+            full_resp.clear();
+            while let Some(chunk) = b_rx.recv().await {
+                full_resp.push_str(&chunk);
+                b_flow.push(&chunk);
+            }
+            b_flow.finish();
+            println!();
+            active_model = "penguin-builder-1.5b-q4_k_m.gguf".to_string();
+            let res = verify_orca_with_mode(&full_resp, "code");
+            ok = res.0;
+            err = res.1;
+            if ok {
+                healed = true;
+                let _ = penguin::append_replay(
+                    &rep_path,
+                    &penguin::PenguinReplayEntry {
+                        prompt: prompt.clone(),
+                        failed_draft: Some(failed_draft),
+                        verifier_error: Some(first_err.clone()),
+                        verified_solution: full_resp.clone(),
+                        used_web,
+                        created_at: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0),
+                    },
+                );
+                let _ = penguin::append_memory(
+                    &mem_path,
+                    "project",
+                    &prompt,
+                    &format!("Healed & verified solution recorded (fixed: {first_err})."),
+                    "healed",
+                    true,
+                );
+            }
+        }
+        verified_opt = Some(ok);
+        if !ok && verbose {
+            eprintln!("[Penguin Verify] Last error: {err}");
+        }
+    }
+
+    if verbose {
+        let elapsed = t0.elapsed().as_secs_f64();
+        println!(
+            "\n---\nPenguin [vMicroLM-Growth] | model={} | memories={} | healed={} | verified={:?} | {:.2}s",
+            active_model,
+            memories.len(),
+            healed,
+            verified_opt,
+            elapsed
+        );
+    }
+    Ok(())
 }
 
 fn route_orca_pod_meta(
