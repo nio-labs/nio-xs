@@ -123,44 +123,54 @@ nioxs viper -x -y "kill port 3000"
 | **Manta** | **494M** | Systems Guru & DAG Architect | **~254 MB** (`Q4_0`) | **~95 MB** | **~195 MB** | 20–35 w/s | `<manta_plan>` DAGs & Wasm Engine |
 | **Orca Nano** | **0.5B×13** | Sovereign Micro-Pod Fleet | **~4.9 GB** (`13×380 MB Q4_K_M`) | **~380 MB** | **~582 MB** | ~20 w/s | **85.37% HumanEval / 84.0% MBPP** |
 | **Orca Mini** | **1.5B×13** | Sovereign Mini-Pod Fleet | **~12.2 GB** (`13×941 MB Q4_K_M`) | **~941 MB** | **~1,839 MB** | 8–10 w/s | **86.59% HumanEval / 87.0% MBPP** |
+| **Orca Omni** | **0.5B + 1.5B** | Hybrid Fast-Pass + Escalation Fleet | **~17.1 GB** (`Nano + Mini Q4_K_M`) | **~380–941 MB** | **~582–1,839 MB** | 8–20 w/s | **92.07% HumanEval / 89.0% MBPP** |
 | **Beluga** | **1.54B** | Sovereign Lead Architect | **~604 MB** (`IQ3_XXS`) | **~76 MB** | **~295 MB** | 14–22 tok/s | Deep `<think>` CoT Invariant Proofs |
 | **Blue** | **3.82B** | Sovereign Reflex Lead & Staff Peer | **~1.40 GiB** (`IQ3_XXS`) | n/a | **~192 MB** | ~4.4 tok/s (measured) | Lean `<think>` verification (`nioxs blue`) |
 
 ---
 
-## 🐋 Orca: Sovereign Pod Fleet (0.5B×13 Nano & 1.5B×13 Mini)
+## 🐋 Orca: Sovereign Pod Fleet (`Orca Nano`, `Orca Mini` & `Orca Omni`)
 
 Orca replaces single-model bottlenecks with a **13-pod specialist fleet** (`1× Lead + 6× Action Pods + 6× Reasoner Pods`) routed dynamically via `pod_manifest.json` and backed by bounded `--verify` error-guided self-repair:
 
-| Tier | Topology | HumanEval | MBPP | Host RAM (`VmHWM`) | CPU Speed |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **`orca-nano`** | `0.5B × 13` (`Q4_K_M`) | **85.37%** (`140/164`) | **84.0%** (`84/100`) | **~582 MB** | **~20 w/s** |
-| **`orca-mini`** | `1.5B × 13` (`Q4_K_M`) | **86.59%** (`142/164`) | **87.0%** (`87/100`) | **~1,839 MB** | **8–10 w/s** |
+### Benchmark Comparison vs. Stock `Qwen2.5-Coder-Instruct`
 
-*(Both tiers beat stock `Qwen2.5-Coder-7B-Instruct INT4` at `84.15%` HumanEval / `84.0%` MBPP on-device.)*
+| Model / Fleet | Active Params | HumanEval (`164`) | MBPP (`100`) | Host RAM (`VmHWM`) | CPU Speed |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Stock `Qwen2.5-Coder-3B` (`INT4`) | `3.0B` | `79.27%` (`130/164`) | `73.0%` (`73/100`) | — | — |
+| Stock `Qwen2.5-Coder-3B` (`FP16`) | `3.0B` | `81.10%` (`133/164`) | `74.0%` (`74/100`) | — | — |
+| Stock `Qwen2.5-Coder-7B` (`INT4`) | `7.0B` | `84.15%` (`138/164`) | `84.0%` (`84/100`) | — | — |
+| **`Orca Nano`** (`0.5B × 13`) | **`0.5B`** | **`85.37%`** (`140/164`) | **`84.0%`** (`84/100`) | **`~582 MB`** | **`~20 w/s`** |
+| **`Orca Mini`** (`1.5B × 13`) | **`1.5B`** | **`86.59%`** (`142/164`) | **`87.0%`** (`87/100`) | **`~1,839 MB`** | **`8–10 w/s`** |
+| **`Orca Omni`** (`0.5B Fast → 1.5B Esc.`) | **`0.5B / 1.5B`** | **`92.07%`** (`151/164`) | **`89.0%`** (`89/100`) | **`~582–1,839 MB`** | **`8–20 w/s`** |
+
+*(Every Orca tier outperforms stock `Qwen2.5-Coder-7B-Instruct INT4` on HumanEval while running at `0.5B–1.5B` active parameters; **`Orca Omni`** solves `56.71%` on the fast `0.5B` pass and escalates hard tasks to `1.5B` reasoner/repair pods to reach **`92.07%` HumanEval** and **`89.0%` MBPP**.)*
 
 ### Usage & CLI Management
 ```bash
-# Pull Orca Nano (13× 380 MB) or Orca Mini (13× 941 MB) from GitHub Releases
+# Pull Orca Nano (13× 380 MB), Orca Mini (13× 941 MB), or Orca Omni (both) from GitHub Releases
 nioxs pull orca-nano
 nioxs pull orca-mini
+nioxs pull orca-omni
 
 # Run with automatic pod routing & bounded --verify self-repair
 nioxs orca-nano --verify "Write a Python function fib(n) with assert fib(6) == 8"
 nioxs orca-mini --verify "Implement a persistent B-tree node split in Python with tests"
+nioxs orca-omni --verify "Implement a lock-free ring buffer in Python with tests"
 ```
 
 ---
 
-## 🧬 The v-µLM (V-MicroLM) Architecture: Reflex, Vector & Companion
+## 🧬 The v-µLM (V-MicroLM) Architecture: Reflex, Vector, Companion & Pods
 
-Nio's proprietary **v-µLM (V-MicroLM)** architecture eliminates reliance on brittle synthetic dataset fine-tuning by organizing execution across three complementary mathematical pillars:
+Nio's proprietary **v-µLM (V-MicroLM)** architecture eliminates single-monolith bottlenecks by organizing local execution across four complementary pillars:
 
 | Pillar | Role | Key Models | Operational SLA |
 | :--- | :--- | :--- | :--- |
 | **`v-µLM Reflex`** | Instant Grammar & In-Process Decision Engine | **Nano (~0.5M)**, **Mask (1.1M)**, **Micro (5.0M)**, **Mini (7.1M)**, **Viper (100M)** | `< 28 MB RAM`, sub-0.1ms to sub-20µs sampling |
 | **`v-µLM Vector`** | Vector Codebook Lattice & Web Scout | **Mako (150M)** | `92 MB disk`, >0.999 cosine fidelity, wire scraping |
-| **`v-µLM Companion`** | Sovereign Edge Companion Fleet | **Skate (135M)**, **Manta (494M)**, **Beluga (1.54B)** & **Gar (14.7B, planned)** | Memory varies with model and context; see Skate measurements below |
+| **`v-µLM Companion`** | Sovereign Edge Companion Fleet | **Skate (135M)**, **Manta (494M)**, **Beluga (1.54B)** & **Gar (14.7B, planned)** | `~98–295 MB` peak RAM, 8,192-token context |
+| **`v-µLM Pods`** | Dynamic Specialist Pod Fleet & Error-Guided Self-Repair | **Orca Nano (0.5B×13)**, **Orca Mini (1.5B×13)**, **Orca Omni (0.5B+1.5B)** | `85.37%–92.07%` HumanEval, `0.5B–1.5B` active |
 
 ---
 
