@@ -3876,14 +3876,16 @@ async fn run_meerkat_turn(
     .any(|kw| lower_q.contains(kw));
 
     let mut auto_need_web = opts.use_search;
+    let mut auto_need_tool = prompt.contains("<tool ");
     if !auto_need_web
+        && !auto_need_tool
         && memories.is_empty()
         && !asks_identity
         && !meerkat::looks_like_code_task(prompt, "")
         && scout_path.is_file()
     {
         let cls_prompt = format!(
-            "<|im_start|>system\nDecide if the user question requires live, current, or post-2024 web data (such as current leaders, latest software versions, recent events, prices, or news) instead of timeless facts or casual chat. Reply ONLY with YES or NO.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            "<|im_start|>system\nClassify the user request into ONE word:\n- WEB: requires live, current, or post-2024 web info (leaders, latest versions, news, prices)\n- TOOL: requires reading a local file, fetching a URL, running Python/calculations, or calling a tool\n- DIRECT: casual chat, timeless facts, or general knowledge\nReply ONLY with WEB, TOOL, or DIRECT.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         );
         let mut cls_engine = nioxs_engine::AstEngine::from_paths(
             scout_path.to_path_buf(),
@@ -3895,8 +3897,11 @@ async fn run_meerkat_turn(
             while let Some(c) = cls_rx.recv().await {
                 verdict.push_str(&c);
             }
-            if verdict.trim().to_ascii_uppercase().starts_with("YES") {
+            let v = verdict.trim().to_ascii_uppercase();
+            if v.starts_with("WEB") {
                 auto_need_web = true;
+            } else if v.starts_with("TOOL") {
+                auto_need_tool = true;
             }
         }
     }
@@ -3924,8 +3929,8 @@ async fn run_meerkat_turn(
         String::new()
     };
 
-    let using_builder =
-        (opts.use_builder || used_web || !scout_path.is_file()) && builder_path.is_file();
+    let using_builder = (opts.use_builder || auto_need_tool || used_web || !scout_path.is_file())
+        && builder_path.is_file();
     let initial_path = if using_builder {
         builder_path.to_path_buf()
     } else {
