@@ -3939,49 +3939,64 @@ async fn run_penguin_turn(
                 web_block.clone()
             };
             let used_web = !web_heal.is_empty();
-            let failed_draft = full_resp.clone();
+            let first_draft = full_resp.clone();
             let first_err = err.clone();
 
-            println!(
-                "\x1b[1;33m[Penguin Heal]\x1b[0m Verifier caught issue; escalating to 1.5B Builder..."
-            );
-            let heal_sys = format!(
-                "You are Penguin Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a short 3-6 line <think>...</think> root-cause analysis, then output the complete, verified working code.{mem_block}{web_heal}"
-            );
-            let heal_user = format!(
-                "Original request:\n{prompt}\n\nFailed draft:\n{failed_draft}\n\nVerifier error:\n{first_err}\n\nFix the issue completely."
-            );
-            let heal_prompt = format!(
-                "<|im_start|>system\n{heal_sys}<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
-            );
-            let mut b_engine = nioxs_engine::AstEngine::from_paths(
-                builder_path.to_path_buf(),
-                tokenizer_path.to_path_buf(),
-            );
-            b_engine.set_device_preference(opts.device_pref);
-            let mut b_rx = b_engine
-                .generate_stream(heal_prompt, opts.max_tokens, 0.20, 0.90)
-                .await?;
-            let mut b_flow = StreamFlow::new(opts.flow_mode);
-            b_flow.set_show_think_tags(true);
-            full_resp.clear();
-            while let Some(chunk) = b_rx.recv().await {
-                full_resp.push_str(&chunk);
-                b_flow.push(&chunk);
+            for round in 1..=3 {
+                if ok {
+                    break;
+                }
+                let fresh_restart = round == 2;
+                println!(
+                    "\x1b[1;33m[Penguin Heal {}/3{}]\x1b[0m Verifier caught issue; escalating to 1.5B Builder...",
+                    round,
+                    if fresh_restart { " fresh-restart" } else { "" }
+                );
+                let heal_sys = format!(
+                    "You are Penguin Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a short 3-6 line <think>...</think> root-cause analysis, then output a complete, clean, working Python solution with valid assert tests.{mem_block}{web_heal}"
+                );
+                let heal_user = if fresh_restart {
+                    format!(
+                        "Original request:\n{prompt}\n\nPrevious attempts failed with:\n{err}\n\nDiscard the broken draft and write a fresh, simple, 100% verified solution."
+                    )
+                } else {
+                    format!(
+                        "Original request:\n{prompt}\n\nFailed draft:\n{full_resp}\n\nVerifier error:\n{err}\n\nFix the issue completely."
+                    )
+                };
+                let heal_prompt = format!(
+                    "<|im_start|>system\n{heal_sys}<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
+                );
+                let heal_temp = if fresh_restart { 0.35 } else { 0.20 };
+                let mut b_engine = nioxs_engine::AstEngine::from_paths(
+                    builder_path.to_path_buf(),
+                    tokenizer_path.to_path_buf(),
+                );
+                b_engine.set_device_preference(opts.device_pref);
+                let mut b_rx = b_engine
+                    .generate_stream(heal_prompt, opts.max_tokens, heal_temp, 0.90)
+                    .await?;
+                let mut b_flow = StreamFlow::new(opts.flow_mode);
+                b_flow.set_show_think_tags(true);
+                full_resp.clear();
+                while let Some(chunk) = b_rx.recv().await {
+                    full_resp.push_str(&chunk);
+                    b_flow.push(&chunk);
+                }
+                b_flow.finish();
+                println!();
+                active_model = "penguin-builder-1.5b-q4_k_m.gguf".to_string();
+                let res = verify_orca_with_mode(&full_resp, "code");
+                ok = res.0;
+                err = res.1;
             }
-            b_flow.finish();
-            println!();
-            active_model = "penguin-builder-1.5b-q4_k_m.gguf".to_string();
-            let res = verify_orca_with_mode(&full_resp, "code");
-            ok = res.0;
-            err = res.1;
             if ok {
                 healed = true;
                 let _ = penguin::append_replay(
                     rep_path,
                     &penguin::PenguinReplayEntry {
                         prompt: prompt.to_string(),
-                        failed_draft: Some(failed_draft),
+                        failed_draft: Some(first_draft),
                         verifier_error: Some(first_err.clone()),
                         verified_solution: full_resp.clone(),
                         used_web,
