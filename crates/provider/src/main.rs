@@ -3858,6 +3858,12 @@ async fn run_penguin_turn(
         }
         if let Some(snip) = penguin::fetch_web_grounding(prompt).await {
             used_web = true;
+            if opts.verbose {
+                println!(
+                    "\x1b[1;36m[Penguin Web]\x1b[0m Retrieved {} chars of grounding.",
+                    snip.len()
+                );
+            }
             format!("[Web Grounding]\n- {snip}\n\n")
         } else {
             String::new()
@@ -3865,6 +3871,13 @@ async fn run_penguin_turn(
     } else {
         String::new()
     };
+
+    let initial_path =
+        if (opts.use_builder || used_web || !scout_path.is_file()) && builder_path.is_file() {
+            builder_path.to_path_buf()
+        } else {
+            scout_path.to_path_buf()
+        };
 
     let think_enabled = opts.force_think.unwrap_or(false);
     let lower_q = prompt.to_ascii_lowercase();
@@ -3878,13 +3891,15 @@ async fn run_penguin_turn(
     ]
     .iter()
     .any(|kw| lower_q.contains(kw));
-    let identity_block = if let Some(nm) = taught_name {
-        format!(
-            "[Identity]\nYou are created by Nio Labs (local Nio Penguin vMicroLM-Growth herd), and the user taught you: {}. Use this taught name directly and never claim to be Alibaba Cloud, Qwen, or Pegasus.\n\n",
-            nm.content
-        )
-    } else if asks_identity {
-        "[Identity]\nYou are Nio Penguin (vMicroLM-Growth), created by Nio Labs — a local self-healing conversational and coding AI herd (0.5B Scout + 1.5B Builder) running in nio-xs. Never call yourself Pegasus, Qwen, or Alibaba Cloud.\n\n".to_string()
+    let identity_block = if asks_identity {
+        if let Some(nm) = taught_name {
+            format!(
+                "[Identity]\nYou are created by Nio Labs (local Nio Penguin vMicroLM-Growth herd), and the user taught you: {}. Use this taught name directly and never claim to be Alibaba Cloud, Qwen, or Pegasus.\n\n",
+                nm.content
+            )
+        } else {
+            "[Identity]\nYou are Nio Penguin (vMicroLM-Growth), created by Nio Labs — a local self-healing conversational and coding AI herd (0.5B Scout + 1.5B Builder) running in nio-xs. Never call yourself Pegasus, Qwen, or Alibaba Cloud.\n\n".to_string()
+        }
     } else {
         String::new()
     };
