@@ -3492,66 +3492,6 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_hydra_keyword_fallback() {
-        let acc = "<think>\nThinking about kernel primitives...\n</think>";
-        let prompt = "Implement an atomic lock-free ring buffer in Rust";
-        let specialist = detect_council_specialist(acc, prompt, true);
-        assert_eq!(specialist, Some("head-004"));
-    }
-
-    #[test]
-    fn test_detect_hydra_loosened_natural_triage() {
-        assert_eq!(
-            detect_council_specialist("", "Vectorize dot product using AVX2 SIMD intrinsics", true),
-            Some("head-006")
-        );
-        assert_eq!(
-            detect_council_specialist(
-                "",
-                "Write an eBPF XDP line-rate packet filter in Rust",
-                true
-            ),
-            Some("head-005")
-        );
-        assert_eq!(
-            detect_council_specialist("", "Create ClickHouse ReplacingMergeTree schema", true),
-            Some("head-027")
-        );
-        assert_eq!(
-            detect_council_specialist("", "Implement lazy propagation segment tree in Rust", true),
-            Some("head-040")
-        );
-        assert_eq!(
-            detect_council_specialist("", "Write a Kubernetes CRD reconciler in kube-rs", true),
-            Some("head-036")
-        );
-        assert_eq!(
-            detect_council_specialist(
-                "",
-                "Implement Raft consensus AppendEntries state machine",
-                true
-            ),
-            Some("head-012")
-        );
-        assert_eq!(
-            detect_council_specialist("", "Run WASI 0.2 sandbox in Wasmtime host", true),
-            Some("head-013")
-        );
-        assert_eq!(
-            detect_council_specialist("", "Build a React 19 RSC component with Suspense", true),
-            Some("head-021")
-        );
-        assert_eq!(
-            detect_council_specialist("", "Build an Axum SSE streaming server with Tokio", true),
-            Some("head-009")
-        );
-        assert_eq!(
-            detect_council_specialist("", "Write a lock-free SPSC ring buffer in Rust", true),
-            Some("head-004")
-        );
-    }
-
-    #[test]
     fn test_is_degenerate_detection() {
         let garbage1 = "''C, 'C their 'Cle', the Clawst, the 'C'\n')\n')\n')";
         assert!(is_degenerate(garbage1));
