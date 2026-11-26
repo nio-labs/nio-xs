@@ -3850,8 +3850,47 @@ async fn run_penguin_turn(
         )
     };
 
+    let think_enabled = opts.force_think.unwrap_or(false);
+    let lower_q = prompt.to_ascii_lowercase();
+    let asks_identity = [
+        "who are you",
+        "what are you",
+        "your name",
+        "who created you",
+        "who made you",
+        "who built you",
+    ]
+    .iter()
+    .any(|kw| lower_q.contains(kw));
+
+    let mut auto_need_web = opts.use_search;
+    if !auto_need_web
+        && memories.is_empty()
+        && !asks_identity
+        && !penguin::looks_like_code_task(prompt, "")
+        && scout_path.is_file()
+    {
+        let cls_prompt = format!(
+            "<|im_start|>system\nDecide if the user question requires live, current, or post-2024 web data (such as current leaders, latest software versions, recent events, prices, or news) instead of timeless facts or casual chat. Reply ONLY with YES or NO.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        );
+        let mut cls_engine = nioxs_engine::AstEngine::from_paths(
+            scout_path.to_path_buf(),
+            tokenizer_path.to_path_buf(),
+        );
+        cls_engine.set_device_preference(opts.device_pref);
+        if let Ok(mut cls_rx) = cls_engine.generate_stream(cls_prompt, 4, 0.0, 0.90).await {
+            let mut verdict = String::new();
+            while let Some(c) = cls_rx.recv().await {
+                verdict.push_str(&c);
+            }
+            if verdict.trim().to_ascii_uppercase().starts_with("YES") {
+                auto_need_web = true;
+            }
+        }
+    }
+
     let mut used_web = false;
-    let web_block = if opts.use_search {
+    let web_block = if auto_need_web {
         if opts.verbose {
             println!("\x1b[1;36m[Penguin Scout]\x1b[0m Scouting the web...");
         }
@@ -3879,19 +3918,6 @@ async fn run_penguin_turn(
         } else {
             scout_path.to_path_buf()
         };
-
-    let think_enabled = opts.force_think.unwrap_or(false);
-    let lower_q = prompt.to_ascii_lowercase();
-    let asks_identity = [
-        "who are you",
-        "what are you",
-        "your name",
-        "who created you",
-        "who made you",
-        "who built you",
-    ]
-    .iter()
-    .any(|kw| lower_q.contains(kw));
     let identity_block = if asks_identity {
         if let Some(nm) = taught_name {
             format!(
