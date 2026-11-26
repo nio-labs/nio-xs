@@ -212,17 +212,14 @@ pub fn looks_like_code_task(prompt: &str, response: &str) -> bool {
     let lower = prompt.to_ascii_lowercase();
     [
         "write a function",
-        "python",
-        "rust",
-        "javascript",
-        "typescript",
-        "implement",
+        "write a script",
+        "write code",
+        "implement ",
         "assert ",
         "compile",
         "refactor",
         "debug",
         "algorithm",
-        "code",
     ]
     .iter()
     .any(|kw| lower.contains(kw))
@@ -234,6 +231,7 @@ pub fn looks_like_knowledge_gap(resp: &str) -> bool {
         "[search]",
         "[need_web]",
         "as an ai",
+        "as of my last update",
         "knowledge cutoff",
         "don't have access",
         "cannot access",
@@ -243,6 +241,7 @@ pub fn looks_like_knowledge_gap(resp: &str) -> bool {
         "i'm not sure",
         "i am not sure",
         "cannot verify",
+        "check the official",
     ]
     .iter()
     .any(|kw| lower.contains(kw))
