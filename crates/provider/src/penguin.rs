@@ -169,6 +169,42 @@ pub fn forget_memories(path: &Path, target: &str) -> Result<usize, String> {
     Ok(removed)
 }
 
+pub fn extract_natural_teaching(prompt: &str) -> Option<(String, String)> {
+    let trimmed = prompt.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let prefixes = [
+        "remember that ",
+        "remember: ",
+        "remember ",
+        "from now on, ",
+        "from now on ",
+        "note that ",
+        "note: ",
+        "keep in mind that ",
+        "keep in mind ",
+        "learn that ",
+        "learn: ",
+        "correction: ",
+        "actually, ",
+        "no, ",
+    ];
+    for p in prefixes {
+        if lower.starts_with(p) {
+            let fact = trimmed[p.len()..].trim();
+            if fact.len() >= 6 {
+                let trigger = fact
+                    .split(" is ")
+                    .next()
+                    .or_else(|| fact.split(" are ").next())
+                    .unwrap_or(fact)
+                    .trim();
+                return Some((trigger.to_string(), fact.to_string()));
+            }
+        }
+    }
+    None
+}
+
 pub fn looks_like_code_task(prompt: &str, response: &str) -> bool {
     if response.contains("```") || response.contains("def ") || response.contains("fn ") {
         return true;
@@ -273,5 +309,18 @@ mod tests {
             "Write a Python function fib(n)",
             "def fib(n): ..."
         ));
+    }
+
+    #[test]
+    fn test_extract_natural_teaching() {
+        let hit = extract_natural_teaching("Remember that my favorite language is Rust");
+        assert_eq!(
+            hit,
+            Some((
+                "my favorite language".to_string(),
+                "my favorite language is Rust".to_string()
+            ))
+        );
+        assert!(extract_natural_teaching("What is my favorite language?").is_none());
     }
 }

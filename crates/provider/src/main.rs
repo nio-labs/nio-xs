@@ -3694,6 +3694,14 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         scout_path.clone()
     };
 
+    if let Some((trigger, fact)) = penguin::extract_natural_teaching(&prompt) {
+        if let Ok(saved) =
+            penguin::append_memory(&mem_path, "global", &trigger, &fact, "natural_teach", true)
+        {
+            println!("✔ Learned [id={}]: {}", saved.id, saved.content);
+        }
+    }
+
     let memories = penguin::retrieve_memories(&mem_path, &prompt, 3);
     let mem_block = if memories.is_empty() {
         String::new()
