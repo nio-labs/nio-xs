@@ -519,8 +519,7 @@ fn get_dynamic_manifests() -> &'static [DynamicManifest] {
             }
         }
         if raw_json.is_empty() {
-            raw_json = include_str!("../../../../nio-ideas/registry/hydra_anchor_registry.json")
-                .to_string();
+            raw_json = "{\"anchors\":[]}".to_string();
         }
 
         let mut list = Vec::new();

@@ -1,2 +1,2 @@
-[build]
-rustflags = ["-C", "target-cpu=native"]
+# Portable builds across Linux, macOS (Apple Silicon), Windows, and Android;
+# x86_64 AVX2/FMA kernels use runtime CPUID dispatch in nioxs-engine.
