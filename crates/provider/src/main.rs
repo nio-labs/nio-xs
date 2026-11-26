@@ -1032,15 +1032,39 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             return Ok(());
         }
         let lowered = model_target.trim().to_ascii_lowercase();
-        let (fleet_prefixes, is_wave1): (Vec<&str>, bool) = match lowered.as_str() {
-            "orca" | "orca-mini" => (vec!["orca-mini"], false),
-            "orca-nano" => (vec!["orca-nano"], false),
-            "orca-omni" => (vec!["orca-nano", "orca-mini"], false),
-            "health-wellness" => (vec!["health"], true),
-            "everyday-home" => (vec!["everyday"], true),
-            "orca-wave1" | "wave1" => (vec!["health", "everyday"], true),
-            _ => (vec![], false),
-        };
+        let (fleet_prefixes, manifest_tag): (Vec<&str>, Option<(&str, &str)>) =
+            match lowered.as_str() {
+                "orca" | "orca-mini" => (vec!["orca-mini"], None),
+                "orca-nano" => (vec!["orca-nano"], None),
+                "orca-omni" => (vec!["orca-nano", "orca-mini"], None),
+                "health-wellness" => (
+                    vec!["health"],
+                    Some(("wave1_bundle_manifest.json", "v0.6.1")),
+                ),
+                "everyday-home" => (
+                    vec!["everyday"],
+                    Some(("wave1_bundle_manifest.json", "v0.6.1")),
+                ),
+                "orca-wave1" | "wave1" => (
+                    vec!["health", "everyday"],
+                    Some(("wave1_bundle_manifest.json", "v0.6.1")),
+                ),
+                "math" => (vec!["math"], Some(("wave2_bundle_manifest.json", "v0.6.3"))),
+                "history" => (
+                    vec!["history"],
+                    Some(("wave2_bundle_manifest.json", "v0.6.3")),
+                ),
+                "general-knowledge" => (vec!["gk"], Some(("wave2_bundle_manifest.json", "v0.6.3"))),
+                "education-tutor" => (
+                    vec!["tutor"],
+                    Some(("wave2_bundle_manifest.json", "v0.6.3")),
+                ),
+                "orca-wave2" | "wave2" => (
+                    vec!["math", "history", "gk", "tutor"],
+                    Some(("wave2_bundle_manifest.json", "v0.6.3")),
+                ),
+                _ => (vec![], None),
+            };
         if !fleet_prefixes.is_empty() {
             let pod_entries: Vec<_> = manifest
                 .iter()
@@ -1053,27 +1077,24 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             println!(
                 "Pulling {} {} ({} pods + manifest)...",
                 lowered,
-                if is_wave1 { "bundle" } else { "fleet" },
+                if manifest_tag.is_some() {
+                    "bundle"
+                } else {
+                    "fleet"
+                },
                 pod_entries.len()
             );
             for entry in pod_entries {
                 let _ = nioxs_artifacts::prompt_and_pull_if_needed(&entry.model_id, auto_yes)
                     .map_err(|e| format!("Failed to pull {}: {e}", entry.model_id))?;
             }
-            let (manifest_name, manifest_url) = if is_wave1 {
-                (
-                    "wave1_bundle_manifest.json",
-                    "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.1/wave1_bundle_manifest.json",
-                )
-            } else {
-                (
-                    "pod_manifest.json",
-                    "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/pod_manifest.json",
-                )
-            };
+            let (manifest_name, tag) = manifest_tag.unwrap_or(("pod_manifest.json", "v0.6.0"));
+            let manifest_url = format!(
+                "https://github.com/nio-labs/nio-xs-models/releases/download/{tag}/{manifest_name}"
+            );
             let manifest_dest = nioxs_artifacts::resolve_models_dir().join(manifest_name);
             if !manifest_dest.exists() {
-                if let Ok(resp) = reqwest::get(manifest_url).await {
+                if let Ok(resp) = reqwest::get(&manifest_url).await {
                     if resp.status().is_success() {
                         if let Ok(bytes) = resp.bytes().await {
                             let _ = std::fs::write(&manifest_dest, &bytes);
@@ -1083,7 +1104,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             }
             println!(
                 "✔ {} '{lowered}' ready in {}",
-                if is_wave1 { "Bundle" } else { "Fleet" },
+                if manifest_tag.is_some() {
+                    "Bundle"
+                } else {
+                    "Fleet"
+                },
                 nioxs_artifacts::resolve_models_dir().display()
             );
             return Ok(());
@@ -1742,13 +1767,15 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             .and_then(|p| std::fs::read_to_string(p).ok())
             .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
             .unwrap_or_default();
-        let wave1_manifest = models_dir.join("wave1_bundle_manifest.json");
-        if wave1_manifest.is_file() {
-            if let Some(extra) = std::fs::read_to_string(&wave1_manifest)
-                .ok()
-                .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
-            {
-                manifest_entries.extend(extra);
+        for extra_name in ["wave1_bundle_manifest.json", "wave2_bundle_manifest.json"] {
+            let extra_path = models_dir.join(extra_name);
+            if extra_path.is_file() {
+                if let Some(extra) = std::fs::read_to_string(&extra_path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
+                {
+                    manifest_entries.extend(extra);
+                }
             }
         }
 
@@ -3802,11 +3829,14 @@ async fn run_penguin_turn(
     }
 
     let memories = penguin::retrieve_memories(mem_path, prompt, 3);
-    let taught_name = penguin::load_memories(mem_path).into_iter().rev().find(|m| {
-        let t = m.trigger.to_ascii_lowercase();
-        let c = m.content.to_ascii_lowercase();
-        t.contains("your name") || c.contains("your name is") || c.contains("name is")
-    });
+    let taught_name = penguin::load_memories(mem_path)
+        .into_iter()
+        .rev()
+        .find(|m| {
+            let t = m.trigger.to_ascii_lowercase();
+            let c = m.content.to_ascii_lowercase();
+            t.contains("your name") || c.contains("your name is") || c.contains("name is")
+        });
     let mem_block = if memories.is_empty() {
         String::new()
     } else {
@@ -3844,7 +3874,7 @@ async fn run_penguin_turn(
     .any(|kw| lower_q.contains(kw));
     let identity_block = if let Some(nm) = taught_name {
         format!(
-            "[Identity]\nThe user taught you: {}. Use this taught name directly and never claim to be Pegasus, Qwen, or Alibaba Cloud.\n\n",
+            "[Identity]\nYou are created by Nio Labs (local Nio Penguin vMicroLM-Growth herd), and the user taught you: {}. Use this taught name directly and never claim to be Alibaba Cloud, Qwen, or Pegasus.\n\n",
             nm.content
         )
     } else if asks_identity {
