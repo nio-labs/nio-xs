@@ -3548,10 +3548,21 @@ mod tests {
     }
 }
 
+struct PenguinOpts {
+    use_builder: bool,
+    use_search: bool,
+    force_think: Option<bool>,
+    force_verify: Option<bool>,
+    verbose: bool,
+    flow_mode: FlowMode,
+    max_tokens: usize,
+    device_pref: nioxs_engine::DevicePreference,
+}
+
 async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
-    if raw_args.is_empty() || raw_args[0] == "-h" || raw_args[0] == "--help" {
+    if matches!(raw_args.first().map(|s| s.as_str()), Some("-h" | "--help")) {
         println!(
-            "Usage: nioxs penguin [--builder] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--verbose|-v] <prompt>"
+            "Usage: nioxs penguin [--chat] [--builder] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--verbose|-v] [prompt]"
         );
         println!(
             "  teach <trigger => fact>   Save an instant SimSimi-style memory to ~/.nioxs/penguin_memory.jsonl"
@@ -3561,7 +3572,7 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
 
     let mem_path = penguin::memory_path();
     let rep_path = penguin::replay_path();
-    if raw_args[0] == "teach" {
+    if raw_args.first().map(|s| s.as_str()) == Some("teach") {
         let joined = raw_args[1..].join(" ");
         if joined.trim().is_empty() {
             return Err(anyhow::anyhow!(
@@ -3581,27 +3592,31 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let mut use_builder = false;
-    let mut use_search = false;
-    let mut force_think: Option<bool> = None;
-    let mut force_verify: Option<bool> = None;
-    let mut verbose = false;
-    let mut flow_mode = FlowMode::Token;
-    let mut custom_max_tokens: Option<usize> = None;
-    let mut device_pref = nioxs_engine::DevicePreference::Auto;
+    let mut chat_mode = raw_args.is_empty();
+    let mut opts = PenguinOpts {
+        use_builder: false,
+        use_search: false,
+        force_think: None,
+        force_verify: None,
+        verbose: false,
+        flow_mode: FlowMode::Token,
+        max_tokens: 2048,
+        device_pref: nioxs_engine::DevicePreference::Auto,
+    };
     let mut prompt_parts = Vec::new();
     let mut iter = raw_args.into_iter();
     while let Some(a) = iter.next() {
         match a.as_str() {
-            "--builder" => use_builder = true,
-            "--search" => use_search = true,
-            "--think" => force_think = Some(true),
-            "--no-think" => force_think = Some(false),
-            "--verify" => force_verify = Some(true),
-            "--no-verify" => force_verify = Some(false),
-            "--verbose" | "-v" => verbose = true,
-            "--cpu" => device_pref = nioxs_engine::DevicePreference::Cpu,
-            "--gpu" => device_pref = nioxs_engine::DevicePreference::Gpu,
+            "--chat" | "-i" => chat_mode = true,
+            "--builder" => opts.use_builder = true,
+            "--search" => opts.use_search = true,
+            "--think" => opts.force_think = Some(true),
+            "--no-think" => opts.force_think = Some(false),
+            "--verify" => opts.force_verify = Some(true),
+            "--no-verify" => opts.force_verify = Some(false),
+            "--verbose" | "-v" => opts.verbose = true,
+            "--cpu" => opts.device_pref = nioxs_engine::DevicePreference::Cpu,
+            "--gpu" => opts.device_pref = nioxs_engine::DevicePreference::Gpu,
             "--memories" => {
                 let all = penguin::load_memories(&mem_path);
                 if all.is_empty() {
@@ -3637,13 +3652,13 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
                     penguin::append_memory(&mem_path, "global", trigger, content, "teach", true)
                         .map_err(|e| anyhow::anyhow!(e))?;
                 println!("✔ Taught Penguin [id={}]: {}", saved.id, saved.content);
-                if prompt_parts.is_empty() && iter.len() == 0 {
+                if prompt_parts.is_empty() && iter.len() == 0 && !chat_mode {
                     return Ok(());
                 }
             }
             "--flow" => {
                 if let Some(v) = iter.next() {
-                    flow_mode = match v.to_ascii_lowercase().as_str() {
+                    opts.flow_mode = match v.to_ascii_lowercase().as_str() {
                         "burst" => FlowMode::Burst,
                         "paragraph" | "para" => FlowMode::Paragraph,
                         _ => FlowMode::Token,
@@ -3652,17 +3667,13 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             }
             "-n" | "--max-tokens" => {
                 if let Some(v) = iter.next() {
-                    custom_max_tokens = v.parse().ok();
+                    if let Ok(n) = v.parse() {
+                        opts.max_tokens = n;
+                    }
                 }
             }
             _ => prompt_parts.push(a),
         }
-    }
-    let prompt = prompt_parts.join(" ");
-    if prompt.trim().is_empty() {
-        return Err(anyhow::anyhow!(
-            "Empty prompt. Usage: nioxs penguin <prompt>"
-        ));
     }
 
     let models_dir = nioxs_artifacts::resolve_models_dir();
@@ -3681,28 +3692,121 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
 
     let scout_path = models_dir.join("penguin-scout-0.5b-q4_k_m.gguf");
     let builder_path = models_dir.join("penguin-builder-1.5b-q4_k_m.gguf");
-    let initial_path = if use_builder || !scout_path.is_file() {
-        if builder_path.is_file() {
-            builder_path.clone()
-        } else {
+    if !scout_path.is_file() && !builder_path.is_file() {
+        return Err(anyhow::anyhow!(
+            "Could not locate Penguin GGUFs in {} (expected penguin-scout-0.5b-q4_k_m.gguf / penguin-builder-1.5b-q4_k_m.gguf)",
+            models_dir.display()
+        ));
+    }
+
+    if !chat_mode {
+        let prompt = prompt_parts.join(" ");
+        if prompt.trim().is_empty() {
             return Err(anyhow::anyhow!(
-                "Could not locate Penguin GGUFs in {} (expected penguin-scout-0.5b-q4_k_m.gguf / penguin-builder-1.5b-q4_k_m.gguf)",
-                models_dir.display()
+                "Empty prompt. Usage: nioxs penguin <prompt>"
             ));
         }
+        let _ = run_penguin_turn(
+            &prompt,
+            &[],
+            &opts,
+            &mem_path,
+            &rep_path,
+            &scout_path,
+            &builder_path,
+            &tokenizer_path,
+        )
+        .await?;
+        return Ok(());
+    }
+
+    println!("🐧 Nio Penguin Interactive Chat (`vMicroLM-Growth`)");
+    println!(
+        "   Commands: /memories, /forget <id|all>, /exit  (or teach naturally: \"Remember that ...\")\n"
+    );
+    let mut history: Vec<(String, String)> = Vec::new();
+    let mut line = String::new();
+    loop {
+        print!("you> ");
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        line.clear();
+        if std::io::stdin().read_line(&mut line)? == 0 {
+            break;
+        }
+        let input = line.trim();
+        if input.is_empty() {
+            continue;
+        }
+        if matches!(input, "/exit" | "/quit" | "exit" | "quit") {
+            break;
+        }
+        if input == "/memories" {
+            for m in penguin::load_memories(&mem_path) {
+                println!(
+                    "#{} [{}|{}] {} => {}",
+                    m.id, m.scope, m.source, m.trigger, m.content
+                );
+            }
+            continue;
+        }
+        if let Some(target) = input.strip_prefix("/forget ") {
+            let n = penguin::forget_memories(&mem_path, target.trim())
+                .map_err(|e| anyhow::anyhow!(e))?;
+            println!("✔ Forgot {n} memory entry(s).");
+            continue;
+        }
+        print!("penguin> ");
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let resp = run_penguin_turn(
+            input,
+            &history,
+            &opts,
+            &mem_path,
+            &rep_path,
+            &scout_path,
+            &builder_path,
+            &tokenizer_path,
+        )
+        .await?;
+        history.push((input.to_string(), resp));
+        if history.len() > 6 {
+            history.remove(0);
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_penguin_turn(
+    prompt: &str,
+    history: &[(String, String)],
+    opts: &PenguinOpts,
+    mem_path: &std::path::Path,
+    rep_path: &std::path::Path,
+    scout_path: &std::path::Path,
+    builder_path: &std::path::Path,
+    tokenizer_path: &std::path::Path,
+) -> anyhow::Result<String> {
+    let initial_path = if opts.use_builder || !scout_path.is_file() {
+        builder_path.to_path_buf()
     } else {
-        scout_path.clone()
+        scout_path.to_path_buf()
     };
 
-    if let Some((trigger, fact)) = penguin::extract_natural_teaching(&prompt) {
+    if let Some((trigger, fact)) = penguin::extract_natural_teaching(prompt) {
         if let Ok(saved) =
-            penguin::append_memory(&mem_path, "global", &trigger, &fact, "natural_teach", true)
+            penguin::append_memory(mem_path, "global", &trigger, &fact, "natural_teach", true)
         {
             println!("✔ Learned [id={}]: {}", saved.id, saved.content);
         }
     }
 
-    let memories = penguin::retrieve_memories(&mem_path, &prompt, 3);
+    let memories = penguin::retrieve_memories(mem_path, prompt, 3);
+    let taught_name = penguin::load_memories(mem_path).into_iter().rev().find(|m| {
+        let t = m.trigger.to_ascii_lowercase();
+        let c = m.content.to_ascii_lowercase();
+        t.contains("your name") || c.contains("your name is") || c.contains("name is")
+    });
     let mem_block = if memories.is_empty() {
         String::new()
     } else {
@@ -3716,8 +3820,8 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         )
     };
 
-    let web_block = if use_search {
-        if let Some(snip) = penguin::fetch_web_grounding(&prompt).await {
+    let web_block = if opts.use_search {
+        if let Some(snip) = penguin::fetch_web_grounding(prompt).await {
             format!("[Web Grounding]\n- {snip}\n\n")
         } else {
             String::new()
@@ -3726,9 +3830,9 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         String::new()
     };
 
-    let think_enabled = force_think.unwrap_or(false);
+    let think_enabled = opts.force_think.unwrap_or(false);
     let lower_q = prompt.to_ascii_lowercase();
-    let identity_block = if [
+    let asks_identity = [
         "who are you",
         "what are you",
         "your name",
@@ -3737,32 +3841,42 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         "who built you",
     ]
     .iter()
-    .any(|kw| lower_q.contains(kw))
-    {
-        "[Identity]\nYou are Nio Penguin (vMicroLM-Growth), created by Nio Labs — a local self-healing conversational and coding AI herd (0.5B Scout + 1.5B Builder) running in nio-xs. Never call yourself Pegasus, Qwen, or Alibaba Cloud.\n\n"
+    .any(|kw| lower_q.contains(kw));
+    let identity_block = if let Some(nm) = taught_name {
+        format!(
+            "[Identity]\nThe user taught you: {}. Use this taught name directly and never claim to be Pegasus, Qwen, or Alibaba Cloud.\n\n",
+            nm.content
+        )
+    } else if asks_identity {
+        "[Identity]\nYou are Nio Penguin (vMicroLM-Growth), created by Nio Labs — a local self-healing conversational and coding AI herd (0.5B Scout + 1.5B Builder) running in nio-xs. Never call yourself Pegasus, Qwen, or Alibaba Cloud.\n\n".to_string()
     } else {
-        ""
+        String::new()
     };
     let sys = if think_enabled {
         "You are Nio Penguin Builder Reasoner (vMicroLM-Growth), created by Nio Labs. Write a concise 3-6 line <think>...</think> plan, then provide a clear, accurate answer using any provided [Identity], [Known User Facts], or [Web Grounding].".to_string()
     } else {
         "You are Nio Penguin (vMicroLM-Growth), created by Nio Labs. Be natural, concise, and accurate. Always follow [Identity] and [Known User Facts] directly, and never claim to be Alibaba Cloud, Qwen, or Pegasus.".to_string()
     };
+    let mut history_chatml = String::new();
+    for (u, a) in history {
+        history_chatml.push_str(&format!(
+            "<|im_start|>user\n{u}<|im_end|>\n<|im_start|>assistant\n{a}<|im_end|>\n"
+        ));
+    }
     let user_msg = format!("{identity_block}{mem_block}{web_block}{prompt}");
     let formatted_prompt = format!(
-        "<|im_start|>system\n{sys}<|im_end|>\n<|im_start|>user\n{user_msg}<|im_end|>\n<|im_start|>assistant\n"
+        "<|im_start|>system\n{sys}<|im_end|>\n{history_chatml}<|im_start|>user\n{user_msg}<|im_end|>\n<|im_start|>assistant\n"
     );
 
-    let max_tokens = custom_max_tokens.unwrap_or(2048);
     let temp = if think_enabled { 0.20 } else { 0.30 };
     let t0 = std::time::Instant::now();
     let mut engine =
-        nioxs_engine::AstEngine::from_paths(initial_path.clone(), tokenizer_path.clone());
-    engine.set_device_preference(device_pref);
+        nioxs_engine::AstEngine::from_paths(initial_path.clone(), tokenizer_path.to_path_buf());
+    engine.set_device_preference(opts.device_pref);
     let mut rx = engine
-        .generate_stream(formatted_prompt, max_tokens, temp, 0.90)
+        .generate_stream(formatted_prompt, opts.max_tokens, temp, 0.90)
         .await?;
-    let mut flow = StreamFlow::new(flow_mode);
+    let mut flow = StreamFlow::new(opts.flow_mode);
     flow.set_show_think_tags(true);
     let mut full_resp = String::new();
     while let Some(chunk) = rx.recv().await {
@@ -3772,8 +3886,9 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     flow.finish();
     println!();
 
-    let should_verify =
-        force_verify.unwrap_or_else(|| penguin::looks_like_code_task(&prompt, &full_resp));
+    let should_verify = opts
+        .force_verify
+        .unwrap_or_else(|| penguin::looks_like_code_task(prompt, &full_resp));
     let mut active_model = initial_path
         .file_name()
         .and_then(|s| s.to_str())
@@ -3786,7 +3901,7 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         let (mut ok, mut err) = verify_orca_with_mode(&full_resp, "code");
         if !ok && builder_path.is_file() {
             let web_heal = if web_block.is_empty() {
-                penguin::fetch_web_grounding(&prompt)
+                penguin::fetch_web_grounding(prompt)
                     .await
                     .map(|s| format!("\n\n[Web Grounding]\n- {s}"))
                     .unwrap_or_default()
@@ -3809,13 +3924,15 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             let heal_prompt = format!(
                 "<|im_start|>system\n{heal_sys}<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
             );
-            let mut b_engine =
-                nioxs_engine::AstEngine::from_paths(builder_path.clone(), tokenizer_path.clone());
-            b_engine.set_device_preference(device_pref);
+            let mut b_engine = nioxs_engine::AstEngine::from_paths(
+                builder_path.to_path_buf(),
+                tokenizer_path.to_path_buf(),
+            );
+            b_engine.set_device_preference(opts.device_pref);
             let mut b_rx = b_engine
-                .generate_stream(heal_prompt, max_tokens, 0.20, 0.90)
+                .generate_stream(heal_prompt, opts.max_tokens, 0.20, 0.90)
                 .await?;
-            let mut b_flow = StreamFlow::new(flow_mode);
+            let mut b_flow = StreamFlow::new(opts.flow_mode);
             b_flow.set_show_think_tags(true);
             full_resp.clear();
             while let Some(chunk) = b_rx.recv().await {
@@ -3831,9 +3948,9 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             if ok {
                 healed = true;
                 let _ = penguin::append_replay(
-                    &rep_path,
+                    rep_path,
                     &penguin::PenguinReplayEntry {
-                        prompt: prompt.clone(),
+                        prompt: prompt.to_string(),
                         failed_draft: Some(failed_draft),
                         verifier_error: Some(first_err.clone()),
                         verified_solution: full_resp.clone(),
@@ -3845,9 +3962,9 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
                     },
                 );
                 let _ = penguin::append_memory(
-                    &mem_path,
+                    mem_path,
                     "project",
-                    &prompt,
+                    prompt,
                     &format!("Healed & verified solution recorded (fixed: {first_err})."),
                     "healed",
                     true,
@@ -3855,12 +3972,12 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             }
         }
         verified_opt = Some(ok);
-        if !ok && verbose {
+        if !ok && opts.verbose {
             eprintln!("[Penguin Verify] Last error: {err}");
         }
     }
 
-    if verbose {
+    if opts.verbose {
         let elapsed = t0.elapsed().as_secs_f64();
         println!(
             "\n---\nPenguin [vMicroLM-Growth] | model={} | memories={} | healed={} | verified={:?} | {:.2}s",
@@ -3871,7 +3988,7 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             elapsed
         );
     }
-    Ok(())
+    Ok(full_resp)
 }
 
 fn route_orca_pod_meta(
