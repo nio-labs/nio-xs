@@ -1,10 +1,10 @@
-//! # Nio Penguin (`vMicroLM-Growth`)
+//! # Nio Meerkat (`vMicroLM-Growth`)
 //!
 //! Self-healing, self-growing hybrid conversational + coding assistant:
-//! - `0.5B` Scout (`penguin-scout-0.5b-q4_k_m.gguf`) for fast chat, memory recall & first pass
-//! - `1.5B` Builder (`penguin-builder-1.5b-q4_k_m.gguf`) for dual-mode direct + bounded `<think>` healing
-//! - SimSimi-inspired instant `/teach` & healed memory (`~/.nioxs/penguin_memory.jsonl`)
-//! - Verified replay buffer (`~/.nioxs/penguin_replay.jsonl`) for sleep-cycle LoRA growth
+//! - `0.5B` Scout (`meerkat-scout-0.5b-q4_k_m.gguf`) for fast chat, memory recall & first pass
+//! - `1.5B` Builder (`meerkat-builder-1.5b-q4_k_m.gguf`) for dual-mode direct + bounded `<think>` healing & 4-tool loop
+//! - SimSimi-inspired instant `/teach` & healed memory (`~/.nioxs/meerkat_memory.jsonl`)
+//! - Verified replay buffer (`~/.nioxs/meerkat_replay.jsonl`) for sleep-cycle LoRA growth
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PenguinMemory {
+pub struct MeerkatMemory {
     pub id: u64,
     pub scope: String,
     pub trigger: String,
@@ -25,7 +25,7 @@ pub struct PenguinMemory {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PenguinReplayEntry {
+pub struct MeerkatReplayEntry {
     pub prompt: String,
     pub failed_draft: Option<String>,
     pub verifier_error: Option<String>,
@@ -42,11 +42,11 @@ pub fn nioxs_home_dir() -> PathBuf {
 }
 
 pub fn memory_path() -> PathBuf {
-    nioxs_home_dir().join("penguin_memory.jsonl")
+    nioxs_home_dir().join("meerkat_memory.jsonl")
 }
 
 pub fn replay_path() -> PathBuf {
-    nioxs_home_dir().join("penguin_replay.jsonl")
+    nioxs_home_dir().join("meerkat_replay.jsonl")
 }
 
 fn unix_now() -> u64 {
@@ -64,13 +64,13 @@ fn tokenize(text: &str) -> HashSet<String> {
         .collect()
 }
 
-pub fn load_memories(path: &Path) -> Vec<PenguinMemory> {
+pub fn load_memories(path: &Path) -> Vec<MeerkatMemory> {
     let Ok(raw) = fs::read_to_string(path) else {
         return Vec::new();
     };
     raw.lines()
         .filter(|l| !l.trim().is_empty())
-        .filter_map(|l| serde_json::from_str::<PenguinMemory>(l).ok())
+        .filter_map(|l| serde_json::from_str::<MeerkatMemory>(l).ok())
         .collect()
 }
 
@@ -81,13 +81,13 @@ pub fn append_memory(
     content: &str,
     source: &str,
     verified: bool,
-) -> Result<PenguinMemory, String> {
+) -> Result<MeerkatMemory, String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create memory dir: {e}"))?;
     }
     let existing = load_memories(path);
     let next_id = existing.iter().map(|m| m.id).max().unwrap_or(0) + 1;
-    let entry = PenguinMemory {
+    let entry = MeerkatMemory {
         id: next_id,
         scope: scope.to_string(),
         trigger: trigger.trim().to_string(),
@@ -106,7 +106,7 @@ pub fn append_memory(
     Ok(entry)
 }
 
-pub fn append_replay(path: &Path, entry: &PenguinReplayEntry) -> Result<(), String> {
+pub fn append_replay(path: &Path, entry: &MeerkatReplayEntry) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create replay dir: {e}"))?;
     }
@@ -120,12 +120,12 @@ pub fn append_replay(path: &Path, entry: &PenguinReplayEntry) -> Result<(), Stri
     Ok(())
 }
 
-pub fn retrieve_memories(path: &Path, query: &str, limit: usize) -> Vec<PenguinMemory> {
+pub fn retrieve_memories(path: &Path, query: &str, limit: usize) -> Vec<MeerkatMemory> {
     let q_tokens = tokenize(query);
     if q_tokens.is_empty() {
         return Vec::new();
     }
-    let mut scored: Vec<(usize, PenguinMemory)> = load_memories(path)
+    let mut scored: Vec<(usize, MeerkatMemory)> = load_memories(path)
         .into_iter()
         .filter_map(|m| {
             let mut m_tokens = tokenize(&m.trigger);
@@ -156,7 +156,7 @@ pub fn forget_memories(path: &Path, target: &str) -> Result<usize, String> {
         .map_err(|_| format!("Invalid memory id '{target}' (use a number or 'all')"))?;
     let all = load_memories(path);
     let before = all.len();
-    let kept: Vec<PenguinMemory> = all.into_iter().filter(|m| m.id != id).collect();
+    let kept: Vec<MeerkatMemory> = all.into_iter().filter(|m| m.id != id).collect();
     let removed = before.saturating_sub(kept.len());
     let mut out = String::new();
     for m in kept {
@@ -271,7 +271,7 @@ fn strip_html_tags(s: &str) -> String {
 pub async fn fetch_web_grounding(query: &str) -> Option<String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) NioXS-Penguin/0.6")
+        .user_agent("Mozilla/5.0 (X11; Linux x86_64) NioXS-Meerkat/0.6")
         .build()
         .ok()?;
     let mut snippets = Vec::new();
@@ -333,14 +333,134 @@ pub async fn fetch_web_grounding(query: &str) -> Option<String> {
     }
 }
 
+fn truncate_chars(s: &str, max_chars: usize) -> String {
+    let mut out: String = s.chars().take(max_chars).collect();
+    if s.chars().count() > max_chars {
+        out.push_str("\n...[truncated]");
+    }
+    out
+}
+
+/// Parses the first flat `<tool name="...">arg</tool>` tag emitted by the 1.5B Builder.
+pub fn extract_tool_call(text: &str) -> Option<(String, String)> {
+    let start = text.find("<tool ")?;
+    let after_tag = &text[start + 6..];
+    let gt = after_tag.find('>')?;
+    let attr = &after_tag[..gt];
+    let name = if let Some(rest) = attr.split("name=\"").nth(1) {
+        rest.split('"').next()?.trim()
+    } else if let Some(rest) = attr.split("name='").nth(1) {
+        rest.split('\'').next()?.trim()
+    } else {
+        return None;
+    };
+    if name.is_empty() {
+        return None;
+    }
+    let body_start = start + 6 + gt + 1;
+    let body_rest = &text[body_start..];
+    let end = body_rest.find("</tool>")?;
+    let arg = body_rest[..end].trim().to_string();
+    Some((name.to_string(), arg))
+}
+
+async fn fetch_web_page(url: &str) -> String {
+    let trimmed = url.trim();
+    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        return "Error: web_fetch requires an http:// or https:// URL.".to_string();
+    }
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .user_agent("Mozilla/5.0 (X11; Linux x86_64) NioXS-Meerkat/0.6")
+        .build()
+    else {
+        return "Error: failed to build HTTP client.".to_string();
+    };
+    match client.get(trimmed).send().await {
+        Ok(resp) => match resp.text().await {
+            Ok(html) => {
+                let clean = strip_html_tags(&html);
+                if clean.is_empty() {
+                    "Page returned empty text.".to_string()
+                } else {
+                    truncate_chars(&clean, 2500)
+                }
+            }
+            Err(e) => format!("Error reading response body: {e}"),
+        },
+        Err(e) => format!("Error fetching URL: {e}"),
+    }
+}
+
+fn read_local_file(path_str: &str) -> String {
+    let trimmed = path_str.trim();
+    if trimmed.is_empty() {
+        return "Error: empty file path.".to_string();
+    }
+    let path = Path::new(trimmed);
+    match fs::read_to_string(path) {
+        Ok(content) => truncate_chars(&content, 3000),
+        Err(e) => format!("Error reading '{trimmed}': {e}"),
+    }
+}
+
+async fn run_python_snippet(code: &str) -> String {
+    let trimmed = code.trim();
+    if trimmed.is_empty() {
+        return "Error: empty python snippet.".to_string();
+    }
+    let script_path = std::env::temp_dir().join(format!(
+        "nioxs_meerkat_tool_{}_{}.py",
+        std::process::id(),
+        unix_now()
+    ));
+    if let Err(e) = fs::write(&script_path, trimmed) {
+        return format!("Error writing temp python script: {e}");
+    }
+    let mut cmd = tokio::process::Command::new("python3");
+    cmd.arg(&script_path);
+    let result = tokio::time::timeout(std::time::Duration::from_secs(5), cmd.output()).await;
+    let _ = fs::remove_file(&script_path);
+    match result {
+        Ok(Ok(out)) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let combined = match (stdout.trim().is_empty(), stderr.trim().is_empty()) {
+                (false, true) => stdout.trim().to_string(),
+                (true, false) => format!("stderr:\n{}", stderr.trim()),
+                (false, false) => format!("{}\nstderr:\n{}", stdout.trim(), stderr.trim()),
+                (true, true) => "(python3 exited 0 with no output)".to_string(),
+            };
+            truncate_chars(&combined, 1500)
+        }
+        Ok(Err(e)) => format!("Error running python3: {e}"),
+        Err(_) => "Error: python3 execution timed out after 5s.".to_string(),
+    }
+}
+
+/// Executes one of the 4 bounded Meerkat tools (`web_search`, `web_fetch`, `read_file`, `run_python`).
+pub async fn execute_tool(name: &str, arg: &str) -> String {
+    match name.trim() {
+        "web_search" => fetch_web_grounding(arg.trim())
+            .await
+            .unwrap_or_else(|| "No web search results found.".to_string()),
+        "web_fetch" => fetch_web_page(arg).await,
+        "read_file" => read_local_file(arg),
+        "run_python" => run_python_snippet(arg).await,
+        other => format!(
+            "Error: unsupported tool '{other}'. Allowed tools: web_search, web_fetch, read_file, run_python."
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_penguin_teach_retrieve_and_forget() {
-        let dir = std::env::temp_dir().join(format!("nioxs_penguin_test_{}", unix_now()));
-        let mem_file = dir.join("penguin_memory.jsonl");
+    fn test_meerkat_teach_retrieve_and_forget() {
+        let dir = std::env::temp_dir().join(format!("nioxs_meerkat_test_{}", unix_now()));
+        let mem_file = dir.join("meerkat_memory.jsonl");
         let _ = fs::remove_dir_all(&dir);
 
         let m1 = append_memory(
@@ -387,5 +507,20 @@ mod tests {
             ))
         );
         assert!(extract_natural_teaching("What is my favorite language?").is_none());
+    }
+
+    #[test]
+    fn test_extract_tool_call() {
+        let sample = "Let me check that.\n<tool name=\"read_file\">Cargo.toml</tool>";
+        assert_eq!(
+            extract_tool_call(sample),
+            Some(("read_file".to_string(), "Cargo.toml".to_string()))
+        );
+        let py = "<tool name='run_python'>print(2 + 2)</tool>";
+        assert_eq!(
+            extract_tool_call(py),
+            Some(("run_python".to_string(), "print(2 + 2)".to_string()))
+        );
+        assert!(extract_tool_call("No tool tag here.").is_none());
     }
 }

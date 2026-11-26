@@ -3,7 +3,7 @@ use nioxs_provider::{ActiveTurns, App, router};
 use nioxs_storage::NioDb;
 use std::sync::Arc;
 
-mod penguin;
+mod meerkat;
 mod skate_safety;
 mod stream_flow;
 
@@ -857,7 +857,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|orca <prompt>|orca-nano <prompt>|orca-mini <prompt>|orca-omni <prompt>|penguin <prompt>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|orca <prompt>|orca-nano <prompt>|orca-mini <prompt>|orca-omni <prompt>|meerkat <prompt>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
   pull [model]   Download and verify local MicroLM weights (orca-nano, orca-mini, orca-omni, viper, skate, manta, beluga, blue, tiger, cheetah, fox, rabbit, all)\n\
@@ -865,7 +865,7 @@ Commands:\n\
   orca-nano <prompt> Run Orca Nano 0.5B×13 Sovereign Pod Fleet\n\
   orca-mini <prompt> Run Orca Mini 1.5B×13 Sovereign Pod Fleet\n\
   orca-omni <prompt> Run Orca Omni Hybrid Fleet (0.5B fast Lead + 1.5B+ heavy Pods)\n\
-  penguin <prompt>   Run Penguin Self-Healing Herd (0.5B Scout + 1.5B Builder + /teach memory)\n\
+  meerkat <prompt>   Run Meerkat Self-Healing Herd (0.5B Scout + 1.5B Builder + 4-tool loop + /teach memory)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
@@ -1631,9 +1631,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         println!();
         return Ok(());
     }
-    if arg.as_deref() == Some("penguin") {
+    if matches!(arg.as_deref(), Some("meerkat" | "penguin")) {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
-        return Ok(run_penguin_cli(raw_args).await?);
+        return Ok(run_meerkat_cli(raw_args).await?);
     }
     if matches!(
         arg.as_deref(),
@@ -3575,7 +3575,7 @@ mod tests {
     }
 }
 
-struct PenguinOpts {
+struct MeerkatOpts {
     use_builder: bool,
     use_search: bool,
     force_think: Option<bool>,
@@ -3586,41 +3586,41 @@ struct PenguinOpts {
     device_pref: nioxs_engine::DevicePreference,
 }
 
-async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
+async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     if matches!(raw_args.first().map(|s| s.as_str()), Some("-h" | "--help")) {
         println!(
-            "Usage: nioxs penguin [--chat] [--builder] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--verbose|-v] [prompt]"
+            "Usage: nioxs meerkat [--chat] [--builder] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--verbose|-v] [prompt]"
         );
         println!(
-            "  teach <trigger => fact>   Save an instant SimSimi-style memory to ~/.nioxs/penguin_memory.jsonl"
+            "  teach <trigger => fact>   Save an instant SimSimi-style memory to ~/.nioxs/meerkat_memory.jsonl"
         );
         return Ok(());
     }
 
-    let mem_path = penguin::memory_path();
-    let rep_path = penguin::replay_path();
+    let mem_path = meerkat::memory_path();
+    let rep_path = meerkat::replay_path();
     if raw_args.first().map(|s| s.as_str()) == Some("teach") {
         let joined = raw_args[1..].join(" ");
         if joined.trim().is_empty() {
             return Err(anyhow::anyhow!(
-                "Usage: nioxs penguin teach \"<trigger => fact>\""
+                "Usage: nioxs meerkat teach \"<trigger => fact>\""
             ));
         }
         let (trigger, content) = joined
             .split_once("=>")
             .map(|(a, b)| (a.trim(), b.trim()))
             .unwrap_or((joined.trim(), joined.trim()));
-        let saved = penguin::append_memory(&mem_path, "global", trigger, content, "teach", true)
+        let saved = meerkat::append_memory(&mem_path, "global", trigger, content, "teach", true)
             .map_err(|e| anyhow::anyhow!(e))?;
         println!(
-            "✔ Taught Penguin [id={}] ({}): {}",
+            "✔ Taught Meerkat [id={}] ({}): {}",
             saved.id, saved.trigger, saved.content
         );
         return Ok(());
     }
 
     let mut chat_mode = raw_args.is_empty();
-    let mut opts = PenguinOpts {
+    let mut opts = MeerkatOpts {
         use_builder: false,
         use_search: false,
         force_think: None,
@@ -3645,9 +3645,9 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             "--cpu" => opts.device_pref = nioxs_engine::DevicePreference::Cpu,
             "--gpu" => opts.device_pref = nioxs_engine::DevicePreference::Gpu,
             "--memories" => {
-                let all = penguin::load_memories(&mem_path);
+                let all = meerkat::load_memories(&mem_path);
                 if all.is_empty() {
-                    println!("(no Penguin memories saved yet in {})", mem_path.display());
+                    println!("(no Meerkat memories saved yet in {})", mem_path.display());
                 } else {
                     for m in all {
                         println!(
@@ -3663,8 +3663,8 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
                     .next()
                     .ok_or_else(|| anyhow::anyhow!("--forget requires <id|all>"))?;
                 let n =
-                    penguin::forget_memories(&mem_path, &target).map_err(|e| anyhow::anyhow!(e))?;
-                println!("✔ Forgot {n} Penguin memory entry(s).");
+                    meerkat::forget_memories(&mem_path, &target).map_err(|e| anyhow::anyhow!(e))?;
+                println!("✔ Forgot {n} Meerkat memory entry(s).");
                 return Ok(());
             }
             "--teach" => {
@@ -3676,9 +3676,9 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
                     .map(|(a, b)| (a.trim(), b.trim()))
                     .unwrap_or((fact.trim(), fact.trim()));
                 let saved =
-                    penguin::append_memory(&mem_path, "global", trigger, content, "teach", true)
+                    meerkat::append_memory(&mem_path, "global", trigger, content, "teach", true)
                         .map_err(|e| anyhow::anyhow!(e))?;
-                println!("✔ Taught Penguin [id={}]: {}", saved.id, saved.content);
+                println!("✔ Taught Meerkat [id={}]: {}", saved.id, saved.content);
                 if prompt_parts.is_empty() && iter.len() == 0 && !chat_mode {
                     return Ok(());
                 }
@@ -3717,11 +3717,23 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         )
     })?;
 
-    let scout_path = models_dir.join("penguin-scout-0.5b-q4_k_m.gguf");
-    let builder_path = models_dir.join("penguin-builder-1.5b-q4_k_m.gguf");
+    let scout_path = [
+        models_dir.join("meerkat-scout-0.5b-q4_k_m.gguf"),
+        models_dir.join("penguin-scout-0.5b-q4_k_m.gguf"),
+    ]
+    .into_iter()
+    .find(|p| p.is_file())
+    .unwrap_or_else(|| models_dir.join("meerkat-scout-0.5b-q4_k_m.gguf"));
+    let builder_path = [
+        models_dir.join("meerkat-builder-1.5b-q4_k_m.gguf"),
+        models_dir.join("penguin-builder-1.5b-q4_k_m.gguf"),
+    ]
+    .into_iter()
+    .find(|p| p.is_file())
+    .unwrap_or_else(|| models_dir.join("meerkat-builder-1.5b-q4_k_m.gguf"));
     if !scout_path.is_file() && !builder_path.is_file() {
         return Err(anyhow::anyhow!(
-            "Could not locate Penguin GGUFs in {} (expected penguin-scout-0.5b-q4_k_m.gguf / penguin-builder-1.5b-q4_k_m.gguf)",
+            "Could not locate Meerkat GGUFs in {} (expected meerkat-scout-0.5b-q4_k_m.gguf / meerkat-builder-1.5b-q4_k_m.gguf)",
             models_dir.display()
         ));
     }
@@ -3730,10 +3742,10 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         let prompt = prompt_parts.join(" ");
         if prompt.trim().is_empty() {
             return Err(anyhow::anyhow!(
-                "Empty prompt. Usage: nioxs penguin <prompt>"
+                "Empty prompt. Usage: nioxs meerkat <prompt>"
             ));
         }
-        let _ = run_penguin_turn(
+        let _ = run_meerkat_turn(
             &prompt,
             &[],
             &opts,
@@ -3747,7 +3759,7 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println!("🐧 Nio Penguin Interactive Chat (`vMicroLM-Growth`)");
+    println!("🦫 Nio Meerkat Interactive Chat (`vMicroLM-Growth`)");
     println!(
         "   Commands: /memories, /forget <id|all>, /exit  (or teach naturally: \"Remember that ...\")\n"
     );
@@ -3768,7 +3780,7 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             break;
         }
         if input == "/memories" {
-            for m in penguin::load_memories(&mem_path) {
+            for m in meerkat::load_memories(&mem_path) {
                 println!(
                     "#{} [{}|{}] {} => {}",
                     m.id, m.scope, m.source, m.trigger, m.content
@@ -3777,14 +3789,14 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             continue;
         }
         if let Some(target) = input.strip_prefix("/forget ") {
-            let n = penguin::forget_memories(&mem_path, target.trim())
+            let n = meerkat::forget_memories(&mem_path, target.trim())
                 .map_err(|e| anyhow::anyhow!(e))?;
             println!("✔ Forgot {n} memory entry(s).");
             continue;
         }
-        print!("penguin> ");
+        print!("meerkat> ");
         let _ = std::io::Write::flush(&mut std::io::stdout());
-        let resp = run_penguin_turn(
+        let resp = run_meerkat_turn(
             input,
             &history,
             &opts,
@@ -3804,10 +3816,10 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn run_penguin_turn(
+async fn run_meerkat_turn(
     prompt: &str,
     history: &[(String, String)],
-    opts: &PenguinOpts,
+    opts: &MeerkatOpts,
     mem_path: &std::path::Path,
     rep_path: &std::path::Path,
     scout_path: &std::path::Path,
@@ -3820,16 +3832,16 @@ async fn run_penguin_turn(
         scout_path.to_path_buf()
     };
 
-    if let Some((trigger, fact)) = penguin::extract_natural_teaching(prompt) {
+    if let Some((trigger, fact)) = meerkat::extract_natural_teaching(prompt) {
         if let Ok(saved) =
-            penguin::append_memory(mem_path, "global", &trigger, &fact, "natural_teach", true)
+            meerkat::append_memory(mem_path, "global", &trigger, &fact, "natural_teach", true)
         {
             println!("✔ Learned [id={}]: {}", saved.id, saved.content);
         }
     }
 
-    let memories = penguin::retrieve_memories(mem_path, prompt, 3);
-    let taught_name = penguin::load_memories(mem_path)
+    let memories = meerkat::retrieve_memories(mem_path, prompt, 3);
+    let taught_name = meerkat::load_memories(mem_path)
         .into_iter()
         .rev()
         .find(|m| {
@@ -3867,7 +3879,7 @@ async fn run_penguin_turn(
     if !auto_need_web
         && memories.is_empty()
         && !asks_identity
-        && !penguin::looks_like_code_task(prompt, "")
+        && !meerkat::looks_like_code_task(prompt, "")
         && scout_path.is_file()
     {
         let cls_prompt = format!(
@@ -3892,13 +3904,13 @@ async fn run_penguin_turn(
     let mut used_web = false;
     let web_block = if auto_need_web {
         if opts.verbose {
-            println!("\x1b[1;36m[Penguin Scout]\x1b[0m Scouting the web...");
+            println!("\x1b[1;36m[Meerkat Scout]\x1b[0m Scouting the web...");
         }
-        if let Some(snip) = penguin::fetch_web_grounding(prompt).await {
+        if let Some(snip) = meerkat::fetch_web_grounding(prompt).await {
             used_web = true;
             if opts.verbose {
                 println!(
-                    "\x1b[1;36m[Penguin Web]\x1b[0m Retrieved {} chars of grounding.",
+                    "\x1b[1;36m[Meerkat Web]\x1b[0m Retrieved {} chars of grounding.",
                     snip.len()
                 );
             }
@@ -3912,28 +3924,38 @@ async fn run_penguin_turn(
         String::new()
     };
 
-    let initial_path =
-        if (opts.use_builder || used_web || !scout_path.is_file()) && builder_path.is_file() {
-            builder_path.to_path_buf()
-        } else {
-            scout_path.to_path_buf()
-        };
+    let using_builder =
+        (opts.use_builder || used_web || !scout_path.is_file()) && builder_path.is_file();
+    let initial_path = if using_builder {
+        builder_path.to_path_buf()
+    } else {
+        scout_path.to_path_buf()
+    };
     let identity_block = if asks_identity {
         if let Some(nm) = taught_name {
             format!(
-                "[Identity]\nYou are created by Nio Labs (local Nio Penguin vMicroLM-Growth herd), and the user taught you: {}. Use this taught name directly and never claim to be Alibaba Cloud, Qwen, or Pegasus.\n\n",
+                "[Identity]\nYou are created by Nio Labs (local Nio Meerkat vMicroLM-Growth herd), and the user taught you: {}. Use this taught name directly and never claim to be Alibaba Cloud, Qwen, or Pegasus.\n\n",
                 nm.content
             )
         } else {
-            "[Identity]\nYou are Nio Penguin (vMicroLM-Growth), created by Nio Labs — a local self-healing conversational and coding AI herd (0.5B Scout + 1.5B Builder) running in nio-xs. Never call yourself Pegasus, Qwen, or Alibaba Cloud.\n\n".to_string()
+            "[Identity]\nYou are Nio Meerkat (vMicroLM-Growth), created by Nio Labs — a local self-healing conversational and coding AI herd (0.5B Scout + 1.5B Builder) running in nio-xs. Never call yourself Pegasus, Qwen, or Alibaba Cloud.\n\n".to_string()
         }
     } else {
         String::new()
     };
-    let sys = if think_enabled {
-        "You are Nio Penguin Builder Reasoner (vMicroLM-Growth), created by Nio Labs. Write a concise 3-6 line <think>...</think> plan, then provide a clear, accurate answer using any provided [Identity], [Known User Facts], or [Live Web Search Results].".to_string()
+    let tool_menu = if using_builder {
+        "\n\n[Available Tools]\nYou can optionally call ONE tool at a time using flat XML tags when you need live info, a file, or Python execution:\n- <tool name=\"web_search\">query</tool>\n- <tool name=\"web_fetch\">https://...</tool>\n- <tool name=\"read_file\">path/to/file</tool>\n- <tool name=\"run_python\">python code</tool>\nOnly emit a <tool> tag if needed; otherwise answer directly."
     } else {
-        "You are Nio Penguin (vMicroLM-Growth), created by Nio Labs. Be natural, concise, and accurate. Always follow [Identity] and [Known User Facts] directly. If you don't know a current/post-2024 fact and it is not in [Known User Facts] or [Live Web Search Results], reply ONLY with [SEARCH].".to_string()
+        ""
+    };
+    let sys = if think_enabled {
+        format!(
+            "You are Nio Meerkat Builder Reasoner (vMicroLM-Growth), created by Nio Labs. Write a concise 3-6 line <think>...</think> plan, then provide a clear, accurate answer using any provided [Identity], [Known User Facts], or [Live Web Search Results].{tool_menu}"
+        )
+    } else {
+        format!(
+            "You are Nio Meerkat (vMicroLM-Growth), created by Nio Labs. Be natural, concise, and accurate. Always follow [Identity] and [Known User Facts] directly. If you don't know a current/post-2024 fact and it is not in [Known User Facts] or [Live Web Search Results], reply ONLY with [SEARCH].{tool_menu}"
+        )
     };
     let mut history_chatml = String::new();
     for (u, a) in history {
@@ -3942,7 +3964,7 @@ async fn run_penguin_turn(
         ));
     }
     let user_msg = format!("{identity_block}{mem_block}{web_block}{prompt}");
-    let formatted_prompt = format!(
+    let mut formatted_prompt = format!(
         "<|im_start|>system\n{sys}<|im_end|>\n{history_chatml}<|im_start|>user\n{user_msg}<|im_end|>\n<|im_start|>assistant\n"
     );
 
@@ -3952,7 +3974,7 @@ async fn run_penguin_turn(
         nioxs_engine::AstEngine::from_paths(initial_path.clone(), tokenizer_path.to_path_buf());
     engine.set_device_preference(opts.device_pref);
     let mut rx = engine
-        .generate_stream(formatted_prompt, opts.max_tokens, temp, 0.90)
+        .generate_stream(formatted_prompt.clone(), opts.max_tokens, temp, 0.90)
         .await?;
     let mut flow = StreamFlow::new(opts.flow_mode);
     flow.set_show_think_tags(true);
@@ -3964,14 +3986,54 @@ async fn run_penguin_turn(
     flow.finish();
     println!();
 
-    let should_verify = opts
-        .force_verify
-        .unwrap_or_else(|| penguin::looks_like_code_task(prompt, &full_resp));
     let mut active_model = initial_path
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or("penguin")
+        .unwrap_or("meerkat")
         .to_string();
+
+    if builder_path.is_file() {
+        for tool_step in 1..=3 {
+            let Some((tool_name, tool_arg)) = meerkat::extract_tool_call(&full_resp) else {
+                break;
+            };
+            if opts.verbose {
+                println!(
+                    "\x1b[1;35m[Meerkat Tool {}/3]\x1b[0m {}({:?})",
+                    tool_step, tool_name, tool_arg
+                );
+            }
+            let tool_out = meerkat::execute_tool(&tool_name, &tool_arg).await;
+            if tool_name == "web_search" || tool_name == "web_fetch" {
+                used_web = true;
+            }
+            formatted_prompt.push_str(&format!(
+                "{full_resp}<|im_end|>\n<|im_start|>user\n<tool_result name=\"{tool_name}\">\n{tool_out}\n</tool_result>\nContinue and answer the user's request concisely using the tool result above (or call another tool if needed).<|im_end|>\n<|im_start|>assistant\n"
+            ));
+            let mut b_engine = nioxs_engine::AstEngine::from_paths(
+                builder_path.to_path_buf(),
+                tokenizer_path.to_path_buf(),
+            );
+            b_engine.set_device_preference(opts.device_pref);
+            let mut b_rx = b_engine
+                .generate_stream(formatted_prompt.clone(), opts.max_tokens, 0.20, 0.90)
+                .await?;
+            let mut b_flow = StreamFlow::new(opts.flow_mode);
+            b_flow.set_show_think_tags(true);
+            full_resp.clear();
+            while let Some(chunk) = b_rx.recv().await {
+                full_resp.push_str(&chunk);
+                b_flow.push(&chunk);
+            }
+            b_flow.finish();
+            println!();
+            active_model = "meerkat-builder-1.5b-q4_k_m.gguf".to_string();
+        }
+    }
+
+    let should_verify = opts
+        .force_verify
+        .unwrap_or_else(|| meerkat::looks_like_code_task(prompt, &full_resp));
     let mut healed = false;
     let mut verified_opt: Option<bool> = None;
 
@@ -3979,7 +4041,7 @@ async fn run_penguin_turn(
         let (mut ok, mut err) = verify_orca_with_mode(&full_resp, "code");
         if !ok && builder_path.is_file() {
             let web_heal = if web_block.is_empty() {
-                penguin::fetch_web_grounding(prompt)
+                meerkat::fetch_web_grounding(prompt)
                     .await
                     .map(|s| format!("\n\n[Web Grounding]\n- {s}"))
                     .unwrap_or_default()
@@ -3996,12 +4058,12 @@ async fn run_penguin_turn(
                 }
                 let fresh_restart = round == 2;
                 println!(
-                    "\x1b[1;33m[Penguin Heal {}/3{}]\x1b[0m Verifier caught issue; escalating to 1.5B Builder...",
+                    "\x1b[1;33m[Meerkat Heal {}/3{}]\x1b[0m Verifier caught issue; escalating to 1.5B Builder...",
                     round,
                     if fresh_restart { " fresh-restart" } else { "" }
                 );
                 let heal_sys = format!(
-                    "You are Penguin Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a short 3-6 line <think>...</think> root-cause analysis, then output a complete, clean, working Python solution with valid assert tests.{mem_block}{web_heal}"
+                    "You are Meerkat Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a short 3-6 line <think>...</think> root-cause analysis, then output a complete, clean, working Python solution with valid assert tests.{mem_block}{web_heal}"
                 );
                 let heal_user = if fresh_restart {
                     format!(
@@ -4033,16 +4095,16 @@ async fn run_penguin_turn(
                 }
                 b_flow.finish();
                 println!();
-                active_model = "penguin-builder-1.5b-q4_k_m.gguf".to_string();
+                active_model = "meerkat-builder-1.5b-q4_k_m.gguf".to_string();
                 let res = verify_orca_with_mode(&full_resp, "code");
                 ok = res.0;
                 err = res.1;
             }
             if ok {
                 healed = true;
-                let _ = penguin::append_replay(
+                let _ = meerkat::append_replay(
                     rep_path,
-                    &penguin::PenguinReplayEntry {
+                    &meerkat::MeerkatReplayEntry {
                         prompt: prompt.to_string(),
                         failed_draft: Some(first_draft),
                         verifier_error: Some(first_err.clone()),
@@ -4054,7 +4116,7 @@ async fn run_penguin_turn(
                             .unwrap_or(0),
                     },
                 );
-                let _ = penguin::append_memory(
+                let _ = meerkat::append_memory(
                     mem_path,
                     "project",
                     prompt,
@@ -4066,16 +4128,16 @@ async fn run_penguin_turn(
         }
         verified_opt = Some(ok);
         if !ok && opts.verbose {
-            eprintln!("[Penguin Verify] Last error: {err}");
+            eprintln!("[Meerkat Verify] Last error: {err}");
         }
-    } else if penguin::looks_like_knowledge_gap(&full_resp) && builder_path.is_file() {
+    } else if meerkat::looks_like_knowledge_gap(&full_resp) && builder_path.is_file() {
         let web_heal = if web_block.is_empty() {
             if opts.verbose {
                 println!(
-                    "\x1b[1;36m[Penguin Scout]\x1b[0m Knowledge gap detected; scouting the web..."
+                    "\x1b[1;36m[Meerkat Scout]\x1b[0m Knowledge gap detected; scouting the web..."
                 );
             }
-            penguin::fetch_web_grounding(prompt)
+            meerkat::fetch_web_grounding(prompt)
                 .await
                 .map(|s| {
                     used_web = true;
@@ -4087,10 +4149,10 @@ async fn run_penguin_turn(
         };
         if !web_heal.is_empty() {
             println!(
-                "\x1b[1;33m[Penguin Heal]\x1b[0m Answering from live web grounding via 1.5B Builder..."
+                "\x1b[1;33m[Meerkat Heal]\x1b[0m Answering from live web grounding via 1.5B Builder..."
             );
             let heal_prompt = format!(
-                "<|im_start|>system\nYou are Nio Penguin (vMicroLM-Growth), created by Nio Labs. Answer directly and concisely using ONLY the facts in [Live Web Search Results].<|im_end|>\n<|im_start|>user\n{web_heal}{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                "<|im_start|>system\nYou are Nio Meerkat (vMicroLM-Growth), created by Nio Labs. Answer directly and concisely using ONLY the facts in [Live Web Search Results].<|im_end|>\n<|im_start|>user\n{web_heal}{prompt}<|im_end|>\n<|im_start|>assistant\n"
             );
             let mut b_engine = nioxs_engine::AstEngine::from_paths(
                 builder_path.to_path_buf(),
@@ -4109,9 +4171,9 @@ async fn run_penguin_turn(
             }
             b_flow.finish();
             println!();
-            active_model = "penguin-builder-1.5b-q4_k_m.gguf".to_string();
+            active_model = "meerkat-builder-1.5b-q4_k_m.gguf".to_string();
             healed = true;
-            let _ = penguin::append_memory(
+            let _ = meerkat::append_memory(
                 mem_path,
                 "global",
                 prompt,
@@ -4119,9 +4181,9 @@ async fn run_penguin_turn(
                 "web_healed",
                 true,
             );
-            let _ = penguin::append_replay(
+            let _ = meerkat::append_replay(
                 rep_path,
-                &penguin::PenguinReplayEntry {
+                &meerkat::MeerkatReplayEntry {
                     prompt: prompt.to_string(),
                     failed_draft: None,
                     verifier_error: Some("knowledge_gap".to_string()),
@@ -4135,7 +4197,7 @@ async fn run_penguin_turn(
             );
         }
     } else if used_web {
-        let _ = penguin::append_memory(
+        let _ = meerkat::append_memory(
             mem_path,
             "global",
             prompt,
@@ -4148,7 +4210,7 @@ async fn run_penguin_turn(
     if opts.verbose {
         let elapsed = t0.elapsed().as_secs_f64();
         println!(
-            "\n---\nPenguin [vMicroLM-Growth] | model={} | memories={} | web={} | healed={} | verified={:?} | {:.2}s",
+            "\n---\nMeerkat [vMicroLM-Growth] | model={} | memories={} | web={} | healed={} | verified={:?} | {:.2}s",
             active_model,
             memories.len(),
             used_web,
