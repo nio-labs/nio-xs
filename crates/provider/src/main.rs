@@ -1721,11 +1721,14 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
             .unwrap_or_default();
 
-        let (pod_id, matched_think_meta) =
-            route_orca_pod(&prompt, forced_pod.as_deref(), &manifest_entries);
+        let (pod_id, matched_think_meta, verify_mode, custom_gguf) =
+            route_orca_pod_meta(&prompt, forced_pod.as_deref(), &manifest_entries);
         let is_reasoning_pod = |p: &str| p.contains("reasoner") || p == "architect";
         let think_enabled =
             think_override.unwrap_or_else(|| matched_think_meta || is_reasoning_pod(&pod_id));
+        if verify_mode == "none" {
+            verify = false;
+        }
 
         let kebab = pod_id.replace('_', "-");
         let tier_specs: Vec<(&str, &[&str])> = match tier.as_str() {
@@ -1756,6 +1759,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         };
 
         let mut names = Vec::new();
+        if let Some(ref g) = custom_gguf {
+            names.push(g.clone());
+        }
         for (t_name, size_tags) in &tier_specs {
             for size_tag in *size_tags {
                 names.push(format!("orca-{t_name}-{kebab}-{size_tag}-q4_k_m.gguf"));
@@ -1828,7 +1834,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let mut active_gguf = model_path.clone();
 
         if verify {
-            let (mut ok, mut err) = verify_orca_code(&full_resp);
+            let (mut ok, mut err) = verify_orca_with_mode(&full_resp, &verify_mode);
             let active_size_tags: &[&str] = match resolved_tier {
                 "nano" => &["0.5b", "0-5b"],
                 "omni" => &["1.5b", "1-5b", "3b", "7b"],
@@ -1905,7 +1911,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 println!();
                 active_pod = r_pod.to_string();
                 active_gguf = r_path;
-                let res = verify_orca_code(&full_resp);
+                let res = verify_orca_with_mode(&full_resp, &verify_mode);
                 ok = res.0;
                 err = res.1;
             }
@@ -3511,24 +3517,35 @@ mod tests {
     }
 }
 
-fn route_orca_pod(
+fn route_orca_pod_meta(
     prompt: &str,
     forced_pod: Option<&str>,
     manifest_entries: &[serde_json::Value],
-) -> (String, bool) {
+) -> (String, bool, String, Option<String>) {
+    let extract_meta = |e: &serde_json::Value| {
+        let think = e.get("think").and_then(|v| v.as_bool()).unwrap_or(false)
+            || e.get("role")
+                .and_then(|v| v.as_str())
+                .map(|r| r.contains("reason"))
+                .unwrap_or(false);
+        let vmode = e
+            .get("verify_mode")
+            .and_then(|v| v.as_str())
+            .unwrap_or("code")
+            .to_string();
+        let gguf = e
+            .get("gguf")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        (think, vmode, gguf)
+    };
     if let Some(p) = forced_pod {
-        let meta = manifest_entries
+        let (think, vmode, gguf) = manifest_entries
             .iter()
             .find(|e| e.get("pod_id").and_then(|v| v.as_str()) == Some(p))
-            .map(|e| {
-                e.get("think").and_then(|v| v.as_bool()).unwrap_or(false)
-                    || e.get("role")
-                        .and_then(|v| v.as_str())
-                        .map(|r| r.contains("reason"))
-                        .unwrap_or(false)
-            })
-            .unwrap_or(false);
-        return (p.to_string(), meta);
+            .map(extract_meta)
+            .unwrap_or((false, "code".to_string(), None));
+        return (p.to_string(), think, vmode, gguf);
     }
 
     let prompt_tokens: std::collections::HashSet<String> = prompt
@@ -3541,6 +3558,8 @@ fn route_orca_pod(
     let mut best_pod = "lead".to_string();
     let mut best_score = 0usize;
     let mut matched_think = false;
+    let mut matched_vmode = "code".to_string();
+    let mut matched_gguf: Option<String> = None;
     for entry in manifest_entries {
         let Some(pid) = entry.get("pod_id").and_then(|v| v.as_str()) else {
             continue;
@@ -3561,18 +3580,49 @@ fn route_orca_pod(
         if score > best_score {
             best_score = score;
             best_pod = pid.to_string();
-            matched_think = entry
-                .get("think")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-                || entry
-                    .get("role")
-                    .and_then(|v| v.as_str())
-                    .map(|r| r.contains("reason"))
-                    .unwrap_or(false);
+            let (think, vmode, gguf) = extract_meta(entry);
+            matched_think = think;
+            matched_vmode = vmode;
+            matched_gguf = gguf;
         }
     }
-    (best_pod, matched_think)
+    (best_pod, matched_think, matched_vmode, matched_gguf)
+}
+
+fn route_orca_pod(
+    prompt: &str,
+    forced_pod: Option<&str>,
+    manifest_entries: &[serde_json::Value],
+) -> (String, bool) {
+    let (pod, think, _, _) = route_orca_pod_meta(prompt, forced_pod, manifest_entries);
+    (pod, think)
+}
+
+fn verify_orca_with_mode(resp: &str, verify_mode: &str) -> (bool, String) {
+    match verify_mode {
+        "none" => (true, String::new()),
+        "json" => {
+            let body = resp.split("</think>").last().unwrap_or(resp).trim();
+            let candidate = if let Some(start) = body.find("```") {
+                let after = &body[start + 3..];
+                if let Some(nl) = after.find('\n') {
+                    let code = &after[nl + 1..];
+                    code.find("```")
+                        .map(|end| code[..end].trim())
+                        .unwrap_or(body)
+                } else {
+                    body
+                }
+            } else {
+                body
+            };
+            match serde_json::from_str::<serde_json::Value>(candidate) {
+                Ok(_) => (true, String::new()),
+                Err(e) => (false, format!("JSONParseError: {e}")),
+            }
+        }
+        _ => verify_orca_code(resp),
+    }
 }
 
 fn run_cmd_with_timeout(
@@ -3771,6 +3821,41 @@ mod orca_tests {
         let (ok, err) = verify_orca_code("```python\nwhile True:\n    pass\n```");
         assert!(!ok);
         assert!(err.contains("TimeoutExpired"), "unexpected err: {err}");
+    }
+
+    #[test]
+    fn test_verify_orca_with_mode_none_and_json() {
+        assert_eq!(
+            verify_orca_with_mode("Waterloo was 1815.", "none"),
+            (true, String::new())
+        );
+        assert_eq!(
+            verify_orca_with_mode("```json\n{\"ok\": true}\n```", "json"),
+            (true, String::new())
+        );
+        let bad = verify_orca_with_mode("not valid json", "json");
+        assert!(!bad.0);
+        assert!(bad.1.contains("JSONParseError"));
+    }
+
+    #[test]
+    fn test_route_orca_pod_meta_bundle_fields() {
+        let manifest = vec![serde_json::json!({
+            "pod_id": "health-nutrition-fitness",
+            "bundle": "health-wellness",
+            "verify_mode": "none",
+            "gguf": "orca-health-nutrition-fitness-0.5b-q4_k_m.gguf",
+            "salient_terms": ["protein", "macros", "workout"]
+        })];
+        let (pod, think, vmode, gguf) =
+            route_orca_pod_meta("plan my daily protein macros", None, &manifest);
+        assert_eq!(pod, "health-nutrition-fitness");
+        assert!(!think);
+        assert_eq!(vmode, "none");
+        assert_eq!(
+            gguf.as_deref(),
+            Some("orca-health-nutrition-fitness-0.5b-q4_k_m.gguf")
+        );
     }
 
     #[test]
