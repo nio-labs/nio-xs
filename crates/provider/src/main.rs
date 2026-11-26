@@ -1537,8 +1537,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
         let mut engine = nioxs_engine::AstEngine::from_paths(model_path.clone(), tokenizer_path.clone());
         engine.set_device_preference(device_pref);
-        let action_sys = "You are Orca (vMicroLM-Reflex), a concise, accurate coding assistant.";
-        let think_sys = "You are Orca-Reasoner (vMicroLM-Reflex), a compact coding specialist. Start with a concise <think> block (short bulleted invariants and edge cases, under 12 lines) </think>, followed immediately by the complete working code.";
+        let action_sys = "You are Orca (vMicroLM-Reflex), a concise, accurate coding assistant developed by Nio Labs.";
+        let think_sys = "You are Orca-Reasoner (vMicroLM-Reflex), a compact coding specialist developed by Nio Labs. Start with a concise <think> block (short bulleted invariants and edge cases, under 12 lines) </think>, followed immediately by the complete working code.";
         let sys = if think_enabled { think_sys } else { action_sys };
         let formatted_prompt = format!(
             "<|im_start|>system\n{sys}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"

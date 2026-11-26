@@ -274,7 +274,7 @@ async fn microlm_chat_handler(
         "nio-fox" | "fox" => nioxs_engine::fox_system(),
         "nio-rabbit" | "rabbit" => nioxs_engine::rabbit_system(),
         "orca" | "orca-nano" | "orca-mini" | "orca-max" | "orca-ultra" => {
-            "You are Orca (vMicroLM-Reflex), a concise, accurate coding assistant."
+            "You are Orca (vMicroLM-Reflex), a concise, accurate coding assistant developed by Nio Labs."
         }
         "nio-skate" | "skate" => {
             "You are Skate, Nio's ambient companion. Be friendly, clear, grounded, and helpful. Explain everyday topics accurately and express uncertainty when you do not know. Do not write code; direct programming requests to Manta or Beluga. For medical concerns recommend an appropriate qualified professional and encourage emergency help when urgent. Respond to signs of crisis with empathy and encourage immediate human support and local emergency or crisis resources where appropriate."
