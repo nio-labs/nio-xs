@@ -228,13 +228,70 @@ pub fn looks_like_code_task(prompt: &str, response: &str) -> bool {
     .any(|kw| lower.contains(kw))
 }
 
+pub fn needs_web_scouting(prompt: &str) -> bool {
+    let lower = prompt.to_ascii_lowercase();
+    [
+        "latest",
+        "newest",
+        "current version",
+        "release",
+        "today",
+        "2025",
+        "2026",
+        "changelog",
+        "price",
+        "news",
+        "weather",
+        "version of",
+    ]
+    .iter()
+    .any(|kw| lower.contains(kw))
+}
+
+pub fn looks_like_knowledge_gap(resp: &str) -> bool {
+    let lower = resp.to_ascii_lowercase();
+    [
+        "as an ai",
+        "knowledge cutoff",
+        "don't have access",
+        "cannot access",
+        "do not have access",
+        "i don't have a specific",
+        "real-time",
+    ]
+    .iter()
+    .any(|kw| lower.contains(kw))
+}
+
+fn strip_html_tags(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_tag = false;
+    for c in s.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out.replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#x27;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub async fn fetch_web_grounding(query: &str) -> Option<String> {
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(6))
-        .user_agent("NioXS-Penguin/0.6")
+        .timeout(std::time::Duration::from_secs(8))
+        .user_agent("Mozilla/5.0 (X11; Linux x86_64) NioXS-Penguin/0.6")
         .build()
         .ok()?;
-    let resp = client
+    let mut snippets = Vec::new();
+    if let Ok(resp) = client
         .get("https://api.duckduckgo.com/")
         .query(&[
             ("q", query),
@@ -244,23 +301,47 @@ pub async fn fetch_web_grounding(query: &str) -> Option<String> {
         ])
         .send()
         .await
-        .ok()?;
-    let val: serde_json::Value = resp.json().await.ok()?;
-    let mut snippets = Vec::new();
-    if let Some(abs) = val.get("AbstractText").and_then(|v| v.as_str()) {
-        if !abs.trim().is_empty() {
-            snippets.push(abs.trim().to_string());
-        }
-    }
-    if let Some(topics) = val.get("RelatedTopics").and_then(|v| v.as_array()) {
-        for t in topics.iter().take(3) {
-            if let Some(txt) = t.get("Text").and_then(|v| v.as_str()) {
-                if !txt.trim().is_empty() {
-                    snippets.push(txt.trim().to_string());
+    {
+        if let Ok(val) = resp.json::<serde_json::Value>().await {
+            if let Some(abs) = val.get("AbstractText").and_then(|v| v.as_str()) {
+                if !abs.trim().is_empty() {
+                    snippets.push(abs.trim().to_string());
+                }
+            }
+            if let Some(topics) = val.get("RelatedTopics").and_then(|v| v.as_array()) {
+                for t in topics.iter().take(3) {
+                    if let Some(txt) = t.get("Text").and_then(|v| v.as_str()) {
+                        if !txt.trim().is_empty() {
+                            snippets.push(txt.trim().to_string());
+                        }
+                    }
                 }
             }
         }
     }
+
+    if snippets.is_empty() {
+        if let Ok(resp) = client
+            .get("https://html.duckduckgo.com/html/")
+            .query(&[("q", query)])
+            .send()
+            .await
+        {
+            if let Ok(html) = resp.text().await {
+                for part in html.split("class=\"result__snippet\"").skip(1).take(4) {
+                    if let Some((_, after_gt)) = part.split_once('>') {
+                        if let Some((raw_snip, _)) = after_gt.split_once("</a>") {
+                            let clean = strip_html_tags(raw_snip);
+                            if !clean.is_empty() {
+                                snippets.push(clean);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if snippets.is_empty() {
         None
     } else {

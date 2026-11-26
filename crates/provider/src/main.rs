@@ -3850,8 +3850,14 @@ async fn run_penguin_turn(
         )
     };
 
-    let web_block = if opts.use_search {
+    let auto_search = opts.use_search || penguin::needs_web_scouting(prompt);
+    let mut used_web = false;
+    let web_block = if auto_search {
+        if opts.verbose {
+            println!("\x1b[1;36m[Penguin Scout]\x1b[0m Scouting the web...");
+        }
         if let Some(snip) = penguin::fetch_web_grounding(prompt).await {
+            used_web = true;
             format!("[Web Grounding]\n- {snip}\n\n")
         } else {
             String::new()
@@ -4020,14 +4026,59 @@ async fn run_penguin_turn(
         if !ok && opts.verbose {
             eprintln!("[Penguin Verify] Last error: {err}");
         }
+    } else if penguin::looks_like_knowledge_gap(&full_resp) && builder_path.is_file() {
+        let web_heal = if web_block.is_empty() {
+            if opts.verbose {
+                println!(
+                    "\x1b[1;36m[Penguin Scout]\x1b[0m Knowledge gap detected; scouting the web..."
+                );
+            }
+            penguin::fetch_web_grounding(prompt)
+                .await
+                .map(|s| {
+                    used_web = true;
+                    format!("[Web Grounding]\n- {s}\n\n")
+                })
+                .unwrap_or_default()
+        } else {
+            web_block.clone()
+        };
+        if !web_heal.is_empty() {
+            println!(
+                "\x1b[1;33m[Penguin Heal]\x1b[0m Answering from live web grounding via 1.5B Builder..."
+            );
+            let heal_prompt = format!(
+                "<|im_start|>system\nYou are Nio Penguin (vMicroLM-Growth), created by Nio Labs. Answer directly and concisely using ONLY the facts in [Web Grounding].<|im_end|>\n<|im_start|>user\n{web_heal}{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            );
+            let mut b_engine = nioxs_engine::AstEngine::from_paths(
+                builder_path.to_path_buf(),
+                tokenizer_path.to_path_buf(),
+            );
+            b_engine.set_device_preference(opts.device_pref);
+            let mut b_rx = b_engine
+                .generate_stream(heal_prompt, opts.max_tokens, 0.20, 0.90)
+                .await?;
+            let mut b_flow = StreamFlow::new(opts.flow_mode);
+            b_flow.set_show_think_tags(true);
+            full_resp.clear();
+            while let Some(chunk) = b_rx.recv().await {
+                full_resp.push_str(&chunk);
+                b_flow.push(&chunk);
+            }
+            b_flow.finish();
+            println!();
+            active_model = "penguin-builder-1.5b-q4_k_m.gguf".to_string();
+            healed = true;
+        }
     }
 
     if opts.verbose {
         let elapsed = t0.elapsed().as_secs_f64();
         println!(
-            "\n---\nPenguin [vMicroLM-Growth] | model={} | memories={} | healed={} | verified={:?} | {:.2}s",
+            "\n---\nPenguin [vMicroLM-Growth] | model={} | memories={} | web={} | healed={} | verified={:?} | {:.2}s",
             active_model,
             memories.len(),
+            used_web,
             healed,
             verified_opt,
             elapsed
