@@ -1030,11 +1030,14 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             return Ok(());
         }
         let lowered = model_target.trim().to_ascii_lowercase();
-        let fleet_prefixes: Vec<&str> = match lowered.as_str() {
-            "orca" | "orca-mini" => vec!["orca-mini"],
-            "orca-nano" => vec!["orca-nano"],
-            "orca-omni" => vec!["orca-nano", "orca-mini"],
-            _ => vec![],
+        let (fleet_prefixes, is_wave1): (Vec<&str>, bool) = match lowered.as_str() {
+            "orca" | "orca-mini" => (vec!["orca-mini"], false),
+            "orca-nano" => (vec!["orca-nano"], false),
+            "orca-omni" => (vec!["orca-nano", "orca-mini"], false),
+            "health-wellness" => (vec!["health"], true),
+            "everyday-home" => (vec!["everyday"], true),
+            "orca-wave1" | "wave1" => (vec!["health", "everyday"], true),
+            _ => (vec![], false),
         };
         if !fleet_prefixes.is_empty() {
             let pod_entries: Vec<_> = manifest
@@ -1046,17 +1049,29 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 })
                 .collect();
             println!(
-                "Pulling {} fleet ({} pods + pod_manifest.json)...",
+                "Pulling {} {} ({} pods + manifest)...",
                 lowered,
+                if is_wave1 { "bundle" } else { "fleet" },
                 pod_entries.len()
             );
             for entry in pod_entries {
                 let _ = nioxs_artifacts::prompt_and_pull_if_needed(&entry.model_id, auto_yes)
                     .map_err(|e| format!("Failed to pull {}: {e}", entry.model_id))?;
             }
-            let manifest_dest = nioxs_artifacts::resolve_models_dir().join("pod_manifest.json");
+            let (manifest_name, manifest_url) = if is_wave1 {
+                (
+                    "wave1_bundle_manifest.json",
+                    "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.1/wave1_bundle_manifest.json",
+                )
+            } else {
+                (
+                    "pod_manifest.json",
+                    "https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/pod_manifest.json",
+                )
+            };
+            let manifest_dest = nioxs_artifacts::resolve_models_dir().join(manifest_name);
             if !manifest_dest.exists() {
-                if let Ok(resp) = reqwest::get("https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/pod_manifest.json").await {
+                if let Ok(resp) = reqwest::get(manifest_url).await {
                     if resp.status().is_success() {
                         if let Ok(bytes) = resp.bytes().await {
                             let _ = std::fs::write(&manifest_dest, &bytes);
@@ -1065,7 +1080,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 }
             }
             println!(
-                "✔ Fleet '{lowered}' ready in {}",
+                "✔ {} '{lowered}' ready in {}",
+                if is_wave1 { "Bundle" } else { "Fleet" },
                 nioxs_artifacts::resolve_models_dir().display()
             );
             return Ok(());
@@ -1713,13 +1729,22 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             Some(std::path::PathBuf::from(&home).join(".nioxs/models/orca/pod_manifest.json")),
             Some(std::path::PathBuf::from(&home).join(".nioxs/orca/pod_manifest.json")),
         ];
-        let manifest_entries: Vec<serde_json::Value> = manifest_candidates
+        let mut manifest_entries: Vec<serde_json::Value> = manifest_candidates
             .into_iter()
             .flatten()
             .find(|p| p.is_file())
             .and_then(|p| std::fs::read_to_string(p).ok())
             .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
             .unwrap_or_default();
+        let wave1_manifest = models_dir.join("wave1_bundle_manifest.json");
+        if wave1_manifest.is_file() {
+            if let Some(extra) = std::fs::read_to_string(&wave1_manifest)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
+            {
+                manifest_entries.extend(extra);
+            }
+        }
 
         let (pod_id, matched_think_meta, verify_mode, custom_gguf) =
             route_orca_pod_meta(&prompt, forced_pod.as_deref(), &manifest_entries);

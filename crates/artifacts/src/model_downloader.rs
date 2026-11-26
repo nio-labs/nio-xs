@@ -382,10 +382,60 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             "2b4e4280bf3ff4046cbcc936f80358842a53c871d818071d81fde63e43dccee0",
             986_048_192,
         ),
+        orca_entry_tag(
+            "v0.6.1",
+            "health-nutrition-fitness",
+            "Orca Health & Fitness Pod (0.5B, Wave 1)",
+            "Qwen/Qwen2.5-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-health-nutrition-fitness-0.5b-q4_k_m.gguf",
+            "dfe3f132675b2ffe64ef4e51e781a05268cce2067d323123f29c2b6d7d4cd55c",
+            397_807_616,
+        ),
+        orca_entry_tag(
+            "v0.6.1",
+            "health-general-info",
+            "Orca Health General Info Pod (0.5B, Wave 1)",
+            "Qwen/Qwen2.5-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-health-general-info-0.5b-q4_k_m.gguf",
+            "22466678b640a9eb4e6718d9a54c70e63b427be6051cb7c0fb8a42c95f058614",
+            397_807_616,
+        ),
+        orca_entry_tag(
+            "v0.6.1",
+            "everyday-cooking-travel",
+            "Orca Everyday Cooking & Travel Pod (0.5B, Wave 1)",
+            "Qwen/Qwen2.5-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-everyday-cooking-travel-0.5b-q4_k_m.gguf",
+            "f1c03868b06ccf5f2449356542505a07a49dc5f81f058476d8669717824a0bcf",
+            397_807_616,
+        ),
+        orca_entry_tag(
+            "v0.6.1",
+            "everyday-diy-life",
+            "Orca Everyday DIY & Life Pod (0.5B, Wave 1)",
+            "Qwen/Qwen2.5-0.5B-Instruct (24L, Q4_K_M)",
+            "orca-everyday-diy-life-0.5b-q4_k_m.gguf",
+            "92a86aff9c7ef588fc401e6a33daa69ce5d31dbe880646e96f73728dc4e04d4b",
+            397_807_616,
+        ),
     ]
 }
 
 fn orca_entry(
+    model_id: &str,
+    brand_name: &str,
+    base_model: &str,
+    filename: &str,
+    sha256: &str,
+    size_bytes: u64,
+) -> ModelArtifactEntry {
+    orca_entry_tag(
+        "v0.6.0", model_id, brand_name, base_model, filename, sha256, size_bytes,
+    )
+}
+
+fn orca_entry_tag(
+    release_tag: &str,
     model_id: &str,
     brand_name: &str,
     base_model: &str,
@@ -398,7 +448,9 @@ fn orca_entry(
         brand_name: brand_name.into(),
         base_model: base_model.into(),
         filename: filename.into(),
-        download_url: format!("https://github.com/nio-labs/nio-xs-models/releases/download/v0.6.0/{filename}"),
+        download_url: format!(
+            "https://github.com/nio-labs/nio-xs-models/releases/download/{release_tag}/{filename}"
+        ),
         sha256: sha256.into(),
         size_bytes,
         tokenizer: Some(ModelTokenizerArtifact {
@@ -1118,7 +1170,7 @@ mod tests {
             ),
         ];
         let manifest = default_manifest();
-        assert_eq!(manifest.len(), expected.len() + 24);
+        assert_eq!(manifest.len(), expected.len() + 28);
         for (id, sha256, size_bytes, url) in expected {
             let entry =
                 get_manifest_entry(id).unwrap_or_else(|| panic!("missing manifest entry for {id}"));
@@ -1201,7 +1253,7 @@ mod tests {
     #[test]
     fn test_manifest_contains_all_models() {
         let manifest = default_manifest();
-        assert_eq!(manifest.len(), 35);
+        assert_eq!(manifest.len(), 39);
         for id in [
             MODEL_VIPER,
             MODEL_SKATE,
@@ -1214,6 +1266,10 @@ mod tests {
             MODEL_RABBIT,
             MODEL_ORCA_NANO,
             MODEL_ORCA_MINI,
+            "health-nutrition-fitness",
+            "health-general-info",
+            "everyday-cooking-travel",
+            "everyday-diy-life",
         ] {
             assert!(manifest.iter().any(|e| e.model_id == id));
         }
