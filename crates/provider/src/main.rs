@@ -3582,6 +3582,7 @@ fn route_orca_pod_meta(
 
     let mut best_pod = "lead".to_string();
     let mut best_score = 0usize;
+    let mut best_is_bundle = false;
     let mut matched_think = false;
     let mut matched_vmode = "code".to_string();
     let mut matched_gguf: Option<String> = None;
@@ -3602,8 +3603,15 @@ fn route_orca_pod_meta(
         if prompt_tokens.contains(&pid.to_ascii_lowercase()) {
             score += 2;
         }
-        if score > best_score {
+        let is_bundle = entry
+            .get("bundle")
+            .and_then(|v| v.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        if score > best_score || (score > 0 && score == best_score && is_bundle && !best_is_bundle)
+        {
             best_score = score;
+            best_is_bundle = is_bundle;
             best_pod = pid.to_string();
             let (think, vmode, gguf) = extract_meta(entry);
             matched_think = think;
@@ -3880,6 +3888,34 @@ mod orca_tests {
         assert_eq!(
             gguf.as_deref(),
             Some("orca-health-nutrition-fitness-0.5b-q4_k_m.gguf")
+        );
+    }
+
+    #[test]
+    fn test_route_orca_pod_meta_bundle_tiebreaker() {
+        let manifest = vec![
+            serde_json::json!({
+                "pod_id": "pod_2",
+                "salient_terms": ["for", "python"]
+            }),
+            serde_json::json!({
+                "pod_id": "everyday-cooking-travel",
+                "bundle": "everyday-home",
+                "verify_mode": "none",
+                "gguf": "orca-everyday-cooking-travel-0.5b-q4_k_m.gguf",
+                "salient_terms": ["recipe", "cook"]
+            }),
+        ];
+        let (pod, _, vmode, gguf) = route_orca_pod_meta(
+            "Give a quick 3-step recipe for garlic butter chicken",
+            None,
+            &manifest,
+        );
+        assert_eq!(pod, "everyday-cooking-travel");
+        assert_eq!(vmode, "none");
+        assert_eq!(
+            gguf.as_deref(),
+            Some("orca-everyday-cooking-travel-0.5b-q4_k_m.gguf")
         );
     }
 
