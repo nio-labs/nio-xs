@@ -3719,12 +3719,28 @@ async fn run_penguin_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     };
 
     let think_enabled = force_think.unwrap_or(false);
-    let sys = if think_enabled {
-        "You are Penguin Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a concise 3-6 line <think>...</think> plan, then provide a clear, accurate answer using any provided [Known User Facts] or [Web Grounding].".to_string()
+    let lower_q = prompt.to_ascii_lowercase();
+    let identity_block = if [
+        "who are you",
+        "what are you",
+        "your name",
+        "who created you",
+        "who made you",
+        "who built you",
+    ]
+    .iter()
+    .any(|kw| lower_q.contains(kw))
+    {
+        "[Identity]\nYou are Nio Penguin (vMicroLM-Growth), created by Nio Labs — a local self-healing conversational and coding AI herd (0.5B Scout + 1.5B Builder) running in nio-xs. Never call yourself Pegasus, Qwen, or Alibaba Cloud.\n\n"
     } else {
-        "You are Penguin (vMicroLM-Growth), developed by Nio Labs. Be natural, concise, and accurate. Always use [Known User Facts] directly when answering questions about the user, and never reply with 'As an AI language model'.".to_string()
+        ""
     };
-    let user_msg = format!("{mem_block}{web_block}{prompt}");
+    let sys = if think_enabled {
+        "You are Nio Penguin Builder Reasoner (vMicroLM-Growth), created by Nio Labs. Write a concise 3-6 line <think>...</think> plan, then provide a clear, accurate answer using any provided [Identity], [Known User Facts], or [Web Grounding].".to_string()
+    } else {
+        "You are Nio Penguin (vMicroLM-Growth), created by Nio Labs. Be natural, concise, and accurate. Always follow [Identity] and [Known User Facts] directly, and never claim to be Alibaba Cloud, Qwen, or Pegasus.".to_string()
+    };
+    let user_msg = format!("{identity_block}{mem_block}{web_block}{prompt}");
     let formatted_prompt = format!(
         "<|im_start|>system\n{sys}<|im_end|>\n<|im_start|>user\n{user_msg}<|im_end|>\n<|im_start|>assistant\n"
     );
