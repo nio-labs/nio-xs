@@ -135,14 +135,14 @@ Orca replaces single-model bottlenecks with a **13-pod specialist fleet** (`1× 
 
 ### Benchmark Comparison vs. Stock `Qwen2.5-Coder-Instruct`
 
-| Model / Fleet | Active Params | HumanEval (`164`) | MBPP (`100`) | Host RAM (`VmHWM`) | CPU Speed |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| Stock `Qwen2.5-Coder-3B` (`INT4`) | `3.0B` | `79.27%` (`130/164`) | `73.0%` (`73/100`) | — | — |
-| Stock `Qwen2.5-Coder-3B` (`FP16`) | `3.0B` | `81.10%` (`133/164`) | `74.0%` (`74/100`) | — | — |
-| Stock `Qwen2.5-Coder-7B` (`INT4`) | `7.0B` | `84.15%` (`138/164`) | `84.0%` (`84/100`) | — | — |
-| **`Orca Nano`** (`0.5B × 13`) | **`0.5B`** | **`85.37%`** (`140/164`) | **`84.0%`** (`84/100`) | **`~582 MB`** | **`~20 w/s`** |
-| **`Orca Mini`** (`1.5B × 13`) | **`1.5B`** | **`86.59%`** (`142/164`) | **`87.0%`** (`87/100`) | **`~1,839 MB`** | **`8–10 w/s`** |
-| **`Orca Omni`** (`0.5B Fast → 1.5B Esc.`) | **`0.5B / 1.5B`** | **`92.07%`** (`151/164`) | **`89.0%`** (`89/100`) | **`~582–1,839 MB`** | **`8–20 w/s`** |
+| Model / Fleet | Active Params | Pods & Total Size (`Q4_K_M`) | HumanEval (`164`) | MBPP (`100`) | Host RAM (`VmHWM`) | CPU Speed |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Stock `Qwen2.5-Coder-3B` (`INT4`) | `3.0B` | `1` pod | `79.27%` (`130/164`) | `73.0%` (`73/100`) | — | — |
+| Stock `Qwen2.5-Coder-3B` (`FP16`) | `3.0B` | `1` pod | `81.10%` (`133/164`) | `74.0%` (`74/100`) | — | — |
+| Stock `Qwen2.5-Coder-7B` (`INT4`) | `7.0B` | `1` pod | `84.15%` (`138/164`) | `84.0%` (`84/100`) | — | — |
+| **`Orca Nano`** (`0.5B × 13`) | **`0.5B`** | **`13 pods` (`~4.9 GB`, `380 MB/pod`)** | **`85.37%`** (`140/164`) | **`84.0%`** (`84/100`) | **`~582 MB`** | **`~20 w/s`** |
+| **`Orca Mini`** (`1.5B × 13`) | **`1.5B`** | **`13 pods` (`~12.2 GB`, `941 MB/pod`)** | **`86.59%`** (`142/164`) | **`87.0%`** (`87/100`) | **`~1,839 MB`** | **`8–10 w/s`** |
+| **`Orca Omni`** (`0.5B Fast → 1.5B Esc.`) | **`0.5B / 1.5B`** | **`26 pods` (`~17.1 GB`: `Nano + Mini`)** | **`92.07%`** (`151/164`) | **`89.0%`** (`89/100`) | **`~582–1,839 MB`** | **`8–20 w/s`** |
 
 *(Every Orca tier outperforms stock `Qwen2.5-Coder-7B-Instruct INT4` on HumanEval while running at `0.5B–1.5B` active parameters; **`Orca Omni`** solves `56.71%` on the fast `0.5B` pass and escalates hard tasks to `1.5B` reasoner/repair pods to reach **`92.07%` HumanEval** and **`89.0%` MBPP**.)*
 
