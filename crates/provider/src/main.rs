@@ -1041,6 +1041,9 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 "orca" | "orca-mini" => (vec!["orca-mini"], None),
                 "orca-nano" => (vec!["orca-nano"], None),
                 "orca-omni" => (vec!["orca-nano", "orca-mini"], None),
+                "tiny-orca" | "baby-orca" => (vec!["tiny-orca"], None),
+                "tiny-meerkat" | "baby-meerkat" => (vec!["tiny-meerkat"], None),
+                "meerkat" => (vec!["meerkat"], None),
                 "health-wellness" => (
                     vec!["health"],
                     Some(("wave1_bundle_manifest.json", "v0.6.1")),
