@@ -4091,7 +4091,12 @@ async fn run_meerkat_turn(
             "<|im_start|>user\n{u}<|im_end|>\n<|im_start|>assistant\n{a}<|im_end|>\n"
         ));
     }
-    let user_msg = format!("{identity_block}{mem_block}{web_block}{prompt}");
+    let effective_mem = if opts.use_baby && (auto_need_code || opts.use_builder) {
+        ""
+    } else {
+        mem_block.as_str()
+    };
+    let user_msg = format!("{identity_block}{effective_mem}{web_block}{prompt}");
     let mut formatted_prompt = format!(
         "<|im_start|>system\n{sys}<|im_end|>\n{history_chatml}<|im_start|>user\n{user_msg}<|im_end|>\n<|im_start|>assistant\n"
     );
