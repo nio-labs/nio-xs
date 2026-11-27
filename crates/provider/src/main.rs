@@ -3885,32 +3885,48 @@ async fn run_meerkat_turn(
     .any(|kw| lower_q.contains(kw));
 
     let mut auto_need_web = opts.use_search;
+    let mut auto_need_code = meerkat::looks_like_code_task(prompt, "");
     let tools_enabled = opts.use_tools || opts.use_builder || prompt.contains("<tool ");
-    if !auto_need_web
-        && !tools_enabled
-        && memories.is_empty()
-        && !asks_identity
-        && !meerkat::looks_like_code_task(prompt, "")
-        && scout_path.is_file()
-    {
+    if !auto_need_web && !tools_enabled && !asks_identity && scout_path.is_file() {
         let mut cls_engine = nioxs_engine::AstEngine::from_paths(
             scout_path.to_path_buf(),
             tokenizer_path.to_path_buf(),
         );
         cls_engine.set_device_preference(opts.device_pref);
-        let web_cls_prompt = format!(
-            "<|im_start|>system\nDecide if the user question requires live, current, or post-2024 web data (such as current leaders, latest software versions, recent events, prices, or news) instead of timeless facts or casual chat. Reply ONLY with YES or NO.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-        );
-        if let Ok(mut cls_rx) = cls_engine
-            .generate_stream(web_cls_prompt, 4, 0.0, 0.90)
-            .await
-        {
-            let mut verdict = String::new();
-            while let Some(c) = cls_rx.recv().await {
-                verdict.push_str(&c);
+
+        if !auto_need_code {
+            let code_cls_prompt = format!(
+                "<|im_start|>system\nIs this a programming, coding, or software-writing request? Reply ONLY with YES or NO.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            );
+            if let Ok(mut cls_rx) = cls_engine
+                .generate_stream(code_cls_prompt, 4, 0.0, 0.90)
+                .await
+            {
+                let mut verdict = String::new();
+                while let Some(c) = cls_rx.recv().await {
+                    verdict.push_str(&c);
+                }
+                if verdict.trim().to_ascii_uppercase().starts_with("YES") {
+                    auto_need_code = true;
+                }
             }
-            if verdict.trim().to_ascii_uppercase().starts_with("YES") {
-                auto_need_web = true;
+        }
+
+        if !auto_need_code && memories.is_empty() {
+            let web_cls_prompt = format!(
+                "<|im_start|>system\nDecide if the user question requires live, current, or post-2024 web data (such as current leaders, latest software versions, recent events, prices, or news) instead of timeless facts or casual chat. Reply ONLY with YES or NO.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            );
+            if let Ok(mut cls_rx) = cls_engine
+                .generate_stream(web_cls_prompt, 4, 0.0, 0.90)
+                .await
+            {
+                let mut verdict = String::new();
+                while let Some(c) = cls_rx.recv().await {
+                    verdict.push_str(&c);
+                }
+                if verdict.trim().to_ascii_uppercase().starts_with("YES") {
+                    auto_need_web = true;
+                }
             }
         }
     }
@@ -3938,8 +3954,14 @@ async fn run_meerkat_turn(
         String::new()
     };
 
-    let using_builder =
-        (tools_enabled || used_web || !scout_path.is_file()) && builder_path.is_file();
+    let using_builder = (tools_enabled || auto_need_code || used_web || !scout_path.is_file())
+        && builder_path.is_file();
+    if auto_need_code && !opts.use_builder && builder_path.is_file() {
+        println!(
+            "\x1b[1;36m[Meerkat Scout]\x1b[0m Coding task detected -> routing to 1.5B Builder..."
+        );
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+    }
     let initial_path = if using_builder {
         builder_path.to_path_buf()
     } else {
