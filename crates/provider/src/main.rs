@@ -4559,13 +4559,19 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             &scout_path,
             &tokenizer_path,
             device_pref,
-            "You are Tiny Orca Web Scout (135M). Reply YES (with QUERY:) if live web data is needed, else NO.",
+            "You are Tiny Orca Web Scout (135M). Reply YES (with QUERY:) if this asks for facts, definitions, software/tools, or current data to verify on the web; reply NO only for pure math or coding.",
             &prompt,
             32,
             0.0,
         )
         .await?;
         web_query = baby_orca::parse_web_scout(&scout_raw, &prompt);
+        if web_query.is_none()
+            && !meerkat::looks_like_code_task(&prompt, "")
+            && prompt.trim_end().ends_with('?')
+        {
+            web_query = Some(prompt.clone());
+        }
     }
     let mut used_web = false;
     let web_ctx = if let Some(q) = web_query {
@@ -4658,7 +4664,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     // 4. Anti-Hallucination Guard Pod (135M) — run when grounded by web or verifying code
     let mut grounded = true;
     let mut guard_reason: Option<String> = None;
-    if !asks_identity && (used_web || should_verify) && guard_path.is_file() {
+    if !asks_identity && guard_path.is_file() {
         let guard_user = format!("[Context]\n{web_ctx}{prompt}\n\n[Draft]\n{draft}");
         let guard_raw = run_baby_orca_one(
             &guard_path,
