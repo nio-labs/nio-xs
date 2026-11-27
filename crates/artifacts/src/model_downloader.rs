@@ -616,6 +616,15 @@ pub fn default_manifest() -> Vec<ModelArtifactEntry> {
             "f25f0b614e8bde36275b7085bc29cd4007f35c9684b1b077c7cbbc7f9882430b",
             986_048_160,
         ),
+        orca_entry_tag(
+            "v0.6.6",
+            "tiny-meerkat-reflex",
+            "Tiny Meerkat Reflex (0.5B IQ3_XXS, vMicroLM-Growth)",
+            "Qwen/Qwen2.5-Coder-0.5B-Instruct (24L, IQ3_XXS)",
+            "tiny-meerkat-reflex-0.5b-iq3_xxs.gguf",
+            "d72fe1d8ba6b2f95125da7fe4b21f04cdfe79d98958c702acf6e21090ad2fdb3",
+            333_704_352,
+        ),
         tiny_entry(
             "tiny-meerkat-scout",
             "Tiny Meerkat Scout (135M)",
@@ -1431,7 +1440,7 @@ mod tests {
             ),
         ];
         let manifest = default_manifest();
-        assert_eq!(manifest.len(), expected.len() + 75);
+        assert_eq!(manifest.len(), expected.len() + 76);
         for (id, sha256, size_bytes, url) in expected {
             let entry =
                 get_manifest_entry(id).unwrap_or_else(|| panic!("missing manifest entry for {id}"));
@@ -1514,7 +1523,7 @@ mod tests {
     #[test]
     fn test_manifest_contains_all_models() {
         let manifest = default_manifest();
-        assert_eq!(manifest.len(), 86);
+        assert_eq!(manifest.len(), 87);
         for id in [
             MODEL_VIPER,
             MODEL_SKATE,
