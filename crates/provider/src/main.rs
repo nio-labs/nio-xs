@@ -4415,8 +4415,8 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     };
     println!("\x1b[1;36m[Baby Orca]\x1b[0m Step 2/4: Lead -> {chosen_pod}");
 
-    // 3. Active Specialist Pod (135M, 1 pod at a time — streamed live)
-    println!("\x1b[1;36m[Baby Orca]\x1b[0m Step 3/4: Running {chosen_pod}...");
+    // 3. Active Specialist Pod (135M, 1 pod at a time — buffered so final answer prints once)
+    println!("\x1b[1;36m[Baby Orca]\x1b[0m Step 3/4: Drafting via {chosen_pod}...");
     let pod_path = baby_orca::pod_gguf_path(&baby_dir, &chosen_pod);
     let active_pod_path = if pod_path.is_file() {
         pod_path
@@ -4440,20 +4440,18 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut rx = pod_engine
         .generate_stream(pod_prompt, max_tokens, 0.25, 0.90)
         .await?;
-    let mut flow = StreamFlow::new(flow_mode);
-    flow.set_show_think_tags(true);
     let mut draft = String::new();
     while let Some(c) = rx.recv().await {
         draft.push_str(&c);
-        flow.push(&c);
     }
-    flow.finish();
-    println!();
 
-    // 4. Anti-Hallucination Guard Pod (135M) + --verify
+    let should_verify =
+        force_verify.unwrap_or_else(|| meerkat::looks_like_code_task(&prompt, &draft));
+
+    // 4. Anti-Hallucination Guard Pod (135M) — run when grounded by web or verifying code
     let mut grounded = true;
     let mut guard_reason: Option<String> = None;
-    if !asks_identity && guard_path.is_file() {
+    if !asks_identity && (used_web || should_verify) && guard_path.is_file() {
         let guard_user = format!("[Context]\n{web_ctx}{prompt}\n\n[Draft]\n{draft}");
         let guard_raw = run_baby_orca_one(
             &guard_path,
@@ -4467,22 +4465,32 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         .await?;
         let (ok, reason) = baby_orca::parse_guard_verdict(&guard_raw);
         grounded = ok;
-        guard_reason = reason;
+        guard_reason = reason.map(|r| {
+            if r.eq_ignore_ascii_case("incorrect programming language") && !should_verify {
+                "needs clearer grounding".to_string()
+            } else {
+                r
+            }
+        });
         println!(
             "\x1b[1;35m[Baby Orca]\x1b[0m Step 4/4: Guard -> {}",
             if grounded {
                 "GROUNDED".to_string()
             } else {
-                format!("HALLUCINATION ({})", guard_reason.as_deref().unwrap_or(""))
+                format!(
+                    "Unverified ({})",
+                    guard_reason.as_deref().unwrap_or("needs check")
+                )
             }
         );
+    } else if !asks_identity {
+        println!("\x1b[1;35m[Baby Orca]\x1b[0m Step 4/4: Guard -> OK (direct)");
     }
 
-    let should_verify =
-        force_verify.unwrap_or_else(|| meerkat::looks_like_code_task(&prompt, &draft));
     let mut verified_opt: Option<bool> = None;
     let mut healed = false;
     let mut final_pod = chosen_pod.clone();
+    let mut final_resp = draft.clone();
 
     let mut verify_err: Option<String> = None;
     if should_verify {
@@ -4498,7 +4506,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             .clone()
             .or_else(|| guard_reason.clone())
             .unwrap_or_else(|| "Need micro-<think> verification".to_string());
-        println!("\x1b[1;33m[Baby Orca Heal]\x1b[0m Escalating to reasoning-think (135M): {issue}");
+        println!("\x1b[1;33m[Baby Orca Heal]\x1b[0m Refining via reasoning-think (135M): {issue}");
         let heal_user =
             format!("{web_ctx}Task: {prompt}\n\nIssue flagged: {issue}\nFix concisely.");
         let heal_prompt = format!(
@@ -4510,22 +4518,23 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         let mut h_rx = h_engine
             .generate_stream(heal_prompt, max_tokens, 0.20, 0.90)
             .await?;
-        let mut h_flow = StreamFlow::new(flow_mode);
-        h_flow.set_show_think_tags(true);
-        let mut healed_resp = String::new();
+        final_resp.clear();
         while let Some(c) = h_rx.recv().await {
-            healed_resp.push_str(&c);
-            h_flow.push(&c);
+            final_resp.push_str(&c);
         }
-        h_flow.finish();
-        println!();
         final_pod = "reasoning-think".to_string();
         healed = true;
         if should_verify {
-            let (ok2, _) = verify_orca_with_mode(&healed_resp, "code");
+            let (ok2, _) = verify_orca_with_mode(&final_resp, "code");
             verified_opt = Some(ok2);
         }
     }
+
+    let mut flow = StreamFlow::new(flow_mode);
+    flow.set_show_think_tags(true);
+    flow.push(&final_resp);
+    flow.finish();
+    println!();
 
     if verbose {
         println!(
