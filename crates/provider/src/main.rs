@@ -4071,9 +4071,12 @@ async fn run_meerkat_turn(
     let mut verified_opt: Option<bool> = None;
 
     if should_verify {
+        println!("\x1b[1;36m[Meerkat Verify]\x1b[0m Checking generated code...");
+        let _ = std::io::Write::flush(&mut std::io::stdout());
         let (mut ok, mut err) = verify_orca_with_mode(&full_resp, "code");
         if !ok && builder_path.is_file() {
-            let web_heal = if web_block.is_empty() {
+            let web_heal = if web_block.is_empty() && opts.use_search {
+                println!("\x1b[1;36m[Meerkat Web]\x1b[0m Fetching grounding...");
                 meerkat::fetch_web_grounding(prompt)
                     .await
                     .map(|s| format!("\n\n[Web Grounding]\n- {s}"))
@@ -4090,13 +4093,18 @@ async fn run_meerkat_turn(
                     break;
                 }
                 let fresh_restart = round == 2;
+                let short_err = baby_orca::compact_verify_issue(&err);
                 println!(
-                    "\x1b[1;33m[Meerkat Heal {}/3{}]\x1b[0m Verifier caught issue; escalating to 1.5B Builder...",
+                    "\x1b[1;33m[Meerkat Heal {}/3{}]\x1b[0m {short_err}",
                     round,
                     if fresh_restart { " fresh-restart" } else { "" }
                 );
+                println!(
+                    "\x1b[1;33m[Meerkat Builder]\x1b[0m Escalating to 1.5B Builder (thinking & repairing)..."
+                );
+                let _ = std::io::Write::flush(&mut std::io::stdout());
                 let heal_sys = format!(
-                    "You are Meerkat Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a short 3-6 line <think>...</think> root-cause analysis, then output a complete, clean, working Python solution with valid assert tests.{mem_block}{web_heal}"
+                    "You are Meerkat Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a short 3-6 line <think>...</think> root-cause analysis, then output a complete, clean, working solution in the requested language with minimal verification tests.{mem_block}{web_heal}"
                 );
                 let heal_user = if fresh_restart {
                     format!(
