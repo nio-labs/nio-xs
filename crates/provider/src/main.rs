@@ -4024,16 +4024,15 @@ async fn run_meerkat_turn(
         .to_string();
 
     if builder_path.is_file() {
+        let mut cached_builder = if using_builder { Some(engine) } else { None };
         for tool_step in 1..=3 {
             let Some((tool_name, tool_arg)) = meerkat::extract_tool_call(&full_resp) else {
                 break;
             };
-            if opts.verbose {
-                println!(
-                    "\x1b[1;35m[Meerkat Tool {}/3]\x1b[0m {}({:?})",
-                    tool_step, tool_name, tool_arg
-                );
-            }
+            println!(
+                "\x1b[1;35m[Meerkat Tool {}/3]\x1b[0m {}({:?})",
+                tool_step, tool_name, tool_arg
+            );
             let tool_out = meerkat::execute_tool(&tool_name, &tool_arg).await;
             if tool_name == "web_search" || tool_name == "web_fetch" {
                 used_web = true;
@@ -4041,11 +4040,14 @@ async fn run_meerkat_turn(
             formatted_prompt.push_str(&format!(
                 "{full_resp}<|im_end|>\n<|im_start|>user\n<tool_result name=\"{tool_name}\">\n{tool_out}\n</tool_result>\nContinue and answer the user's request concisely using the tool result above (or call another tool if needed).<|im_end|>\n<|im_start|>assistant\n"
             ));
-            let mut b_engine = nioxs_engine::AstEngine::from_paths(
-                builder_path.to_path_buf(),
-                tokenizer_path.to_path_buf(),
-            );
-            b_engine.set_device_preference(opts.device_pref);
+            let b_engine = cached_builder.get_or_insert_with(|| {
+                let mut e = nioxs_engine::AstEngine::from_paths(
+                    builder_path.to_path_buf(),
+                    tokenizer_path.to_path_buf(),
+                );
+                e.set_device_preference(opts.device_pref);
+                e
+            });
             let mut b_rx = b_engine
                 .generate_stream(formatted_prompt.clone(), opts.max_tokens, 0.20, 0.90)
                 .await?;
