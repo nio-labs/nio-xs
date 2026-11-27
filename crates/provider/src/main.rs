@@ -3577,6 +3577,7 @@ mod tests {
 
 struct MeerkatOpts {
     use_builder: bool,
+    use_tools: bool,
     use_search: bool,
     force_think: Option<bool>,
     force_verify: Option<bool>,
@@ -3589,7 +3590,7 @@ struct MeerkatOpts {
 async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     if matches!(raw_args.first().map(|s| s.as_str()), Some("-h" | "--help")) {
         println!(
-            "Usage: nioxs meerkat [--chat] [--builder] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--verbose|-v] [prompt]"
+            "Usage: nioxs meerkat [--chat] [--builder] [--tools] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--verbose|-v] [prompt]"
         );
         println!(
             "  teach <trigger => fact>   Save an instant SimSimi-style memory to ~/.nioxs/meerkat_memory.jsonl"
@@ -3622,6 +3623,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut chat_mode = raw_args.is_empty();
     let mut opts = MeerkatOpts {
         use_builder: false,
+        use_tools: false,
         use_search: false,
         force_think: None,
         force_verify: None,
@@ -3636,6 +3638,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         match a.as_str() {
             "--chat" | "-i" => chat_mode = true,
             "--builder" => opts.use_builder = true,
+            "--tools" => opts.use_tools = true,
             "--search" => opts.use_search = true,
             "--think" => opts.force_think = Some(true),
             "--no-think" => opts.force_think = Some(false),
@@ -3876,9 +3879,10 @@ async fn run_meerkat_turn(
     .any(|kw| lower_q.contains(kw));
 
     let mut auto_need_web = opts.use_search;
-    let mut auto_need_tool = prompt.contains("<tool ");
+    let tools_enabled = opts.use_tools || opts.use_builder || prompt.contains("<tool ");
     if !auto_need_web
-        && !auto_need_tool
+        && !tools_enabled
+        && memories.is_empty()
         && !asks_identity
         && !meerkat::looks_like_code_task(prompt, "")
         && scout_path.is_file()
@@ -3888,46 +3892,19 @@ async fn run_meerkat_turn(
             tokenizer_path.to_path_buf(),
         );
         cls_engine.set_device_preference(opts.device_pref);
-
-        let tool_cls_prompt = format!(
-            "<|im_start|>system\nDoes the user request refer to a local file path, URL, webpage, or ask to run Python? Reply ONLY with YES or NO.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        let web_cls_prompt = format!(
+            "<|im_start|>system\nDecide if the user question requires live, current, or post-2024 web data (such as current leaders, latest software versions, recent events, prices, or news) instead of timeless facts or casual chat. Reply ONLY with YES or NO.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         );
         if let Ok(mut cls_rx) = cls_engine
-            .generate_stream(tool_cls_prompt, 4, 0.0, 0.90)
+            .generate_stream(web_cls_prompt, 4, 0.0, 0.90)
             .await
         {
             let mut verdict = String::new();
             while let Some(c) = cls_rx.recv().await {
                 verdict.push_str(&c);
             }
-            let v = verdict.trim().to_ascii_uppercase();
-            if opts.verbose {
-                println!("\x1b[1;36m[Meerkat Router: TOOL?]\x1b[0m {}", v);
-            }
-            if v.starts_with("YES") {
-                auto_need_tool = true;
-            }
-        }
-
-        if !auto_need_tool && memories.is_empty() {
-            let web_cls_prompt = format!(
-                "<|im_start|>system\nDecide if the user question requires live, current, or post-2024 web data (such as current leaders, latest software versions, recent events, prices, or news) instead of timeless facts or casual chat. Reply ONLY with YES or NO.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-            );
-            if let Ok(mut cls_rx) = cls_engine
-                .generate_stream(web_cls_prompt, 4, 0.0, 0.90)
-                .await
-            {
-                let mut verdict = String::new();
-                while let Some(c) = cls_rx.recv().await {
-                    verdict.push_str(&c);
-                }
-                let v = verdict.trim().to_ascii_uppercase();
-                if opts.verbose {
-                    println!("\x1b[1;36m[Meerkat Router: WEB?]\x1b[0m {}", v);
-                }
-                if v.starts_with("YES") {
-                    auto_need_web = true;
-                }
+            if verdict.trim().to_ascii_uppercase().starts_with("YES") {
+                auto_need_web = true;
             }
         }
     }
@@ -3955,8 +3932,8 @@ async fn run_meerkat_turn(
         String::new()
     };
 
-    let using_builder = (opts.use_builder || auto_need_tool || used_web || !scout_path.is_file())
-        && builder_path.is_file();
+    let using_builder =
+        (tools_enabled || used_web || !scout_path.is_file()) && builder_path.is_file();
     let initial_path = if using_builder {
         builder_path.to_path_buf()
     } else {
@@ -3974,7 +3951,7 @@ async fn run_meerkat_turn(
     } else {
         String::new()
     };
-    let tool_menu = if using_builder {
+    let tool_menu = if tools_enabled && using_builder {
         "\n\n[Available Tools]\nYou can optionally call ONE tool at a time using flat XML tags when you need live info, a file, or Python execution:\n- <tool name=\"web_search\">query</tool>\n- <tool name=\"web_fetch\">https://...</tool>\n- <tool name=\"read_file\">path/to/file</tool>\n- <tool name=\"run_python\">python code</tool>\nOnly emit a <tool> tag if needed; otherwise answer directly."
     } else {
         ""
@@ -4010,12 +3987,20 @@ async fn run_meerkat_turn(
     let mut flow = StreamFlow::new(opts.flow_mode);
     flow.set_show_think_tags(true);
     let mut full_resp = String::new();
+    let hide_tool_xml = tools_enabled && !opts.verbose;
     while let Some(chunk) = rx.recv().await {
         full_resp.push_str(&chunk);
-        flow.push(&chunk);
+        if !hide_tool_xml {
+            flow.push(&chunk);
+        }
+    }
+    if hide_tool_xml && meerkat::extract_tool_call(&full_resp).is_none() {
+        flow.push(&full_resp);
     }
     flow.finish();
-    println!();
+    if !hide_tool_xml || meerkat::extract_tool_call(&full_resp).is_none() {
+        println!();
+    }
 
     let mut active_model = initial_path
         .file_name()
@@ -4023,16 +4008,18 @@ async fn run_meerkat_turn(
         .unwrap_or("meerkat")
         .to_string();
 
-    if builder_path.is_file() {
+    if tools_enabled && builder_path.is_file() {
         let mut cached_builder = if using_builder { Some(engine) } else { None };
         for tool_step in 1..=3 {
             let Some((tool_name, tool_arg)) = meerkat::extract_tool_call(&full_resp) else {
                 break;
             };
-            println!(
-                "\x1b[1;35m[Meerkat Tool {}/3]\x1b[0m {}({:?})",
-                tool_step, tool_name, tool_arg
-            );
+            if opts.verbose {
+                println!(
+                    "\x1b[1;35m[Meerkat Tool {}/3]\x1b[0m {}({:?})",
+                    tool_step, tool_name, tool_arg
+                );
+            }
             let tool_out = meerkat::execute_tool(&tool_name, &tool_arg).await;
             if tool_name == "web_search" || tool_name == "web_fetch" {
                 used_web = true;
@@ -4056,10 +4043,17 @@ async fn run_meerkat_turn(
             full_resp.clear();
             while let Some(chunk) = b_rx.recv().await {
                 full_resp.push_str(&chunk);
-                b_flow.push(&chunk);
+                if !hide_tool_xml {
+                    b_flow.push(&chunk);
+                }
+            }
+            if hide_tool_xml && meerkat::extract_tool_call(&full_resp).is_none() {
+                b_flow.push(&full_resp);
             }
             b_flow.finish();
-            println!();
+            if !hide_tool_xml || meerkat::extract_tool_call(&full_resp).is_none() {
+                println!();
+            }
             active_model = "meerkat-builder-1.5b-q4_k_m.gguf".to_string();
         }
     }
