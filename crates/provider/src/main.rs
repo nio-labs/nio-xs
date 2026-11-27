@@ -3,6 +3,7 @@ use nioxs_provider::{ActiveTurns, App, router};
 use nioxs_storage::NioDb;
 use std::sync::Arc;
 
+mod baby_orca;
 mod meerkat;
 mod skate_safety;
 mod stream_flow;
@@ -865,6 +866,7 @@ Commands:\n\
   orca-nano <prompt> Run Orca Nano 0.5B×13 Sovereign Pod Fleet\n\
   orca-mini <prompt> Run Orca Mini 1.5B×13 Sovereign Pod Fleet\n\
   orca-omni <prompt> Run Orca Omni Hybrid Fleet (0.5B fast Lead + 1.5B+ heavy Pods)\n\
+  baby-orca <prompt> Run Baby Orca 15×135M Micro-Pod Fleet (1 active pod, Web Scout + Anti-Hallucination Guard)\n\
   meerkat <prompt>   Run Meerkat Self-Healing Herd (0.5B Scout + 1.5B Builder + 4-tool loop + /teach memory)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
@@ -1630,6 +1632,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         flow.finish();
         println!();
         return Ok(());
+    }
+    if arg.as_deref() == Some("baby-orca") {
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        return Ok(run_baby_orca_cli(raw_args).await?);
     }
     if matches!(arg.as_deref(), Some("meerkat" | "penguin")) {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
@@ -4247,6 +4253,290 @@ async fn run_meerkat_turn(
         );
     }
     Ok(full_resp)
+}
+
+async fn run_baby_orca_one(
+    model_path: &std::path::Path,
+    tokenizer_path: &std::path::Path,
+    device_pref: nioxs_engine::DevicePreference,
+    sys: &str,
+    user: &str,
+    max_tokens: usize,
+    temp: f64,
+) -> anyhow::Result<String> {
+    let prompt = format!(
+        "<|im_start|>system\n{sys}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n"
+    );
+    let mut engine =
+        nioxs_engine::AstEngine::from_paths(model_path.to_path_buf(), tokenizer_path.to_path_buf());
+    engine.set_device_preference(device_pref);
+    let mut rx = engine
+        .generate_stream(prompt, max_tokens, temp, 0.90)
+        .await?;
+    let mut out = String::new();
+    while let Some(c) = rx.recv().await {
+        out.push_str(&c);
+    }
+    Ok(out)
+}
+
+async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
+    if raw_args.is_empty() || matches!(raw_args[0].as_str(), "-h" | "--help") {
+        println!(
+            "Usage: nioxs baby-orca [--pod <name>] [--search] [--verify|--no-verify] [--verbose|-v] [--cpu|--gpu] [-n <max_tokens>] <prompt>"
+        );
+        println!("Pods: {}", baby_orca::BABY_ORCA_PODS.join(", "));
+        return Ok(());
+    }
+
+    let mut forced_pod: Option<String> = None;
+    let mut use_search = false;
+    let mut force_verify: Option<bool> = None;
+    let mut verbose = false;
+    let mut flow_mode = FlowMode::Token;
+    let mut max_tokens: usize = 512;
+    let mut device_pref = nioxs_engine::DevicePreference::Auto;
+    let mut prompt_parts = Vec::new();
+
+    let mut iter = raw_args.into_iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--pod" => forced_pod = iter.next(),
+            "--search" => use_search = true,
+            "--verify" => force_verify = Some(true),
+            "--no-verify" => force_verify = Some(false),
+            "--verbose" | "-v" => verbose = true,
+            "--cpu" => device_pref = nioxs_engine::DevicePreference::Cpu,
+            "--gpu" => device_pref = nioxs_engine::DevicePreference::Gpu,
+            "--flow" => {
+                if let Some(v) = iter.next() {
+                    flow_mode = FlowMode::parse(&v);
+                }
+            }
+            "-n" | "--max-tokens" => {
+                if let Some(v) = iter.next() {
+                    if let Ok(n) = v.parse() {
+                        max_tokens = n;
+                    }
+                }
+            }
+            _ => prompt_parts.push(a),
+        }
+    }
+    let prompt = prompt_parts.join(" ");
+    if prompt.trim().is_empty() {
+        return Err(anyhow::anyhow!(
+            "Empty prompt. Usage: nioxs baby-orca <prompt>"
+        ));
+    }
+
+    let models_dir = nioxs_artifacts::resolve_models_dir();
+    let baby_dir = baby_orca::resolve_baby_orca_dir(&models_dir);
+    let tokenizer_path = [
+        models_dir.join("baby-orca-tokenizer.json"),
+        baby_dir.join("baby-orca-tokenizer.json"),
+    ]
+    .into_iter()
+    .find(|p| p.is_file())
+    .ok_or_else(|| {
+        anyhow::anyhow!(
+            "Missing baby-orca-tokenizer.json in {}",
+            models_dir.display()
+        )
+    })?;
+
+    let lead_path = baby_orca::pod_gguf_path(&baby_dir, "lead");
+    let scout_path = baby_orca::pod_gguf_path(&baby_dir, "web-scout");
+    let guard_path = baby_orca::pod_gguf_path(&baby_dir, "guard");
+    let reason_path = baby_orca::pod_gguf_path(&baby_dir, "reasoning-think");
+    if !lead_path.is_file() {
+        return Err(anyhow::anyhow!(
+            "Could not locate Baby Orca GGUFs in {}",
+            baby_dir.display()
+        ));
+    }
+
+    let t0 = std::time::Instant::now();
+
+    // 1. Web Scout Pod (135M)
+    let mut web_query = if use_search {
+        Some(prompt.clone())
+    } else {
+        None
+    };
+    if web_query.is_none() && scout_path.is_file() {
+        let scout_raw = run_baby_orca_one(
+            &scout_path,
+            &tokenizer_path,
+            device_pref,
+            "You are Baby Orca Web Scout (135M). Reply YES (with QUERY:) if live web data is needed, else NO.",
+            &prompt,
+            32,
+            0.0,
+        )
+        .await?;
+        web_query = baby_orca::parse_web_scout(&scout_raw, &prompt);
+    }
+    let mut used_web = false;
+    let web_ctx = if let Some(q) = web_query {
+        if verbose {
+            println!("\x1b[1;36m[Baby Orca Web Scout]\x1b[0m Scouting: {q}");
+        }
+        if let Some(snip) = meerkat::fetch_web_grounding(&q).await {
+            used_web = true;
+            format!("[Live Web Search Results]\n- {snip}\n\n")
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
+    // 2. Lead Router Pod (135M)
+    let chosen_pod = if let Some(p) = forced_pod {
+        baby_orca::parse_lead_route(&p).to_string()
+    } else {
+        let route_raw = run_baby_orca_one(
+            &lead_path,
+            &tokenizer_path,
+            device_pref,
+            "You are Baby Orca Lead (135M). Route the request to the single best specialist pod name.",
+            &prompt,
+            16,
+            0.0,
+        )
+        .await?;
+        baby_orca::parse_lead_route(&route_raw).to_string()
+    };
+    if verbose {
+        println!("\x1b[1;36m[Baby Orca Lead]\x1b[0m Routed -> {chosen_pod}");
+    }
+
+    // 3. Active Specialist Pod (135M, 1 pod at a time)
+    let pod_path = baby_orca::pod_gguf_path(&baby_dir, &chosen_pod);
+    let active_pod_path = if pod_path.is_file() {
+        pod_path
+    } else {
+        lead_path.clone()
+    };
+    let pod_sys = format!(
+        "You are Baby Orca '{chosen_pod}' Pod (135M). Be ultra-concise, accurate, and zero-filler."
+    );
+    let pod_user = format!("{web_ctx}{prompt}");
+    let pod_prompt = format!(
+        "<|im_start|>system\n{pod_sys}<|im_end|>\n<|im_start|>user\n{pod_user}<|im_end|>\n<|im_start|>assistant\n"
+    );
+    let mut pod_engine =
+        nioxs_engine::AstEngine::from_paths(active_pod_path, tokenizer_path.to_path_buf());
+    pod_engine.set_device_preference(device_pref);
+    let mut rx = pod_engine
+        .generate_stream(pod_prompt, max_tokens, 0.25, 0.90)
+        .await?;
+    let mut flow = StreamFlow::new(flow_mode);
+    flow.set_show_think_tags(true);
+    let mut draft = String::new();
+    while let Some(c) = rx.recv().await {
+        draft.push_str(&c);
+        flow.push(&c);
+    }
+    flow.finish();
+    println!();
+
+    // 4. Anti-Hallucination Guard Pod (135M) + --verify
+    let mut grounded = true;
+    let mut guard_reason: Option<String> = None;
+    if guard_path.is_file() {
+        let guard_user = format!("[Context]\n{web_ctx}{prompt}\n\n[Draft]\n{draft}");
+        let guard_raw = run_baby_orca_one(
+            &guard_path,
+            &tokenizer_path,
+            device_pref,
+            "You are Baby Orca Anti-Hallucination Guard (135M). Reply GROUNDED or HALLUCINATION: <reason>.",
+            &guard_user,
+            32,
+            0.0,
+        )
+        .await?;
+        let (ok, reason) = baby_orca::parse_guard_verdict(&guard_raw);
+        grounded = ok;
+        guard_reason = reason;
+        if verbose {
+            println!(
+                "\x1b[1;35m[Baby Orca Guard]\x1b[0m {}",
+                if grounded {
+                    "GROUNDED".to_string()
+                } else {
+                    format!("HALLUCINATION: {}", guard_reason.as_deref().unwrap_or(""))
+                }
+            );
+        }
+    }
+
+    let should_verify =
+        force_verify.unwrap_or_else(|| meerkat::looks_like_code_task(&prompt, &draft));
+    let mut verified_opt: Option<bool> = None;
+    let mut healed = false;
+    let mut final_pod = chosen_pod.clone();
+
+    let mut verify_err: Option<String> = None;
+    if should_verify {
+        let (ok, err) = verify_orca_with_mode(&draft, "code");
+        verified_opt = Some(ok);
+        if !ok {
+            verify_err = Some(err);
+        }
+    }
+
+    if (!grounded || verify_err.is_some()) && reason_path.is_file() {
+        let issue = verify_err
+            .clone()
+            .or_else(|| guard_reason.clone())
+            .unwrap_or_else(|| "Need micro-<think> verification".to_string());
+        if verbose {
+            println!(
+                "\x1b[1;33m[Baby Orca Heal]\x1b[0m Escalating to reasoning-think (135M): {issue}"
+            );
+        }
+        let heal_user =
+            format!("{web_ctx}Task: {prompt}\n\nIssue flagged: {issue}\nFix concisely.");
+        let heal_prompt = format!(
+            "<|im_start|>system\nYou are Baby Orca 'reasoning-think' Pod (135M). Write a 2-line <think>...</think> checklist, then a concise corrected answer.<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
+        );
+        let mut h_engine =
+            nioxs_engine::AstEngine::from_paths(reason_path, tokenizer_path.to_path_buf());
+        h_engine.set_device_preference(device_pref);
+        let mut h_rx = h_engine
+            .generate_stream(heal_prompt, max_tokens, 0.20, 0.90)
+            .await?;
+        let mut h_flow = StreamFlow::new(flow_mode);
+        h_flow.set_show_think_tags(true);
+        let mut healed_resp = String::new();
+        while let Some(c) = h_rx.recv().await {
+            healed_resp.push_str(&c);
+            h_flow.push(&c);
+        }
+        h_flow.finish();
+        println!();
+        final_pod = "reasoning-think".to_string();
+        healed = true;
+        if should_verify {
+            let (ok2, _) = verify_orca_with_mode(&healed_resp, "code");
+            verified_opt = Some(ok2);
+        }
+    }
+
+    if verbose {
+        println!(
+            "\n---\nBaby Orca [15×135M] | pod={} | web={} | grounded={} | healed={} | verified={:?} | {:.2}s",
+            final_pod,
+            used_web,
+            grounded,
+            healed,
+            verified_opt,
+            t0.elapsed().as_secs_f64()
+        );
+    }
+    Ok(())
 }
 
 fn route_orca_pod_meta(
