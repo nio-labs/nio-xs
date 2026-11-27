@@ -3879,7 +3879,6 @@ async fn run_meerkat_turn(
     let mut auto_need_tool = prompt.contains("<tool ");
     if !auto_need_web
         && !auto_need_tool
-        && memories.is_empty()
         && !asks_identity
         && !meerkat::looks_like_code_task(prompt, "")
         && scout_path.is_file()
@@ -3898,7 +3897,7 @@ async fn run_meerkat_turn(
                 verdict.push_str(&c);
             }
             let v = verdict.trim().to_ascii_uppercase();
-            if v.starts_with("WEB") {
+            if v.starts_with("WEB") && memories.is_empty() {
                 auto_need_web = true;
             } else if v.starts_with("TOOL") {
                 auto_need_tool = true;
