@@ -217,24 +217,8 @@ pub fn extract_natural_teaching(prompt: &str) -> Option<(String, String)> {
     None
 }
 
-pub fn looks_like_code_task(prompt: &str, response: &str) -> bool {
-    if response.contains("```") || response.contains("def ") || response.contains("fn ") {
-        return true;
-    }
-    let lower = prompt.to_ascii_lowercase();
-    [
-        "write a function",
-        "write a script",
-        "write code",
-        "implement ",
-        "assert ",
-        "compile",
-        "refactor",
-        "debug",
-        "algorithm",
-    ]
-    .iter()
-    .any(|kw| lower.contains(kw))
+pub fn looks_like_code_task(_prompt: &str, response: &str) -> bool {
+    response.contains("```") || response.contains("def ") || response.contains("fn ")
 }
 
 pub fn looks_like_knowledge_gap(resp: &str) -> bool {
