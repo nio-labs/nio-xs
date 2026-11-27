@@ -3596,13 +3596,14 @@ struct MeerkatOpts {
     verbose: bool,
     flow_mode: FlowMode,
     max_tokens: usize,
+    max_retries: usize,
     device_pref: nioxs_engine::DevicePreference,
 }
 
 async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     if matches!(raw_args.first().map(|s| s.as_str()), Some("-h" | "--help")) {
         println!(
-            "Usage: nioxs meerkat [--baby] [--chat] [--builder] [--tools] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--verbose|-v] [prompt]"
+            "Usage: nioxs meerkat [--baby] [--chat] [--builder] [--tools] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--retries <N>] [--verbose|-v] [prompt]"
         );
         println!(
             "  teach <trigger => fact>   Save an instant SimSimi-style memory to ~/.nioxs/meerkat_memory.jsonl"
@@ -3643,6 +3644,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         verbose: false,
         flow_mode: FlowMode::Token,
         max_tokens: 2048,
+        max_retries: 3,
         device_pref: nioxs_engine::DevicePreference::Auto,
     };
     let mut prompt_parts = Vec::new();
@@ -3713,6 +3715,13 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
                 if let Some(v) = iter.next() {
                     if let Ok(n) = v.parse() {
                         opts.max_tokens = n;
+                    }
+                }
+            }
+            "--retries" => {
+                if let Some(v) = iter.next() {
+                    if let Ok(n) = v.parse::<usize>() {
+                        opts.max_retries = n.clamp(1, 32);
                     }
                 }
             }
@@ -4141,15 +4150,16 @@ async fn run_meerkat_turn(
             let first_draft = full_resp.clone();
             let first_err = err.clone();
 
-            for round in 1..=3 {
+            let total_rounds = opts.max_retries.max(1);
+            for round in 1..=total_rounds {
                 if ok {
                     break;
                 }
-                let fresh_restart = round == 2;
+                let fresh_restart =
+                    round > total_rounds.div_ceil(2) || (total_rounds >= 2 && round == 2);
                 let short_err = baby_orca::compact_verify_issue(&err);
                 println!(
-                    "\x1b[1;33m[Meerkat Heal {}/3{}]\x1b[0m {short_err}",
-                    round,
+                    "\x1b[1;33m[Meerkat Heal {round}/{total_rounds}{}]\x1b[0m {short_err}",
                     if fresh_restart { " fresh-restart" } else { "" }
                 );
                 println!(
@@ -4171,7 +4181,11 @@ async fn run_meerkat_turn(
                 let heal_prompt = format!(
                     "<|im_start|>system\n{heal_sys}<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
                 );
-                let heal_temp = if fresh_restart { 0.35 } else { 0.20 };
+                let heal_temp = if fresh_restart {
+                    (0.35 + 0.05 * ((round - 1) as f64)).min(0.70)
+                } else {
+                    (0.20 + 0.05 * ((round - 1) as f64)).min(0.50)
+                };
                 let mut b_engine = nioxs_engine::AstEngine::from_paths(
                     builder_path.to_path_buf(),
                     tokenizer_path.to_path_buf(),
@@ -4344,7 +4358,7 @@ async fn run_baby_orca_one(
 async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     if raw_args.is_empty() || matches!(raw_args[0].as_str(), "-h" | "--help") {
         println!(
-            "Usage: nioxs baby-orca [--pod <name>] [--search] [--verify|--no-verify] [--verbose|-v] [--cpu|--gpu] [-n <max_tokens>] <prompt>"
+            "Usage: nioxs baby-orca [--pod <name>] [--search] [--verify|--no-verify] [--retries <N>] [--verbose|-v] [--cpu|--gpu] [-n <max_tokens>] <prompt>"
         );
         println!("Pods: {}", baby_orca::BABY_ORCA_PODS.join(", "));
         return Ok(());
@@ -4357,6 +4371,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut verbose = false;
     let mut flow_mode = FlowMode::Token;
     let mut max_tokens: usize = 512;
+    let mut max_retries: usize = 3;
     let mut device_pref = nioxs_engine::DevicePreference::Auto;
     let mut prompt_parts = Vec::new();
 
@@ -4381,6 +4396,13 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
                 if let Some(v) = iter.next() {
                     if let Ok(n) = v.parse() {
                         max_tokens = n;
+                    }
+                }
+            }
+            "--retries" => {
+                if let Some(v) = iter.next() {
+                    if let Ok(n) = v.parse::<usize>() {
+                        max_retries = n.clamp(1, 32);
                     }
                 }
             }
@@ -4588,32 +4610,58 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     }
 
     if !asks_identity && (!grounded || verify_err.is_some()) && reason_path.is_file() {
-        let issue = verify_err
-            .as_deref()
-            .map(baby_orca::compact_verify_issue)
-            .or_else(|| guard_reason.clone())
-            .unwrap_or_else(|| "Need micro-<think> verification".to_string());
-        println!("\x1b[1;33m[Baby Orca Heal]\x1b[0m Refining via reasoning-think (135M): {issue}");
-        let heal_user =
-            format!("{web_ctx}Task: {prompt}\n\nIssue flagged: {issue}\nFix concisely.");
-        let heal_prompt = format!(
-            "<|im_start|>system\nYou are Baby Orca 'reasoning-think' Pod (135M). Write a 2-line <think>...</think> checklist, then a concise corrected answer.<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
-        );
-        let mut h_engine =
-            nioxs_engine::AstEngine::from_paths(reason_path, tokenizer_path.to_path_buf());
-        h_engine.set_device_preference(device_pref);
-        let mut h_rx = h_engine
-            .generate_stream(heal_prompt, max_tokens, 0.20, 0.90)
-            .await?;
-        final_resp.clear();
-        while let Some(c) = h_rx.recv().await {
-            final_resp.push_str(&c);
-        }
-        final_pod = "reasoning-think".to_string();
-        healed = true;
-        if should_verify {
-            let (ok2, _) = verify_orca_with_mode(&final_resp, "code");
-            verified_opt = Some(ok2);
+        let total_rounds = max_retries.max(1);
+        for round in 1..=total_rounds {
+            let issue = verify_err
+                .as_deref()
+                .map(baby_orca::compact_verify_issue)
+                .or_else(|| guard_reason.clone())
+                .unwrap_or_else(|| "Need micro-<think> verification".to_string());
+            let fresh_restart =
+                round > total_rounds.div_ceil(2) || (total_rounds >= 2 && round == 2);
+            println!(
+                "\x1b[1;33m[Baby Orca Heal {round}/{total_rounds}{}]\x1b[0m Refining via reasoning-think (135M): {issue}",
+                if fresh_restart { " fresh-restart" } else { "" }
+            );
+            let heal_user = if fresh_restart {
+                format!(
+                    "{web_ctx}Task: {prompt}\n\nPrevious attempt failed with: {issue}\nWrite a fresh, clean, working solution."
+                )
+            } else {
+                format!("{web_ctx}Task: {prompt}\n\nIssue flagged: {issue}\nFix concisely.")
+            };
+            let heal_prompt = format!(
+                "<|im_start|>system\nYou are Baby Orca 'reasoning-think' Pod (135M). Write a 2-line <think>...</think> checklist, then a concise corrected answer.<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
+            );
+            let heal_temp = if fresh_restart {
+                (0.35 + 0.05 * ((round - 1) as f64)).min(0.70)
+            } else {
+                (0.20 + 0.05 * ((round - 1) as f64)).min(0.50)
+            };
+            let mut h_engine = nioxs_engine::AstEngine::from_paths(
+                reason_path.clone(),
+                tokenizer_path.to_path_buf(),
+            );
+            h_engine.set_device_preference(device_pref);
+            let mut h_rx = h_engine
+                .generate_stream(heal_prompt, max_tokens, heal_temp, 0.90)
+                .await?;
+            final_resp.clear();
+            while let Some(c) = h_rx.recv().await {
+                final_resp.push_str(&c);
+            }
+            final_pod = "reasoning-think".to_string();
+            healed = true;
+            if should_verify {
+                let (ok2, err2) = verify_orca_with_mode(&final_resp, "code");
+                verified_opt = Some(ok2);
+                if ok2 {
+                    break;
+                }
+                verify_err = Some(err2);
+            } else {
+                break;
+            }
         }
     }
 
@@ -4640,7 +4688,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
 async fn run_orca_pack_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     if raw_args.is_empty() || matches!(raw_args[0].as_str(), "-h" | "--help") {
         println!(
-            "Usage: nioxs orca-pack [--top <N>] [--all-pods] [--verify|--no-verify] [--verbose|-v] [--cpu|--gpu] [-n <max_tokens>] <prompt>"
+            "Usage: nioxs orca-pack [--top <N>] [--all-pods] [--verify|--no-verify] [--retries <N>] [--verbose|-v] [--cpu|--gpu] [-n <max_tokens>] <prompt>"
         );
         println!(
             "Runs 0.5B Orca Nano Pods (default top 4, --all-pods for 12) + 1.5B Lead synthesis + --verify."
@@ -4653,6 +4701,7 @@ async fn run_orca_pack_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut verbose = false;
     let mut flow_mode = FlowMode::Token;
     let mut max_tokens: usize = 1024;
+    let mut max_retries: usize = 3;
     let mut device_pref = nioxs_engine::DevicePreference::Auto;
     let mut prompt_parts = Vec::new();
 
@@ -4679,6 +4728,13 @@ async fn run_orca_pack_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
                 if let Some(v) = iter.next() {
                     if let Ok(n) = v.parse() {
                         max_tokens = n;
+                    }
+                }
+            }
+            "--retries" => {
+                if let Some(v) = iter.next() {
+                    if let Ok(n) = v.parse::<usize>() {
+                        max_retries = n.clamp(1, 32);
                     }
                 }
             }
@@ -4861,7 +4917,8 @@ async fn run_orca_pack_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let lead_prompt = format!(
         "<|im_start|>system\nYou are Orca Pack 1.5B Lead, developed by Nio Labs. Synthesize the [Pack Specialist Notes] into one clean, accurate, complete response.<|im_end|>\n<|im_start|>user\n{notes_block}{prompt}<|im_end|>\n<|im_start|>assistant\n"
     );
-    let mut lead_eng = nioxs_engine::AstEngine::from_paths(lead_path, tokenizer_path.clone());
+    let mut lead_eng =
+        nioxs_engine::AstEngine::from_paths(lead_path.clone(), tokenizer_path.clone());
     lead_eng.set_device_preference(device_pref);
     let mut rx = lead_eng
         .generate_stream(lead_prompt, max_tokens, 0.2, 0.90)
@@ -4881,7 +4938,55 @@ async fn run_orca_pack_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut verified_opt = None;
     if should_verify {
         println!("\x1b[1;36m[Orca Pack]\x1b[0m Step 3/3: Verifying code...");
-        let (ok, _) = verify_orca_with_mode(&final_resp, "code");
+        let (mut ok, mut err) = verify_orca_with_mode(&final_resp, "code");
+        let total_rounds = max_retries.max(1);
+        for round in 1..=total_rounds {
+            if ok {
+                break;
+            }
+            let fresh_restart =
+                round > total_rounds.div_ceil(2) || (total_rounds >= 2 && round == 2);
+            let short_err = baby_orca::compact_verify_issue(&err);
+            println!(
+                "\x1b[1;33m[Orca Pack Heal {round}/{total_rounds}{}]\x1b[0m {short_err}",
+                if fresh_restart { " fresh-restart" } else { "" }
+            );
+            let heal_user = if fresh_restart {
+                format!(
+                    "{notes_block}Task:\n{prompt}\n\nPrevious attempt failed with:\n{err}\n\nDiscard the broken draft and write a fresh, clean, verified solution."
+                )
+            } else {
+                format!(
+                    "{notes_block}Task:\n{prompt}\n\nFailed code:\n{final_resp}\n\nError:\n{err}\n\nFix the failing code completely."
+                )
+            };
+            let heal_prompt = format!(
+                "<|im_start|>system\nYou are Orca Pack 1.5B Lead, developed by Nio Labs. Fix the failing solution cleanly and completely.<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
+            );
+            let heal_temp = if fresh_restart {
+                (0.35 + 0.05 * ((round - 1) as f64)).min(0.70)
+            } else {
+                (0.20 + 0.05 * ((round - 1) as f64)).min(0.50)
+            };
+            let mut h_eng =
+                nioxs_engine::AstEngine::from_paths(lead_path.clone(), tokenizer_path.clone());
+            h_eng.set_device_preference(device_pref);
+            let mut h_rx = h_eng
+                .generate_stream(heal_prompt, max_tokens, heal_temp, 0.90)
+                .await?;
+            let mut h_flow = StreamFlow::new(flow_mode);
+            h_flow.set_show_think_tags(true);
+            final_resp.clear();
+            while let Some(c) = h_rx.recv().await {
+                final_resp.push_str(&c);
+                h_flow.push(&c);
+            }
+            h_flow.finish();
+            println!();
+            let res = verify_orca_with_mode(&final_resp, "code");
+            ok = res.0;
+            err = res.1;
+        }
         verified_opt = Some(ok);
         if ok {
             println!("\x1b[1;32m[Orca Pack]\x1b[0m Verified ✔");
