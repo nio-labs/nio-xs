@@ -3953,7 +3953,8 @@ async fn run_meerkat_turn(
                 while let Some(c) = cls_rx.recv().await {
                     verdict.push_str(&c);
                 }
-                if verdict.trim().to_ascii_uppercase().starts_with("YES") {
+                let upper = verdict.trim().to_ascii_uppercase();
+                if upper.starts_with("YES") || (opts.use_baby && !upper.starts_with("NO")) {
                     auto_need_code = true;
                 }
             }
@@ -4014,13 +4015,16 @@ async fn run_meerkat_turn(
     let mut selected_lora: Option<(String, std::path::PathBuf)> = None;
     if (auto_need_code || opts.use_builder) && !wave1_domains.is_empty() && scout_path.is_file() {
         let domain_list: Vec<&str> = wave1_domains.iter().map(|(d, _)| d.as_str()).collect();
-        let mut dom_eng = nioxs_engine::AstEngine::from_paths(
-            scout_path.to_path_buf(),
-            tokenizer_path.to_path_buf(),
-        );
+        let cls_model = if opts.use_baby && builder_path.is_file() {
+            builder_path.to_path_buf()
+        } else {
+            scout_path.to_path_buf()
+        };
+        let mut dom_eng =
+            nioxs_engine::AstEngine::from_paths(cls_model, tokenizer_path.to_path_buf());
         dom_eng.set_device_preference(opts.device_pref);
         let dom_prompt = format!(
-            "<|im_start|>system\nPick the single best domain from: {}. Reply ONLY with the domain name or NONE.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+            "<|im_start|>system\nWhat programming language or domain is this? Reply with 1 word from: {} (or NONE).<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
             domain_list.join(", ")
         );
         if let Ok(mut d_rx) = dom_eng.generate_stream(dom_prompt, 12, 0.0, 0.90).await {
@@ -4037,8 +4041,13 @@ async fn run_meerkat_turn(
         }
     }
     if auto_need_code && !opts.use_builder && builder_path.is_file() {
+        let b_label = if opts.use_baby {
+            "Tiny Builder (135M)"
+        } else {
+            "1.5B Builder"
+        };
         println!(
-            "\x1b[1;36m[Meerkat Scout]\x1b[0m Coding task detected -> routing to 1.5B Builder..."
+            "\x1b[1;36m[Meerkat Scout]\x1b[0m Coding task detected -> routing to {b_label}..."
         );
         let _ = std::io::Write::flush(&mut std::io::stdout());
     }
