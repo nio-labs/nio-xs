@@ -3935,10 +3935,13 @@ async fn run_meerkat_turn(
     let mut auto_need_code = meerkat::looks_like_code_task(prompt, "");
     let tools_enabled = opts.use_tools || opts.use_builder || prompt.contains("<tool ");
     if !auto_need_web && !tools_enabled && !asks_identity && scout_path.is_file() {
-        let mut cls_engine = nioxs_engine::AstEngine::from_paths(
-            scout_path.to_path_buf(),
-            tokenizer_path.to_path_buf(),
-        );
+        let cls_path = if opts.use_baby && builder_path.is_file() {
+            builder_path.to_path_buf()
+        } else {
+            scout_path.to_path_buf()
+        };
+        let mut cls_engine =
+            nioxs_engine::AstEngine::from_paths(cls_path, tokenizer_path.to_path_buf());
         cls_engine.set_device_preference(opts.device_pref);
 
         if !auto_need_code {
@@ -4231,7 +4234,7 @@ async fn run_meerkat_turn(
                 );
                 let heal_user = if fresh_restart {
                     format!(
-                        "Original request:\n{prompt}\n\nPrevious attempts failed with:\n{err}\n\nDiscard the broken draft and write a fresh, simple, 100% verified solution."
+                        "Original request:\n{prompt}\n\nDiscard the broken draft and write a fresh, simple, working solution from scratch."
                     )
                 } else {
                     format!(
