@@ -4274,7 +4274,7 @@ async fn run_meerkat_turn(
                     builder_path.to_path_buf()
                 };
                 let mut b_engine = nioxs_engine::AstEngine::from_paths(
-                    heal_model_path,
+                    heal_model_path.clone(),
                     tokenizer_path.to_path_buf(),
                 );
                 b_engine.set_device_preference(opts.device_pref);
@@ -4297,7 +4297,7 @@ async fn run_meerkat_turn(
                 }
                 b_flow.finish();
                 println!();
-                active_model = builder_path
+                active_model = heal_model_path
                     .file_name()
                     .and_then(|s| s.to_str())
                     .unwrap_or("meerkat-builder-1.5b-q4_k_m.gguf")
