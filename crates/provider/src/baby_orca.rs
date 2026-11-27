@@ -14,15 +14,40 @@ pub const BABY_ORCA_PODS: &[&str] = &[
     "reasoning-think",
     "python",
     "rust",
+    "typescript",
+    "go",
+    "cpp",
     "sql",
     "bash-cli",
+    "regex-cli",
     "testing",
     "security",
     "systems",
+    "git-devops",
     "web-api",
     "data-json",
+    "architecture-diagrams",
+    "debugging",
+    "math-logic",
     "docs-summary",
 ];
+
+/// Keeps only the first 2 concise error lines (stripping rustc ASCII art) for 135M healing.
+pub fn compact_verify_issue(err: &str) -> String {
+    let lines: Vec<&str> = err
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| {
+            !l.is_empty() && !l.starts_with('|') && !l.starts_with("-->") && !l.starts_with('=')
+        })
+        .take(2)
+        .collect();
+    if lines.is_empty() {
+        "syntax or type error".to_string()
+    } else {
+        lines.join(" | ")
+    }
+}
 
 pub fn resolve_baby_orca_dir(models_dir: &Path) -> PathBuf {
     let nested = models_dir.join("baby_orca").join("gguf");

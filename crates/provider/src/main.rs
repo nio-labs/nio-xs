@@ -4503,7 +4503,8 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
 
     if !asks_identity && (!grounded || verify_err.is_some()) && reason_path.is_file() {
         let issue = verify_err
-            .clone()
+            .as_deref()
+            .map(baby_orca::compact_verify_issue)
             .or_else(|| guard_reason.clone())
             .unwrap_or_else(|| "Need micro-<think> verification".to_string());
         println!("\x1b[1;33m[Baby Orca Heal]\x1b[0m Refining via reasoning-think (135M): {issue}");
