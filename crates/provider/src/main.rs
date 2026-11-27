@@ -4054,7 +4054,15 @@ async fn run_meerkat_turn(
         );
         let _ = std::io::Write::flush(&mut std::io::stdout());
     }
-    let initial_path = if using_builder {
+    let initial_path = if opts.use_baby
+        && selected_lora
+            .as_ref()
+            .is_some_and(|(d, _)| d != "python-async")
+    {
+        // Wave 1 135M LoRAs were trained on the frozen SmolLM2-135M-Instruct base (scout_path),
+        // whereas baby-meerkat-builder-135m is our 5.6k-row Python Algo+Repair specialist.
+        scout_path.to_path_buf()
+    } else if using_builder {
         builder_path.to_path_buf()
     } else {
         scout_path.to_path_buf()
@@ -4106,8 +4114,10 @@ async fn run_meerkat_turn(
     let mut engine =
         nioxs_engine::AstEngine::from_paths(initial_path.clone(), tokenizer_path.to_path_buf());
     engine.set_device_preference(opts.device_pref);
-    if let Some((_, ref lora_path)) = selected_lora {
-        let _ = engine.attach_lora_head(&lora_path.to_string_lossy()).await;
+    if let Some((ref dom, ref lora_path)) = selected_lora {
+        if !(opts.use_baby && dom == "python-async") {
+            let _ = engine.attach_lora_head(&lora_path.to_string_lossy()).await;
+        }
     }
     let mut rx = engine
         .generate_stream(formatted_prompt.clone(), opts.max_tokens, temp, 0.90)
@@ -4254,15 +4264,26 @@ async fn run_meerkat_turn(
                 } else {
                     (0.20 + 0.05 * ((round - 1) as f64)).min(0.50)
                 };
+                let heal_model_path = if opts.use_baby
+                    && selected_lora
+                        .as_ref()
+                        .is_some_and(|(d, _)| d != "python-async")
+                {
+                    scout_path.to_path_buf()
+                } else {
+                    builder_path.to_path_buf()
+                };
                 let mut b_engine = nioxs_engine::AstEngine::from_paths(
-                    builder_path.to_path_buf(),
+                    heal_model_path,
                     tokenizer_path.to_path_buf(),
                 );
                 b_engine.set_device_preference(opts.device_pref);
-                if let Some((_, ref lora_path)) = selected_lora {
-                    let _ = b_engine
-                        .attach_lora_head(&lora_path.to_string_lossy())
-                        .await;
+                if let Some((ref dom, ref lora_path)) = selected_lora {
+                    if !(opts.use_baby && dom == "python-async") {
+                        let _ = b_engine
+                            .attach_lora_head(&lora_path.to_string_lossy())
+                            .await;
+                    }
                 }
                 let mut b_rx = b_engine
                     .generate_stream(heal_prompt, opts.max_tokens, heal_temp, 0.90)
