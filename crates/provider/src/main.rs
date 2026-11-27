@@ -4359,12 +4359,17 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let t0 = std::time::Instant::now();
 
     // 1. Web Scout Pod (135M)
+    let lower_q = prompt.to_ascii_lowercase();
+    let asks_identity = ["who are you", "who are u", "what are you", "your name"]
+        .iter()
+        .any(|kw| lower_q.contains(kw));
     let mut web_query = if use_search {
         Some(prompt.clone())
     } else {
         None
     };
-    if web_query.is_none() && scout_path.is_file() {
+    if web_query.is_none() && !asks_identity && scout_path.is_file() {
+        println!("\x1b[1;36m[Baby Orca]\x1b[0m Step 1/4: Web Scout...");
         let scout_raw = run_baby_orca_one(
             &scout_path,
             &tokenizer_path,
@@ -4379,9 +4384,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     }
     let mut used_web = false;
     let web_ctx = if let Some(q) = web_query {
-        if verbose {
-            println!("\x1b[1;36m[Baby Orca Web Scout]\x1b[0m Scouting: {q}");
-        }
+        println!("\x1b[1;36m[Baby Orca]\x1b[0m Scouting web: {q}");
         if let Some(snip) = meerkat::fetch_web_grounding(&q).await {
             used_web = true;
             format!("[Live Web Search Results]\n- {snip}\n\n")
@@ -4395,6 +4398,8 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     // 2. Lead Router Pod (135M)
     let chosen_pod = if let Some(p) = forced_pod {
         baby_orca::parse_lead_route(&p).to_string()
+    } else if asks_identity {
+        "docs-summary".to_string()
     } else {
         let route_raw = run_baby_orca_one(
             &lead_path,
@@ -4408,21 +4413,16 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         .await?;
         baby_orca::parse_lead_route(&route_raw).to_string()
     };
-    if verbose {
-        println!("\x1b[1;36m[Baby Orca Lead]\x1b[0m Routed -> {chosen_pod}");
-    }
+    println!("\x1b[1;36m[Baby Orca]\x1b[0m Step 2/4: Lead -> {chosen_pod}");
 
-    // 3. Active Specialist Pod (135M, 1 pod at a time)
+    // 3. Active Specialist Pod (135M, 1 pod at a time — streamed live)
+    println!("\x1b[1;36m[Baby Orca]\x1b[0m Step 3/4: Running {chosen_pod}...");
     let pod_path = baby_orca::pod_gguf_path(&baby_dir, &chosen_pod);
     let active_pod_path = if pod_path.is_file() {
         pod_path
     } else {
         lead_path.clone()
     };
-    let lower_q = prompt.to_ascii_lowercase();
-    let asks_identity = ["who are you", "who are u", "what are you", "your name"]
-        .iter()
-        .any(|kw| lower_q.contains(kw));
     let pod_sys = if asks_identity {
         "You are Baby Orca (15x135M), created by Nio Labs — an ultra-light sequential micro-pod AI fleet. Answer directly and concisely.".to_string()
     } else {
@@ -4440,10 +4440,15 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut rx = pod_engine
         .generate_stream(pod_prompt, max_tokens, 0.25, 0.90)
         .await?;
+    let mut flow = StreamFlow::new(flow_mode);
+    flow.set_show_think_tags(true);
     let mut draft = String::new();
     while let Some(c) = rx.recv().await {
         draft.push_str(&c);
+        flow.push(&c);
     }
+    flow.finish();
+    println!();
 
     // 4. Anti-Hallucination Guard Pod (135M) + --verify
     let mut grounded = true;
@@ -4463,16 +4468,14 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         let (ok, reason) = baby_orca::parse_guard_verdict(&guard_raw);
         grounded = ok;
         guard_reason = reason;
-        if verbose {
-            println!(
-                "\x1b[1;35m[Baby Orca Guard]\x1b[0m {}",
-                if grounded {
-                    "GROUNDED".to_string()
-                } else {
-                    format!("HALLUCINATION: {}", guard_reason.as_deref().unwrap_or(""))
-                }
-            );
-        }
+        println!(
+            "\x1b[1;35m[Baby Orca]\x1b[0m Step 4/4: Guard -> {}",
+            if grounded {
+                "GROUNDED".to_string()
+            } else {
+                format!("HALLUCINATION ({})", guard_reason.as_deref().unwrap_or(""))
+            }
+        );
     }
 
     let should_verify =
@@ -4480,7 +4483,6 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut verified_opt: Option<bool> = None;
     let mut healed = false;
     let mut final_pod = chosen_pod.clone();
-    let mut final_resp = draft.clone();
 
     let mut verify_err: Option<String> = None;
     if should_verify {
@@ -4496,11 +4498,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             .clone()
             .or_else(|| guard_reason.clone())
             .unwrap_or_else(|| "Need micro-<think> verification".to_string());
-        if verbose {
-            println!(
-                "\x1b[1;33m[Baby Orca Heal]\x1b[0m Escalating to reasoning-think (135M): {issue}"
-            );
-        }
+        println!("\x1b[1;33m[Baby Orca Heal]\x1b[0m Escalating to reasoning-think (135M): {issue}");
         let heal_user =
             format!("{web_ctx}Task: {prompt}\n\nIssue flagged: {issue}\nFix concisely.");
         let heal_prompt = format!(
@@ -4512,23 +4510,22 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         let mut h_rx = h_engine
             .generate_stream(heal_prompt, max_tokens, 0.20, 0.90)
             .await?;
-        final_resp.clear();
+        let mut h_flow = StreamFlow::new(flow_mode);
+        h_flow.set_show_think_tags(true);
+        let mut healed_resp = String::new();
         while let Some(c) = h_rx.recv().await {
-            final_resp.push_str(&c);
+            healed_resp.push_str(&c);
+            h_flow.push(&c);
         }
+        h_flow.finish();
+        println!();
         final_pod = "reasoning-think".to_string();
         healed = true;
         if should_verify {
-            let (ok2, _) = verify_orca_with_mode(&final_resp, "code");
+            let (ok2, _) = verify_orca_with_mode(&healed_resp, "code");
             verified_opt = Some(ok2);
         }
     }
-
-    let mut flow = StreamFlow::new(flow_mode);
-    flow.set_show_think_tags(true);
-    flow.push(&final_resp);
-    flow.finish();
-    println!();
 
     if verbose {
         println!(
