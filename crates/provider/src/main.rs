@@ -4074,6 +4074,9 @@ async fn run_meerkat_turn(
         println!("\x1b[1;36m[Meerkat Verify]\x1b[0m Checking generated code...");
         let _ = std::io::Write::flush(&mut std::io::stdout());
         let (mut ok, mut err) = verify_orca_with_mode(&full_resp, "code");
+        if ok {
+            println!("\x1b[1;32m[Meerkat Verify]\x1b[0m Passed ✔");
+        }
         if !ok && builder_path.is_file() {
             let web_heal = if web_block.is_empty() && opts.use_search {
                 println!("\x1b[1;36m[Meerkat Web]\x1b[0m Fetching grounding...");
