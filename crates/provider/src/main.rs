@@ -4617,13 +4617,15 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
 async fn run_orca_pack_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     if raw_args.is_empty() || matches!(raw_args[0].as_str(), "-h" | "--help") {
         println!(
-            "Usage: nioxs orca-pack [--top <N>] [--verify|--no-verify] [--verbose|-v] [--cpu|--gpu] [-n <max_tokens>] <prompt>"
+            "Usage: nioxs orca-pack [--top <N>] [--all-pods] [--verify|--no-verify] [--verbose|-v] [--cpu|--gpu] [-n <max_tokens>] <prompt>"
         );
-        println!("Runs 12×0.5B Orca Nano Pods concurrently + 1.5B Lead synthesis + --verify.");
+        println!(
+            "Runs 0.5B Orca Nano Pods (default top 4, --all-pods for 12) + 1.5B Lead synthesis + --verify."
+        );
         return Ok(());
     }
 
-    let mut top_n: usize = 12;
+    let mut top_n: usize = 4;
     let mut force_verify: Option<bool> = None;
     let mut verbose = false;
     let mut flow_mode = FlowMode::Token;
@@ -4634,9 +4636,10 @@ async fn run_orca_pack_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut iter = raw_args.into_iter();
     while let Some(a) = iter.next() {
         match a.as_str() {
+            "--all-pods" => top_n = 12,
             "--top" => {
                 if let Some(v) = iter.next() {
-                    top_n = v.parse().unwrap_or(12).clamp(1, 12);
+                    top_n = v.parse().unwrap_or(4).clamp(1, 12);
                 }
             }
             "--verify" => force_verify = Some(true),
@@ -4771,17 +4774,21 @@ async fn run_orca_pack_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     }
 
     let t0 = std::time::Instant::now();
+    let total_pods = active_pods.len();
     println!(
-        "\x1b[1;36m[Orca Pack]\x1b[0m Step 1/3: Broadcasting across {} × 0.5B Nano Pods...",
-        active_pods.len()
+        "\x1b[1;36m[Orca Pack]\x1b[0m Step 1/3: Running {} × 0.5B Nano Pods...",
+        total_pods
     );
     let _ = std::io::Write::flush(&mut std::io::stdout());
 
+    let sem = Arc::new(tokio::sync::Semaphore::new(2));
     let mut join_set = tokio::task::JoinSet::new();
     for (pod_id, pod_path, role) in active_pods {
         let tok = tokenizer_path.clone();
         let q = prompt.clone();
+        let sem_c = sem.clone();
         join_set.spawn(async move {
+            let _permit = sem_c.acquire_owned().await;
             let sys = format!(
                 "You are Orca Nano '{pod_id}' Pod (0.5B), specializing in {role}. Reply ONLY with [SKIP] if irrelevant, OR [NOTE] followed by 2 concise bullet points (max 60 words)."
             );
@@ -4802,9 +4809,17 @@ async fn run_orca_pack_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     }
 
     let mut notes = Vec::new();
+    let mut done_cnt = 0usize;
     while let Some(res) = join_set.join_next().await {
+        done_cnt += 1;
         if let Ok((pod_id, text)) = res {
-            if !text.is_empty() && !text.to_ascii_uppercase().starts_with("[SKIP]") {
+            let is_skip = text.is_empty() || text.to_ascii_uppercase().starts_with("[SKIP]");
+            println!(
+                "  \x1b[2m[{done_cnt}/{total_pods}] {pod_id} -> {}\x1b[0m",
+                if is_skip { "SKIP" } else { "NOTE" }
+            );
+            let _ = std::io::Write::flush(&mut std::io::stdout());
+            if !is_skip {
                 notes.push(format!("- [{pod_id}] {text}"));
             }
         }
