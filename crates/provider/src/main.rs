@@ -4419,9 +4419,17 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     } else {
         lead_path.clone()
     };
-    let pod_sys = format!(
-        "You are Baby Orca '{chosen_pod}' Pod (135M). Be ultra-concise, accurate, and zero-filler."
-    );
+    let lower_q = prompt.to_ascii_lowercase();
+    let asks_identity = ["who are you", "who are u", "what are you", "your name"]
+        .iter()
+        .any(|kw| lower_q.contains(kw));
+    let pod_sys = if asks_identity {
+        "You are Baby Orca (15x135M), created by Nio Labs — an ultra-light sequential micro-pod AI fleet. Answer directly and concisely.".to_string()
+    } else {
+        format!(
+            "You are Baby Orca '{chosen_pod}' Pod (135M), created by Nio Labs. Be ultra-concise, accurate, and zero-filler."
+        )
+    };
     let pod_user = format!("{web_ctx}{prompt}");
     let pod_prompt = format!(
         "<|im_start|>system\n{pod_sys}<|im_end|>\n<|im_start|>user\n{pod_user}<|im_end|>\n<|im_start|>assistant\n"
@@ -4432,20 +4440,15 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut rx = pod_engine
         .generate_stream(pod_prompt, max_tokens, 0.25, 0.90)
         .await?;
-    let mut flow = StreamFlow::new(flow_mode);
-    flow.set_show_think_tags(true);
     let mut draft = String::new();
     while let Some(c) = rx.recv().await {
         draft.push_str(&c);
-        flow.push(&c);
     }
-    flow.finish();
-    println!();
 
     // 4. Anti-Hallucination Guard Pod (135M) + --verify
     let mut grounded = true;
     let mut guard_reason: Option<String> = None;
-    if guard_path.is_file() {
+    if !asks_identity && guard_path.is_file() {
         let guard_user = format!("[Context]\n{web_ctx}{prompt}\n\n[Draft]\n{draft}");
         let guard_raw = run_baby_orca_one(
             &guard_path,
@@ -4477,6 +4480,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut verified_opt: Option<bool> = None;
     let mut healed = false;
     let mut final_pod = chosen_pod.clone();
+    let mut final_resp = draft.clone();
 
     let mut verify_err: Option<String> = None;
     if should_verify {
@@ -4487,7 +4491,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         }
     }
 
-    if (!grounded || verify_err.is_some()) && reason_path.is_file() {
+    if !asks_identity && (!grounded || verify_err.is_some()) && reason_path.is_file() {
         let issue = verify_err
             .clone()
             .or_else(|| guard_reason.clone())
@@ -4508,22 +4512,23 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         let mut h_rx = h_engine
             .generate_stream(heal_prompt, max_tokens, 0.20, 0.90)
             .await?;
-        let mut h_flow = StreamFlow::new(flow_mode);
-        h_flow.set_show_think_tags(true);
-        let mut healed_resp = String::new();
+        final_resp.clear();
         while let Some(c) = h_rx.recv().await {
-            healed_resp.push_str(&c);
-            h_flow.push(&c);
+            final_resp.push_str(&c);
         }
-        h_flow.finish();
-        println!();
         final_pod = "reasoning-think".to_string();
         healed = true;
         if should_verify {
-            let (ok2, _) = verify_orca_with_mode(&healed_resp, "code");
+            let (ok2, _) = verify_orca_with_mode(&final_resp, "code");
             verified_opt = Some(ok2);
         }
     }
+
+    let mut flow = StreamFlow::new(flow_mode);
+    flow.set_show_think_tags(true);
+    flow.push(&final_resp);
+    flow.finish();
+    println!();
 
     if verbose {
         println!(
