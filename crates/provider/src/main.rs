@@ -869,6 +869,7 @@ Commands:\n\
   orca-pack <prompt> Run Orca Pack Mixture-of-Agents (1.5B Lead + 12×0.5B concurrent Pods)\n\
   tiny-orca <prompt> Run Tiny Orca 23×135M Micro-Pod Fleet (1 active pod, Web Scout + Guard)\n\
   meerkat <prompt>   Run Meerkat Self-Healing Herd (0.5B Scout + 1.5B Builder + 4-tool loop + /teach memory)\n\
+  tiny-meerkat <prompt> Run Tiny Meerkat Self-Healing Herd (2×135M Scout + Builder + /teach memory)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
@@ -1641,6 +1642,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     if matches!(arg.as_deref(), Some("tiny-orca" | "baby-orca")) {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         return Ok(run_baby_orca_cli(raw_args).await?);
+    }
+    if matches!(arg.as_deref(), Some("tiny-meerkat" | "baby-meerkat")) {
+        let mut raw_args = vec!["--tiny".to_string()];
+        raw_args.extend(std::env::args().skip(2));
+        return Ok(run_meerkat_cli(raw_args).await?);
     }
     if matches!(arg.as_deref(), Some("meerkat" | "penguin")) {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
