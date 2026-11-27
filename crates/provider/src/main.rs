@@ -3740,18 +3740,34 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
 
     let models_dir = nioxs_artifacts::resolve_models_dir();
     let (tokenizer_path, scout_path, builder_path) = if opts.use_baby {
-        let tok = models_dir.join("baby-orca-tokenizer.json");
-        if !tok.is_file() {
-            return Err(anyhow::anyhow!(
-                "Could not locate baby-orca-tokenizer.json in {}",
-                models_dir.display()
-            ));
+        let orca_tok = [
+            models_dir.join("orca-tokenizer.json"),
+            models_dir.join("tiger-tokenizer.json"),
+        ]
+        .into_iter()
+        .find(|p| p.is_file());
+        let reflex_05b = [
+            models_dir.join("tiny-meerkat-reflex-0.5b-iq3_xxs.gguf"),
+            models_dir.join("tiny-meerkat-reflex-0.5b-iq3_s.gguf"),
+        ]
+        .into_iter()
+        .find(|p| p.is_file());
+        if let (Some(tok), Some(reflex)) = (orca_tok, reflex_05b) {
+            (tok, reflex.clone(), reflex)
+        } else {
+            let tok = models_dir.join("baby-orca-tokenizer.json");
+            if !tok.is_file() {
+                return Err(anyhow::anyhow!(
+                    "Could not locate baby-orca-tokenizer.json in {}",
+                    models_dir.display()
+                ));
+            }
+            (
+                tok,
+                models_dir.join("baby-meerkat-scout-135m-q4_k_m.gguf"),
+                models_dir.join("baby-meerkat-builder-135m-q4_k_m.gguf"),
+            )
         }
-        (
-            tok,
-            models_dir.join("baby-meerkat-scout-135m-q4_k_m.gguf"),
-            models_dir.join("baby-meerkat-builder-135m-q4_k_m.gguf"),
-        )
     } else {
         let tok = [
             models_dir.join("orca-tokenizer.json"),
@@ -4005,9 +4021,16 @@ async fn run_meerkat_turn(
         String::new()
     };
 
+    let using_reflex_05b = opts.use_baby
+        && builder_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .is_some_and(|n| n.starts_with("tiny-meerkat-reflex-0.5b"));
     let using_builder = (tools_enabled || auto_need_code || used_web || !scout_path.is_file())
         && builder_path.is_file();
-    let active_tier_prefix = if opts.use_baby {
+    let active_tier_prefix = if using_reflex_05b {
+        "meerkat-scout-0.5b"
+    } else if opts.use_baby {
         "tiny-builder-135m"
     } else if using_builder {
         "meerkat-builder-1.5b"
@@ -4016,6 +4039,7 @@ async fn run_meerkat_turn(
     };
     let wave1_domains = meerkat::list_wave1_domains(active_tier_prefix);
     let mut selected_lora: Option<(String, std::path::PathBuf)> = None;
+    let mut reusable_engine: Option<(std::path::PathBuf, nioxs_engine::AstEngine)> = None;
     if (auto_need_code || opts.use_builder) && !wave1_domains.is_empty() && scout_path.is_file() {
         let domain_list: Vec<&str> = wave1_domains.iter().map(|(d, _)| d.as_str()).collect();
         let cls_model = if opts.use_baby && builder_path.is_file() {
@@ -4024,7 +4048,7 @@ async fn run_meerkat_turn(
             scout_path.to_path_buf()
         };
         let mut dom_eng =
-            nioxs_engine::AstEngine::from_paths(cls_model, tokenizer_path.to_path_buf());
+            nioxs_engine::AstEngine::from_paths(cls_model.clone(), tokenizer_path.to_path_buf());
         dom_eng.set_device_preference(opts.device_pref);
         let dom_prompt = format!(
             "<|im_start|>system\nWhat programming language or domain is this? Reply with 1 word from: {} (or NONE).<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
@@ -4042,9 +4066,12 @@ async fn run_meerkat_turn(
                 }
             }
         }
+        reusable_engine = Some((cls_model, dom_eng));
     }
     if auto_need_code && !opts.use_builder && builder_path.is_file() {
-        let b_label = if opts.use_baby {
+        let b_label = if using_reflex_05b {
+            "Tiny Reflex (0.5B IQ3)"
+        } else if opts.use_baby {
             "Tiny Builder (135M)"
         } else {
             "1.5B Builder"
@@ -4055,6 +4082,7 @@ async fn run_meerkat_turn(
         let _ = std::io::Write::flush(&mut std::io::stdout());
     }
     let initial_path = if opts.use_baby
+        && !using_reflex_05b
         && selected_lora
             .as_ref()
             .is_some_and(|(d, _)| d != "python-async")
@@ -4084,7 +4112,20 @@ async fn run_meerkat_turn(
     } else {
         ""
     };
-    let sys = if think_enabled {
+    let sys = if using_reflex_05b {
+        "You are Nio vMicroLM-Reflex, created by Nio Labs. Output clean, accurate code.".to_string()
+    } else if opts.use_baby {
+        if let Some((ref dom, _)) = selected_lora {
+            format!(
+                "You are Nio Tiny Meerkat ({dom}), created by Nio Labs. Output clean, accurate code."
+            )
+        } else if think_enabled {
+            "You are Nio Tiny Meerkat, created by Nio Labs. Output clean, accurate code."
+                .to_string()
+        } else {
+            "You are Nio Tiny Meerkat, created by Nio Labs. Be natural, concise, and accurate. Always follow [Identity] and [Known User Facts] directly.".to_string()
+        }
+    } else if think_enabled {
         format!(
             "You are Nio Meerkat Builder Reasoner (vMicroLM-Growth), created by Nio Labs. Write a concise 3-6 line <think>...</think> plan, then provide a clear, accurate answer using any provided [Identity], [Known User Facts], or [Live Web Search Results].{tool_menu}"
         )
@@ -4111,11 +4152,19 @@ async fn run_meerkat_turn(
 
     let temp = if think_enabled { 0.20 } else { 0.30 };
     let t0 = std::time::Instant::now();
-    let mut engine =
-        nioxs_engine::AstEngine::from_paths(initial_path.clone(), tokenizer_path.to_path_buf());
-    engine.set_device_preference(opts.device_pref);
+    let mut engine = match reusable_engine {
+        Some((p, eng)) if p == initial_path => eng,
+        _ => {
+            let mut e = nioxs_engine::AstEngine::from_paths(
+                initial_path.clone(),
+                tokenizer_path.to_path_buf(),
+            );
+            e.set_device_preference(opts.device_pref);
+            e
+        }
+    };
     if let Some((ref dom, ref lora_path)) = selected_lora {
-        if !(opts.use_baby && dom == "python-async") {
+        if !(opts.use_baby && !using_reflex_05b && dom == "python-async") {
             let _ = engine.attach_lora_head(&lora_path.to_string_lossy()).await;
         }
     }
@@ -4235,7 +4284,9 @@ async fn run_meerkat_turn(
                     "\x1b[1;33m[Meerkat Heal {round}/{total_rounds}{}]\x1b[0m {short_err}",
                     if fresh_restart { " fresh-restart" } else { "" }
                 );
-                let builder_label = if opts.use_baby {
+                let builder_label = if using_reflex_05b {
+                    "Tiny Reflex (0.5B IQ3)"
+                } else if opts.use_baby {
                     "Tiny Builder (135M)"
                 } else {
                     "1.5B Builder"
@@ -4244,9 +4295,22 @@ async fn run_meerkat_turn(
                     "\x1b[1;33m[Meerkat Builder]\x1b[0m Escalating to {builder_label} (thinking & repairing)..."
                 );
                 let _ = std::io::Write::flush(&mut std::io::stdout());
-                let heal_sys = format!(
-                    "You are Meerkat Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a short 3-6 line <think>...</think> root-cause analysis, then output a complete, clean, working solution in the requested language with minimal verification tests.{mem_block}{web_heal}"
-                );
+                let heal_sys = if using_reflex_05b {
+                    "You are Nio vMicroLM-Reflex, created by Nio Labs. Output clean, accurate code."
+                        .to_string()
+                } else if opts.use_baby {
+                    if let Some((ref dom, _)) = selected_lora {
+                        format!(
+                            "You are Nio Tiny Meerkat ({dom}), created by Nio Labs. Output clean, accurate code."
+                        )
+                    } else {
+                        "You are Nio Tiny Meerkat, created by Nio Labs. Output clean, accurate code.".to_string()
+                    }
+                } else {
+                    format!(
+                        "You are Meerkat Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a short 3-6 line <think>...</think> root-cause analysis, then output a complete, clean, working solution in the requested language with minimal verification tests.{mem_block}{web_heal}"
+                    )
+                };
                 let heal_user = if fresh_restart {
                     format!(
                         "Original request:\n{prompt}\n\nDiscard the broken draft and write a fresh, simple, working solution from scratch."
@@ -4265,6 +4329,7 @@ async fn run_meerkat_turn(
                     (0.20 + 0.05 * ((round - 1) as f64)).min(0.50)
                 };
                 let heal_model_path = if opts.use_baby
+                    && !using_reflex_05b
                     && selected_lora
                         .as_ref()
                         .is_some_and(|(d, _)| d != "python-async")
@@ -4279,7 +4344,7 @@ async fn run_meerkat_turn(
                 );
                 b_engine.set_device_preference(opts.device_pref);
                 if let Some((ref dom, ref lora_path)) = selected_lora {
-                    if !(opts.use_baby && dom == "python-async") {
+                    if !(opts.use_baby && !using_reflex_05b && dom == "python-async") {
                         let _ = b_engine
                             .attach_lora_head(&lora_path.to_string_lossy())
                             .await;
