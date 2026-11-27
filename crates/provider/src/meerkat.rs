@@ -120,13 +120,25 @@ pub fn append_replay(path: &Path, entry: &MeerkatReplayEntry) -> Result<(), Stri
     Ok(())
 }
 
+const WEB_MEMORY_TTL_SECS: u64 = 24 * 60 * 60;
+
+fn is_memory_fresh(m: &MeerkatMemory, now: u64) -> bool {
+    if m.source == "web_healed" {
+        now.saturating_sub(m.created_at) <= WEB_MEMORY_TTL_SECS
+    } else {
+        true
+    }
+}
+
 pub fn retrieve_memories(path: &Path, query: &str, limit: usize) -> Vec<MeerkatMemory> {
     let q_tokens = tokenize(query);
     if q_tokens.is_empty() {
         return Vec::new();
     }
+    let now = unix_now();
     let mut scored: Vec<(usize, MeerkatMemory)> = load_memories(path)
         .into_iter()
+        .filter(|m| is_memory_fresh(m, now))
         .filter_map(|m| {
             let mut m_tokens = tokenize(&m.trigger);
             m_tokens.extend(tokenize(&m.content));
@@ -522,5 +534,31 @@ mod tests {
             Some(("run_python".to_string(), "print(2 + 2)".to_string()))
         );
         assert!(extract_tool_call("No tool tag here.").is_none());
+    }
+
+    #[test]
+    fn test_web_healed_memory_ttl() {
+        let now = unix_now();
+        let fresh_web = MeerkatMemory {
+            id: 1,
+            scope: "global".into(),
+            trigger: "latest rust".into(),
+            content: "1.100.0".into(),
+            source: "web_healed".into(),
+            verified: true,
+            created_at: now.saturating_sub(60),
+        };
+        let stale_web = MeerkatMemory {
+            created_at: now.saturating_sub(WEB_MEMORY_TTL_SECS + 10),
+            ..fresh_web.clone()
+        };
+        let perm_teach = MeerkatMemory {
+            source: "teach".into(),
+            created_at: now.saturating_sub(WEB_MEMORY_TTL_SECS * 90),
+            ..fresh_web.clone()
+        };
+        assert!(is_memory_fresh(&fresh_web, now));
+        assert!(!is_memory_fresh(&stale_web, now));
+        assert!(is_memory_fresh(&perm_teach, now));
     }
 }
