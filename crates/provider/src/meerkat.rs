@@ -449,6 +449,50 @@ pub async fn execute_tool(name: &str, arg: &str) -> String {
     }
 }
 
+/// Discovers installed Wave 1 LoRA adapter directories for a given tier prefix (e.g. `tiny-builder-135m`).
+pub fn list_wave1_domains(tier_prefix: &str) -> Vec<(String, PathBuf)> {
+    let base = nioxs_home_dir().join("loras");
+    let mut found = Vec::new();
+    let prefix = format!("{tier_prefix}.");
+    for dir in [base.join("wave1"), base] {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if !p.is_dir() || !p.join("adapter_config.json").is_file() {
+                continue;
+            }
+            if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
+                if let Some(domain) = name.strip_prefix(&prefix) {
+                    if !found.iter().any(|(d, _): &(String, PathBuf)| d == domain) {
+                        found.push((domain.to_string(), p));
+                    }
+                }
+            }
+        }
+    }
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found
+}
+
+/// Picks the best Wave 1 LoRA path matching the Scout's domain verdict.
+pub fn match_wave1_domain<'a>(
+    domains: &'a [(String, PathBuf)],
+    verdict: &str,
+) -> Option<&'a (String, PathBuf)> {
+    let low = verdict.trim().to_ascii_lowercase();
+    domains
+        .iter()
+        .find(|(d, _)| low.contains(d.as_str()))
+        .or_else(|| {
+            domains.iter().find(|(d, _)| {
+                d.split('-')
+                    .any(|part| part.len() >= 3 && low.contains(part))
+            })
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

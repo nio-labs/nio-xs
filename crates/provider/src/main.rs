@@ -4002,6 +4002,39 @@ async fn run_meerkat_turn(
 
     let using_builder = (tools_enabled || auto_need_code || used_web || !scout_path.is_file())
         && builder_path.is_file();
+    let active_tier_prefix = if opts.use_baby {
+        "tiny-builder-135m"
+    } else if using_builder {
+        "meerkat-builder-1.5b"
+    } else {
+        "meerkat-scout-0.5b"
+    };
+    let wave1_domains = meerkat::list_wave1_domains(active_tier_prefix);
+    let mut selected_lora: Option<(String, std::path::PathBuf)> = None;
+    if (auto_need_code || opts.use_builder) && !wave1_domains.is_empty() && scout_path.is_file() {
+        let domain_list: Vec<&str> = wave1_domains.iter().map(|(d, _)| d.as_str()).collect();
+        let mut dom_eng = nioxs_engine::AstEngine::from_paths(
+            scout_path.to_path_buf(),
+            tokenizer_path.to_path_buf(),
+        );
+        dom_eng.set_device_preference(opts.device_pref);
+        let dom_prompt = format!(
+            "<|im_start|>system\nPick the single best domain from: {}. Reply ONLY with the domain name or NONE.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n",
+            domain_list.join(", ")
+        );
+        if let Ok(mut d_rx) = dom_eng.generate_stream(dom_prompt, 12, 0.0, 0.90).await {
+            let mut verdict = String::new();
+            while let Some(c) = d_rx.recv().await {
+                verdict.push_str(&c);
+            }
+            if let Some((d, p)) = meerkat::match_wave1_domain(&wave1_domains, &verdict) {
+                selected_lora = Some((d.clone(), p.clone()));
+                if opts.verbose {
+                    println!("\x1b[1;35m[Meerkat LoRA]\x1b[0m Selected Wave 1 adapter: {d}");
+                }
+            }
+        }
+    }
     if auto_need_code && !opts.use_builder && builder_path.is_file() {
         println!(
             "\x1b[1;36m[Meerkat Scout]\x1b[0m Coding task detected -> routing to 1.5B Builder..."
@@ -4055,6 +4088,9 @@ async fn run_meerkat_turn(
     let mut engine =
         nioxs_engine::AstEngine::from_paths(initial_path.clone(), tokenizer_path.to_path_buf());
     engine.set_device_preference(opts.device_pref);
+    if let Some((_, ref lora_path)) = selected_lora {
+        let _ = engine.attach_lora_head(&lora_path.to_string_lossy()).await;
+    }
     let mut rx = engine
         .generate_stream(formatted_prompt.clone(), opts.max_tokens, temp, 0.90)
         .await?;
@@ -4205,6 +4241,11 @@ async fn run_meerkat_turn(
                     tokenizer_path.to_path_buf(),
                 );
                 b_engine.set_device_preference(opts.device_pref);
+                if let Some((_, ref lora_path)) = selected_lora {
+                    let _ = b_engine
+                        .attach_lora_head(&lora_path.to_string_lossy())
+                        .await;
+                }
                 let mut b_rx = b_engine
                     .generate_stream(heal_prompt, opts.max_tokens, heal_temp, 0.90)
                     .await?;
