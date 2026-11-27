@@ -3587,6 +3587,7 @@ mod tests {
 }
 
 struct MeerkatOpts {
+    use_baby: bool,
     use_builder: bool,
     use_tools: bool,
     use_search: bool,
@@ -3601,7 +3602,7 @@ struct MeerkatOpts {
 async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     if matches!(raw_args.first().map(|s| s.as_str()), Some("-h" | "--help")) {
         println!(
-            "Usage: nioxs meerkat [--chat] [--builder] [--tools] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--verbose|-v] [prompt]"
+            "Usage: nioxs meerkat [--baby] [--chat] [--builder] [--tools] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--verbose|-v] [prompt]"
         );
         println!(
             "  teach <trigger => fact>   Save an instant SimSimi-style memory to ~/.nioxs/meerkat_memory.jsonl"
@@ -3633,6 +3634,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
 
     let mut chat_mode = raw_args.is_empty();
     let mut opts = MeerkatOpts {
+        use_baby: false,
         use_builder: false,
         use_tools: false,
         use_search: false,
@@ -3647,6 +3649,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut iter = raw_args.into_iter();
     while let Some(a) = iter.next() {
         match a.as_str() {
+            "--baby" => opts.use_baby = true,
             "--chat" | "-i" => chat_mode = true,
             "--builder" => opts.use_builder = true,
             "--tools" => opts.use_tools = true,
@@ -3718,36 +3721,56 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     }
 
     let models_dir = nioxs_artifacts::resolve_models_dir();
-    let tokenizer_path = [
-        models_dir.join("orca-tokenizer.json"),
-        models_dir.join("tiger-tokenizer.json"),
-    ]
-    .into_iter()
-    .find(|p| p.is_file())
-    .ok_or_else(|| {
-        anyhow::anyhow!(
-            "Could not locate orca-tokenizer.json in {}",
-            models_dir.display()
+    let (tokenizer_path, scout_path, builder_path) = if opts.use_baby {
+        let tok = models_dir.join("baby-orca-tokenizer.json");
+        if !tok.is_file() {
+            return Err(anyhow::anyhow!(
+                "Could not locate baby-orca-tokenizer.json in {}",
+                models_dir.display()
+            ));
+        }
+        (
+            tok,
+            models_dir.join("baby-meerkat-scout-135m-q4_k_m.gguf"),
+            models_dir.join("baby-meerkat-builder-135m-q4_k_m.gguf"),
         )
-    })?;
-
-    let scout_path = [
-        models_dir.join("meerkat-scout-0.5b-q4_k_m.gguf"),
-        models_dir.join("penguin-scout-0.5b-q4_k_m.gguf"),
-    ]
-    .into_iter()
-    .find(|p| p.is_file())
-    .unwrap_or_else(|| models_dir.join("meerkat-scout-0.5b-q4_k_m.gguf"));
-    let builder_path = [
-        models_dir.join("meerkat-builder-1.5b-q4_k_m.gguf"),
-        models_dir.join("penguin-builder-1.5b-q4_k_m.gguf"),
-    ]
-    .into_iter()
-    .find(|p| p.is_file())
-    .unwrap_or_else(|| models_dir.join("meerkat-builder-1.5b-q4_k_m.gguf"));
+    } else {
+        let tok = [
+            models_dir.join("orca-tokenizer.json"),
+            models_dir.join("tiger-tokenizer.json"),
+        ]
+        .into_iter()
+        .find(|p| p.is_file())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not locate orca-tokenizer.json in {}",
+                models_dir.display()
+            )
+        })?;
+        let scout = [
+            models_dir.join("meerkat-scout-0.5b-q4_k_m.gguf"),
+            models_dir.join("penguin-scout-0.5b-q4_k_m.gguf"),
+        ]
+        .into_iter()
+        .find(|p| p.is_file())
+        .unwrap_or_else(|| models_dir.join("meerkat-scout-0.5b-q4_k_m.gguf"));
+        let builder = [
+            models_dir.join("meerkat-builder-1.5b-q4_k_m.gguf"),
+            models_dir.join("penguin-builder-1.5b-q4_k_m.gguf"),
+        ]
+        .into_iter()
+        .find(|p| p.is_file())
+        .unwrap_or_else(|| models_dir.join("meerkat-builder-1.5b-q4_k_m.gguf"));
+        (tok, scout, builder)
+    };
     if !scout_path.is_file() && !builder_path.is_file() {
+        let expected = if opts.use_baby {
+            "baby-meerkat-scout-135m-q4_k_m.gguf / baby-meerkat-builder-135m-q4_k_m.gguf"
+        } else {
+            "meerkat-scout-0.5b-q4_k_m.gguf / meerkat-builder-1.5b-q4_k_m.gguf"
+        };
         return Err(anyhow::anyhow!(
-            "Could not locate Meerkat GGUFs in {} (expected meerkat-scout-0.5b-q4_k_m.gguf / meerkat-builder-1.5b-q4_k_m.gguf)",
+            "Could not locate Meerkat GGUFs in {} (expected {expected})",
             models_dir.display()
         ));
     }
