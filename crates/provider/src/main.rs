@@ -3895,7 +3895,8 @@ async fn run_meerkat_turn(
         }
     }
 
-    let memories = meerkat::retrieve_memories(mem_path, prompt, 3);
+    let mut memories = meerkat::retrieve_memories(mem_path, prompt, 3);
+    memories.retain(|m| m.source != "healed");
     let taught_name = meerkat::load_memories(mem_path)
         .into_iter()
         .rev()
@@ -4283,11 +4284,12 @@ async fn run_meerkat_turn(
                             .unwrap_or(0),
                     },
                 );
+                let short_first = baby_orca::compact_verify_issue(&first_err);
                 let _ = meerkat::append_memory(
                     mem_path,
                     "project",
                     prompt,
-                    &format!("Healed & verified solution recorded (fixed: {first_err})."),
+                    &format!("Healed & verified solution recorded (fixed: {short_first})."),
                     "healed",
                     true,
                 );
