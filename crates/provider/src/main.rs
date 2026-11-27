@@ -4292,6 +4292,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut forced_pod: Option<String> = None;
     let mut use_search = false;
     let mut force_verify: Option<bool> = None;
+    let mut force_relay: Option<bool> = None;
     let mut verbose = false;
     let mut flow_mode = FlowMode::Token;
     let mut max_tokens: usize = 512;
@@ -4305,6 +4306,8 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             "--search" => use_search = true,
             "--verify" => force_verify = Some(true),
             "--no-verify" => force_verify = Some(false),
+            "--relay" => force_relay = Some(true),
+            "--no-relay" => force_relay = Some(false),
             "--verbose" | "-v" => verbose = true,
             "--cpu" => device_pref = nioxs_engine::DevicePreference::Cpu,
             "--gpu" => device_pref = nioxs_engine::DevicePreference::Gpu,
@@ -4415,6 +4418,28 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     };
     println!("\x1b[1;36m[Baby Orca]\x1b[0m Step 2/4: Lead -> {chosen_pod}");
 
+    // Optional 2-Pod Relay (reasoning-think 2-line plan -> specialist pod)
+    let use_relay = force_relay.unwrap_or_else(|| meerkat::looks_like_code_task(&prompt, ""))
+        && chosen_pod != "reasoning-think"
+        && !asks_identity
+        && reason_path.is_file();
+    let relay_plan = if use_relay {
+        println!("\x1b[1;36m[Baby Orca]\x1b[0m Relay: Planning via reasoning-think...");
+        let plan_raw = run_baby_orca_one(
+            &reason_path,
+            &tokenizer_path,
+            device_pref,
+            "You are Baby Orca 'reasoning-think' Pod (135M). Output ONLY a 2-line invariant/edge-case checklist inside <think>...</think>.",
+            &format!("{web_ctx}{prompt}"),
+            64,
+            0.1,
+        )
+        .await?;
+        format!("[Invariant Plan]\n{}\n\n", plan_raw.trim())
+    } else {
+        String::new()
+    };
+
     // 3. Active Specialist Pod (135M, 1 pod at a time — buffered so final answer prints once)
     println!("\x1b[1;36m[Baby Orca]\x1b[0m Step 3/4: Drafting via {chosen_pod}...");
     let pod_path = baby_orca::pod_gguf_path(&baby_dir, &chosen_pod);
@@ -4430,7 +4455,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             "You are Baby Orca '{chosen_pod}' Pod (135M), created by Nio Labs. Be ultra-concise, accurate, and zero-filler."
         )
     };
-    let pod_user = format!("{web_ctx}{prompt}");
+    let pod_user = format!("{web_ctx}{relay_plan}{prompt}");
     let pod_prompt = format!(
         "<|im_start|>system\n{pod_sys}<|im_end|>\n<|im_start|>user\n{pod_user}<|im_end|>\n<|im_start|>assistant\n"
     );
