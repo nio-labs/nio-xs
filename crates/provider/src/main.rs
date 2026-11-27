@@ -866,7 +866,8 @@ Commands:\n\
   orca-nano <prompt> Run Orca Nano 0.5B×13 Sovereign Pod Fleet\n\
   orca-mini <prompt> Run Orca Mini 1.5B×13 Sovereign Pod Fleet\n\
   orca-omni <prompt> Run Orca Omni Hybrid Fleet (0.5B fast Lead + 1.5B+ heavy Pods)\n\
-  baby-orca <prompt> Run Baby Orca 15×135M Micro-Pod Fleet (1 active pod, Web Scout + Anti-Hallucination Guard)\n\
+  orca-pack <prompt> Run Orca Pack Mixture-of-Agents (1.5B Lead + 12×0.5B concurrent Pods)\n\
+  baby-orca <prompt> Run Baby Orca 23×135M Micro-Pod Fleet (1 active pod, Web Scout + Guard)\n\
   meerkat <prompt>   Run Meerkat Self-Healing Herd (0.5B Scout + 1.5B Builder + 4-tool loop + /teach memory)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
@@ -1632,6 +1633,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         flow.finish();
         println!();
         return Ok(());
+    }
+    if arg.as_deref() == Some("orca-pack") {
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        return Ok(run_orca_pack_cli(raw_args).await?);
     }
     if arg.as_deref() == Some("baby-orca") {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
@@ -4597,11 +4602,258 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
 
     if verbose {
         println!(
-            "\n---\nBaby Orca [15×135M] | pod={} | web={} | grounded={} | healed={} | verified={:?} | {:.2}s",
+            "\n---\nBaby Orca [23×135M] | pod={} | web={} | grounded={} | healed={} | verified={:?} | {:.2}s",
             final_pod,
             used_web,
             grounded,
             healed,
+            verified_opt,
+            t0.elapsed().as_secs_f64()
+        );
+    }
+    Ok(())
+}
+
+async fn run_orca_pack_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
+    if raw_args.is_empty() || matches!(raw_args[0].as_str(), "-h" | "--help") {
+        println!(
+            "Usage: nioxs orca-pack [--top <N>] [--verify|--no-verify] [--verbose|-v] [--cpu|--gpu] [-n <max_tokens>] <prompt>"
+        );
+        println!("Runs 12×0.5B Orca Nano Pods concurrently + 1.5B Lead synthesis + --verify.");
+        return Ok(());
+    }
+
+    let mut top_n: usize = 12;
+    let mut force_verify: Option<bool> = None;
+    let mut verbose = false;
+    let mut flow_mode = FlowMode::Token;
+    let mut max_tokens: usize = 1024;
+    let mut device_pref = nioxs_engine::DevicePreference::Auto;
+    let mut prompt_parts = Vec::new();
+
+    let mut iter = raw_args.into_iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--top" => {
+                if let Some(v) = iter.next() {
+                    top_n = v.parse().unwrap_or(12).clamp(1, 12);
+                }
+            }
+            "--verify" => force_verify = Some(true),
+            "--no-verify" => force_verify = Some(false),
+            "--verbose" | "-v" => verbose = true,
+            "--cpu" => device_pref = nioxs_engine::DevicePreference::Cpu,
+            "--gpu" => device_pref = nioxs_engine::DevicePreference::Gpu,
+            "--flow" => {
+                if let Some(v) = iter.next() {
+                    flow_mode = FlowMode::parse(&v);
+                }
+            }
+            "-n" | "--max-tokens" => {
+                if let Some(v) = iter.next() {
+                    if let Ok(n) = v.parse() {
+                        max_tokens = n;
+                    }
+                }
+            }
+            _ => prompt_parts.push(a),
+        }
+    }
+    let prompt = prompt_parts.join(" ");
+    if prompt.trim().is_empty() {
+        return Err(anyhow::anyhow!(
+            "Empty prompt. Usage: nioxs orca-pack <prompt>"
+        ));
+    }
+
+    let home = std::env::var("HOME").unwrap_or_default();
+    let models_dir = nioxs_artifacts::resolve_models_dir();
+    let search_dirs = [
+        models_dir.clone(),
+        models_dir.join("orca"),
+        std::path::PathBuf::from("models/orca_nano_gguf"),
+        std::path::PathBuf::from("models/gguf"),
+        std::path::PathBuf::from(&home).join("nio-labs/nio-ideas/models/orca_nano_gguf"),
+        std::path::PathBuf::from(&home).join("nio-labs/nio-ideas/models/gguf"),
+    ];
+    let find_gguf = |name: &str| -> Option<std::path::PathBuf> {
+        search_dirs
+            .iter()
+            .map(|d| d.join(name))
+            .find(|p| p.is_file())
+    };
+
+    let tokenizer_path = [
+        models_dir.join("orca-tokenizer.json"),
+        std::path::PathBuf::from(&home)
+            .join("nio-labs/nio-ideas/models/orca_lead_1_5b_instruct_tuned/tokenizer.json"),
+    ]
+    .into_iter()
+    .find(|p| p.is_file())
+    .ok_or_else(|| anyhow::anyhow!("Could not locate orca-tokenizer.json"))?;
+
+    let lead_path = find_gguf("orca-lead-1.5b-q4_k_m.gguf")
+        .or_else(|| find_gguf("orca-nano-lead-0.5b-q4_k_m.gguf"))
+        .ok_or_else(|| anyhow::anyhow!("Could not locate orca-lead-1.5b-q4_k_m.gguf"))?;
+
+    let nano_pod_specs = [
+        (
+            "algo-reasoner",
+            "orca-nano-algo-reasoner-0.5b-q4_k_m.gguf",
+            "algorithms and complexity",
+        ),
+        (
+            "architect",
+            "orca-nano-architect-0.5b-q4_k_m.gguf",
+            "software architecture and design",
+        ),
+        (
+            "security-reasoner",
+            "orca-nano-security-reasoner-0.5b-q4_k_m.gguf",
+            "security, safety, and edge validation",
+        ),
+        (
+            "test-reasoner",
+            "orca-nano-test-reasoner-0.5b-q4_k_m.gguf",
+            "unit tests and boundary edge cases",
+        ),
+        (
+            "repair-reasoner",
+            "orca-nano-repair-reasoner-0.5b-q4_k_m.gguf",
+            "bug prevention and invariants",
+        ),
+        (
+            "reasoner",
+            "orca-nano-reasoner-0.5b-q4_k_m.gguf",
+            "step-by-step logic",
+        ),
+        (
+            "pod-0",
+            "orca-nano-pod-0-0.5b-q4_k_m.gguf",
+            "core syntax and stdlib",
+        ),
+        (
+            "pod-1",
+            "orca-nano-pod-1-0.5b-q4_k_m.gguf",
+            "data structures and I/O",
+        ),
+        (
+            "pod-2",
+            "orca-nano-pod-2-0.5b-q4_k_m.gguf",
+            "concurrency and systems",
+        ),
+        (
+            "pod-3",
+            "orca-nano-pod-3-0.5b-q4_k_m.gguf",
+            "APIs, parsing, and formatting",
+        ),
+        (
+            "pod-4",
+            "orca-nano-pod-4-0.5b-q4_k_m.gguf",
+            "CLI, scripting, and tooling",
+        ),
+        (
+            "pod-5",
+            "orca-nano-pod-5-0.5b-q4_k_m.gguf",
+            "clarity and concise explanation",
+        ),
+    ];
+
+    let active_pods: Vec<_> = nano_pod_specs
+        .into_iter()
+        .filter_map(|(id, file, role)| find_gguf(file).map(|p| (id, p, role)))
+        .take(top_n)
+        .collect();
+    if active_pods.is_empty() {
+        return Err(anyhow::anyhow!(
+            "No 0.5B Orca Nano pods found for orca-pack."
+        ));
+    }
+
+    let t0 = std::time::Instant::now();
+    println!(
+        "\x1b[1;36m[Orca Pack]\x1b[0m Step 1/3: Broadcasting across {} × 0.5B Nano Pods...",
+        active_pods.len()
+    );
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+
+    let mut join_set = tokio::task::JoinSet::new();
+    for (pod_id, pod_path, role) in active_pods {
+        let tok = tokenizer_path.clone();
+        let q = prompt.clone();
+        join_set.spawn(async move {
+            let sys = format!(
+                "You are Orca Nano '{pod_id}' Pod (0.5B), specializing in {role}. Reply ONLY with [SKIP] if irrelevant, OR [NOTE] followed by 2 concise bullet points (max 60 words)."
+            );
+            let p = format!(
+                "<|im_start|>system\n{sys}<|im_end|>\n<|im_start|>user\n{q}<|im_end|>\n<|im_start|>assistant\n"
+            );
+            let mut eng = nioxs_engine::AstEngine::from_paths(pod_path, tok);
+            eng.set_device_preference(device_pref);
+            let Ok(mut rx) = eng.generate_stream(p, 80, 0.2, 0.90).await else {
+                return (pod_id, String::new());
+            };
+            let mut out = String::new();
+            while let Some(c) = rx.recv().await {
+                out.push_str(&c);
+            }
+            (pod_id, out.trim().to_string())
+        });
+    }
+
+    let mut notes = Vec::new();
+    while let Some(res) = join_set.join_next().await {
+        if let Ok((pod_id, text)) = res {
+            if !text.is_empty() && !text.to_ascii_uppercase().starts_with("[SKIP]") {
+                notes.push(format!("- [{pod_id}] {text}"));
+            }
+        }
+    }
+    println!(
+        "\x1b[1;36m[Orca Pack]\x1b[0m Step 2/3: Synthesizing {} pod notes via 1.5B Lead...",
+        notes.len()
+    );
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+
+    let notes_block = if notes.is_empty() {
+        String::new()
+    } else {
+        format!("[Pack Specialist Notes]\n{}\n\n", notes.join("\n"))
+    };
+    let lead_prompt = format!(
+        "<|im_start|>system\nYou are Orca Pack 1.5B Lead, developed by Nio Labs. Synthesize the [Pack Specialist Notes] into one clean, accurate, complete response.<|im_end|>\n<|im_start|>user\n{notes_block}{prompt}<|im_end|>\n<|im_start|>assistant\n"
+    );
+    let mut lead_eng = nioxs_engine::AstEngine::from_paths(lead_path, tokenizer_path.clone());
+    lead_eng.set_device_preference(device_pref);
+    let mut rx = lead_eng
+        .generate_stream(lead_prompt, max_tokens, 0.2, 0.90)
+        .await?;
+    let mut flow = StreamFlow::new(flow_mode);
+    flow.set_show_think_tags(true);
+    let mut final_resp = String::new();
+    while let Some(c) = rx.recv().await {
+        final_resp.push_str(&c);
+        flow.push(&c);
+    }
+    flow.finish();
+    println!();
+
+    let should_verify =
+        force_verify.unwrap_or_else(|| meerkat::looks_like_code_task(&prompt, &final_resp));
+    let mut verified_opt = None;
+    if should_verify {
+        println!("\x1b[1;36m[Orca Pack]\x1b[0m Step 3/3: Verifying code...");
+        let (ok, _) = verify_orca_with_mode(&final_resp, "code");
+        verified_opt = Some(ok);
+        if ok {
+            println!("\x1b[1;32m[Orca Pack]\x1b[0m Verified ✔");
+        }
+    }
+
+    if verbose {
+        println!(
+            "\n---\nOrca Pack [1.5B Lead + 0.5B Pack] | notes={} | verified={:?} | {:.2}s",
+            notes.len(),
             verified_opt,
             t0.elapsed().as_secs_f64()
         );
