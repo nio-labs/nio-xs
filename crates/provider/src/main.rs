@@ -3883,24 +3883,51 @@ async fn run_meerkat_turn(
         && !meerkat::looks_like_code_task(prompt, "")
         && scout_path.is_file()
     {
-        let cls_prompt = format!(
-            "<|im_start|>system\nClassify the user request into ONE word:\n- WEB: requires live, current, or post-2024 web info (leaders, latest versions, news, prices)\n- TOOL: requires reading a local file, fetching a URL, running Python/calculations, or calling a tool\n- DIRECT: casual chat, timeless facts, or general knowledge\nReply ONLY with WEB, TOOL, or DIRECT.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-        );
         let mut cls_engine = nioxs_engine::AstEngine::from_paths(
             scout_path.to_path_buf(),
             tokenizer_path.to_path_buf(),
         );
         cls_engine.set_device_preference(opts.device_pref);
-        if let Ok(mut cls_rx) = cls_engine.generate_stream(cls_prompt, 4, 0.0, 0.90).await {
+
+        let tool_cls_prompt = format!(
+            "<|im_start|>system\nDoes the user request refer to a local file path, URL, webpage, or ask to run Python? Reply ONLY with YES or NO.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        );
+        if let Ok(mut cls_rx) = cls_engine
+            .generate_stream(tool_cls_prompt, 4, 0.0, 0.90)
+            .await
+        {
             let mut verdict = String::new();
             while let Some(c) = cls_rx.recv().await {
                 verdict.push_str(&c);
             }
             let v = verdict.trim().to_ascii_uppercase();
-            if v.starts_with("WEB") && memories.is_empty() {
-                auto_need_web = true;
-            } else if v.starts_with("TOOL") {
+            if opts.verbose {
+                println!("\x1b[1;36m[Meerkat Router: TOOL?]\x1b[0m {}", v);
+            }
+            if v.starts_with("YES") {
                 auto_need_tool = true;
+            }
+        }
+
+        if !auto_need_tool && memories.is_empty() {
+            let web_cls_prompt = format!(
+                "<|im_start|>system\nDecide if the user question requires live, current, or post-2024 web data (such as current leaders, latest software versions, recent events, prices, or news) instead of timeless facts or casual chat. Reply ONLY with YES or NO.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+            );
+            if let Ok(mut cls_rx) = cls_engine
+                .generate_stream(web_cls_prompt, 4, 0.0, 0.90)
+                .await
+            {
+                let mut verdict = String::new();
+                while let Some(c) = cls_rx.recv().await {
+                    verdict.push_str(&c);
+                }
+                let v = verdict.trim().to_ascii_uppercase();
+                if opts.verbose {
+                    println!("\x1b[1;36m[Meerkat Router: WEB?]\x1b[0m {}", v);
+                }
+                if v.starts_with("YES") {
+                    auto_need_web = true;
+                }
             }
         }
     }
