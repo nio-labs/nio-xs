@@ -66,7 +66,7 @@ pub fn infer_folio(prompt: &str, has_csv_guard: bool) -> OwlFolio {
         return OwlFolio::Finance;
     }
     let lower = prompt.to_ascii_lowercase();
-    if ["bedtime", "year-old", "kids", "fairy tale", "children"]
+    if ["bedtime", "year-old", "kid", "kids", "fairy tale", "children"]
         .iter()
         .any(|k| lower.contains(k))
     {
@@ -296,8 +296,8 @@ pub async fn run_owl_xs_cli(args: Vec<String>) -> Result<()> {
         folio.system_prompt()
     );
     let temp = match folio {
-        OwlFolio::Encyclopedia | OwlFolio::Finance => 0.15,
-        OwlFolio::Kids | OwlFolio::Novel => 0.55,
+        OwlFolio::Encyclopedia | OwlFolio::Finance => 0.0,
+        OwlFolio::Kids | OwlFolio::Novel => 0.65,
     };
 
     let mut rx = engine

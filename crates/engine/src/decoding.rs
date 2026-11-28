@@ -46,25 +46,41 @@ impl DecodingPolicy {
     }
 
     pub fn runner_args(self) -> Vec<String> {
-        let mut args: Vec<String> = [
-            "--temp",
-            "0",
-            "--top-p",
-            "1",
-            "--top-k",
-            "0",
-            "--min-p",
-            "0",
-            "--frequency-penalty",
-            "0",
-            "--presence-penalty",
-            "0",
-            "--no-context-shift",
-            "--single-turn",
-        ]
-        .into_iter()
-        .map(str::to_owned)
-        .collect();
+        self.runner_args_with_sampling(0.0, 1.0)
+    }
+
+    pub fn runner_args_with_sampling(self, temperature: f64, top_p: f64) -> Vec<String> {
+        let use_stochastic = temperature > 0.0;
+        let temp_str = if use_stochastic {
+            format!("{temperature:.2}")
+        } else {
+            "0".to_owned()
+        };
+        let top_p_str = if use_stochastic {
+            format!("{:.2}", top_p.clamp(0.05, 1.0))
+        } else {
+            "1".to_owned()
+        };
+        let top_k_str = if use_stochastic { "40" } else { "0" };
+        let mut args: Vec<String> = vec![
+            "--temp".to_owned(),
+            temp_str,
+            "--top-p".to_owned(),
+            top_p_str,
+            "--top-k".to_owned(),
+            top_k_str.to_owned(),
+            "--min-p".to_owned(),
+            "0".to_owned(),
+            "--frequency-penalty".to_owned(),
+            "0".to_owned(),
+            "--presence-penalty".to_owned(),
+            "0".to_owned(),
+            "--no-context-shift".to_owned(),
+            "--single-turn".to_owned(),
+        ];
+        if use_stochastic {
+            args.extend(["--seed".to_owned(), "-1".to_owned()]);
+        }
         let repeat_position = args
             .iter()
             .position(|arg| arg == "--no-context-shift")

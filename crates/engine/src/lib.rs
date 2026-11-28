@@ -1749,7 +1749,7 @@ impl AstEngine {
                             }
                         }
                     }
-                    cmd.args(policy.runner_args());
+                    cmd.args(policy.runner_args_with_sampling(temperature, top_p));
                     if let Some(lib_dir) = runner_bin.parent().filter(|p| !p.as_os_str().is_empty())
                     {
                         let existing = std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default();
