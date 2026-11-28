@@ -33,9 +33,17 @@ Tactical Striker     Ambient Companion     DAG Architect          Sovereign Pod 
 
 ### 1. Instant Run via Cargo / Release Binary
 ```bash
-# Orca Sovereign Pod Fleet (0.5B×13 Nano or 1.5B×13 Mini) with --verify self-repair
+# Orca Sovereign Pod Fleet (Orca XS / S / Nano / Mini / Omni / Pack) with --verify self-repair
+nioxs orca-xs "what is nodejs?"
+nioxs orca-s --verify "Write a Python function fib(n) with assert fib(6) == 8"
 nioxs orca-nano --verify "Write a Python function fib(n) with assert fib(6) == 8"
 nioxs orca-mini --verify "Implement an SPSC lock-free ring buffer in Python with tests"
+nioxs orca-pack --verify "Implement a lock-free ring buffer in Python with tests"
+
+# Mink Self-Healing & Adaptive Coding Herd (Mink XS / S / Mink)
+nioxs mink-xs "our deploy server is 10.0.4.22"
+nioxs mink-s --verify "write me a rust func to sum a slice"
+nioxs mink --tools "read Cargo.toml and tell me the package name"
 
 # Terminal Tactical Reflex
 nioxs viper "kill whatever process is holding port 3000"
@@ -59,8 +67,13 @@ nioxs tiger "Implement an SPSC lock-free bounded ring buffer with zero allocatio
 nioxs rabbit "Diagnose subtle memory leak in tokio broadcast subscriber queue"
 
 # Pull verified weights for any model
+nioxs pull orca-xs
+nioxs pull orca-s
 nioxs pull orca-nano
 nioxs pull orca-mini
+nioxs pull mink-xs
+nioxs pull mink-s
+nioxs pull mink
 nioxs pull tiger
 
 # Enforce Hardware GPU Acceleration (Intel Arc / NVIDIA CUDA / Metal)
@@ -121,21 +134,26 @@ nioxs viper -x -y "kill port 3000"
 | **Skate** | **135M** | Ambient Desk Companion | **82.93 MiB** (`IQ3_XXS`) | **33.86–39.25 MiB anon*** | **98.48–100.64 MiB*** | 23–53 w/s* | Friendly Banter & Zero-Code Focus |
 | **Mako** | **150M** | Live Web Intelligence & Scout | **~65.4 MB** (`IQ3_XXS`) | **< 22 MB** | **~120 MB** | 200+ tok/s | DOM Noise Stripping & Wire DSL |
 | **Manta** | **494M** | Systems Guru & DAG Architect | **~254 MB** (`Q4_0`) | **~95 MB** | **~195 MB** | 20–35 w/s | `<manta_plan>` DAGs & Wasm Engine |
+| **Orca XS** | **23×135M** | Edge Micro-Pod Fleet (Web Scout + Guard) | **~2.3 GB** (`23×101 MB`) | **~101 MB** | **~333 MB** | ~40+ w/s | **14.63% HumanEval / 26.0% MBPP** |
+| **Orca S** | **135M + 0.5B×13** | Fast 135M Lead + 0.5B Nano Pods | **~5.0 GB** | **~380 MB** | **~582 MB** | ~20 w/s | Fast 135M routing + 0.5B Pod |
 | **Orca Nano** | **0.5B×13** | Sovereign Micro-Pod Fleet | **~4.9 GB** (`13×380 MB Q4_K_M`) | **~380 MB** | **~582 MB** | ~20 w/s | **85.37% HumanEval / 84.0% MBPP** |
 | **Orca Mini** | **1.5B×13** | Sovereign Mini-Pod Fleet | **~12.2 GB** (`13×941 MB Q4_K_M`) | **~941 MB** | **~1,839 MB** | 8–10 w/s | **86.59% HumanEval / 87.0% MBPP** |
 | **Orca Omni** | **0.5B + 1.5B** | Hybrid Fast-Pass + Escalation Fleet | **~17.1 GB** (`Nano + Mini Q4_K_M`) | **~380–941 MB** | **~582–1,839 MB** | 8–20 w/s | **92.07% HumanEval / 89.0% MBPP** |
+| **Mink XS** | **2×135M** | Chat-First Edge Companion (`/teach`) | **202 MB** (`2×101 MB`) | **~101 MB** | **~334 MB** | ~40+ w/s | **10.37% HumanEval / 26.0% MBPP** |
+| **Mink S** | **0.5B** | Small Self-Healing Coder (`IQ3_XXS`) | **319 MB** (`IQ3_XXS`) | **319 MB** | **624.1 MB** | ~15–25 w/s | **67.68% HumanEval / 70.0% MBPP** |
+| **Mink** | **0.5B + 1.5B** | Self-Healing Herd + 4-Tool Loop | **1.32 GB** (`380 + 941 MB`) | **~380–941 MB** | **~1,839–1,879 MB** | 8–20 w/s | **75.61% HumanEval / 79.0% MBPP** |
 | **Beluga** | **1.54B** | Sovereign Lead Architect | **~604 MB** (`IQ3_XXS`) | **~76 MB** | **~295 MB** | 14–22 tok/s | Deep `<think>` CoT Invariant Proofs |
 | **Blue** | **3.82B** | Sovereign Reflex Lead & Staff Peer | **~1.40 GiB** (`IQ3_XXS`) | n/a | **~192 MB** | ~4.4 tok/s (measured) | Lean `<think>` verification (`nioxs blue`) |
 
 ---
 
-## 🐋 Orca: Sovereign Pod Fleet (`Orca Nano`, `Orca Mini` & `Orca Omni`)
+## 🐋 Orca: Sovereign Pod Fleet (`Orca XS`, `Orca S`, `Orca Nano`, `Orca Mini`, `Orca Omni` & `Orca Pack`)
 
-Orca replaces single-model bottlenecks with a **13-pod specialist fleet** (`1× Lead + 6× Action Pods + 6× Reasoner Pods`) routed dynamically via `pod_manifest.json` and backed by bounded `--verify` error-guided self-repair:
+Orca replaces single-model bottlenecks with a **13-pod specialist fleet** (`1× Lead + 6× Action Pods + 6× Reasoner Pods`) routed dynamically via `pod_manifest.json` and backed by bounded `--verify` error-guided self-repair. See [**Nio Orca**](https://github.com/nio-labs/nio-orca) and [**Nio Tiny**](https://github.com/nio-labs/nio-tiny) for full fleet pages.
 
 ### Ranked Benchmark Leaderboard (Sorted by HumanEval)
 
-| Rank | Model / Fleet | Active Params | Pods & Total Size (`Q4_K_M`) | HumanEval (`164`) | MBPP (`100`) | Host RAM (`VmHWM`) | CPU Speed |
+| Rank | Model / Fleet | Active Params | Pods & Total Size | HumanEval (`164`) | MBPP (`100`) | Host RAM (`VmHWM`) | CPU Speed |
 | :---: | :--- | :---: | :--- | :--- | :--- | :--- | :--- |
 | **1** | `Qwen2.5-Coder-32B-Instruct` (`FP16`, Pass@1)* | `32.5B` | `1` pod | `92.70%` | `90.2%` | — | — |
 | **2** | `OpenAI o1` (Frontier, Pass@1)* | Frontier | Cloud API | `92.40%` | — | — | — |
@@ -144,40 +162,66 @@ Orca replaces single-model bottlenecks with a **13-pod specialist fleet** (`1× 
 | **5** | `DeepSeek-V3` (`671B` MoE, Pass@1)* | `37B` | Cloud / cluster | `91.60%` | `75.4%` | — | — |
 | **6** | `GPT-4o` (Frontier, Pass@1)* | Frontier | Cloud API | `90.20%` | `87.2%` | — | — |
 | **7** | `Qwen2.5-Coder-14B-Instruct` (`FP16`, Pass@1)* | `14.7B` | `1` pod | `89.60%` | `87.2%` | — | — |
-| **8** | `Llama-3.1-405B-Instruct` (Pass@1)* | `405B` | Cloud / cluster | `89.00%` | `88.6%` | — | — |
-| **9** | **`Orca Mini`** (`orca-mini-1.5b-19.5b`) | **`1.5B`** | **`13 pods / 19.5B`** (`~12.2 GB`, `941 MB/pod`) | **`86.59%`** (`142/164`) | **`87.0%`** (`87/100`) | **`~1,839 MB`** | **`8–10 w/s`** |
-| **10** | **`Orca Nano`** (`orca-nano-0.5b-6.5b`) | **`0.5B`** | **`13 pods / 6.5B`** (`~4.9 GB`, `380 MB/pod`) | **`85.37%`** (`140/164`) | **`84.0%`** (`84/100`) | **`~582 MB`** | **`~20 w/s`** |
-| **11** | Stock `Qwen2.5-Coder-7B` (`INT4`) | `7.0B` | `1` pod | `84.15%` (`138/164`) | `84.0%` (`84/100`) | — | — |
-| **12** | Stock `Qwen2.5-Coder-3B` (`FP16`) | `3.0B` | `1` pod | `81.10%` (`133/164`) | `74.0%` (`74/100`) | — | — |
-| **13** | Stock `Qwen2.5-Coder-3B` (`INT4`) | `3.0B` | `1` pod | `79.27%` (`130/164`) | `73.0%` (`73/100`) | — | — |
+| **8** | **`Orca Pack`** (`top-4` `0.5B` Pods + `1.5B` Lead) | **`0.5B / 1.5B`** | `4×0.5B + 1.5B` | **`89.02%`** (`146/164`) | **`70.0%`** (`70/100`) | — | — |
+| **9** | `Llama-3.1-405B-Instruct` (Pass@1)* | `405B` | Cloud / cluster | `89.00%` | `88.6%` | — | — |
+| **10** | **`Orca Mini`** (`orca-mini-1.5b-19.5b`) | **`1.5B`** | **`13 pods / 19.5B`** (`~12.2 GB`, `941 MB/pod`) | **`86.59%`** (`142/164`) | **`87.0%`** (`87/100`) | **`~1,839 MB`** | **`8–10 w/s`** |
+| **11** | **`Orca Nano`** (`orca-nano-0.5b-6.5b`) | **`0.5B`** | **`13 pods / 6.5B`** (`~4.9 GB`, `380 MB/pod`) | **`85.37%`** (`140/164`) | **`84.0%`** (`84/100`) | **`~582 MB`** | **`~20 w/s`** |
+| **12** | Stock `Qwen2.5-Coder-7B` (`INT4`) | `7.0B` | `1` pod | `84.15%` (`138/164`) | `84.0%` (`84/100`) | — | — |
+| **13** | Stock `Qwen2.5-Coder-3B` (`FP16`) | `3.0B` | `1` pod | `81.10%` (`133/164`) | `74.0%` (`74/100`) | — | — |
+| **14** | Stock `Qwen2.5-Coder-3B` (`INT4`) | `3.0B` | `1` pod | `79.27%` (`130/164`) | `73.0%` (`73/100`) | — | — |
+| **15** | **`Orca XS`** (`23× 135M`, 16-round) | **`135M`** | **`23 pods / 3.11B`** (`~2.3 GB`, `101 MB/pod`) | **`14.63%`** (`24/164`) | **`26.0%`** (`26/100`) | **`~333 MB`** | **`~40+ w/s`** |
 
 *(**Methodology:** Full `openai/openai_humaneval` `164` + `mbpp` sanitized `100` in isolated `5s`-timeout Python subprocesses. `3B`/`7B INT4` ran in the same multi-round harness; \*`Qwen2.5-Coder-14B` `FP16` is the published single-shot Pass@1 baseline from `arXiv:2409.12186`. Orca tiers use the same error-guided + fresh-restart `--verify` loop built into `nioxs`; host `VmHWM` and CPU speed were measured on `i7-10610U` with `Q4_K_M.gguf`.)*
 
 ### Usage & CLI Management
 ```bash
-# Pull Orca Nano (13× 380 MB), Orca Mini (13× 941 MB), or Orca Omni (both) from GitHub Releases
+# Pull Orca XS (135M×23), Orca S (135M Lead + 0.5B Pods), Nano, Mini, or Omni
+nioxs pull orca-xs
+nioxs pull orca-s
 nioxs pull orca-nano
 nioxs pull orca-mini
 nioxs pull orca-omni
 
 # Run with automatic pod routing & bounded --verify self-repair
+nioxs orca-xs "what is nodejs?"
+nioxs orca-s --verify "Write a Python function fib(n) with assert fib(6) == 8"
 nioxs orca-nano --verify "Write a Python function fib(n) with assert fib(6) == 8"
 nioxs orca-mini --verify "Implement a persistent B-tree node split in Python with tests"
 nioxs orca-omni --verify "Implement a lock-free ring buffer in Python with tests"
+nioxs orca-pack --verify "Implement a lock-free ring buffer in Python with tests"
 ```
 
 ---
 
-## 🧬 The v-µLM (V-MicroLM) Architecture: Reflex, Vector, Companion & Pods
+## 🦡 Mink: Self-Healing & Adaptive Coding Herd (`Mink XS`, `Mink S` & `Mink`)
 
-Nio's proprietary **v-µLM (V-MicroLM)** architecture eliminates single-monolith bottlenecks by organizing local execution across four complementary pillars:
+[**Nio Mink**](https://github.com/nio-labs/nio-mink) (`vMicroLM-Growth`) pairs a fast Scout, a coding Builder, a bounded **4-tool loop** (`web_search`, `web_fetch`, `read_file`, `run_python`), persistent `/teach` episodic memory (`~/.nioxs/meerkat_memory.jsonl`), and behavioral **Wave 1 LoRA hot-swapping**:
+
+| Tier | Command | Architecture | Disk Size | HumanEval (`164`) | MBPP (`100`) | Peak RAM (`VmHWM`) |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: |
+| **`Mink XS`** | `nioxs mink-xs` | `2 × 135M` (`SmolLM2-135M` chat-first + light helpers) | `202 MB` | `10.37%` (`17/164`) | `26.0%` (`26/100`) | `~334 MB` |
+| **`Mink S`** | `nioxs mink-s` | `0.5B IQ3_XXS` Reflex + `0.5B` Wave 1 LoRAs | `319 MB` | **`67.68%`** (`111/164`) | **`70.0%`** (`70/100`) | **`624.1 MB`** |
+| **`Mink`** | `nioxs mink` | `0.5B` Scout + `1.5B` Builder + `1.5B` Wave 1 LoRAs | `1.32 GB` | **`75.61%`** (`124/164`) | **`79.0%`** (`79/100`) | **`~1,839–1,879 MB`** |
+
+```bash
+nioxs pull mink-xs && nioxs mink-xs "our deploy server => 10.0.4.22"
+nioxs pull mink-s  && nioxs mink-s --verify "write me a rust func to sum a slice"
+nioxs pull mink    && nioxs mink --tools "read Cargo.toml and tell me the package name"
+```
+
+---
+
+## 🧬 The v-µLM (V-MicroLM) Architecture: Reflex, Vector, Companion, Pods & Growth
+
+Nio's proprietary **v-µLM (V-MicroLM)** architecture eliminates single-monolith bottlenecks by organizing local execution across five complementary pillars:
 
 | Pillar | Role | Key Models | Operational SLA |
 | :--- | :--- | :--- | :--- |
 | **`v-µLM Reflex`** | Instant Grammar & In-Process Decision Engine | **Nano (~0.5M)**, **Mask (1.1M)**, **Micro (5.0M)**, **Mini (7.1M)**, **Viper (100M)** | `< 28 MB RAM`, sub-0.1ms to sub-20µs sampling |
 | **`v-µLM Vector`** | Vector Codebook Lattice & Web Scout | **Mako (150M)** | `92 MB disk`, >0.999 cosine fidelity, wire scraping |
-| **`v-µLM Companion`** | Sovereign Edge Companion Fleet | **Skate (135M)**, **Manta (494M)**, **Beluga (1.54B)** & **Gar (14.7B, planned)** | `~98–295 MB` peak RAM, 8,192-token context |
-| **`v-µLM Pods`** | Dynamic Specialist Pod Fleet & Error-Guided Self-Repair | **Orca Nano (0.5B×13)**, **Orca Mini (1.5B×13)**, **Orca Omni (0.5B+1.5B)** | `85.37%–92.07%` HumanEval, `0.5B–1.5B` active |
+| **`v-µLM Companion`** | Sovereign Edge Companion Fleet | **Skate (135M)**, **Manta (494M)**, **Beluga (1.54B)**, **Blue (3.82B)** & **Gar (14.7B, planned)** | `~98–295 MB` peak RAM, 8,192-token context |
+| **`v-µLM Pods`** | Dynamic Specialist Pod Fleet & Error-Guided Self-Repair | **Orca XS (23×135M)**, **Orca S (135M+0.5B)**, **Orca Nano (0.5B×13)**, **Orca Mini (1.5B×13)**, **Orca Omni**, **Orca Pack** | `14.63%–92.07%` HumanEval, `135M–1.5B` active |
+| **`v-µLM Growth`** | Self-Healing Memory + Wave 1 LoRA Hot-Swap Herd | **Mink XS (2×135M)**, **Mink S (0.5B IQ3_XXS)**, **Mink (0.5B+1.5B)** | `10.37%–75.61%` HumanEval, `/teach` + 4-tool loop |
 
 ---
 
@@ -365,6 +409,7 @@ nioxs pull all
 
 ## 🛡️ License & Privacy
 
-- **Engine & Runtime:** 100% Open Source under the permissive **MIT License**.
-- **Model Distribution:** Standard 32-byte SIMD block-aligned GGUF (`IQ3_XXS` / `Q4_0`).
+- **Engine & Runtime (`nio-xs`):** 100% Open Source under the permissive [**MIT License**](LICENSE).
+- **Models & Weights (`nio-xs-models`, `nio-orca`, `nio-mink`, `nio-tiny`):** Licensed under **Business Source License 1.1 (`BSL 1.1`)**.
+- **Model Distribution:** Standard 32-byte SIMD block-aligned GGUF (`IQ3_XXS` / `Q4_0` / `Q4_K_M`).
 - **Privacy First:** 100% local in-process inference. Zero data telemetry, zero cloud token fees.
