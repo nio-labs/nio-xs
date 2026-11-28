@@ -155,42 +155,71 @@ pub fn compute_csv_guard(input: &str) -> Option<String> {
     Some(summary)
 }
 
-fn resolve_owl_xs_paths(models_dir: &Path) -> Result<(PathBuf, PathBuf)> {
+fn resolve_owl_paths(models_dir: &Path, is_xs: bool) -> Result<(PathBuf, PathBuf)> {
+    if is_xs {
+        let tok = [
+            models_dir.join("orca-xs-tokenizer.json"),
+            models_dir.join("baby-orca-tokenizer.json"),
+        ]
+        .into_iter()
+        .find(|p| p.is_file())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not locate orca-xs-tokenizer.json in {} (run `nioxs pull owl-xs`)",
+                models_dir.display()
+            )
+        })?;
+        let model = [
+            models_dir.join("owl-xs-135m-q4_k_m.gguf"),
+            models_dir.join("orca-xs-lead-135m-q4_k_m.gguf"),
+            models_dir.join("mink-xs-scout-135m-q4_k_m.gguf"),
+            models_dir.join("baby-meerkat-scout-135m-q4_k_m.gguf"),
+        ]
+        .into_iter()
+        .find(|p| p.is_file())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not locate Owl XS 135M GGUF in {} (run `nioxs pull owl-xs`)",
+                models_dir.display()
+            )
+        })?;
+        return Ok((model, tok));
+    }
+
     let tok = [
-        models_dir.join("orca-xs-tokenizer.json"),
-        models_dir.join("baby-orca-tokenizer.json"),
+        models_dir.join("orca-tokenizer.json"),
+        models_dir.join("tiger-tokenizer.json"),
     ]
     .into_iter()
     .find(|p| p.is_file())
     .ok_or_else(|| {
         anyhow::anyhow!(
-            "Could not locate orca-xs-tokenizer.json in {} (run `nioxs pull owl-xs`)",
+            "Could not locate orca-tokenizer.json in {}",
             models_dir.display()
         )
     })?;
-
-    let model = [
-        models_dir.join("owl-xs-135m-q4_k_m.gguf"),
-        models_dir.join("orca-xs-lead-135m-q4_k_m.gguf"),
-        models_dir.join("mink-xs-scout-135m-q4_k_m.gguf"),
-        models_dir.join("baby-meerkat-scout-135m-q4_k_m.gguf"),
-    ]
-    .into_iter()
-    .find(|p| p.is_file())
-    .ok_or_else(|| {
-        anyhow::anyhow!(
-            "Could not locate Owl XS 135M GGUF in {} (run `nioxs pull owl-xs`)",
-            models_dir.display()
-        )
-    })?;
-
+    let model = [models_dir.join("owl-0.5b-iq3_xxs.gguf")]
+        .into_iter()
+        .find(|p| p.is_file())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not locate owl-0.5b-iq3_xxs.gguf in {}",
+                models_dir.display()
+            )
+        })?;
     Ok((model, tok))
 }
 
-fn resolve_folio_lora(models_dir: &Path, folio: OwlFolio) -> Option<PathBuf> {
-    let base = models_dir
-        .join("owl_xs_loras")
-        .join(format!("owl-xs-135m.{}", folio.slug()));
+fn resolve_folio_lora(models_dir: &Path, folio: OwlFolio, is_xs: bool) -> Option<PathBuf> {
+    let base = if is_xs {
+        models_dir
+            .join("owl_xs_loras")
+            .join(format!("owl-xs-135m.{}", folio.slug()))
+    } else {
+        models_dir
+            .join("owl_05b_loras")
+            .join(format!("owl-0.5b.{}", folio.slug()))
+    };
     if base.is_dir() {
         Some(base)
     } else {
@@ -199,6 +228,10 @@ fn resolve_folio_lora(models_dir: &Path, folio: OwlFolio) -> Option<PathBuf> {
 }
 
 pub async fn run_owl_xs_cli(args: Vec<String>) -> Result<()> {
+    run_owl_cli(true, args).await
+}
+
+pub async fn run_owl_cli(is_xs: bool, args: Vec<String>) -> Result<()> {
     let mut explicit_folio: Option<OwlFolio> = None;
     let mut context_parts: Vec<String> = Vec::new();
     let mut prompt_parts: Vec<String> = Vec::new();
@@ -259,7 +292,7 @@ pub async fn run_owl_xs_cli(args: Vec<String>) -> Result<()> {
     };
     let csv_guard = compute_csv_guard(combined_for_csv);
     let models_dir = nioxs_artifacts::resolve_models_dir();
-    let (model_path, tok_path) = resolve_owl_xs_paths(&models_dir)?;
+    let (model_path, tok_path) = resolve_owl_paths(&models_dir, is_xs)?;
 
     let mut engine = AstEngine::from_paths(model_path.clone(), tok_path);
     engine.set_device_preference(device_pref);
@@ -269,17 +302,18 @@ pub async fn run_owl_xs_cli(args: Vec<String>) -> Result<()> {
         None if csv_guard.is_some() => OwlFolio::Finance,
         None => route_folio_dynamically(&mut engine, &prompt).await,
     };
-    let lora_path = resolve_folio_lora(&models_dir, folio);
+    let lora_path = resolve_folio_lora(&models_dir, folio, is_xs);
 
     if verbose {
+        let tier_label = if is_xs { "Owl XS" } else { "Owl 0.5B IQ3" };
         eprintln!(
-            "\x1b[1;36m[Owl XS]\x1b[0m Mode: {} | Base: {} | LoRA: {}",
+            "\x1b[1;36m[{tier_label}]\x1b[0m Mode: {} | Base: {} | LoRA: {}",
             folio.label(),
-            model_path.file_name().and_then(|n| n.to_str()).unwrap_or("135M"),
+            model_path.file_name().and_then(|n| n.to_str()).unwrap_or("owl"),
             lora_path
                 .as_ref()
                 .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "none (base 135M)".to_string())
+                .unwrap_or_else(|| "none (base)".to_string())
         );
     }
 
