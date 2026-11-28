@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 mod baby_orca;
 mod meerkat;
+mod owl_xs;
 mod skate_safety;
 mod stream_flow;
 
@@ -858,7 +859,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|orca <prompt>|orca-xs <prompt>|orca-s <prompt>|orca-nano <prompt>|orca-mini <prompt>|orca-omni <prompt>|mink <prompt>|mink-s <prompt>|mink-xs <prompt>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|orca <prompt>|orca-xs <prompt>|orca-s <prompt>|orca-nano <prompt>|orca-mini <prompt>|orca-omni <prompt>|mink <prompt>|mink-s <prompt>|mink-xs <prompt>|owl-xs <prompt>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
   pull [model]   Download and verify local MicroLM weights (orca-nano, orca-mini, orca-omni, viper, skate, manta, beluga, blue, tiger, cheetah, fox, rabbit, all)\n\
@@ -872,6 +873,7 @@ Commands:\n\
   mink <prompt>      Run Mink Self-Healing Herd (0.5B Scout + 1.5B Builder + 4-tool loop + /teach memory)\n\
   mink-s <prompt>    Run Mink S (0.5B IQ3_XXS Reflex + 0.5B Wave 1 LoRAs, ~624 MB RAM)\n\
   mink-xs <prompt>   Run Mink XS (2×135M edge companion for fast chat & light helpers, ~334 MB RAM)\n\
+  owl-xs <prompt>    Run Owl XS (vMicroLM Atlas 135M: world knowledge, CSV/Math Guard & storytelling)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
@@ -1046,6 +1048,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 "orca-s" => (vec!["orca-nano", "orca-xs-lead"], None),
                 "orca-xs" => (vec!["orca-xs-"], None),
                 "mink-xs" | "meerkat-xs" => (vec!["mink-xs-"], None),
+                "owl-xs" => (vec!["orca-xs-lead", "orca-xs-tokenizer"], None),
                 "mink-s" | "meerkat-s" => (vec!["mink-s-reflex"], None),
                 "mink" | "meerkat" => (vec!["mink-"], None),
                 "health-wellness" => (
@@ -1649,6 +1652,10 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     if matches!(arg.as_deref(), Some("orca-xs")) {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         return Ok(run_baby_orca_cli(raw_args).await?);
+    }
+    if matches!(arg.as_deref(), Some("owl-xs")) {
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        return Ok(owl_xs::run_owl_xs_cli(raw_args).await?);
     }
     if matches!(arg.as_deref(), Some("mink-xs" | "meerkat-xs")) {
         let mut raw_args = vec!["--xs".to_string()];
