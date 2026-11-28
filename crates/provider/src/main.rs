@@ -858,7 +858,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(arg.as_deref(), Some("--help" | "-h")) {
         println!(
-            "Usage: nioxs [serve|pull <model>|orca <prompt>|orca-nano <prompt>|orca-mini <prompt>|orca-omni <prompt>|meerkat <prompt>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|mcp|init|undo|history]\n\
+            "Usage: nioxs [serve|pull <model>|orca <prompt>|orca-xs <prompt>|orca-s <prompt>|orca-nano <prompt>|orca-mini <prompt>|orca-omni <prompt>|mink <prompt>|mink-s <prompt>|mink-xs <prompt>|viper <prompt>|skate <prompt>|manta <prompt>|beluga <prompt>|blue <prompt>|tiger <prompt>|cheetah <prompt>|fox <prompt>|rabbit <prompt>|mcp|init|undo|history]\n\
 Commands:\n\
   serve          Start HTTP OpenAI-compatible AI gateway (default)\n\
   pull [model]   Download and verify local MicroLM weights (orca-nano, orca-mini, orca-omni, viper, skate, manta, beluga, blue, tiger, cheetah, fox, rabbit, all)\n\
@@ -1043,13 +1043,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 "orca" | "orca-mini" => (vec!["orca-mini"], None),
                 "orca-nano" => (vec!["orca-nano"], None),
                 "orca-omni" => (vec!["orca-nano", "orca-mini"], None),
-                "orca-s" => (vec!["orca-nano", "tiny-orca-lead"], None),
-                "orca-xs" => (vec!["tiny-orca"], None),
-                "mink-xs" | "meerkat-xs" | "baby-meerkat" => {
-                    (vec!["tiny-meerkat-scout", "tiny-meerkat-builder"], None)
-                }
-                "mink-s" | "meerkat-s" => (vec!["tiny-meerkat-reflex"], None),
-                "mink" | "meerkat" => (vec!["meerkat"], None),
+                "orca-s" => (vec!["orca-nano", "orca-xs-lead"], None),
+                "orca-xs" => (vec!["orca-xs-"], None),
+                "mink-xs" | "meerkat-xs" => (vec!["mink-xs-"], None),
+                "mink-s" | "meerkat-s" => (vec!["mink-s-reflex"], None),
+                "mink" | "meerkat" => (vec!["mink-"], None),
                 "health-wellness" => (
                     vec!["health"],
                     Some(("wave1_bundle_manifest.json", "v0.6.1")),
@@ -1814,8 +1812,20 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         }
 
         if tier == "s" && forced_pod.is_none() {
-            let lead_135m = models_dir.join("baby-orca-lead-135m-q4_k_m.gguf");
-            let baby_tok = models_dir.join("baby-orca-tokenizer.json");
+            let lead_135m = [
+                models_dir.join("orca-xs-lead-135m-q4_k_m.gguf"),
+                models_dir.join("baby-orca-lead-135m-q4_k_m.gguf"),
+            ]
+            .into_iter()
+            .find(|p| p.is_file())
+            .unwrap_or_else(|| models_dir.join("orca-xs-lead-135m-q4_k_m.gguf"));
+            let baby_tok = [
+                models_dir.join("orca-xs-tokenizer.json"),
+                models_dir.join("baby-orca-tokenizer.json"),
+            ]
+            .into_iter()
+            .find(|p| p.is_file())
+            .unwrap_or_else(|| models_dir.join("orca-xs-tokenizer.json"));
             if lead_135m.is_file() && baby_tok.is_file() {
                 let mut lead_eng = nioxs_engine::AstEngine::from_paths(lead_135m, baby_tok);
                 lead_eng.set_device_preference(device_pref);
@@ -3753,7 +3763,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
                     .ok_or_else(|| anyhow::anyhow!("--forget requires <id|all>"))?;
                 let n =
                     meerkat::forget_memories(&mem_path, &target).map_err(|e| anyhow::anyhow!(e))?;
-                println!("✔ Forgot {n} Meerkat memory entry(s).");
+                println!("✔ Forgot {n} Mink memory entry(s).");
                 return Ok(());
             }
             "--teach" => {
@@ -3811,6 +3821,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             None
         } else {
             [
+                models_dir.join("mink-s-reflex-0.5b-iq3_xxs.gguf"),
                 models_dir.join("tiny-meerkat-reflex-0.5b-iq3_xxs.gguf"),
                 models_dir.join("tiny-meerkat-reflex-0.5b-iq3_s.gguf"),
             ]
@@ -3820,18 +3831,33 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         if let (Some(tok), Some(reflex)) = (orca_tok, reflex_05b) {
             (tok, reflex.clone(), reflex)
         } else {
-            let tok = models_dir.join("baby-orca-tokenizer.json");
-            if !tok.is_file() {
-                return Err(anyhow::anyhow!(
-                    "Could not locate baby-orca-tokenizer.json in {}",
+            let tok = [
+                models_dir.join("orca-xs-tokenizer.json"),
+                models_dir.join("baby-orca-tokenizer.json"),
+            ]
+            .into_iter()
+            .find(|p| p.is_file())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Could not locate orca-xs-tokenizer.json in {}",
                     models_dir.display()
-                ));
-            }
-            (
-                tok,
+                )
+            })?;
+            let xs_scout = [
+                models_dir.join("mink-xs-scout-135m-q4_k_m.gguf"),
                 models_dir.join("baby-meerkat-scout-135m-q4_k_m.gguf"),
+            ]
+            .into_iter()
+            .find(|p| p.is_file())
+            .unwrap_or_else(|| models_dir.join("mink-xs-scout-135m-q4_k_m.gguf"));
+            let xs_builder = [
+                models_dir.join("mink-xs-builder-135m-q4_k_m.gguf"),
                 models_dir.join("baby-meerkat-builder-135m-q4_k_m.gguf"),
-            )
+            ]
+            .into_iter()
+            .find(|p| p.is_file())
+            .unwrap_or_else(|| models_dir.join("mink-xs-builder-135m-q4_k_m.gguf"));
+            (tok, xs_scout, xs_builder)
         }
     } else {
         let tok = [
@@ -3847,6 +3873,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             )
         })?;
         let scout = [
+            models_dir.join("mink-scout-0.5b-q4_k_m.gguf"),
             models_dir.join("meerkat-scout-0.5b-q4_k_m.gguf"),
             models_dir.join("penguin-scout-0.5b-q4_k_m.gguf"),
         ]
@@ -3854,6 +3881,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         .find(|p| p.is_file())
         .unwrap_or_else(|| models_dir.join("meerkat-scout-0.5b-q4_k_m.gguf"));
         let builder = [
+            models_dir.join("mink-builder-1.5b-q4_k_m.gguf"),
             models_dir.join("meerkat-builder-1.5b-q4_k_m.gguf"),
             models_dir.join("penguin-builder-1.5b-q4_k_m.gguf"),
         ]
@@ -3864,12 +3892,12 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     };
     if !scout_path.is_file() && !builder_path.is_file() {
         let expected = if opts.use_baby {
-            "baby-meerkat-scout-135m-q4_k_m.gguf / baby-meerkat-builder-135m-q4_k_m.gguf"
+            "mink-xs-scout-135m-q4_k_m.gguf / mink-xs-builder-135m-q4_k_m.gguf"
         } else {
-            "meerkat-scout-0.5b-q4_k_m.gguf / meerkat-builder-1.5b-q4_k_m.gguf"
+            "mink-scout-0.5b-q4_k_m.gguf / mink-builder-1.5b-q4_k_m.gguf"
         };
         return Err(anyhow::anyhow!(
-            "Could not locate Meerkat GGUFs in {} (expected {expected})",
+            "Could not locate Mink GGUFs in {} (expected {expected})",
             models_dir.display()
         ));
     }
@@ -4090,7 +4118,9 @@ async fn run_meerkat_turn(
         && builder_path
             .file_name()
             .and_then(|s| s.to_str())
-            .is_some_and(|n| n.starts_with("tiny-meerkat-reflex-0.5b"));
+            .is_some_and(|n| {
+                n.starts_with("mink-s-reflex-0.5b") || n.starts_with("tiny-meerkat-reflex-0.5b")
+            });
     let using_builder = (tools_enabled || auto_need_code || used_web || !scout_path.is_file())
         && builder_path.is_file();
     let active_tier_prefix = if using_reflex_05b {
@@ -4654,6 +4684,8 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let models_dir = nioxs_artifacts::resolve_models_dir();
     let baby_dir = baby_orca::resolve_baby_orca_dir(&models_dir);
     let tokenizer_path = [
+        models_dir.join("orca-xs-tokenizer.json"),
+        baby_dir.join("orca-xs-tokenizer.json"),
         models_dir.join("baby-orca-tokenizer.json"),
         baby_dir.join("baby-orca-tokenizer.json"),
     ]

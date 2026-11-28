@@ -50,15 +50,28 @@ pub fn compact_verify_issue(err: &str) -> String {
 }
 
 pub fn resolve_baby_orca_dir(models_dir: &Path) -> PathBuf {
+    if models_dir.join("orca-xs-lead-135m-q4_k_m.gguf").is_file() {
+        return models_dir.to_path_buf();
+    }
     let nested = models_dir.join("baby_orca").join("gguf");
-    if nested.join("baby-orca-lead-135m-q4_k_m.gguf").is_file() {
+    if nested.join("orca-xs-lead-135m-q4_k_m.gguf").is_file()
+        || nested.join("baby-orca-lead-135m-q4_k_m.gguf").is_file()
+    {
         return nested;
     }
     models_dir.to_path_buf()
 }
 
 pub fn pod_gguf_path(dir: &Path, pod: &str) -> PathBuf {
-    dir.join(format!("baby-orca-{pod}-135m-q4_k_m.gguf"))
+    let modern = dir.join(format!("orca-xs-{pod}-135m-q4_k_m.gguf"));
+    if modern.is_file() {
+        return modern;
+    }
+    let legacy = dir.join(format!("baby-orca-{pod}-135m-q4_k_m.gguf"));
+    if legacy.is_file() {
+        return legacy;
+    }
+    modern
 }
 
 pub fn parse_lead_route(raw: &str) -> &'static str {
