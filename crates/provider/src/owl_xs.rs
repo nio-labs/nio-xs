@@ -61,30 +61,33 @@ pub fn parse_folio_flag(flag: &str) -> Option<OwlFolio> {
     }
 }
 
-pub fn infer_folio(prompt: &str, has_csv_guard: bool) -> OwlFolio {
-    if has_csv_guard {
-        return OwlFolio::Finance;
+pub fn parse_route_token(raw: &str) -> OwlFolio {
+    let token = raw
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .trim_matches(|c: char| !c.is_ascii_alphanumeric())
+        .to_ascii_lowercase();
+    match token.as_str() {
+        "kids" => OwlFolio::Kids,
+        "finance" => OwlFolio::Finance,
+        "novel" => OwlFolio::Novel,
+        _ => OwlFolio::Encyclopedia,
     }
-    let lower = prompt.to_ascii_lowercase();
-    if ["bedtime", "year-old", "kid", "kids", "fairy tale", "children"]
-        .iter()
-        .any(|k| lower.contains(k))
-    {
-        return OwlFolio::Kids;
+}
+
+async fn route_folio_dynamically(engine: &mut AstEngine, prompt: &str) -> OwlFolio {
+    let route_prompt = format!(
+        "<|im_start|>system\nClassify the user request into exactly one word: kids, encyclopedia, finance, or novel.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+    );
+    let Ok(mut rx) = engine.generate_stream(route_prompt, 4, 0.0, 1.0).await else {
+        return OwlFolio::Encyclopedia;
+    };
+    let mut raw = String::new();
+    while let Some(chunk) = rx.recv().await {
+        raw.push_str(&chunk);
     }
-    if ["revenue", "cogs", "opex", "ebitda", "margin", "quarter", "financial", "csv", "stock"]
-        .iter()
-        .any(|k| lower.contains(k))
-    {
-        return OwlFolio::Finance;
-    }
-    if ["romance", "novel", "chapter", "love", "protagonist", "dialogue scene"]
-        .iter()
-        .any(|k| lower.contains(k))
-    {
-        return OwlFolio::Novel;
-    }
-    OwlFolio::Encyclopedia
+    parse_route_token(&raw)
 }
 
 /// Deterministic Rust CSV/numeric evaluator for Finance Folio so 135M never relies on mental math.
@@ -255,10 +258,17 @@ pub async fn run_owl_xs_cli(args: Vec<String>) -> Result<()> {
         context_block.as_str()
     };
     let csv_guard = compute_csv_guard(combined_for_csv);
-    let folio = explicit_folio.unwrap_or_else(|| infer_folio(&prompt, csv_guard.is_some()));
-
     let models_dir = nioxs_artifacts::resolve_models_dir();
     let (model_path, tok_path) = resolve_owl_xs_paths(&models_dir)?;
+
+    let mut engine = AstEngine::from_paths(model_path.clone(), tok_path);
+    engine.set_device_preference(device_pref);
+
+    let folio = match explicit_folio {
+        Some(f) => f,
+        None if csv_guard.is_some() => OwlFolio::Finance,
+        None => route_folio_dynamically(&mut engine, &prompt).await,
+    };
     let lora_path = resolve_folio_lora(&models_dir, folio);
 
     if verbose {
@@ -273,8 +283,6 @@ pub async fn run_owl_xs_cli(args: Vec<String>) -> Result<()> {
         );
     }
 
-    let mut engine = AstEngine::from_paths(model_path, tok_path);
-    engine.set_device_preference(device_pref);
     if let Some(ref lp) = lora_path {
         let _ = engine.attach_lora_head(&lp.to_string_lossy()).await;
     }
@@ -295,10 +303,10 @@ pub async fn run_owl_xs_cli(args: Vec<String>) -> Result<()> {
         "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{user_msg}<|im_end|>\n<|im_start|>assistant\n",
         folio.system_prompt()
     );
-    let temp = match folio {
-        OwlFolio::Encyclopedia | OwlFolio::Finance => 0.0,
-        OwlFolio::Kids | OwlFolio::Novel => 0.65,
-    };
+    let is_grounded = explicit_folio.is_some_and(|f| matches!(f, OwlFolio::Encyclopedia | OwlFolio::Finance))
+        || csv_guard.is_some()
+        || !context_block.is_empty();
+    let temp = if is_grounded { 0.0 } else { 0.60 };
 
     let mut rx = engine
         .generate_stream(formatted, max_tokens, temp, 0.90)
@@ -325,13 +333,12 @@ mod tests {
     }
 
     #[test]
-    fn test_folio_flag_and_inference() {
+    fn test_folio_flag_and_route_token() {
         assert_eq!(parse_folio_flag("kids"), Some(OwlFolio::Kids));
         assert_eq!(parse_folio_flag("analyst"), Some(OwlFolio::Finance));
-        assert_eq!(
-            infer_folio("Write a bedtime story for a 6-year-old", false),
-            OwlFolio::Kids
-        );
-        assert_eq!(infer_folio("Explain Q2 revenue", true), OwlFolio::Finance);
+        assert_eq!(parse_route_token("kids."), OwlFolio::Kids);
+        assert_eq!(parse_route_token("finance"), OwlFolio::Finance);
+        assert_eq!(parse_route_token("novel\n"), OwlFolio::Novel);
+        assert_eq!(parse_route_token("encyclopedia"), OwlFolio::Encyclopedia);
     }
 }
