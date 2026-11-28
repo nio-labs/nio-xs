@@ -867,12 +867,11 @@ Commands:\n\
   orca-mini <prompt> Run Orca Mini 1.5B×13 Sovereign Pod Fleet\n\
   orca-omni <prompt> Run Orca Omni Hybrid Fleet (0.5B fast Lead + 1.5B+ heavy Pods)\n\
   orca-pack <prompt> Run Orca Pack Mixture-of-Agents (1.5B Lead + 12×0.5B concurrent Pods)\n\
+  orca-xs <prompt>   Run Orca-XS 23×135M Micro-Pod Fleet (1 active pod, Web Scout + Guard)\n\
   orca-s <prompt>    Run Orca-S (135M Lead + 0.5B Nano Pods)\n\
-  tiny-orca <prompt> Run Orca-XS (Tiny Orca) 23×135M Micro-Pod Fleet (1 active pod, Web Scout + Guard)\n\
-  meerkat <prompt>   Run Meerkat Self-Healing Herd (0.5B Scout + 1.5B Builder + 4-tool loop + /teach memory)\n\
-  meerkat-s <prompt> Run Meerkat-S (0.5B IQ3_XXS Reflex + 0.5B Wave 1 LoRAs, ~624 MB RAM)\n\
-  meerkat-xs <prompt> Run Meerkat-XS (2×135M edge companion for fast chat & light helpers, ~334 MB RAM)\n\
-  tiny-meerkat <prompt> Alias for Meerkat-S (falls back to Meerkat-XS if 0.5B IQ3_XXS is absent)\n\
+  mink <prompt>      Run Mink Self-Healing Herd (0.5B Scout + 1.5B Builder + 4-tool loop + /teach memory)\n\
+  mink-s <prompt>    Run Mink-S (0.5B IQ3_XXS Reflex + 0.5B Wave 1 LoRAs, ~624 MB RAM)\n\
+  mink-xs <prompt>   Run Mink-XS (2×135M edge companion for fast chat & light helpers, ~334 MB RAM)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
@@ -1046,11 +1045,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 "orca-omni" => (vec!["orca-nano", "orca-mini"], None),
                 "orca-s" => (vec!["orca-nano", "tiny-orca-lead"], None),
                 "tiny-orca" | "baby-orca" | "orca-xs" => (vec!["tiny-orca"], None),
-                "meerkat-xs" | "baby-meerkat" => {
+                "mink-xs" | "meerkat-xs" | "baby-meerkat" => {
                     (vec!["tiny-meerkat-scout", "tiny-meerkat-builder"], None)
                 }
-                "meerkat-s" | "tiny-meerkat" => (vec!["tiny-meerkat-reflex"], None),
-                "meerkat" => (vec!["meerkat"], None),
+                "mink-s" | "meerkat-s" | "tiny-meerkat" => (vec!["tiny-meerkat-reflex"], None),
+                "mink" | "meerkat" => (vec!["meerkat"], None),
                 "health-wellness" => (
                     vec!["health"],
                     Some(("wave1_bundle_manifest.json", "v0.6.1")),
@@ -1653,20 +1652,20 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         return Ok(run_baby_orca_cli(raw_args).await?);
     }
-    if matches!(arg.as_deref(), Some("meerkat-xs")) {
+    if matches!(arg.as_deref(), Some("mink-xs" | "meerkat-xs")) {
         let mut raw_args = vec!["--xs".to_string()];
         raw_args.extend(std::env::args().skip(2));
         return Ok(run_meerkat_cli(raw_args).await?);
     }
     if matches!(
         arg.as_deref(),
-        Some("meerkat-s" | "tiny-meerkat" | "baby-meerkat")
+        Some("mink-s" | "meerkat-s" | "tiny-meerkat" | "baby-meerkat")
     ) {
         let mut raw_args = vec!["--tiny".to_string()];
         raw_args.extend(std::env::args().skip(2));
         return Ok(run_meerkat_cli(raw_args).await?);
     }
-    if matches!(arg.as_deref(), Some("meerkat" | "penguin")) {
+    if matches!(arg.as_deref(), Some("mink" | "meerkat" | "penguin")) {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         return Ok(run_meerkat_cli(raw_args).await?);
     }
@@ -3672,7 +3671,7 @@ struct MeerkatOpts {
 async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     if matches!(raw_args.first().map(|s| s.as_str()), Some("-h" | "--help")) {
         println!(
-            "Usage: nioxs meerkat [--tiny] [--chat] [--builder] [--tools] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--retries <N>] [--verbose|-v] [prompt]"
+            "Usage: nioxs mink [--tiny] [--chat] [--builder] [--tools] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--retries <N>] [--verbose|-v] [prompt]"
         );
         println!(
             "  teach <trigger => fact>   Save an instant SimSimi-style memory to ~/.nioxs/meerkat_memory.jsonl"
@@ -3686,7 +3685,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         let joined = raw_args[1..].join(" ");
         if joined.trim().is_empty() {
             return Err(anyhow::anyhow!(
-                "Usage: nioxs meerkat teach \"<trigger => fact>\""
+                "Usage: nioxs mink teach \"<trigger => fact>\""
             ));
         }
         let (trigger, content) = joined
@@ -3696,7 +3695,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         let saved = meerkat::append_memory(&mem_path, "global", trigger, content, "teach", true)
             .map_err(|e| anyhow::anyhow!(e))?;
         println!(
-            "✔ Taught Meerkat [id={}] ({}): {}",
+            "✔ Taught Mink [id={}] ({}): {}",
             saved.id, saved.trigger, saved.content
         );
         return Ok(());
@@ -3740,7 +3739,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             "--memories" => {
                 let all = meerkat::load_memories(&mem_path);
                 if all.is_empty() {
-                    println!("(no Meerkat memories saved yet in {})", mem_path.display());
+                    println!("(no Mink memories saved yet in {})", mem_path.display());
                 } else {
                     for m in all {
                         println!(
@@ -3771,7 +3770,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
                 let saved =
                     meerkat::append_memory(&mem_path, "global", trigger, content, "teach", true)
                         .map_err(|e| anyhow::anyhow!(e))?;
-                println!("✔ Taught Meerkat [id={}]: {}", saved.id, saved.content);
+                println!("✔ Taught Mink [id={}]: {}", saved.id, saved.content);
                 if prompt_parts.is_empty() && iter.len() == 0 && !chat_mode {
                     return Ok(());
                 }
@@ -3881,9 +3880,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     if !chat_mode {
         let prompt = prompt_parts.join(" ");
         if prompt.trim().is_empty() {
-            return Err(anyhow::anyhow!(
-                "Empty prompt. Usage: nioxs meerkat <prompt>"
-            ));
+            return Err(anyhow::anyhow!("Empty prompt. Usage: nioxs mink <prompt>"));
         }
         let _ = run_meerkat_turn(
             &prompt,
@@ -3899,7 +3896,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println!("🦫 Nio Meerkat Interactive Chat (`vMicroLM-Growth`)");
+    println!("🦫 Nio Mink Interactive Chat (`vMicroLM-Growth`)");
     println!(
         "   Commands: /memories, /forget <id|all>, /exit  (or teach naturally: \"Remember that ...\")\n"
     );
@@ -4072,13 +4069,13 @@ async fn run_meerkat_turn(
     let mut used_web = false;
     let web_block = if auto_need_web {
         if opts.verbose {
-            println!("\x1b[1;36m[Meerkat Scout]\x1b[0m Scouting the web...");
+            println!("\x1b[1;36m[Mink Scout]\x1b[0m Scouting the web...");
         }
         if let Some(snip) = meerkat::fetch_web_grounding(prompt).await {
             used_web = true;
             if opts.verbose {
                 println!(
-                    "\x1b[1;36m[Meerkat Web]\x1b[0m Retrieved {} chars of grounding.",
+                    "\x1b[1;36m[Mink Web]\x1b[0m Retrieved {} chars of grounding.",
                     snip.len()
                 );
             }
@@ -4133,7 +4130,7 @@ async fn run_meerkat_turn(
             if let Some((d, p)) = meerkat::match_wave1_domain(&wave1_domains, &verdict) {
                 selected_lora = Some((d.clone(), p.clone()));
                 if opts.verbose {
-                    println!("\x1b[1;35m[Meerkat LoRA]\x1b[0m Selected Wave 1 adapter: {d}");
+                    println!("\x1b[1;35m[Mink LoRA]\x1b[0m Selected Wave 1 adapter: {d}");
                 }
             }
         }
@@ -4141,15 +4138,13 @@ async fn run_meerkat_turn(
     }
     if auto_need_code && !opts.use_builder && builder_path.is_file() {
         let b_label = if using_reflex_05b {
-            "Tiny Reflex (0.5B IQ3)"
+            "Mink-S (0.5B IQ3)"
         } else if opts.use_baby {
-            "Tiny Builder (135M)"
+            "Mink-XS (135M)"
         } else {
             "1.5B Builder"
         };
-        println!(
-            "\x1b[1;36m[Meerkat Scout]\x1b[0m Coding task detected -> routing to {b_label}..."
-        );
+        println!("\x1b[1;36m[Mink Scout]\x1b[0m Coding task detected -> routing to {b_label}...");
         let _ = std::io::Write::flush(&mut std::io::stdout());
     }
     let initial_path = if opts.use_baby
@@ -4169,11 +4164,11 @@ async fn run_meerkat_turn(
     let identity_block = if asks_identity {
         if let Some(nm) = taught_name {
             format!(
-                "[Identity]\nYou are created by Nio Labs (local Nio Meerkat vMicroLM-Growth herd), and the user taught you: {}. Use this taught name directly and never claim to be Alibaba Cloud, Qwen, or Pegasus.\n\n",
+                "[Identity]\nYou are created by Nio Labs (local Nio Mink vMicroLM-Growth herd), and the user taught you: {}. Use this taught name directly and never claim to be Alibaba Cloud, Qwen, or Pegasus.\n\n",
                 nm.content
             )
         } else {
-            "[Identity]\nYou are Nio Meerkat (vMicroLM-Growth), created by Nio Labs — a local self-healing conversational and coding AI herd (0.5B Scout + 1.5B Builder) running in nio-xs. Never call yourself Pegasus, Qwen, or Alibaba Cloud.\n\n".to_string()
+            "[Identity]\nYou are Nio Mink (vMicroLM-Growth), created by Nio Labs — a local self-healing conversational and coding AI herd (0.5B Scout + 1.5B Builder) running in nio-xs. Never call yourself Pegasus, Qwen, or Alibaba Cloud.\n\n".to_string()
         }
     } else {
         String::new()
@@ -4184,10 +4179,10 @@ async fn run_meerkat_turn(
         ""
     };
     let sys = if using_reflex_05b {
-        "You are Nio Meerkat-S (vMicroLM-Reflex), created by Nio Labs. Output clean, accurate code."
+        "You are Nio Mink-S (vMicroLM-Reflex), created by Nio Labs. Output clean, accurate code."
             .to_string()
     } else if opts.use_xs {
-        "You are Nio Meerkat-XS (135M edge companion), created by Nio Labs. Be natural, concise, and helpful for chat, Q&A, and simple scripts. Always follow [Identity] and [Known User Facts] directly.".to_string()
+        "You are Nio Mink-XS (135M edge companion), created by Nio Labs. Be natural, concise, and helpful for chat, Q&A, and simple scripts. Always follow [Identity] and [Known User Facts] directly.".to_string()
     } else if opts.use_baby {
         if let Some((ref dom, _)) = selected_lora {
             format!(
@@ -4201,11 +4196,11 @@ async fn run_meerkat_turn(
         }
     } else if think_enabled {
         format!(
-            "You are Nio Meerkat Builder Reasoner (vMicroLM-Growth), created by Nio Labs. Write a concise 3-6 line <think>...</think> plan, then provide a clear, accurate answer using any provided [Identity], [Known User Facts], or [Live Web Search Results].{tool_menu}"
+            "You are Nio Mink Builder Reasoner (vMicroLM-Growth), created by Nio Labs. Write a concise 3-6 line <think>...</think> plan, then provide a clear, accurate answer using any provided [Identity], [Known User Facts], or [Live Web Search Results].{tool_menu}"
         )
     } else {
         format!(
-            "You are Nio Meerkat (vMicroLM-Growth), created by Nio Labs. Be natural, concise, and accurate. Always follow [Identity] and [Known User Facts] directly. If you don't know a current/post-2024 fact and it is not in [Known User Facts] or [Live Web Search Results], reply ONLY with [SEARCH].{tool_menu}"
+            "You are Nio Mink (vMicroLM-Growth), created by Nio Labs. Be natural, concise, and accurate. Always follow [Identity] and [Known User Facts] directly. If you don't know a current/post-2024 fact and it is not in [Known User Facts] or [Live Web Search Results], reply ONLY with [SEARCH].{tool_menu}"
         )
     };
     let mut history_chatml = String::new();
@@ -4277,7 +4272,7 @@ async fn run_meerkat_turn(
             };
             if opts.verbose {
                 println!(
-                    "\x1b[1;35m[Meerkat Tool {}/3]\x1b[0m {}({:?})",
+                    "\x1b[1;35m[Mink Tool {}/3]\x1b[0m {}({:?})",
                     tool_step, tool_name, tool_arg
                 );
             }
@@ -4326,15 +4321,15 @@ async fn run_meerkat_turn(
     let mut verified_opt: Option<bool> = None;
 
     if should_verify {
-        println!("\x1b[1;36m[Meerkat Verify]\x1b[0m Checking generated code...");
+        println!("\x1b[1;36m[Mink Verify]\x1b[0m Checking generated code...");
         let _ = std::io::Write::flush(&mut std::io::stdout());
         let (mut ok, mut err) = verify_orca_with_mode(&full_resp, "code");
         if ok {
-            println!("\x1b[1;32m[Meerkat Verify]\x1b[0m Passed ✔");
+            println!("\x1b[1;32m[Mink Verify]\x1b[0m Passed ✔");
         }
         if !ok && builder_path.is_file() {
             let web_heal = if web_block.is_empty() && opts.use_search {
-                println!("\x1b[1;36m[Meerkat Web]\x1b[0m Fetching grounding...");
+                println!("\x1b[1;36m[Mink Web]\x1b[0m Fetching grounding...");
                 meerkat::fetch_web_grounding(prompt)
                     .await
                     .map(|s| format!("\n\n[Web Grounding]\n- {s}"))
@@ -4360,18 +4355,18 @@ async fn run_meerkat_turn(
                     round > total_rounds.div_ceil(2) || (total_rounds >= 2 && round == 2);
                 let short_err = baby_orca::compact_verify_issue(&err);
                 println!(
-                    "\x1b[1;33m[Meerkat Heal {round}/{total_rounds}{}]\x1b[0m {short_err}",
+                    "\x1b[1;33m[Mink Heal {round}/{total_rounds}{}]\x1b[0m {short_err}",
                     if fresh_restart { " fresh-restart" } else { "" }
                 );
                 let builder_label = if using_reflex_05b {
-                    "Tiny Reflex (0.5B IQ3)"
+                    "Mink-S (0.5B IQ3)"
                 } else if opts.use_baby {
-                    "Tiny Builder (135M)"
+                    "Mink-XS (135M)"
                 } else {
                     "1.5B Builder"
                 };
                 println!(
-                    "\x1b[1;33m[Meerkat Builder]\x1b[0m Escalating to {builder_label} (thinking & repairing)..."
+                    "\x1b[1;33m[Mink Builder]\x1b[0m Escalating to {builder_label} (thinking & repairing)..."
                 );
                 let _ = std::io::Write::flush(&mut std::io::stdout());
                 let heal_sys = if using_reflex_05b {
@@ -4387,7 +4382,7 @@ async fn run_meerkat_turn(
                     }
                 } else {
                     format!(
-                        "You are Meerkat Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a short 3-6 line <think>...</think> root-cause analysis, then output a complete, clean, working solution in the requested language with minimal verification tests.{mem_block}{web_heal}"
+                        "You are Mink Builder Reasoner (vMicroLM-Growth), developed by Nio Labs. Write a short 3-6 line <think>...</think> root-cause analysis, then output a complete, clean, working solution in the requested language with minimal verification tests.{mem_block}{web_heal}"
                     )
                 };
                 let heal_user = if fresh_restart {
@@ -4479,13 +4474,13 @@ async fn run_meerkat_turn(
         }
         verified_opt = Some(ok);
         if !ok && opts.verbose {
-            eprintln!("[Meerkat Verify] Last error: {err}");
+            eprintln!("[Mink Verify] Last error: {err}");
         }
     } else if meerkat::looks_like_knowledge_gap(&full_resp) && builder_path.is_file() {
         let web_heal = if web_block.is_empty() {
             if opts.verbose {
                 println!(
-                    "\x1b[1;36m[Meerkat Scout]\x1b[0m Knowledge gap detected; scouting the web..."
+                    "\x1b[1;36m[Mink Scout]\x1b[0m Knowledge gap detected; scouting the web..."
                 );
             }
             meerkat::fetch_web_grounding(prompt)
@@ -4500,10 +4495,10 @@ async fn run_meerkat_turn(
         };
         if !web_heal.is_empty() {
             println!(
-                "\x1b[1;33m[Meerkat Heal]\x1b[0m Answering from live web grounding via 1.5B Builder..."
+                "\x1b[1;33m[Mink Heal]\x1b[0m Answering from live web grounding via 1.5B Builder..."
             );
             let heal_prompt = format!(
-                "<|im_start|>system\nYou are Nio Meerkat (vMicroLM-Growth), created by Nio Labs. Answer directly and concisely using ONLY the facts in [Live Web Search Results].<|im_end|>\n<|im_start|>user\n{web_heal}{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                "<|im_start|>system\nYou are Nio Mink (vMicroLM-Growth), created by Nio Labs. Answer directly and concisely using ONLY the facts in [Live Web Search Results].<|im_end|>\n<|im_start|>user\n{web_heal}{prompt}<|im_end|>\n<|im_start|>assistant\n"
             );
             let mut b_engine = nioxs_engine::AstEngine::from_paths(
                 builder_path.to_path_buf(),
@@ -4561,7 +4556,7 @@ async fn run_meerkat_turn(
     if opts.verbose {
         let elapsed = t0.elapsed().as_secs_f64();
         println!(
-            "\n---\nMeerkat [vMicroLM-Growth] | model={} | memories={} | web={} | healed={} | verified={:?} | {:.2}s",
+            "\n---\nMink [vMicroLM-Growth] | model={} | memories={} | web={} | healed={} | verified={:?} | {:.2}s",
             active_model,
             memories.len(),
             used_web,
@@ -4601,7 +4596,7 @@ async fn run_baby_orca_one(
 async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     if raw_args.is_empty() || matches!(raw_args[0].as_str(), "-h" | "--help") {
         println!(
-            "Usage: nioxs tiny-orca [--pod <name>] [--search] [--verify|--no-verify] [--retries <N>] [--verbose|-v] [--cpu|--gpu] [-n <max_tokens>] <prompt>"
+            "Usage: nioxs orca-xs [--pod <name>] [--search] [--verify|--no-verify] [--retries <N>] [--verbose|-v] [--cpu|--gpu] [-n <max_tokens>] <prompt>"
         );
         println!("Pods: {}", baby_orca::BABY_ORCA_PODS.join(", "));
         return Ok(());
@@ -4655,7 +4650,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let prompt = prompt_parts.join(" ");
     if prompt.trim().is_empty() {
         return Err(anyhow::anyhow!(
-            "Empty prompt. Usage: nioxs tiny-orca <prompt>"
+            "Empty prompt. Usage: nioxs orca-xs <prompt>"
         ));
     }
 
@@ -4680,7 +4675,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let reason_path = baby_orca::pod_gguf_path(&baby_dir, "reasoning-think");
     if !lead_path.is_file() {
         return Err(anyhow::anyhow!(
-            "Could not locate Tiny Orca GGUFs in {}",
+            "Could not locate Orca-XS GGUFs in {}",
             baby_dir.display()
         ));
     }
@@ -4698,12 +4693,12 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         None
     };
     if web_query.is_none() && !asks_identity && scout_path.is_file() {
-        println!("\x1b[1;36m[Tiny Orca]\x1b[0m Step 1/4: Web Scout...");
+        println!("\x1b[1;36m[Orca-XS]\x1b[0m Step 1/4: Web Scout...");
         let scout_raw = run_baby_orca_one(
             &scout_path,
             &tokenizer_path,
             device_pref,
-            "You are Tiny Orca Web Scout (135M). Reply YES (with QUERY:) if this asks for facts, definitions, software/tools, or current data to verify on the web; reply NO only for pure math or coding.",
+            "You are Orca-XS Web Scout (135M). Reply YES (with QUERY:) if this asks for facts, definitions, software/tools, or current data to verify on the web; reply NO only for pure math or coding.",
             &prompt,
             32,
             0.0,
@@ -4719,7 +4714,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     }
     let mut used_web = false;
     let web_ctx = if let Some(q) = web_query {
-        println!("\x1b[1;36m[Tiny Orca]\x1b[0m Scouting web: {q}");
+        println!("\x1b[1;36m[Orca-XS]\x1b[0m Scouting web: {q}");
         if let Some(snip) = meerkat::fetch_web_grounding(&q).await {
             used_web = true;
             format!("[Live Web Search Results]\n- {snip}\n\n")
@@ -4740,7 +4735,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             &lead_path,
             &tokenizer_path,
             device_pref,
-            "You are Tiny Orca Lead (135M). Route the request to the single best specialist pod name.",
+            "You are Orca-XS Lead (135M). Route the request to the single best specialist pod name.",
             &prompt,
             16,
             0.0,
@@ -4748,7 +4743,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         .await?;
         baby_orca::parse_lead_route(&route_raw).to_string()
     };
-    println!("\x1b[1;36m[Tiny Orca]\x1b[0m Step 2/4: Lead -> {chosen_pod}");
+    println!("\x1b[1;36m[Orca-XS]\x1b[0m Step 2/4: Lead -> {chosen_pod}");
 
     // Optional 2-Pod Relay (reasoning-think 2-line plan -> specialist pod)
     let use_relay = force_relay.unwrap_or_else(|| meerkat::looks_like_code_task(&prompt, ""))
@@ -4756,12 +4751,12 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         && !asks_identity
         && reason_path.is_file();
     let relay_plan = if use_relay {
-        println!("\x1b[1;36m[Tiny Orca]\x1b[0m Relay: Planning via reasoning-think...");
+        println!("\x1b[1;36m[Orca-XS]\x1b[0m Relay: Planning via reasoning-think...");
         let plan_raw = run_baby_orca_one(
             &reason_path,
             &tokenizer_path,
             device_pref,
-            "You are Tiny Orca 'reasoning-think' Pod (135M). Output ONLY a 2-line invariant/edge-case checklist inside <think>...</think>.",
+            "You are Orca-XS 'reasoning-think' Pod (135M). Output ONLY a 2-line invariant/edge-case checklist inside <think>...</think>.",
             &format!("{web_ctx}{prompt}"),
             64,
             0.1,
@@ -4773,7 +4768,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     };
 
     // 3. Active Specialist Pod (135M, 1 pod at a time — buffered so final answer prints once)
-    println!("\x1b[1;36m[Tiny Orca]\x1b[0m Step 3/4: Drafting via {chosen_pod}...");
+    println!("\x1b[1;36m[Orca-XS]\x1b[0m Step 3/4: Drafting via {chosen_pod}...");
     let pod_path = baby_orca::pod_gguf_path(&baby_dir, &chosen_pod);
     let active_pod_path = if pod_path.is_file() {
         pod_path
@@ -4781,10 +4776,10 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         lead_path.clone()
     };
     let pod_sys = if asks_identity {
-        "You are Tiny Orca (15x135M), created by Nio Labs — an ultra-light sequential micro-pod AI fleet. Answer directly and concisely.".to_string()
+        "You are Orca-XS (15x135M), created by Nio Labs — an ultra-light sequential micro-pod AI fleet. Answer directly and concisely.".to_string()
     } else {
         format!(
-            "You are Tiny Orca '{chosen_pod}' Pod (135M), created by Nio Labs. Be ultra-concise, accurate, and zero-filler."
+            "You are Orca-XS '{chosen_pod}' Pod (135M), created by Nio Labs. Be ultra-concise, accurate, and zero-filler."
         )
     };
     let pod_user = format!("{web_ctx}{relay_plan}{prompt}");
@@ -4814,7 +4809,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             &guard_path,
             &tokenizer_path,
             device_pref,
-            "You are Tiny Orca Anti-Hallucination Guard (135M). Reply GROUNDED or HALLUCINATION: <reason>.",
+            "You are Orca-XS Anti-Hallucination Guard (135M). Reply GROUNDED or HALLUCINATION: <reason>.",
             &guard_user,
             32,
             0.0,
@@ -4830,7 +4825,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             }
         });
         println!(
-            "\x1b[1;35m[Tiny Orca]\x1b[0m Step 4/4: Guard -> {}",
+            "\x1b[1;35m[Orca-XS]\x1b[0m Step 4/4: Guard -> {}",
             if grounded {
                 "GROUNDED".to_string()
             } else {
@@ -4841,7 +4836,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             }
         );
     } else if !asks_identity {
-        println!("\x1b[1;35m[Tiny Orca]\x1b[0m Step 4/4: Guard -> OK (direct)");
+        println!("\x1b[1;35m[Orca-XS]\x1b[0m Step 4/4: Guard -> OK (direct)");
     }
 
     let mut verified_opt: Option<bool> = None;
@@ -4869,7 +4864,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             let fresh_restart =
                 round > total_rounds.div_ceil(2) || (total_rounds >= 2 && round == 2);
             println!(
-                "\x1b[1;33m[Tiny Orca Heal {round}/{total_rounds}{}]\x1b[0m Refining via reasoning-think (135M): {issue}",
+                "\x1b[1;33m[Orca-XS Heal {round}/{total_rounds}{}]\x1b[0m Refining via reasoning-think (135M): {issue}",
                 if fresh_restart { " fresh-restart" } else { "" }
             );
             let heal_user = if fresh_restart {
@@ -4880,7 +4875,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
                 format!("{web_ctx}Task: {prompt}\n\nIssue flagged: {issue}\nFix concisely.")
             };
             let heal_prompt = format!(
-                "<|im_start|>system\nYou are Tiny Orca 'reasoning-think' Pod (135M). Write a 2-line <think>...</think> checklist, then a concise corrected answer.<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
+                "<|im_start|>system\nYou are Orca-XS 'reasoning-think' Pod (135M). Write a 2-line <think>...</think> checklist, then a concise corrected answer.<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
             );
             let heal_temp = if fresh_restart {
                 (0.35 + 0.05 * ((round - 1) as f64)).min(0.70)
@@ -4922,7 +4917,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
 
     if verbose {
         println!(
-            "\n---\nTiny Orca [23×135M] | pod={} | web={} | grounded={} | healed={} | verified={:?} | {:.2}s",
+            "\n---\nOrca-XS [23×135M] | pod={} | web={} | grounded={} | healed={} | verified={:?} | {:.2}s",
             final_pod,
             used_web,
             grounded,
