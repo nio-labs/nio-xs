@@ -867,9 +867,11 @@ Commands:\n\
   orca-mini <prompt> Run Orca Mini 1.5B×13 Sovereign Pod Fleet\n\
   orca-omni <prompt> Run Orca Omni Hybrid Fleet (0.5B fast Lead + 1.5B+ heavy Pods)\n\
   orca-pack <prompt> Run Orca Pack Mixture-of-Agents (1.5B Lead + 12×0.5B concurrent Pods)\n\
-  tiny-orca <prompt> Run Tiny Orca 23×135M Micro-Pod Fleet (1 active pod, Web Scout + Guard)\n\
+  tiny-orca <prompt> Run Orca-XS (Tiny Orca) 23×135M Micro-Pod Fleet (1 active pod, Web Scout + Guard)\n\
   meerkat <prompt>   Run Meerkat Self-Healing Herd (0.5B Scout + 1.5B Builder + 4-tool loop + /teach memory)\n\
-  tiny-meerkat <prompt> Run Tiny Meerkat Self-Healing Herd (2×135M Scout + Builder + /teach memory)\n\
+  meerkat-s <prompt> Run Meerkat-S (0.5B IQ3_XXS Reflex + 0.5B Wave 1 LoRAs, ~624 MB RAM)\n\
+  meerkat-xs <prompt> Run Meerkat-XS (2×135M edge companion for fast chat & light helpers, ~334 MB RAM)\n\
+  tiny-meerkat <prompt> Alias for Meerkat-S (falls back to Meerkat-XS if 0.5B IQ3_XXS is absent)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
@@ -1041,8 +1043,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 "orca" | "orca-mini" => (vec!["orca-mini"], None),
                 "orca-nano" => (vec!["orca-nano"], None),
                 "orca-omni" => (vec!["orca-nano", "orca-mini"], None),
-                "tiny-orca" | "baby-orca" => (vec!["tiny-orca"], None),
-                "tiny-meerkat" | "baby-meerkat" => (vec!["tiny-meerkat-reflex"], None),
+                "tiny-orca" | "baby-orca" | "orca-xs" => (vec!["tiny-orca"], None),
+                "meerkat-xs" | "baby-meerkat" => {
+                    (vec!["tiny-meerkat-scout", "tiny-meerkat-builder"], None)
+                }
+                "meerkat-s" | "tiny-meerkat" => (vec!["tiny-meerkat-reflex"], None),
                 "meerkat" => (vec!["meerkat"], None),
                 "health-wellness" => (
                     vec!["health"],
@@ -1642,11 +1647,19 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         return Ok(run_orca_pack_cli(raw_args).await?);
     }
-    if matches!(arg.as_deref(), Some("tiny-orca" | "baby-orca")) {
+    if matches!(arg.as_deref(), Some("tiny-orca" | "baby-orca" | "orca-xs")) {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         return Ok(run_baby_orca_cli(raw_args).await?);
     }
-    if matches!(arg.as_deref(), Some("tiny-meerkat" | "baby-meerkat")) {
+    if matches!(arg.as_deref(), Some("meerkat-xs")) {
+        let mut raw_args = vec!["--xs".to_string()];
+        raw_args.extend(std::env::args().skip(2));
+        return Ok(run_meerkat_cli(raw_args).await?);
+    }
+    if matches!(
+        arg.as_deref(),
+        Some("meerkat-s" | "tiny-meerkat" | "baby-meerkat")
+    ) {
         let mut raw_args = vec!["--tiny".to_string()];
         raw_args.extend(std::env::args().skip(2));
         return Ok(run_meerkat_cli(raw_args).await?);
@@ -3597,6 +3610,7 @@ mod tests {
 
 struct MeerkatOpts {
     use_baby: bool,
+    use_xs: bool,
     use_builder: bool,
     use_tools: bool,
     use_search: bool,
@@ -3645,6 +3659,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut chat_mode = raw_args.is_empty();
     let mut opts = MeerkatOpts {
         use_baby: false,
+        use_xs: false,
         use_builder: false,
         use_tools: false,
         use_search: false,
@@ -3660,7 +3675,11 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut iter = raw_args.into_iter();
     while let Some(a) = iter.next() {
         match a.as_str() {
-            "--tiny" | "--baby" => opts.use_baby = true,
+            "--tiny" | "--baby" | "--small" => opts.use_baby = true,
+            "--xs" => {
+                opts.use_baby = true;
+                opts.use_xs = true;
+            }
             "--chat" | "-i" => chat_mode = true,
             "--builder" => opts.use_builder = true,
             "--tools" => opts.use_tools = true,
@@ -3746,12 +3765,16 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         ]
         .into_iter()
         .find(|p| p.is_file());
-        let reflex_05b = [
-            models_dir.join("tiny-meerkat-reflex-0.5b-iq3_xxs.gguf"),
-            models_dir.join("tiny-meerkat-reflex-0.5b-iq3_s.gguf"),
-        ]
-        .into_iter()
-        .find(|p| p.is_file());
+        let reflex_05b = if opts.use_xs {
+            None
+        } else {
+            [
+                models_dir.join("tiny-meerkat-reflex-0.5b-iq3_xxs.gguf"),
+                models_dir.join("tiny-meerkat-reflex-0.5b-iq3_s.gguf"),
+            ]
+            .into_iter()
+            .find(|p| p.is_file())
+        };
         if let (Some(tok), Some(reflex)) = (orca_tok, reflex_05b) {
             (tok, reflex.clone(), reflex)
         } else {
@@ -3973,7 +3996,9 @@ async fn run_meerkat_turn(
                     verdict.push_str(&c);
                 }
                 let upper = verdict.trim().to_ascii_uppercase();
-                if upper.starts_with("YES") || (opts.use_baby && !upper.starts_with("NO")) {
+                if upper.starts_with("YES")
+                    || (opts.use_baby && !opts.use_xs && !upper.starts_with("NO"))
+                {
                     auto_need_code = true;
                 }
             }
@@ -4113,7 +4138,10 @@ async fn run_meerkat_turn(
         ""
     };
     let sys = if using_reflex_05b {
-        "You are Nio vMicroLM-Reflex, created by Nio Labs. Output clean, accurate code.".to_string()
+        "You are Nio Meerkat-S (vMicroLM-Reflex), created by Nio Labs. Output clean, accurate code."
+            .to_string()
+    } else if opts.use_xs {
+        "You are Nio Meerkat-XS (135M edge companion), created by Nio Labs. Be natural, concise, and helpful for chat, Q&A, and simple scripts. Always follow [Identity] and [Known User Facts] directly.".to_string()
     } else if opts.use_baby {
         if let Some((ref dom, _)) = selected_lora {
             format!(
@@ -4272,7 +4300,12 @@ async fn run_meerkat_turn(
             let first_draft = full_resp.clone();
             let first_err = err.clone();
 
-            let total_rounds = opts.max_retries.max(1);
+            let total_rounds =
+                if opts.use_xs && !opts.use_builder && opts.force_verify != Some(true) {
+                    opts.max_retries.min(1)
+                } else {
+                    opts.max_retries.max(1)
+                };
             for round in 1..=total_rounds {
                 if ok {
                     break;
