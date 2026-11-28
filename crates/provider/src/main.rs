@@ -867,11 +867,11 @@ Commands:\n\
   orca-mini <prompt> Run Orca Mini 1.5B×13 Sovereign Pod Fleet\n\
   orca-omni <prompt> Run Orca Omni Hybrid Fleet (0.5B fast Lead + 1.5B+ heavy Pods)\n\
   orca-pack <prompt> Run Orca Pack Mixture-of-Agents (1.5B Lead + 12×0.5B concurrent Pods)\n\
-  orca-xs <prompt>   Run Orca-XS 23×135M Micro-Pod Fleet (1 active pod, Web Scout + Guard)\n\
-  orca-s <prompt>    Run Orca-S (135M Lead + 0.5B Nano Pods)\n\
+  orca-xs <prompt>   Run Orca XS 23×135M Micro-Pod Fleet (1 active pod, Web Scout + Guard)\n\
+  orca-s <prompt>    Run Orca S (135M Lead + 0.5B Nano Pods)\n\
   mink <prompt>      Run Mink Self-Healing Herd (0.5B Scout + 1.5B Builder + 4-tool loop + /teach memory)\n\
-  mink-s <prompt>    Run Mink-S (0.5B IQ3_XXS Reflex + 0.5B Wave 1 LoRAs, ~624 MB RAM)\n\
-  mink-xs <prompt>   Run Mink-XS (2×135M edge companion for fast chat & light helpers, ~334 MB RAM)\n\
+  mink-s <prompt>    Run Mink S (0.5B IQ3_XXS Reflex + 0.5B Wave 1 LoRAs, ~624 MB RAM)\n\
+  mink-xs <prompt>   Run Mink XS (2×135M edge companion for fast chat & light helpers, ~334 MB RAM)\n\
   viper [-x|-y] <prompt> Run local Viper 100M tactical terminal reflex (-x executes natively with safety clutch)\n\
   viper plugin <install|list> Manage isolated Python plugins for Viper sandbox\n\
   skate <prompt> Run local in-process Skate 135M ambient desk companion\n\
@@ -1849,7 +1849,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                             | "general_qa"
                     ) {
                         if verbose {
-                            println!("\x1b[1;36m[Orca-S Lead 135M]\x1b[0m -> {cand}");
+                            println!("\x1b[1;36m[Orca S Lead 135M]\x1b[0m -> {cand}");
                         }
                         forced_pod = Some(cand);
                     }
@@ -4138,9 +4138,9 @@ async fn run_meerkat_turn(
     }
     if auto_need_code && !opts.use_builder && builder_path.is_file() {
         let b_label = if using_reflex_05b {
-            "Mink-S (0.5B IQ3)"
+            "Mink S (0.5B IQ3)"
         } else if opts.use_baby {
-            "Mink-XS (135M)"
+            "Mink XS (135M)"
         } else {
             "1.5B Builder"
         };
@@ -4179,10 +4179,10 @@ async fn run_meerkat_turn(
         ""
     };
     let sys = if using_reflex_05b {
-        "You are Nio Mink-S (vMicroLM-Reflex), created by Nio Labs. Output clean, accurate code."
+        "You are Nio Mink S (vMicroLM-Reflex), created by Nio Labs. Output clean, accurate code."
             .to_string()
     } else if opts.use_xs {
-        "You are Nio Mink-XS (135M edge companion), created by Nio Labs. Be natural, concise, and helpful for chat, Q&A, and simple scripts. Always follow [Identity] and [Known User Facts] directly.".to_string()
+        "You are Nio Mink XS (135M edge companion), created by Nio Labs. Be natural, concise, and helpful for chat, Q&A, and simple scripts. Always follow [Identity] and [Known User Facts] directly.".to_string()
     } else if opts.use_baby {
         if let Some((ref dom, _)) = selected_lora {
             format!(
@@ -4359,9 +4359,9 @@ async fn run_meerkat_turn(
                     if fresh_restart { " fresh-restart" } else { "" }
                 );
                 let builder_label = if using_reflex_05b {
-                    "Mink-S (0.5B IQ3)"
+                    "Mink S (0.5B IQ3)"
                 } else if opts.use_baby {
-                    "Mink-XS (135M)"
+                    "Mink XS (135M)"
                 } else {
                     "1.5B Builder"
                 };
@@ -4675,7 +4675,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let reason_path = baby_orca::pod_gguf_path(&baby_dir, "reasoning-think");
     if !lead_path.is_file() {
         return Err(anyhow::anyhow!(
-            "Could not locate Orca-XS GGUFs in {}",
+            "Could not locate Orca XS GGUFs in {}",
             baby_dir.display()
         ));
     }
@@ -4693,12 +4693,12 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         None
     };
     if web_query.is_none() && !asks_identity && scout_path.is_file() {
-        println!("\x1b[1;36m[Orca-XS]\x1b[0m Step 1/4: Web Scout...");
+        println!("\x1b[1;36m[Orca XS]\x1b[0m Step 1/4: Web Scout...");
         let scout_raw = run_baby_orca_one(
             &scout_path,
             &tokenizer_path,
             device_pref,
-            "You are Orca-XS Web Scout (135M). Reply YES (with QUERY:) if this asks for facts, definitions, software/tools, or current data to verify on the web; reply NO only for pure math or coding.",
+            "You are Orca XS Web Scout (135M). Reply YES (with QUERY:) if this asks for facts, definitions, software/tools, or current data to verify on the web; reply NO only for pure math or coding.",
             &prompt,
             32,
             0.0,
@@ -4714,7 +4714,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     }
     let mut used_web = false;
     let web_ctx = if let Some(q) = web_query {
-        println!("\x1b[1;36m[Orca-XS]\x1b[0m Scouting web: {q}");
+        println!("\x1b[1;36m[Orca XS]\x1b[0m Scouting web: {q}");
         if let Some(snip) = meerkat::fetch_web_grounding(&q).await {
             used_web = true;
             format!("[Live Web Search Results]\n- {snip}\n\n")
@@ -4735,7 +4735,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             &lead_path,
             &tokenizer_path,
             device_pref,
-            "You are Orca-XS Lead (135M). Route the request to the single best specialist pod name.",
+            "You are Orca XS Lead (135M). Route the request to the single best specialist pod name.",
             &prompt,
             16,
             0.0,
@@ -4743,7 +4743,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         .await?;
         baby_orca::parse_lead_route(&route_raw).to_string()
     };
-    println!("\x1b[1;36m[Orca-XS]\x1b[0m Step 2/4: Lead -> {chosen_pod}");
+    println!("\x1b[1;36m[Orca XS]\x1b[0m Step 2/4: Lead -> {chosen_pod}");
 
     // Optional 2-Pod Relay (reasoning-think 2-line plan -> specialist pod)
     let use_relay = force_relay.unwrap_or_else(|| meerkat::looks_like_code_task(&prompt, ""))
@@ -4751,12 +4751,12 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         && !asks_identity
         && reason_path.is_file();
     let relay_plan = if use_relay {
-        println!("\x1b[1;36m[Orca-XS]\x1b[0m Relay: Planning via reasoning-think...");
+        println!("\x1b[1;36m[Orca XS]\x1b[0m Relay: Planning via reasoning-think...");
         let plan_raw = run_baby_orca_one(
             &reason_path,
             &tokenizer_path,
             device_pref,
-            "You are Orca-XS 'reasoning-think' Pod (135M). Output ONLY a 2-line invariant/edge-case checklist inside <think>...</think>.",
+            "You are Orca XS 'reasoning-think' Pod (135M). Output ONLY a 2-line invariant/edge-case checklist inside <think>...</think>.",
             &format!("{web_ctx}{prompt}"),
             64,
             0.1,
@@ -4768,7 +4768,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     };
 
     // 3. Active Specialist Pod (135M, 1 pod at a time — buffered so final answer prints once)
-    println!("\x1b[1;36m[Orca-XS]\x1b[0m Step 3/4: Drafting via {chosen_pod}...");
+    println!("\x1b[1;36m[Orca XS]\x1b[0m Step 3/4: Drafting via {chosen_pod}...");
     let pod_path = baby_orca::pod_gguf_path(&baby_dir, &chosen_pod);
     let active_pod_path = if pod_path.is_file() {
         pod_path
@@ -4776,10 +4776,10 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
         lead_path.clone()
     };
     let pod_sys = if asks_identity {
-        "You are Orca-XS (15x135M), created by Nio Labs — an ultra-light sequential micro-pod AI fleet. Answer directly and concisely.".to_string()
+        "You are Orca XS (15x135M), created by Nio Labs — an ultra-light sequential micro-pod AI fleet. Answer directly and concisely.".to_string()
     } else {
         format!(
-            "You are Orca-XS '{chosen_pod}' Pod (135M), created by Nio Labs. Be ultra-concise, accurate, and zero-filler."
+            "You are Orca XS '{chosen_pod}' Pod (135M), created by Nio Labs. Be ultra-concise, accurate, and zero-filler."
         )
     };
     let pod_user = format!("{web_ctx}{relay_plan}{prompt}");
@@ -4809,7 +4809,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             &guard_path,
             &tokenizer_path,
             device_pref,
-            "You are Orca-XS Anti-Hallucination Guard (135M). Reply GROUNDED or HALLUCINATION: <reason>.",
+            "You are Orca XS Anti-Hallucination Guard (135M). Reply GROUNDED or HALLUCINATION: <reason>.",
             &guard_user,
             32,
             0.0,
@@ -4825,7 +4825,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             }
         });
         println!(
-            "\x1b[1;35m[Orca-XS]\x1b[0m Step 4/4: Guard -> {}",
+            "\x1b[1;35m[Orca XS]\x1b[0m Step 4/4: Guard -> {}",
             if grounded {
                 "GROUNDED".to_string()
             } else {
@@ -4836,7 +4836,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             }
         );
     } else if !asks_identity {
-        println!("\x1b[1;35m[Orca-XS]\x1b[0m Step 4/4: Guard -> OK (direct)");
+        println!("\x1b[1;35m[Orca XS]\x1b[0m Step 4/4: Guard -> OK (direct)");
     }
 
     let mut verified_opt: Option<bool> = None;
@@ -4864,7 +4864,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
             let fresh_restart =
                 round > total_rounds.div_ceil(2) || (total_rounds >= 2 && round == 2);
             println!(
-                "\x1b[1;33m[Orca-XS Heal {round}/{total_rounds}{}]\x1b[0m Refining via reasoning-think (135M): {issue}",
+                "\x1b[1;33m[Orca XS Heal {round}/{total_rounds}{}]\x1b[0m Refining via reasoning-think (135M): {issue}",
                 if fresh_restart { " fresh-restart" } else { "" }
             );
             let heal_user = if fresh_restart {
@@ -4875,7 +4875,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
                 format!("{web_ctx}Task: {prompt}\n\nIssue flagged: {issue}\nFix concisely.")
             };
             let heal_prompt = format!(
-                "<|im_start|>system\nYou are Orca-XS 'reasoning-think' Pod (135M). Write a 2-line <think>...</think> checklist, then a concise corrected answer.<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
+                "<|im_start|>system\nYou are Orca XS 'reasoning-think' Pod (135M). Write a 2-line <think>...</think> checklist, then a concise corrected answer.<|im_end|>\n<|im_start|>user\n{heal_user}<|im_end|>\n<|im_start|>assistant\n"
             );
             let heal_temp = if fresh_restart {
                 (0.35 + 0.05 * ((round - 1) as f64)).min(0.70)
@@ -4917,7 +4917,7 @@ async fn run_baby_orca_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
 
     if verbose {
         println!(
-            "\n---\nOrca-XS [23×135M] | pod={} | web={} | grounded={} | healed={} | verified={:?} | {:.2}s",
+            "\n---\nOrca XS [23×135M] | pod={} | web={} | grounded={} | healed={} | verified={:?} | {:.2}s",
             final_pod,
             used_web,
             grounded,
