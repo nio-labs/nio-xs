@@ -867,6 +867,7 @@ Commands:\n\
   orca-mini <prompt> Run Orca Mini 1.5B×13 Sovereign Pod Fleet\n\
   orca-omni <prompt> Run Orca Omni Hybrid Fleet (0.5B fast Lead + 1.5B+ heavy Pods)\n\
   orca-pack <prompt> Run Orca Pack Mixture-of-Agents (1.5B Lead + 12×0.5B concurrent Pods)\n\
+  orca-s <prompt>    Run Orca-S (135M Lead + 0.5B Nano Pods)\n\
   tiny-orca <prompt> Run Orca-XS (Tiny Orca) 23×135M Micro-Pod Fleet (1 active pod, Web Scout + Guard)\n\
   meerkat <prompt>   Run Meerkat Self-Healing Herd (0.5B Scout + 1.5B Builder + 4-tool loop + /teach memory)\n\
   meerkat-s <prompt> Run Meerkat-S (0.5B IQ3_XXS Reflex + 0.5B Wave 1 LoRAs, ~624 MB RAM)\n\
@@ -1043,6 +1044,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 "orca" | "orca-mini" => (vec!["orca-mini"], None),
                 "orca-nano" => (vec!["orca-nano"], None),
                 "orca-omni" => (vec!["orca-nano", "orca-mini"], None),
+                "orca-s" => (vec!["orca-nano", "tiny-orca-lead"], None),
                 "tiny-orca" | "baby-orca" | "orca-xs" => (vec!["tiny-orca"], None),
                 "meerkat-xs" | "baby-meerkat" => {
                     (vec!["tiny-meerkat-scout", "tiny-meerkat-builder"], None)
@@ -1670,21 +1672,24 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
     }
     if matches!(
         arg.as_deref(),
-        Some("orca" | "orca-nano" | "orca-mini" | "orca-omni" | "orca-max" | "orca-ultra")
+        Some(
+            "orca" | "orca-s" | "orca-nano" | "orca-mini" | "orca-omni" | "orca-max" | "orca-ultra"
+        )
     ) {
         let cmd_name = arg.as_deref().unwrap_or("orca");
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         if raw_args.is_empty() || raw_args[0] == "-h" || raw_args[0] == "--help" {
             println!(
-                "Usage: nioxs {cmd_name} [--tier <nano|mini|omni|max|ultra>] [--think|--no-think] [--verify|--no-verify] [--retries <N>] [--pod <id>] [--verbose|-v] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
+                "Usage: nioxs {cmd_name} [--tier <s|nano|mini|omni|max|ultra>] [--think|--no-think] [--verify|--no-verify] [--retries <N>] [--pod <id>] [--verbose|-v] [--flow <burst|token|paragraph>] [-n <max_tokens>] <prompt>"
             );
             println!(
-                "Tiers: orca-nano (0.5B), orca-mini (1.5B), orca-omni (0.5B Lead + 1.5B+ Pods), orca-max (3B), orca-ultra (7B)"
+                "Tiers: orca-s (135M Lead + 0.5B Pods), orca-nano (0.5B), orca-mini (1.5B), orca-omni (0.5B Lead + 1.5B+ Pods), orca-max (3B), orca-ultra (7B)"
             );
             return Ok(());
         }
 
         let mut tier = match cmd_name {
+            "orca-s" => "s".to_string(),
             "orca-nano" => "nano".to_string(),
             "orca-mini" => "mini".to_string(),
             "orca-omni" => "omni".to_string(),
@@ -1812,6 +1817,47 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
             }
         }
 
+        if tier == "s" && forced_pod.is_none() {
+            let lead_135m = models_dir.join("baby-orca-lead-135m-q4_k_m.gguf");
+            let baby_tok = models_dir.join("baby-orca-tokenizer.json");
+            if lead_135m.is_file() && baby_tok.is_file() {
+                let mut lead_eng = nioxs_engine::AstEngine::from_paths(lead_135m, baby_tok);
+                lead_eng.set_device_preference(device_pref);
+                let lead_prompt = format!(
+                    "<|im_start|>system\nRoute the user request to ONE pod id: coding, debugging, algo_reasoner, architect, math_logic, security_reasoner, test_reasoner, repair_reasoner, general_qa. Reply ONLY with the pod id.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                );
+                if let Ok(mut rx) = lead_eng.generate_stream(lead_prompt, 12, 0.0, 0.90).await {
+                    let mut raw_pod = String::new();
+                    while let Some(c) = rx.recv().await {
+                        raw_pod.push_str(&c);
+                    }
+                    let cand = raw_pod
+                        .split(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-')
+                        .find(|w| !w.is_empty())
+                        .unwrap_or("")
+                        .to_ascii_lowercase()
+                        .replace('-', "_");
+                    if matches!(
+                        cand.as_str(),
+                        "coding"
+                            | "debugging"
+                            | "algo_reasoner"
+                            | "architect"
+                            | "math_logic"
+                            | "security_reasoner"
+                            | "test_reasoner"
+                            | "repair_reasoner"
+                            | "general_qa"
+                    ) {
+                        if verbose {
+                            println!("\x1b[1;36m[Orca-S Lead 135M]\x1b[0m -> {cand}");
+                        }
+                        forced_pod = Some(cand);
+                    }
+                }
+            }
+        }
+
         let (pod_id, matched_think_meta, verify_mode, custom_gguf) =
             route_orca_pod_meta(&prompt, forced_pod.as_deref(), &manifest_entries);
         let is_reasoning_pod = |p: &str| p.contains("reasoner") || p == "architect";
@@ -1823,7 +1869,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
 
         let kebab = pod_id.replace('_', "-");
         let tier_specs: Vec<(&str, &[&str])> = match tier.as_str() {
-            "nano" => vec![("nano", &["0.5b", "0-5b"])],
+            "s" | "nano" => vec![("nano", &["0.5b", "0-5b"])],
             "mini" => vec![("mini", &["1.5b", "1-5b"])],
             "omni" => {
                 if think_enabled || is_reasoning_pod(&pod_id) {
