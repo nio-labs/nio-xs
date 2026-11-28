@@ -1044,11 +1044,11 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
                 "orca-nano" => (vec!["orca-nano"], None),
                 "orca-omni" => (vec!["orca-nano", "orca-mini"], None),
                 "orca-s" => (vec!["orca-nano", "tiny-orca-lead"], None),
-                "tiny-orca" | "baby-orca" | "orca-xs" => (vec!["tiny-orca"], None),
+                "orca-xs" => (vec!["tiny-orca"], None),
                 "mink-xs" | "meerkat-xs" | "baby-meerkat" => {
                     (vec!["tiny-meerkat-scout", "tiny-meerkat-builder"], None)
                 }
-                "mink-s" | "meerkat-s" | "tiny-meerkat" => (vec!["tiny-meerkat-reflex"], None),
+                "mink-s" | "meerkat-s" => (vec!["tiny-meerkat-reflex"], None),
                 "mink" | "meerkat" => (vec!["meerkat"], None),
                 "health-wellness" => (
                     vec!["health"],
@@ -1648,7 +1648,7 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         return Ok(run_orca_pack_cli(raw_args).await?);
     }
-    if matches!(arg.as_deref(), Some("tiny-orca" | "baby-orca" | "orca-xs")) {
+    if matches!(arg.as_deref(), Some("orca-xs")) {
         let raw_args: Vec<String> = std::env::args().skip(2).collect();
         return Ok(run_baby_orca_cli(raw_args).await?);
     }
@@ -1657,11 +1657,8 @@ Environment: NIOXS_LISTEN (127.0.0.1:7460), NIOXS_DEVICE (auto|cpu|gpu), NIOXS_D
         raw_args.extend(std::env::args().skip(2));
         return Ok(run_meerkat_cli(raw_args).await?);
     }
-    if matches!(
-        arg.as_deref(),
-        Some("mink-s" | "meerkat-s" | "tiny-meerkat" | "baby-meerkat")
-    ) {
-        let mut raw_args = vec!["--tiny".to_string()];
+    if matches!(arg.as_deref(), Some("mink-s" | "meerkat-s")) {
+        let mut raw_args = vec!["--small".to_string()];
         raw_args.extend(std::env::args().skip(2));
         return Ok(run_meerkat_cli(raw_args).await?);
     }
@@ -3671,7 +3668,7 @@ struct MeerkatOpts {
 async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     if matches!(raw_args.first().map(|s| s.as_str()), Some("-h" | "--help")) {
         println!(
-            "Usage: nioxs mink [--tiny] [--chat] [--builder] [--tools] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--retries <N>] [--verbose|-v] [prompt]"
+            "Usage: nioxs mink [--small|--xs] [--chat] [--builder] [--tools] [--search] [--teach <fact>] [--memories] [--forget <id|all>] [--think|--no-think] [--verify|--no-verify] [--retries <N>] [--verbose|-v] [prompt]"
         );
         println!(
             "  teach <trigger => fact>   Save an instant SimSimi-style memory to ~/.nioxs/meerkat_memory.jsonl"
@@ -3720,7 +3717,7 @@ async fn run_meerkat_cli(raw_args: Vec<String>) -> anyhow::Result<()> {
     let mut iter = raw_args.into_iter();
     while let Some(a) = iter.next() {
         match a.as_str() {
-            "--tiny" | "--baby" | "--small" => opts.use_baby = true,
+            "--small" => opts.use_baby = true,
             "--xs" => {
                 opts.use_baby = true;
                 opts.use_xs = true;
