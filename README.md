@@ -135,7 +135,7 @@ nioxs viper -x -y "kill port 3000"
 | **Mako** | **150M** | Live Web Intelligence & Scout | **~65.4 MB** (`IQ3_XXS`) | **< 22 MB** | **~120 MB** | 200+ tok/s | DOM Noise Stripping & Wire DSL |
 | **Manta** | **494M** | Systems Guru & DAG Architect | **~254 MB** (`Q4_0`) | **~95 MB** | **~195 MB** | 20–35 w/s | `<manta_plan>` DAGs & Wasm Engine |
 | **Orca XS** | **23×135M** | Edge Micro-Pod Fleet (Web Scout + Guard) | **~2.3 GB** (`23×101 MB`) | **~101 MB** | **~333 MB** | ~40+ w/s | **14.63% HumanEval / 26.0% MBPP** |
-| **Orca S** | **135M + 0.5B×13** | Fast 135M Lead + 0.5B Nano Pods | **~5.0 GB** | **~380 MB** | **~582 MB** | ~20 w/s | Fast 135M routing + 0.5B Pod |
+| **Orca S** | **135M + 0.5B×13** | Fast 135M Lead + 0.5B Nano Pods | **~5.0 GB** | **~380 MB** | **~582 MB** | ~20 w/s | **72.56% HumanEval / 74.0% MBPP** |
 | **Orca Nano** | **0.5B×13** | Sovereign Micro-Pod Fleet | **~4.9 GB** (`13×380 MB Q4_K_M`) | **~380 MB** | **~582 MB** | ~20 w/s | **85.37% HumanEval / 84.0% MBPP** |
 | **Orca Mini** | **1.5B×13** | Sovereign Mini-Pod Fleet | **~12.2 GB** (`13×941 MB Q4_K_M`) | **~941 MB** | **~1,839 MB** | 8–10 w/s | **86.59% HumanEval / 87.0% MBPP** |
 | **Orca Omni** | **0.5B + 1.5B** | Hybrid Fast-Pass + Escalation Fleet | **~17.1 GB** (`Nano + Mini Q4_K_M`) | **~380–941 MB** | **~582–1,839 MB** | 8–20 w/s | **92.07% HumanEval / 89.0% MBPP** |
@@ -169,7 +169,8 @@ Orca replaces single-model bottlenecks with a **13-pod specialist fleet** (`1× 
 | **12** | Stock `Qwen2.5-Coder-7B` (`INT4`) | `7.0B` | `1` pod | `84.15%` (`138/164`) | `84.0%` (`84/100`) | — | — |
 | **13** | Stock `Qwen2.5-Coder-3B` (`FP16`) | `3.0B` | `1` pod | `81.10%` (`133/164`) | `74.0%` (`74/100`) | — | — |
 | **14** | Stock `Qwen2.5-Coder-3B` (`INT4`) | `3.0B` | `1` pod | `79.27%` (`130/164`) | `73.0%` (`73/100`) | — | — |
-| **15** | **`Orca XS`** (`23× 135M`, 16-round) | **`135M`** | **`23 pods / 3.11B`** (`~2.3 GB`, `101 MB/pod`) | **`14.63%`** (`24/164`) | **`26.0%`** (`26/100`) | **`~333 MB`** | **`~40+ w/s`** |
+| **15** | **`Orca S`** (`135M Lead + 0.5B Pods`) | **`135M / 0.5B`** | `135M + 13×0.5B` (`~5.0 GB`) | **`72.56%`** (`119/164`) | **`74.0%`** (`74/100`) | **`~582 MB`** | **`~20 w/s`** |
+| **16** | **`Orca XS`** (`23× 135M`, 16-round) | **`135M`** | **`23 pods / 3.11B`** (`~2.3 GB`, `101 MB/pod`) | **`14.63%`** (`24/164`) | **`26.0%`** (`26/100`) | **`~333 MB`** | **`~40+ w/s`** |
 
 *(**Methodology:** Full `openai/openai_humaneval` `164` + `mbpp` sanitized `100` in isolated `5s`-timeout Python subprocesses. `3B`/`7B INT4` ran in the same multi-round harness; \*`Qwen2.5-Coder-14B` `FP16` is the published single-shot Pass@1 baseline from `arXiv:2409.12186`. Orca tiers use the same error-guided + fresh-restart `--verify` loop built into `nioxs`; host `VmHWM` and CPU speed were measured on `i7-10610U` with `Q4_K_M.gguf`.)*
 
